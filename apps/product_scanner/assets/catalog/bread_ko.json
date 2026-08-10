@@ -1,0 +1,26 @@
+{
+  "schema_version": "1.0",
+  "model_label_set": "bread-v1",
+  "products": [
+    {"class_id": "bread_01", "class_name": "Walnut Donut", "display_name_ko": "호두 도넛"},
+    {"class_id": "bread_02", "class_name": "Croffle", "display_name_ko": "크로플"},
+    {"class_id": "bread_03", "class_name": "Waffle", "display_name_ko": "와플"},
+    {"class_id": "bread_04", "class_name": "Scon", "display_name_ko": "스콘"},
+    {"class_id": "bread_05", "class_name": "Half-moon Croissant", "display_name_ko": "반달 크루아상"},
+    {"class_id": "bread_06", "class_name": "Croissant", "display_name_ko": "크루아상"},
+    {"class_id": "bread_07", "class_name": "Flower Bread", "display_name_ko": "꽃빵"},
+    {"class_id": "bread_08", "class_name": "Almond Scon", "display_name_ko": "아몬드 스콘"},
+    {"class_id": "bread_09", "class_name": "Dinner Roll", "display_name_ko": "디너 롤"},
+    {"class_id": "bread_10", "class_name": "Sugar Donut", "display_name_ko": "설탕 도넛"},
+    {"class_id": "bread_11", "class_name": "Bagel", "display_name_ko": "베이글"},
+    {"class_id": "bread_12", "class_name": "Egg Tart", "display_name_ko": "에그 타르트"},
+    {"class_id": "bread_13", "class_name": "Muffin", "display_name_ko": "머핀"},
+    {"class_id": "bread_14", "class_name": "Burger", "display_name_ko": "버거"},
+    {"class_id": "bread_15", "class_name": "Sandwich", "display_name_ko": "샌드위치"},
+    {"class_id": "bread_16", "class_name": "Grain Campagne", "display_name_ko": "곡물 깜빠뉴"},
+    {"class_id": "bread_17", "class_name": "Almond Campagne", "display_name_ko": "아몬드 깜빠뉴"},
+    {"class_id": "bread_18", "class_name": "Mini Bread", "display_name_ko": "미니 브레드"},
+    {"class_id": "bread_19", "class_name": "Pastry Bread", "display_name_ko": "페이스트리 브레드"},
+    {"class_id": "bread_20", "class_name": "Plain Bread", "display_name_ko": "플레인 브레드"}
+  ]
+}

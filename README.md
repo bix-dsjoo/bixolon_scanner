@@ -87,6 +87,18 @@ Health endpoint:
 - `GET /health/live`
 - `GET /health/ready`
 
+## Flutter Windows 앱
+
+작업자용 Product Scanner는 [`apps/product_scanner`](apps/product_scanner)에 있습니다. 단일 2-pane 화면에서 Windows 카메라 촬영 또는 JPEG/PNG 선택, `/v1/scan` 분석, Bounding Box와 상품 목록 연동, Top-3/로컬 상품 검색, 최종 확정과 로컬 Scan Log 저장을 처리합니다.
+
+```powershell
+cd apps\product_scanner
+flutter pub get
+flutter run -d windows
+```
+
+기본 Worker 주소는 `http://127.0.0.1:8000`이며 다른 호스트를 사용할 때는 `--dart-define=SCANNER_API_BASE_URL=http://host:port`를 전달합니다. Flutter 설치, 테스트, release build와 로컬 저장 위치는 앱 디렉터리의 README를 참고하십시오.
+
 ## 설치와 Worker 실행
 
 ```powershell
