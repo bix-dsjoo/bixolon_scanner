@@ -1,0 +1,57 @@
+[build-system]
+requires = ["hatchling>=1.27"]
+build-backend = "hatchling.build"
+
+[project]
+name = "bixolon-scanner"
+version = "0.1.0"
+description = "Multi-item bread image decision worker"
+readme = "README.md"
+requires-python = ">=3.11,<3.14"
+dependencies = [
+  "fastapi>=0.115,<1",
+  "numpy>=2,<3",
+  "pillow>=11,<13",
+  "pydantic>=2.10,<3",
+  "pydantic-settings>=2.7,<3",
+  "python-multipart>=0.0.20,<1",
+  "uvicorn>=0.34,<1",
+]
+
+[project.optional-dependencies]
+cpu = ["onnxruntime>=1.20,<2"]
+cuda = ["onnxruntime-gpu>=1.20,<2"]
+training = [
+  "scikit-learn>=1.6,<2",
+  "scipy>=1.15,<2",
+  "onnx>=1.17,<2",
+  "torch>=2.6,<3",
+  "torchvision>=0.21,<1",
+  "transformers>=4.49,<6",
+]
+test = ["httpx>=0.28,<1", "pytest>=8.3,<10"]
+
+[project.scripts]
+bixolon-worker = "bixolon_scanner.cli:serve"
+bixolon-manifest = "bixolon_scanner.training.manifest:main"
+bixolon-train-classifier = "bixolon_scanner.training.train_classifier:main"
+bixolon-cache-classifier = "bixolon_scanner.training.cache_classifier:main"
+bixolon-cache-detector = "bixolon_scanner.training.cache_detector:main"
+bixolon-train-detector = "bixolon_scanner.training.train_detector:main"
+bixolon-predict-classifier = "bixolon_scanner.training.predict_classifier:main"
+bixolon-evaluate-detector = "bixolon_scanner.training.evaluate_detector:main"
+bixolon-aggregate-detector = "bixolon_scanner.training.aggregate_detector:main"
+bixolon-export = "bixolon_scanner.training.export:main"
+bixolon-parity = "bixolon_scanner.training.parity:main"
+bixolon-evaluate = "bixolon_scanner.training.evaluate:main"
+bixolon-evaluate-worker = "bixolon_scanner.training.evaluate_worker:main"
+bixolon-evaluate-difficulty = "bixolon_scanner.training.evaluate_difficulty:main"
+bixolon-render-detection-overlays = "bixolon_scanner.training.render_detection_overlays:main"
+bixolon-benchmark = "bixolon_scanner.benchmark:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/bixolon_scanner"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+testpaths = ["tests"]

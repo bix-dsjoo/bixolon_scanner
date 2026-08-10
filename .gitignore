@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+.venv/
+dist/
+build/
+artifacts/
+checkpoints/
+models/
+*.onnx
+*.pt
+*.pth
+*.ckpt
+
