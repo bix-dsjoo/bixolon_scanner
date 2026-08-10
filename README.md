@@ -87,3 +87,20 @@ Health endpoint:
 - `GET /health/live`
 - `GET /health/ready`
 
+## 설치와 Worker 실행
+
+```powershell
+python -m pip install -e ".[cuda]"
+
+$env:BIXOLON_PACKAGE_DIR = "artifacts\packages\bread-worker-0.1.1"
+$env:BIXOLON_PROVIDER = "cuda"
+$env:BIXOLON_CUDA_DLL_DIR = "C:\path\to\CUDA-and-cuDNN-bin"
+bixolon-worker
+```
+
+Worker 런타임 의존성은 FastAPI, Pillow, NumPy, ONNX Runtime입니다. PyTorch, Transformers와 DINOv3 코드는 운영 Worker에 필요하지 않습니다.
+
+두 ONNX session에는 동일 provider가 적용됩니다. `cuda` 강제 모드의 CUDA 초기화 실패는 시작 실패이며 조용히 CPU로 전환하지 않습니다. `auto`에서만 두 session을 함께 CPU로 다시 생성합니다. checksum 검증, session 생성, detector warm-up과 classifier ROI batch 1~7 warm-up이 끝난 뒤 readiness가 열립니다.
+
+예시 환경 변수는 `configs/worker.env.example`에 있습니다.
+
