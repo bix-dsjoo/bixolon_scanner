@@ -165,6 +165,9 @@ def _empty_counts() -> dict[str, Any]:
         "unknown_unmatched": 0,
         "classified_matched_boxes": 0,
         "top1_correct": 0,
+        "recapture_ground_truth_boxes": 0,
+        "unblocked_missed_boxes": 0,
+        "unblocked_false_positive_boxes": 0,
         "end_to_end_latency_ms_total": 0.0,
     }
 
@@ -175,14 +178,13 @@ def _safe_rate(numerator: int, denominator: int) -> float | None:
 
 def _finalize_counts(counts: dict[str, Any]) -> dict[str, Any]:
     result = dict(counts)
-    recapture_matched_boxes = counts["matched_boxes"] - counts["classified_matched_boxes"]
     ground_truth_outcome_counts = {
         "recognized_approved_correct": counts["approved_correct"],
         "top3_candidate": counts["unknown_top3_correct"],
         "candidate_out": counts["unknown_top3_missing"],
         "approved_misclassification": counts["approved_wrong_matched"],
-        "recapture_matched": recapture_matched_boxes,
-        "segmentation_missed": counts["missed_boxes"],
+        "recapture": counts["recapture_ground_truth_boxes"],
+        "unblocked_segmentation_missed": counts["unblocked_missed_boxes"],
     }
     if sum(ground_truth_outcome_counts.values()) != counts["ground_truth_boxes"]:
         raise ValueError("ground-truth box outcomes do not partition all boxes")
@@ -230,10 +232,12 @@ def _finalize_counts(counts: dict[str, Any]) -> dict[str, Any]:
             name: _safe_rate(value, counts["ground_truth_boxes"])
             for name, value in ground_truth_outcome_counts.items()
         },
-        "false_positive_boxes": counts["false_positive_boxes"],
-        "false_positive_boxes_per_ground_truth": _safe_rate(
-            counts["false_positive_boxes"], counts["ground_truth_boxes"]
+        "unblocked_false_positive_boxes": counts["unblocked_false_positive_boxes"],
+        "unblocked_false_positive_boxes_per_ground_truth": _safe_rate(
+            counts["unblocked_false_positive_boxes"], counts["ground_truth_boxes"]
         ),
+        "raw_detector_missed_boxes": counts["missed_boxes"],
+        "raw_detector_false_positive_boxes": counts["false_positive_boxes"],
     }
     result["end_to_end_latency_ms"] = {
         "sample_count": counts["images"],
@@ -351,6 +355,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         if response.status is Status.RECAPTURE:
             for bucket in selected_counts:
                 bucket["recapture_reasons"].update(response.reason_codes)
+                bucket["recapture_ground_truth_boxes"] += len(record["annotations"])
             detail_rows.append(
                 {
                     **common,
@@ -364,6 +369,8 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             raise RuntimeError("Worker item count does not match detector output")
         for bucket in selected_counts:
             bucket["non_recapture_images"] += 1
+            bucket["unblocked_missed_boxes"] += len(remaining_gt)
+            bucket["unblocked_false_positive_boxes"] += len(false_positive_indices)
 
         for detection_index, item in enumerate(response.items):
             match = matches.get(detection_index)

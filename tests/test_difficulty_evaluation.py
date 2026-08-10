@@ -45,6 +45,9 @@ def test_finalize_counts_uses_requested_error_denominators():
             "unknown_top3_missing": 1,
             "classified_matched_boxes": 17,
             "top1_correct": 12,
+            "recapture_ground_truth_boxes": 1,
+            "unblocked_missed_boxes": 2,
+            "unblocked_false_positive_boxes": 3,
             "end_to_end_latency_ms_total": 650.0,
         }
     )
@@ -66,19 +69,21 @@ def test_finalize_counts_uses_requested_error_denominators():
             "top3_candidate": 4,
             "candidate_out": 1,
             "approved_misclassification": 2,
-            "recapture_matched": 1,
-            "segmentation_missed": 2,
+            "recapture": 1,
+            "unblocked_segmentation_missed": 2,
         },
         "rates": {
             "recognized_approved_correct": 0.5,
             "top3_candidate": 0.2,
             "candidate_out": 0.05,
             "approved_misclassification": 0.1,
-            "recapture_matched": 0.05,
-            "segmentation_missed": 0.1,
+            "recapture": 0.05,
+            "unblocked_segmentation_missed": 0.1,
         },
-        "false_positive_boxes": 3,
-        "false_positive_boxes_per_ground_truth": 0.15,
+        "unblocked_false_positive_boxes": 3,
+        "unblocked_false_positive_boxes_per_ground_truth": 0.15,
+        "raw_detector_missed_boxes": 2,
+        "raw_detector_false_positive_boxes": 3,
     }
     assert result["end_to_end_latency_ms"] == {"sample_count": 10, "mean": 65.0}
 
