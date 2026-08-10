@@ -104,3 +104,35 @@ Worker 런타임 의존성은 FastAPI, Pillow, NumPy, ONNX Runtime입니다. PyT
 
 예시 환경 변수는 `configs/worker.env.example`에 있습니다.
 
+## 데이터 manifest
+
+원본 데이터는 저장소 밖 `C:\workspace\raw_data\bread_project`에 유지합니다.
+
+```powershell
+python -m pip install -e ".[training,test]"
+
+bixolon-manifest `
+  --dataset-root C:\workspace\raw_data\bread_project `
+  --output-dir manifests\bread-v1
+```
+
+manifest는 상대 이미지 경로, 이미지 SHA-256, annotation/클래스, 촬영시각·카메라, `capture_session_id`, split, fold를 기록합니다. 현재 1,979 records이며 분류 보조 이미지 1,680장과 COCO 이미지 299장·객체 1,406개를 포함합니다.
+
+`2026-07-21` 촬영분 94장·511개 객체는 최종 test로 격리했습니다. 이전 촬영분 205장·895개 객체는 시간 단위 촬영 session을 유지한 3-fold development 평가에 사용합니다. 독립 분류 이미지는 학습 보조에만 포함되고 평가는 COCO ROI에서 수행합니다.
+
+원본, cache, checkpoint, ONNX와 benchmark 산출물은 `.gitignore` 대상입니다.
+
+## 버전 관리 설정
+
+재현 seed와 기본 hyperparameter는 `configs/training.json`에서 읽을 수 있습니다. 필수 데이터·출력 경로는 CLI에서 명시합니다.
+
+```powershell
+bixolon-train-detector --config configs\training.json `
+  --manifest manifests\bread-v1\manifest.jsonl `
+  --dataset-root C:\workspace\raw_data\bread_project `
+  --output-dir artifacts\detector\fold0 `
+  --fold 0
+```
+
+각 학습 디렉터리의 `run.json`에는 seed, arguments, dependency 버전, device, 데이터 수, dataset version과 manifest checksum을 기록합니다.
+
