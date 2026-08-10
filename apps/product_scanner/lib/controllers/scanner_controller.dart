@@ -10,6 +10,9 @@ import '../models/scan_models.dart';
 import '../services/image_input.dart';
 import '../services/scan_log_repository.dart';
 import '../services/scanner_api.dart';
+import '../theme/app_tokens.dart';
+
+enum CameraIssueType { unavailable, captureFailed }
 
 class ScannerController extends ChangeNotifier {
   ScannerController(
@@ -17,14 +20,17 @@ class ScannerController extends ChangeNotifier {
     this._cameraGateway,
     this._imageFileGateway,
     this._scanLogRepository,
-    this._catalog,
-  );
+    this._catalog, {
+    this.completionFeedbackDuration = AppMotion.feedbackHold,
+  });
 
   final ScannerApi _scannerApi;
   final CameraGateway _cameraGateway;
   final ImageFileGateway _imageFileGateway;
   final ScanLogRepository _scanLogRepository;
   final ProductCatalog _catalog;
+  final Duration completionFeedbackDuration;
+  Timer? _completionFeedbackTimer;
 
   InputMode inputMode = InputMode.camera;
   ProcessState processState = ProcessState.ready;
@@ -38,16 +44,32 @@ class ScannerController extends ChangeNotifier {
   String? searchItemId;
   String searchQuery = '';
   String? errorMessage;
+  ScannerErrorRecovery errorRecovery = ScannerErrorRecovery.retryAnalysis;
   String? completionMessage;
+  int _activityDataRevision = 0;
+  String? _latestSavedScanId;
   bool cameraInitializing = true;
   String? cameraMessage;
+  CameraIssueType? cameraIssueType;
   bool _disposed = false;
 
   CameraController? get cameraController => _cameraGateway.controller;
   bool get isCameraReady => _cameraGateway.isReady;
+  bool get hasActiveCameraIssue =>
+      inputMode == InputMode.camera && cameraIssueType != null;
+  bool get isCameraCheckActive =>
+      inputMode == InputMode.camera && cameraInitializing;
+  String get cameraIssueTitle => switch (cameraIssueType) {
+    CameraIssueType.unavailable => '카메라를 사용할 수 없어요',
+    CameraIssueType.captureFailed => '촬영하지 못했어요',
+    null => '카메라를 확인해 주세요',
+  };
   bool get isBusy =>
       processState == ProcessState.analyzing ||
       processState == ProcessState.submitting;
+  int get activityDataRevision => _activityDataRevision;
+  String? get latestSavedScanId => _latestSavedScanId;
+  bool get canChooseImage => !isBusy;
   bool get isRecapture => response?.status == ScanStatus.recapture;
   bool get hasResults => detections.isNotEmpty;
   int get confirmedCount =>
@@ -65,21 +87,58 @@ class ScannerController extends ChangeNotifier {
     return null;
   }
 
+  int get selectedIndex {
+    final selected = selectedItemId;
+    if (selected == null) return -1;
+    return detections.indexWhere(
+      (detection) => detection.source.itemId == selected,
+    );
+  }
+
   List<Product> get searchResults => _catalog.search(searchQuery);
 
-  Future<List<ScanLogSummary>> loadScanLogs() => _scanLogRepository.list();
+  Future<List<ScanLogSummary>> loadScanLogs() async {
+    final logs = await _scanLogRepository.list();
+    return logs
+        .map(
+          (log) => ScanLogSummary(
+            scanId: log.scanId,
+            analyzedAt: log.analyzedAt,
+            confirmedAt: log.confirmedAt,
+            inputMode: log.inputMode,
+            processingTimeMs: log.processingTimeMs,
+            modelVersions: log.modelVersions,
+            items: log.items
+                .map(
+                  (item) => item.withProductName(
+                    _catalog.displayNameFor(
+                      classId: item.classId,
+                      className: item.className,
+                      fallback: item.productName,
+                    ),
+                  ),
+                )
+                .toList(growable: false),
+          ),
+        )
+        .toList(growable: false);
+  }
 
   Candidate localizeCandidate(Candidate candidate) =>
       _catalog.localizeCandidate(candidate);
 
   Future<void> initialize() async {
     cameraInitializing = true;
+    cameraMessage = null;
+    cameraIssueType = null;
     _notify();
     try {
       await _cameraGateway.initialize();
       cameraMessage = null;
+      cameraIssueType = null;
     } catch (_) {
       cameraMessage = '카메라를 사용할 수 없어요. 연결 상태를 확인해 주세요.';
+      cameraIssueType = CameraIssueType.unavailable;
     } finally {
       cameraInitializing = false;
       _notify();
@@ -87,32 +146,40 @@ class ScannerController extends ChangeNotifier {
   }
 
   Future<void> reconnectCamera() async {
+    if (cameraInitializing || isBusy) return;
     cameraInitializing = true;
     cameraMessage = null;
+    cameraIssueType = null;
     _notify();
     try {
       await _cameraGateway.initialize();
+      cameraIssueType = null;
     } catch (_) {
       cameraMessage = '카메라를 사용할 수 없어요. 연결 상태를 확인해 주세요.';
+      cameraIssueType = CameraIssueType.unavailable;
     } finally {
       cameraInitializing = false;
       _notify();
     }
   }
 
-  Future<void> chooseImage() async {
-    if (isBusy) return;
+  Future<bool> chooseImage() async {
+    if (!canChooseImage) return false;
     try {
       final selected = await _imageFileGateway.pick();
-      if (selected == null) return;
+      if (selected == null) return false;
       await _setInputImage(selected, mode: InputMode.image);
       _clearResult();
       processState = ProcessState.ready;
       _notify();
+      return true;
     } catch (_) {
+      inputMode = InputMode.image;
       processState = ProcessState.error;
       errorMessage = '이미지를 열지 못했어요. 다른 이미지를 선택해 주세요.';
+      errorRecovery = ScannerErrorRecovery.replaceInput;
       _notify();
+      return true;
     }
   }
 
@@ -123,7 +190,8 @@ class ScannerController extends ChangeNotifier {
       await _setInputImage(captured, mode: InputMode.camera);
       await analyze();
     } catch (_) {
-      cameraMessage = '카메라로 촬영하지 못했어요. 다시 연결해 주세요.';
+      cameraMessage = '카메라 응답을 받지 못했어요. 다시 연결해 주세요.';
+      cameraIssueType = CameraIssueType.captureFailed;
       _notify();
     }
   }
@@ -134,6 +202,7 @@ class ScannerController extends ChangeNotifier {
     if (bytes == null || fileName == null || isBusy) return;
     processState = ProcessState.analyzing;
     errorMessage = null;
+    errorRecovery = ScannerErrorRecovery.retryAnalysis;
     response = null;
     detections = [];
     selectedItemId = null;
@@ -163,9 +232,11 @@ class ScannerController extends ChangeNotifier {
     } on ScannerApiException catch (error) {
       processState = ProcessState.error;
       errorMessage = error.message;
+      errorRecovery = error.recovery;
     } catch (_) {
       processState = ProcessState.error;
-      errorMessage = '분석하지 못했어요. 잠시 후 다시 시도해 주세요.';
+      errorMessage = '분석하지 못했어요. 잠시 후 다시 분석해 주세요.';
+      errorRecovery = ScannerErrorRecovery.retryAnalysis;
     }
     _notify();
   }
@@ -173,6 +244,26 @@ class ScannerController extends ChangeNotifier {
   void selectDetection(String itemId) {
     if (isBusy) return;
     selectedItemId = itemId;
+    searchItemId = null;
+    searchQuery = '';
+    _notify();
+  }
+
+  void selectPreviousDetection() {
+    _selectDetectionByOffset(-1);
+  }
+
+  void selectNextDetection() {
+    _selectDetectionByOffset(1);
+  }
+
+  void _selectDetectionByOffset(int offset) {
+    if (isBusy || detections.isEmpty) return;
+    final current = selectedIndex;
+    final next = current < 0
+        ? (offset > 0 ? 0 : detections.length - 1)
+        : (current + offset) % detections.length;
+    selectedItemId = detections[next].source.itemId;
     searchItemId = null;
     searchQuery = '';
     _notify();
@@ -219,14 +310,19 @@ class ScannerController extends ChangeNotifier {
     );
     if (index < 0 || isBusy) return;
     final detection = detections[index];
+    final productChanged =
+        detection.finalProduct?.classId != product.classId ||
+        !detection.isConfirmed;
     detection.finalProduct = product;
     detection.state = DetectionState.confirmed;
-    detection.confirmationMethod =
-        detection.source.status == ItemStatus.approved
-        ? ConfirmationMethod.userCorrected
-        : fromSearch
-        ? ConfirmationMethod.searchSelected
-        : ConfirmationMethod.top3Selected;
+    if (productChanged) {
+      detection.confirmationMethod =
+          detection.source.status == ItemStatus.approved
+          ? ConfirmationMethod.userCorrected
+          : fromSearch
+          ? ConfirmationMethod.searchSelected
+          : ConfirmationMethod.top3Selected;
+    }
     searchItemId = null;
     searchQuery = '';
     selectedItemId = _nextUnconfirmedId(index);
@@ -261,19 +357,21 @@ class ScannerController extends ChangeNotifier {
         ),
       );
       final count = detections.length;
-      _resetSession();
+      final completedInputMode = inputMode;
+      _resetSession(nextInputMode: completedInputMode);
+      _latestSavedScanId = activeResponse.requestId;
+      _activityDataRevision += 1;
+      _completionFeedbackTimer?.cancel();
       completionMessage = '$count개 상품을 확정했어요';
       _notify();
-      unawaited(
-        Future<void>.delayed(const Duration(seconds: 3), () {
-          if (_disposed) return;
-          completionMessage = null;
-          notifyListeners();
-        }),
-      );
+      _completionFeedbackTimer = Timer(completionFeedbackDuration, () {
+        if (_disposed) return;
+        completionMessage = null;
+        notifyListeners();
+      });
     } catch (_) {
       processState = ProcessState.reviewing;
-      errorMessage = '결과를 저장하지 못했어요. 확인한 상품은 그대로 유지돼요.';
+      errorMessage = '저장하지 못했어요. 확인 결과는 유지됐어요.';
       _notify();
     }
   }
@@ -311,7 +409,9 @@ class ScannerController extends ChangeNotifier {
         reasons.contains('DETECTOR_COUNT_MISMATCH')) {
       return '상품이 겹치지 않고 모두 보이도록 다시 촬영해 주세요.';
     }
-    return '상품을 정확하게 확인하기 어려워요. 구도를 조정해 다시 시도해 주세요.';
+    return inputMode == InputMode.camera
+        ? '상품을 정확하게 확인하기 어려워요. 구도를 조정해 다시 촬영해 주세요.'
+        : '상품이 잘 보이는 다른 이미지를 선택해 주세요.';
   }
 
   Future<void> _setInputImage(
@@ -354,10 +454,11 @@ class ScannerController extends ChangeNotifier {
     searchQuery = '';
     analyzedAt = null;
     errorMessage = null;
+    errorRecovery = ScannerErrorRecovery.retryAnalysis;
   }
 
-  void _resetSession() {
-    inputMode = InputMode.camera;
+  void _resetSession({InputMode nextInputMode = InputMode.camera}) {
+    inputMode = nextInputMode;
     processState = ProcessState.ready;
     imageBytes = null;
     imageFileName = null;
@@ -372,6 +473,7 @@ class ScannerController extends ChangeNotifier {
   @override
   void dispose() {
     _disposed = true;
+    _completionFeedbackTimer?.cancel();
     unawaited(_cameraGateway.dispose());
     super.dispose();
   }

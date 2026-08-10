@@ -38,6 +38,8 @@ class ScanLogItemSummary {
     required this.confidence,
     required this.userModified,
     required this.confirmationMethod,
+    this.classId,
+    this.className,
   });
 
   final String itemId;
@@ -45,6 +47,18 @@ class ScanLogItemSummary {
   final double confidence;
   final bool userModified;
   final String confirmationMethod;
+  final String? classId;
+  final String? className;
+
+  ScanLogItemSummary withProductName(String value) => ScanLogItemSummary(
+    itemId: itemId,
+    productName: value,
+    confidence: confidence,
+    userModified: userModified,
+    confirmationMethod: confirmationMethod,
+    classId: classId,
+    className: className,
+  );
 }
 
 class ScanLogSummary {
@@ -165,6 +179,8 @@ class FileScanLogRepository implements ScanLogRepository {
                     confirmationMethod:
                         detection['confirmation_method'] as String? ??
                         'UNKNOWN',
+                    classId: product?['class_id'] as String?,
+                    className: product?['class_name'] as String?,
                   );
                 })
                 .toList(growable: false),

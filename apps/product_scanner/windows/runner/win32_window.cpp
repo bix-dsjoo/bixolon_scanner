@@ -30,6 +30,11 @@ constexpr const wchar_t kGetPreferredBrightnessRegValue[] = L"AppsUseLightTheme"
 static int g_active_window_count = 0;
 
 using EnableNonClientDpiScaling = BOOL __stdcall(HWND hwnd);
+using AdjustWindowRectExForDpiFn = BOOL __stdcall(LPRECT rect,
+                                                  DWORD style,
+                                                  BOOL has_menu,
+                                                  DWORD ex_style,
+                                                  UINT dpi);
 
 // Scale helper to convert logical scaler values to physical using passed in
 // scale factor
@@ -51,6 +56,23 @@ void EnableFullDpiSupportIfAvailable(HWND hwnd) {
     enable_non_client_dpi_scaling(hwnd);
   }
   FreeLibrary(user32_module);
+}
+
+void ExpandClientRectForWindow(HWND hwnd, UINT dpi, RECT* rect) {
+  const auto style = static_cast<DWORD>(GetWindowLongPtr(hwnd, GWL_STYLE));
+  const auto ex_style =
+      static_cast<DWORD>(GetWindowLongPtr(hwnd, GWL_EXSTYLE));
+  const BOOL has_menu = GetMenu(hwnd) != nullptr;
+  HMODULE user32_module = GetModuleHandleA("User32.dll");
+  auto adjust_for_dpi = user32_module == nullptr
+      ? nullptr
+      : reinterpret_cast<AdjustWindowRectExForDpiFn*>(
+            GetProcAddress(user32_module, "AdjustWindowRectExForDpi"));
+  if (adjust_for_dpi != nullptr) {
+    adjust_for_dpi(rect, style, has_menu, ex_style, dpi);
+    return;
+  }
+  AdjustWindowRectEx(rect, style, has_menu, ex_style);
 }
 
 }  // namespace
@@ -153,6 +175,10 @@ bool Win32Window::Show() {
   return ShowWindow(window_handle_, SW_SHOWNORMAL);
 }
 
+void Win32Window::SetMinimumSize(const Size& size) {
+  minimum_size_ = size;
+}
+
 // static
 LRESULT CALLBACK Win32Window::WndProc(HWND const window,
                                       UINT const message,
@@ -179,6 +205,26 @@ Win32Window::MessageHandler(HWND hwnd,
                             WPARAM const wparam,
                             LPARAM const lparam) noexcept {
   switch (message) {
+    case WM_GETMINMAXINFO: {
+      if (!minimum_size_) {
+        break;
+      }
+      const UINT dpi = FlutterDesktopGetDpiForHWND(hwnd);
+      RECT minimum_rect = {
+          0,
+          0,
+          MulDiv(static_cast<int>(minimum_size_->width), dpi, 96),
+          MulDiv(static_cast<int>(minimum_size_->height), dpi, 96),
+      };
+      ExpandClientRectForWindow(hwnd, dpi, &minimum_rect);
+      auto min_max_info = reinterpret_cast<MINMAXINFO*>(lparam);
+      min_max_info->ptMinTrackSize.x =
+          minimum_rect.right - minimum_rect.left;
+      min_max_info->ptMinTrackSize.y =
+          minimum_rect.bottom - minimum_rect.top;
+      return 0;
+    }
+
     case WM_DESTROY:
       window_handle_ = nullptr;
       Destroy();

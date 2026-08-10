@@ -36,9 +36,57 @@ void main() {
     expect(response.items.single.bbox.width, 30);
   });
 
-  test('상품 카탈로그는 원본 영문명과 class id 검색을 지원한다', () {
-    expect(testCatalog.search('muffin').single.displayName, 'Muffin');
-    expect(testCatalog.search('bread_11').single.displayName, 'Bagel');
+  test('상품 카탈로그는 한국어 표시명과 원본 영문명·class id 검색을 함께 지원한다', () {
+    expect(testCatalog.search('머핀').single.displayName, '머핀');
+    expect(testCatalog.search('muffin').single.displayName, '머핀');
+    expect(testCatalog.search('bread_11').single.displayName, '베이글');
+    expect(testCatalog.search('muffin').single.className, 'Muffin');
+  });
+
+  test('기존 로그 상품명은 class id를 우선해 한국어 표시명으로 복원한다', () {
+    expect(
+      testCatalog.displayNameFor(
+        classId: 'bread_13',
+        className: 'Legacy name',
+        fallback: 'Legacy name',
+      ),
+      '머핀',
+    );
+    expect(
+      testCatalog.displayNameFor(className: 'Muffin', fallback: 'Muffin'),
+      '머핀',
+    );
+    expect(
+      testCatalog.displayNameFor(fallback: 'Retired product'),
+      'Retired product',
+    );
+  });
+
+  test('한국어 표시명이 없는 카탈로그 항목을 거부한다', () {
+    expect(
+      () => ProductCatalog.fromJsonBody('''
+        {
+          "schema_version":"1.0",
+          "products":[{"class_id":"bread_13","class_name":"Muffin"}]
+        }
+      '''),
+      throwsFormatException,
+    );
+  });
+
+  test('번들 운영 카탈로그 20개는 한국어 표시명과 영문 검색을 함께 제공한다', () async {
+    final catalog = await ProductCatalog.load();
+
+    expect(catalog.products, hasLength(20));
+    expect(catalog.search('머핀').single.displayName, '머핀');
+    expect(catalog.search('Muffin').single.displayName, '머핀');
+    expect(catalog.search('bread_13').single.displayName, '머핀');
+    expect(
+      catalog.products.every(
+        (product) => product.displayName != product.className,
+      ),
+      isTrue,
+    );
   });
 
   test('지원하지 않는 카탈로그 schema version을 거부한다', () {

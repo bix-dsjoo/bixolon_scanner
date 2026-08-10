@@ -5,6 +5,15 @@
 #include "flutter_window.h"
 #include "utils.h"
 
+namespace {
+
+constexpr unsigned int kInitialWindowWidth = 1440;
+constexpr unsigned int kInitialWindowHeight = 900;
+constexpr unsigned int kMinimumWindowWidth = 1280;
+constexpr unsigned int kMinimumWindowHeight = 720;
+
+}  // namespace
+
 int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
                       _In_ wchar_t *command_line, _In_ int show_command) {
   // Attach to console when present (e.g., 'flutter run') or create a
@@ -26,8 +35,10 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
-  Win32Window::Size size(1440, 900);
-  if (!window.Create(L"Product Scanner", origin, size)) {
+  Win32Window::Size size(kInitialWindowWidth, kInitialWindowHeight);
+  window.SetMinimumSize(
+      Win32Window::Size(kMinimumWindowWidth, kMinimumWindowHeight));
+  if (!window.Create(L"BIXOLON Scanner", origin, size)) {
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);

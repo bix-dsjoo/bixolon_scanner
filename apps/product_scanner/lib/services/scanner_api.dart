@@ -12,11 +12,18 @@ abstract interface class ScannerApi {
   });
 }
 
+enum ScannerErrorRecovery { retryAnalysis, replaceInput }
+
 class ScannerApiException implements Exception {
-  const ScannerApiException(this.message, {this.reasonCodes = const []});
+  const ScannerApiException(
+    this.message, {
+    this.reasonCodes = const [],
+    this.recovery = ScannerErrorRecovery.retryAnalysis,
+  });
 
   final String message;
   final List<String> reasonCodes;
+  final ScannerErrorRecovery recovery;
 
   @override
   String toString() => message;
@@ -54,16 +61,18 @@ class WorkerScannerApi implements ScannerApi {
       if (streamed.statusCode < 200 ||
           streamed.statusCode >= 300 ||
           response.status == ScanStatus.error) {
+        final presentation = _presentationForReasons(response.reasonCodes);
         throw ScannerApiException(
-          _messageForReasons(response.reasonCodes),
+          presentation.message,
           reasonCodes: response.reasonCodes,
+          recovery: presentation.recovery,
         );
       }
       return response;
     } on ScannerApiException {
       rethrow;
     } on TimeoutException {
-      throw const ScannerApiException('분석 시간이 너무 오래 걸리고 있어요. 다시 시도해 주세요.');
+      throw const ScannerApiException('분석 시간이 너무 오래 걸리고 있어요. 다시 분석해 주세요.');
     } on FormatException {
       throw const ScannerApiException('분석 서버의 응답을 확인할 수 없어요.');
     } catch (_) {
@@ -71,14 +80,24 @@ class WorkerScannerApi implements ScannerApi {
     }
   }
 
-  static String _messageForReasons(List<String> reasons) {
+  static ({String message, ScannerErrorRecovery recovery})
+  _presentationForReasons(List<String> reasons) {
     if (reasons.contains('IMAGE_TOO_LARGE')) {
-      return '이미지 용량이 너무 커요. 다른 이미지를 선택해 주세요.';
+      return (
+        message: '이미지 용량이 너무 커요. 다른 이미지를 선택해 주세요.',
+        recovery: ScannerErrorRecovery.replaceInput,
+      );
     }
     if (reasons.contains('UNSUPPORTED_IMAGE_FORMAT') ||
         reasons.contains('CORRUPT_IMAGE')) {
-      return 'JPEG 또는 PNG 이미지를 선택해 주세요.';
+      return (
+        message: 'JPEG 또는 PNG 이미지를 선택해 주세요.',
+        recovery: ScannerErrorRecovery.replaceInput,
+      );
     }
-    return '분석하지 못했어요. 잠시 후 다시 시도해 주세요.';
+    return (
+      message: '분석하지 못했어요. 잠시 후 다시 분석해 주세요.',
+      recovery: ScannerErrorRecovery.retryAnalysis,
+    );
   }
 }

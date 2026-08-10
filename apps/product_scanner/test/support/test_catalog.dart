@@ -1,4 +1,5 @@
 import 'package:product_scanner/catalog/product_catalog.dart';
+import 'package:product_scanner/models/scan_models.dart';
 
 final testCatalog = ProductCatalog.fromJsonBody('''
 {
@@ -13,3 +14,16 @@ final testCatalog = ProductCatalog.fromJsonBody('''
   ]
 }
 ''');
+
+List<ReviewDetection> testReviewDetections(ScanResponse response) {
+  return response.items
+      .map((item) {
+        final detection = ReviewDetection.fromScanItem(item);
+        final product = detection.finalProduct;
+        if (product != null) {
+          detection.finalProduct = testCatalog.localize(product);
+        }
+        return detection;
+      })
+      .toList(growable: false);
+}
