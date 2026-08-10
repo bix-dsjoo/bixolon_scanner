@@ -61,6 +61,8 @@ void main() {
     expect(logs, hasLength(1));
     expect(logs.single.scanId, 'request_log_1234');
     expect(logs.single.items.single.productName, 'Muffin');
+    expect(logs.single.items.single.classId, 'bread_13');
+    expect(logs.single.items.single.className, 'Muffin');
   });
 }
 

@@ -22,16 +22,19 @@ class ProductCatalog {
           }
           final classId = value['class_id'];
           final className = value['class_name'];
+          final displayNameKo = value['display_name_ko'];
           if (classId is! String ||
               classId.isEmpty ||
               className is! String ||
-              className.isEmpty) {
+              className.isEmpty ||
+              displayNameKo is! String ||
+              displayNameKo.isEmpty) {
             throw const FormatException('상품 카탈로그 필수 필드가 누락되었습니다.');
           }
           return Product(
             classId: classId,
             className: className,
-            displayName: className,
+            displayName: displayNameKo,
           );
         })
         .toList(growable: false);
@@ -57,7 +60,7 @@ class ProductCatalog {
       (candidate) => candidate.classId == product.classId,
     );
     if (matched.isEmpty) return product;
-    return product.withDisplayName(matched.first.className);
+    return product.withDisplayName(matched.first.displayName);
   }
 
   Candidate localizeCandidate(Candidate candidate) {
@@ -65,7 +68,30 @@ class ProductCatalog {
       (product) => product.classId == candidate.classId,
     );
     if (matched.isEmpty) return candidate;
-    return candidate.withDisplayName(matched.first.className);
+    return candidate.withDisplayName(matched.first.displayName);
+  }
+
+  String displayNameFor({
+    String? classId,
+    String? className,
+    required String fallback,
+  }) {
+    final normalizedClassName = className?.trim().toLowerCase();
+    final normalizedFallback = fallback.trim().toLowerCase();
+    for (final product in products) {
+      if (classId != null && product.classId == classId) {
+        return product.displayName;
+      }
+      if (normalizedClassName != null &&
+          product.className.toLowerCase() == normalizedClassName) {
+        return product.displayName;
+      }
+      if (product.className.toLowerCase() == normalizedFallback ||
+          product.displayName.toLowerCase() == normalizedFallback) {
+        return product.displayName;
+      }
+    }
+    return fallback;
   }
 
   List<Product> search(String query) {

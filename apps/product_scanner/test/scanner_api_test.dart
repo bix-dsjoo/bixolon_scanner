@@ -59,7 +59,72 @@ void main() {
             .having((error) => error.reasonCodes, 'reasonCodes', [
               'CORRUPT_IMAGE',
             ])
+            .having(
+              (error) => error.recovery,
+              'recovery',
+              ScannerErrorRecovery.replaceInput,
+            )
             .having((error) => error.message, 'message', contains('JPEG')),
+      ),
+    );
+  });
+
+  test('HTTP 200의 Worker ERROR도 성공 결과가 아닌 재분석 오류로 처리한다', () async {
+    final client = MockClient(
+      (_) async => http.Response('''{
+          "request_id":"request_error_200",
+          "status":"ERROR",
+          "reason_codes":["MODEL_RUNTIME_FAILURE"],
+          "items":[],
+          "processing_time_ms":2.0,
+          "model_versions":{"detector":null,"classifier":null}
+        }''', 200),
+    );
+    final api = WorkerScannerApi(
+      baseUrl: 'http://127.0.0.1:8000',
+      client: client,
+    );
+
+    await expectLater(
+      api.scan(imageBytes: Uint8List(2), fileName: 'scan.jpg'),
+      throwsA(
+        isA<ScannerApiException>()
+            .having(
+              (error) => error.recovery,
+              'recovery',
+              ScannerErrorRecovery.retryAnalysis,
+            )
+            .having((error) => error.message, 'message', contains('다시 분석')),
+      ),
+    );
+  });
+
+  test('서버 실행 ERROR는 현재 이미지 재분석 복구를 유지한다', () async {
+    final client = MockClient(
+      (_) async => http.Response('''{
+          "request_id":"request_error_5678",
+          "status":"ERROR",
+          "reason_codes":["MODEL_RUNTIME_FAILURE"],
+          "items":[],
+          "processing_time_ms":2.1,
+          "model_versions":{"detector":null,"classifier":null}
+        }''', 500),
+    );
+    final api = WorkerScannerApi(
+      baseUrl: 'http://127.0.0.1:8000',
+      client: client,
+    );
+
+    await expectLater(
+      api.scan(imageBytes: Uint8List(2), fileName: 'scan.jpg'),
+      throwsA(
+        isA<ScannerApiException>()
+            .having(
+              (error) => error.recovery,
+              'recovery',
+              ScannerErrorRecovery.retryAnalysis,
+            )
+            .having((error) => error.message, 'message', contains('다시 분석')),
       ),
     );
   });

@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <memory>
+#include <optional>
 #include <string>
 
 // A class abstraction for a high DPI-aware Win32 Window. Intended to be
@@ -38,6 +39,10 @@ class Win32Window {
 
   // Show the current window. Returns true if the window was successfully shown.
   bool Show();
+
+  // Sets the minimum client-area size in logical pixels. The value is scaled
+  // for the window's current monitor whenever Windows evaluates resize limits.
+  void SetMinimumSize(const Size& size);
 
   // Release OS resources associated with window.
   void Destroy();
@@ -97,6 +102,9 @@ class Win32Window {
 
   // window handle for hosted content.
   HWND child_content_ = nullptr;
+
+  // Minimum supported Flutter surface in logical pixels.
+  std::optional<Size> minimum_size_;
 };
 
 #endif  // RUNNER_WIN32_WINDOW_H_

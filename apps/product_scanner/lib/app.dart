@@ -19,7 +19,7 @@ class ProductScannerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Product Scanner',
+      title: 'BIXOLON Scanner',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: ScannerScreen(
