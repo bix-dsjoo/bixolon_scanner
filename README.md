@@ -189,3 +189,37 @@ bixolon-train-classifier --config configs\training.json `
   --final-training
 ```
 
+## Detector 학습·OOF threshold
+
+COCO의 20개 category를 단일 `bread` detector class로 통합해 Apache-2.0 `PekingU/rtdetr_v2_r18vd`를 640×640으로 미세조정합니다.
+
+```powershell
+bixolon-cache-detector `
+  --manifest manifests\bread-v1\manifest.jsonl `
+  --dataset-root C:\workspace\raw_data\bread_project `
+  --output-dir artifacts\cache\detector-bread-v1
+
+0..2 | ForEach-Object {
+  bixolon-train-detector --config configs\training.json `
+    --manifest manifests\bread-v1\manifest.jsonl `
+    --dataset-root C:\workspace\raw_data\bread_project `
+    --fold $_ `
+    --cache-dir artifacts\cache\detector-bread-v1 `
+    --output-dir "artifacts\detector\fold$_"
+}
+```
+
+각 validation 예측을 JSONL로 저장한 뒤 공통 OOF threshold 하나를 선택합니다.
+
+```powershell
+bixolon-aggregate-detector `
+  --manifest manifests\bread-v1\manifest.jsonl `
+  --predictions `
+    artifacts\predictions\detector-fold0-validation.jsonl `
+    artifacts\predictions\detector-fold1-validation.jsonl `
+    artifacts\predictions\detector-fold2-validation.jsonl `
+  --output artifacts\reports\detector-oof.json
+```
+
+공통 threshold는 `0.56`이며 OOF recall `99.7765%`, precision `99.8881%`, count accuracy `99.5122%`입니다. fold 1 best에서 시작해 development 전체를 20 epochs, learning rate `1e-6`로 최종 fitting한 checkpoint가 `artifacts/detector/final/best`입니다.
+
