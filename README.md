@@ -254,3 +254,102 @@ detector ONNX는 고정 640 입력, classifier ONNX는 동적 ROI batch입니다
 
 CPU와 CUDA parity는 모두 통과했습니다. CUDA의 NMS 후 detection 최소 IoU는 `0.99927`, 정규화 좌표 최대 오차는 `8.83e-5`, score 최대 오차는 `0.00256`이며 classifier Top-3 순위와 승인 상태가 일치했습니다.
 
+## 최종 test와 benchmark
+
+package metadata의 OOF threshold를 고정한 test 명령입니다. test에서 threshold를 다시 선택하지 않습니다.
+
+```powershell
+bixolon-evaluate-worker `
+  --package-dir artifacts\packages\bread-worker-0.1.0 `
+  --manifest manifests\bread-v1\manifest.jsonl `
+  --dataset-root C:\workspace\raw_data\bread_project `
+  --mode test `
+  --provider cuda `
+  --cuda-dll-dir C:\path\to\CUDA-and-cuDNN-bin `
+  --output artifacts\reports\worker-final-test-cuda.json
+
+# 원본 COCO detection 전체를 파일명의 E/M/H 난이도로 분리 진단
+bixolon-evaluate-difficulty `
+  --package-dir artifacts\packages\bread-worker-0.1.1 `
+  --dataset-root C:\workspace\bixolon_bakery_scanner\datasets\detection `
+  --provider cuda `
+  --match-iou-threshold 0.5 `
+  --output artifacts\reports\worker-difficulty-0.1.1-cuda.json `
+  --details-output artifacts\reports\worker-difficulty-errors-0.1.1-cuda.csv
+
+bixolon-benchmark `
+  --package-dir artifacts\packages\bread-worker-0.1.1 `
+  --images artifacts\benchmark_images `
+  --provider cuda `
+  --cuda-dll-dir C:\path\to\CUDA-and-cuDNN-bin `
+  --warmup 30 `
+  --runs 1000 `
+  --output artifacts\reports\benchmark-0.1.1-cuda.json
+```
+
+### 299장 정책 적합 평가
+
+`C:\workspace\bixolon_bakery_scanner\datasets\detection`의 299장은 모델 학습에는 사용하지 않았지만 이번 low-score/면적 후처리 정책 선택에는 사용했습니다. 따라서 아래 결과는 독립 일반화 성능이나 최종 test KPI가 아니라 정책 적합 결과입니다. 후보 `0.1.1`의 결과는 다음과 같습니다.
+
+| 난이도 | 이미지 | APPROVED | UNKNOWN | RECAPTURE |
+|---|---:|---:|---:|---:|
+| E | 100 | 99 | 0 | 1 |
+| M | 99 | 91 | 5 | 3 |
+| H | 100 | 86 | 12 | 2 |
+| 전체 | 299 | 276 | 17 | 6 |
+
+Detector 자체는 정답 bbox 1,406개 중 1,401개를 매칭했고 누락 5개, 오검출 1개로 기존 가중치와 동일합니다. 새 guard는 누락 5개가 포함된 4개 이미지를 모두 `DETECTOR_UNCERTAIN_OBJECT`로 차단했습니다. 정확히 검출된 이미지 중 `g20_b01_m_0710.jpg`, `g20_b02_e_0323.jpg` 2개도 추가 `RECAPTURE`됩니다. 기존 경계 오탐 3건은 계속 정상 처리되며, `RECAPTURE`를 제외한 `APPROVED` 박스 정답은 1,350/1,351입니다. 별도 count model은 없어 count verifier는 비활성입니다.
+
+### 300장 운영 승격 평가
+
+`C:\workspace\raw_data\bread_project_2`의 E/M/H 각 100장을 CUDA에서 이미지당 한 번씩 실행했습니다. 아래 결과 비율은 난이도별 전체 정답 객체 박스(E 410, M 500, H 500)를 공통 분모로 사용합니다. `인식 성공 + Top-3 Candidate + Candidate out + APPROVED 오인 + RECAPTURE 박스 + Segmentation 누락 = 100%`입니다. 속도는 파일 읽기를 제외한 디코딩부터 후처리까지의 이미지당 단일 실행 평균입니다.
+
+| 난이도 | 전체 객체 | 인식 성공 | Top-3 Candidate | Candidate out | APPROVED 오인 | RECAPTURE 박스 | Segmentation 누락 | 추가 오검출 | 평균 속도 |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| E | 410 | 407 (99.2683%) | 0 (0%) | 0 (0%) | 0 (0%) | 3 (0.7317%) | 0 (0%) | 0 (0%) | 77.611ms |
+| M | 500 | 474 (94.8000%) | 6 (1.2000%) | 0 (0%) | 0 (0%) | 18 (3.6000%) | 2 (0.4000%) | 0 (0%) | 78.080ms |
+| H | 500 | 472 (94.4000%) | 12 (2.4000%) | 2 (0.4000%) | 1 (0.2000%) | 10 (2.0000%) | 3 (0.6000%) | 1 (0.2000%) | 78.625ms |
+| 전체 | 1,410 | 1,353 (95.9574%) | 18 (1.2766%) | 2 (0.1418%) | 1 (0.0709%) | 31 (2.1986%) | 5 (0.3546%) | 1 (0.0709%) | 78.105ms |
+
+`추가 오검출`은 정답 객체에 대응하지 않는 여분의 예측이므로 100% 분할에는 더하지 않으며, 비교 편의를 위해 동일한 전체 정답 객체 수를 분모로 표시했습니다.
+
+Segmentation 실패 4장은 모두 `DETECTOR_UNCERTAIN_OBJECT`로 `RECAPTURE`되어 차단되지 않은 누락·오검출은 0장입니다. 상태 분포는 `APPROVED 276 / UNKNOWN 18 / RECAPTURE 6`입니다. 단, 300장 중 299장은 앞선 정책 적합 세트와 SHA-256이 동일하고 유일한 신규 이미지 `M/M_100.jpg`도 생성 이미지이므로 독립 일반화 성능으로 해석하지 않습니다. 원본 보고서는 `artifacts/reports/worker-difficulty-bread-project-2-0.1.1-cuda.json`, 오류 상세는 `artifacts/reports/worker-difficulty-bread-project-2-errors-0.1.1-cuda.csv`입니다.
+
+| 지표 | 최종 test/benchmark | 기준 | 결과 |
+|---|---:|---:|---|
+| Detector recall | 99.0215% | ≥99% | 통과 |
+| Detector precision | 99.8028% | 보고 | - |
+| Detector count accuracy | 95.7447% | 보고 | - |
+| APPROVED precision | 99.7947% | ≥99.5% | 통과 |
+| APPROVED precision 95% CI | 98.8462–99.9637% | 보고 | - |
+| Approval coverage | 96.0552% | 보고 | - |
+| UNKNOWN Top-3 accuracy | 84.2105% (16/19) | ≥95% | 수동 예외 승인(원시 기준 미달) |
+| Overall Top-1 / Top-3 | 98.2213% / 99.2095% | 보고 | - |
+| 3~7 객체 CUDA p50/p95/p99 | 68.02 / 90.61 / 99.44ms | p95 ≤100ms | 통과 |
+| `0.1.1` 후보 full-path CUDA p50/p95/p99 | 70.80 / 83.48 / 86.74ms | p95 ≤100ms | 통과 |
+
+Benchmark 환경은 Windows 11, Core Ultra 9 285K, RAM 64GB, RTX 5080 16GB, ONNX Runtime GPU `1.28.0`, NVIDIA driver `591.86`입니다. 30회 warm-up 후 4·5·6개 검출 이미지를 1,000회 재생했습니다. `0.1.1` 후보의 full-path는 800건이며 p95 `83.48ms`입니다. 전체 stage 기준 decode p95 `40.19ms`, detector p95 `29.40ms`, classifier p95 `16.35ms`, 판정 overhead p95 `0.28ms`입니다. 나머지 200건은 `DETECTOR_UNCERTAIN_OBJECT` 조기 종료였고 p95 `51.99ms`입니다. 원본 실측 보고서는 `artifacts/reports/benchmark-0.1.1-cuda.json`입니다.
+
+CPU와 CUDA의 전체 test 집계 결과는 동일했습니다. CPU는 기능·상태 호환만 요구하며 지연 기준은 없습니다.
+
+## 승격 결정 및 제한
+
+`2026-08-10` 프로젝트 책임자 요청에 따라 `0.1.1`을 `promotion_status=production`으로 승격했습니다. 300장 평가의 `UNKNOWN` Top-3 accuracy는 20개 중 18개 정답 포함으로 `90%`이며 원시 95% 기준 미달입니다. 평가 독립성도 1/300에 불과하므로 두 항목 모두 측정값을 변경하지 않고 `manual_waiver`로 기록했습니다.
+
+다음 제한사항은 여전히 유효합니다.
+
+- `UNKNOWN` Top-3 accuracy는 18/20(90%)로 95% 기준에 미달합니다.
+- 운영 승격 평가 300장 중 299장이 후처리 정책 적합 세트와 중복되며, 유일한 신규 이미지도 생성 이미지입니다.
+- 실제 blur, exposure, 잘림 등 `RECAPTURE` 정답 데이터가 충분하지 않아 `RECAPTURE recall ≥99%`를 인증할 수 없습니다.
+- 새로운 생산 개체, 매장, 카메라와 조명 분포 일반화를 검증하지 않았습니다.
+
+새 환경과 촬영불량 데이터를 추가하고 dataset version을 올린 뒤 동일한 OOF calibration, 고정 test, ONNX parity와 benchmark 순서로 예외를 해소해야 합니다.
+
+## 연구 근거
+
+- [RT-DETRv2: Improved Baseline with Bag-of-Freebies for Real-Time Detection Transformer](https://arxiv.org/abs/2407.17140)
+- [DINOv3 공식 저장소와 라이선스](https://github.com/facebookresearch/dinov3)
+- [DINOv3 논문](https://arxiv.org/abs/2508.10104)
+- [DINOv2 baseline](https://arxiv.org/abs/2304.07193)
+- [Learn then Test: Calibrating Predictive Algorithms to Achieve Risk Control](https://arxiv.org/abs/2110.01052)
+- [ONNX Runtime CUDA Execution Provider와 I/O Binding](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)
