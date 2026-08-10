@@ -223,3 +223,34 @@ bixolon-aggregate-detector `
 
 공통 threshold는 `0.56`이며 OOF recall `99.7765%`, precision `99.8881%`, count accuracy `99.5122%`입니다. fold 1 best에서 시작해 development 전체를 20 epochs, learning rate `1e-6`로 최종 fitting한 checkpoint가 `artifacts/detector/final/best`입니다.
 
+## ONNX export·검증
+
+```powershell
+bixolon-export --config configs\training.json `
+  --detector-checkpoint artifacts\detector\final\best `
+  --classifier-checkpoint artifacts\classifier\dinov3-final\best.pt `
+  --calibration-report artifacts\reports\classifier-dinov3-oof-runtime-crop.json `
+  --detector-evaluation-report artifacts\reports\detector-oof.json `
+  --manifest-metadata manifests\bread-v1\metadata.json `
+  --output-dir artifacts\packages\bread-worker-0.1.1
+
+bixolon-parity `
+  --package-dir artifacts\packages\bread-worker-0.1.1 `
+  --detector-checkpoint artifacts\detector\final\best `
+  --classifier-checkpoint artifacts\classifier\dinov3-final\best.pt `
+  --image C:\path\to\parity.jpg `
+  --cuda-dll-dir C:\path\to\CUDA-and-cuDNN-bin `
+  --output artifacts\reports\parity-cuda.json
+```
+
+detector ONNX는 고정 640 입력, classifier ONNX는 동적 ROI batch입니다. JPEG는 metadata의 `jpeg_draft_size=1500`으로 DCT 단계에서 축소 디코딩하되 응답 bbox는 원본 픽셀 좌표로 복원합니다. `metadata.json`은 이 입력 정책, crop, 다단계 downscale, threshold, label map, semantic version, 데이터셋 버전, 라이선스·출처와 ONNX SHA-256을 포함합니다. 필수 metadata 누락, 지원하지 않는 schema 또는 checksum 불일치는 시작 실패입니다.
+
+모델 패키지 schema `1.1`은 다음 선택적 안전 정책을 추가합니다. schema `1.0` 패키지는 기존 동작으로 계속 로드됩니다.
+
+- `quality.border_policy=classifier_confidence`: 경계 접촉 bbox를 classifier 신뢰도까지 확인합니다.
+- `detector.uncertainty_score_threshold`: 운영 detector threshold 아래에 있으면서 기존 검출과 겹치지 않는 독립 후보를 `DETECTOR_UNCERTAIN_OBJECT`로 차단합니다. `null`이면 비활성입니다.
+- `detector.uncertainty_min_area_ratio`: 작은 저점수 노이즈를 제외하는 원본 이미지 대비 최소 후보 면적입니다. 후보 `0.1.1`은 score `0.20`, 면적 `0.039`, 기존 검출과의 IoU `0.5` 미만을 사용합니다.
+- `count_verifier`: 별도 ONNX count model의 파일명, 입출력, 신뢰도 threshold를 정의합니다. 모델이 패키지에 없으면 비활성입니다. 299장 이미지는 이 모델의 학습에 사용하지 않습니다.
+
+CPU와 CUDA parity는 모두 통과했습니다. CUDA의 NMS 후 detection 최소 IoU는 `0.99927`, 정규화 좌표 최대 오차는 `8.83e-5`, score 최대 오차는 `0.00256`이며 classifier Top-3 순위와 승인 상태가 일치했습니다.
+
