@@ -136,3 +136,56 @@ bixolon-train-detector --config configs\training.json `
 
 각 학습 디렉터리의 `run.json`에는 seed, arguments, dependency 버전, device, 데이터 수, dataset version과 manifest checksum을 기록합니다.
 
+## Classifier 학습·calibration
+
+주력 backbone은 사용자가 라이선스를 승인받은 공식 `dinov3_convnext_tiny`입니다. 공식 코드는 revision `6876159a11b4df116f30f667f8c9888617df0751`로 고정했고, 승인 URL은 저장·로그하지 않습니다. 모델 package에는 architecture, revision, 가중치 파일명과 SHA-256만 기록합니다. DINOv2 Small은 비교 baseline으로 유지합니다.
+
+```powershell
+$dinoV3Weights = "C:\workspace\raw_data\model_cache\dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth"
+
+bixolon-cache-classifier `
+  --manifest manifests\bread-v1\manifest.jsonl `
+  --dataset-root C:\workspace\raw_data\bread_project `
+  --output-dir artifacts\cache\classifier-bread-v1-runtime `
+  --train-margin-ratio 0.08 `
+  --eval-margin-ratio 0.05
+
+0..2 | ForEach-Object {
+  bixolon-train-classifier --config configs\training.json `
+    --manifest manifests\bread-v1\manifest.jsonl `
+    --dataset-root C:\workspace\raw_data\bread_project `
+    --fold $_ `
+    --weights $dinoV3Weights `
+    --cache-dir artifacts\cache\classifier-bread-v1-runtime `
+    --output-dir "artifacts\classifier\dinov3-fold$_"
+}
+```
+
+먼저 frozen backbone linear probe를 30 epochs 학습하고 마지막 두 stage를 20 epochs 미세조정합니다. 미세조정 모델은 validation accuracy가 유지되고 승인 coverage가 증가할 때만 fold checkpoint로 채택합니다.
+
+fold별 runtime-crop logits를 합쳐 global temperature와 승인 threshold를 OOF에서만 정합니다.
+
+```powershell
+bixolon-evaluate `
+  --predictions `
+    artifacts\predictions\dinov3-fold0-runtime-validation.npz `
+    artifacts\predictions\dinov3-fold1-runtime-validation.npz `
+    artifacts\predictions\dinov3-fold2-runtime-validation.npz `
+  --dataset-metadata manifests\bread-v1\metadata.json `
+  --output artifacts\reports\classifier-dinov3-oof-runtime-crop.json
+```
+
+OOF 895개에서 temperature는 `0.3549453438`, approval threshold는 `0.9611232767`입니다. 승인 coverage `97.6536%`, 승인 precision `100%`, 95% 단측 false-approval upper bound `0.3422%`로 risk-control 조건을 만족했습니다.
+
+최종 classifier는 모든 development ROI와 보조 분류 이미지로 다시 학습합니다.
+
+```powershell
+bixolon-train-classifier --config configs\training.json `
+  --manifest manifests\bread-v1\manifest.jsonl `
+  --dataset-root C:\workspace\raw_data\bread_project `
+  --weights $dinoV3Weights `
+  --cache-dir artifacts\cache\classifier-bread-v1-runtime `
+  --output-dir artifacts\classifier\dinov3-final `
+  --final-training
+```
+
