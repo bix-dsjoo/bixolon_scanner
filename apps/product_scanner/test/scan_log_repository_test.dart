@@ -23,7 +23,7 @@ void main() {
       ..finalProduct = const Product(
         classId: 'bread_13',
         className: 'Muffin',
-        displayName: '머핀',
+        displayName: 'Muffin',
       )
       ..confirmationMethod = ConfirmationMethod.top3Selected;
 
@@ -56,6 +56,11 @@ void main() {
     expect(savedDetection['initial_ai_status'], 'TOP3_CANDIDATES');
     expect(savedDetection['final_product']['class_id'], 'bread_13');
     expect(savedDetection['confirmation_method'], 'TOP3_SELECTED');
+
+    final logs = await repository.list();
+    expect(logs, hasLength(1));
+    expect(logs.single.scanId, 'request_log_1234');
+    expect(logs.single.items.single.productName, 'Muffin');
   });
 }
 

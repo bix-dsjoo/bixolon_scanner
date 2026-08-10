@@ -1,20 +1,22 @@
 import 'package:flutter/material.dart';
 
 abstract final class AppColors {
-  static const workspace = Color(0xFFF7F9FC);
+  static const workspace = Color(0xFFF6F6F6);
   static const surface = Color(0xFFFFFFFF);
-  static const preview = Color(0xFF111820);
-  static const ink = Color(0xFF172033);
-  static const muted = Color(0xFF667085);
-  static const divider = Color(0xFFE5EAF0);
-  static const primary = Color(0xFF1769E0);
-  static const primarySoft = Color(0xFFEAF2FF);
-  static const success = Color(0xFF169B62);
-  static const successSoft = Color(0xFFE9F7F0);
-  static const attention = Color(0xFFF47B20);
-  static const attentionSoft = Color(0xFFFFF1E7);
-  static const error = Color(0xFFD64545);
-  static const errorSoft = Color(0xFFFFEEEE);
+  static const elevated = Color(0xFFFAFAFA);
+  static const preview = Color(0xFF101010);
+  static const ink = Color(0xFF171717);
+  static const muted = Color(0xFF737373);
+  static const subtle = Color(0xFFA3A3A3);
+  static const divider = Color(0xFFE5E5E5);
+  static const primary = Color(0xFF1D4ED8);
+  static const primarySoft = Color(0xFFF3F6FC);
+  static const success = Color(0xFF16865A);
+  static const successSoft = Color(0xFFF3F8F5);
+  static const attention = Color(0xFFB45F06);
+  static const attentionSoft = Color(0xFFFCF8F1);
+  static const error = Color(0xFFB42318);
+  static const errorSoft = Color(0xFFFCF4F3);
 }
 
 ThemeData buildAppTheme() {
@@ -33,27 +35,25 @@ ThemeData buildAppTheme() {
     useMaterial3: true,
     colorScheme: scheme,
     scaffoldBackgroundColor: AppColors.workspace,
-    fontFamily: 'Malgun Gothic',
-    fontFamilyFallback: const ['Segoe UI', 'Arial'],
+    fontFamily: 'Pretendard',
+    fontFamilyFallback: const ['Segoe UI', 'Malgun Gothic', 'Arial'],
   );
   return base.copyWith(
     textTheme: base.textTheme.copyWith(
       headlineSmall: const TextStyle(
-        fontFamily: 'Segoe UI Variable Display',
-        fontFamilyFallback: ['Malgun Gothic', 'Segoe UI'],
-        fontSize: 24,
+        fontSize: 20,
         height: 1.25,
         fontWeight: FontWeight.w700,
         color: AppColors.ink,
       ),
       titleLarge: const TextStyle(
-        fontSize: 18,
+        fontSize: 17,
         height: 1.35,
         fontWeight: FontWeight.w700,
         color: AppColors.ink,
       ),
       titleMedium: const TextStyle(
-        fontSize: 16,
+        fontSize: 15,
         height: 1.4,
         fontWeight: FontWeight.w600,
         color: AppColors.ink,
@@ -65,61 +65,64 @@ ThemeData buildAppTheme() {
         color: AppColors.ink,
       ),
       bodyMedium: const TextStyle(
-        fontSize: 15,
+        fontSize: 14,
         height: 1.5,
         fontWeight: FontWeight.w400,
         color: AppColors.ink,
       ),
       bodySmall: const TextStyle(
-        fontSize: 13,
+        fontSize: 12,
         height: 1.45,
         fontWeight: FontWeight.w400,
         color: AppColors.muted,
       ),
       labelLarge: const TextStyle(
-        fontSize: 15,
+        fontSize: 14,
         height: 1.2,
-        fontWeight: FontWeight.w700,
+        fontWeight: FontWeight.w600,
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size(140, 48),
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+        minimumSize: const Size(104, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       ),
     ),
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
-        minimumSize: const Size(140, 48),
-        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+        minimumSize: const Size(104, 36),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
         side: const BorderSide(color: AppColors.divider),
         foregroundColor: AppColors.ink,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(11)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       ),
     ),
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: AppColors.primary,
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
       ),
     ),
     inputDecorationTheme: InputDecorationTheme(
       filled: true,
       fillColor: AppColors.workspace,
+      isDense: true,
       hintStyle: const TextStyle(color: AppColors.muted),
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+      constraints: const BoxConstraints(minHeight: 36, maxHeight: 36),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      prefixIconConstraints: const BoxConstraints(minWidth: 34, minHeight: 34),
       border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(4),
         borderSide: const BorderSide(color: AppColors.divider),
       ),
       enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(4),
         borderSide: const BorderSide(color: AppColors.divider),
       ),
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(11),
+        borderRadius: BorderRadius.circular(4),
         borderSide: const BorderSide(color: AppColors.primary, width: 2),
       ),
     ),
@@ -129,7 +132,7 @@ ThemeData buildAppTheme() {
     ),
     dialogTheme: DialogThemeData(
       backgroundColor: AppColors.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
     ),
   );
 }

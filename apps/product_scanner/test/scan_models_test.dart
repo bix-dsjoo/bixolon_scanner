@@ -36,13 +36,9 @@ void main() {
     expect(response.items.single.bbox.width, 30);
   });
 
-  test('상품 카탈로그는 한글, 영문, class id 검색을 지원한다', () {
-    expect(
-      testCatalog.search('크루아상').map((item) => item.classId),
-      contains('bread_06'),
-    );
-    expect(testCatalog.search('muffin').single.displayName, '머핀');
-    expect(testCatalog.search('bread_11').single.displayName, '베이글');
+  test('상품 카탈로그는 원본 영문명과 class id 검색을 지원한다', () {
+    expect(testCatalog.search('muffin').single.displayName, 'Muffin');
+    expect(testCatalog.search('bread_11').single.displayName, 'Bagel');
   });
 
   test('지원하지 않는 카탈로그 schema version을 거부한다', () {

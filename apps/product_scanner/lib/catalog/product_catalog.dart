@@ -22,19 +22,16 @@ class ProductCatalog {
           }
           final classId = value['class_id'];
           final className = value['class_name'];
-          final displayName = value['display_name_ko'];
           if (classId is! String ||
               classId.isEmpty ||
               className is! String ||
-              className.isEmpty ||
-              displayName is! String ||
-              displayName.isEmpty) {
+              className.isEmpty) {
             throw const FormatException('상품 카탈로그 필수 필드가 누락되었습니다.');
           }
           return Product(
             classId: classId,
             className: className,
-            displayName: displayName,
+            displayName: className,
           );
         })
         .toList(growable: false);
@@ -60,7 +57,7 @@ class ProductCatalog {
       (candidate) => candidate.classId == product.classId,
     );
     if (matched.isEmpty) return product;
-    return product.withDisplayName(matched.first.displayName);
+    return product.withDisplayName(matched.first.className);
   }
 
   Candidate localizeCandidate(Candidate candidate) {
@@ -68,7 +65,7 @@ class ProductCatalog {
       (product) => product.classId == candidate.classId,
     );
     if (matched.isEmpty) return candidate;
-    return candidate.withDisplayName(matched.first.displayName);
+    return candidate.withDisplayName(matched.first.className);
   }
 
   List<Product> search(String query) {

@@ -30,14 +30,14 @@ void main() {
     expect(controller.processState, ProcessState.reviewing);
     expect(controller.selectedItemId, 'item_002');
     expect(controller.confirmedCount, 1);
-    expect(controller.detections.first.finalProduct?.displayName, '크루아상');
+    expect(controller.detections.first.finalProduct?.displayName, 'Croissant');
 
     controller.confirmCandidate(
       'item_002',
       controller.detections[1].source.top3.first,
     );
     expect(controller.allConfirmed, isTrue);
-    expect(controller.detections[1].finalProduct?.displayName, '머핀');
+    expect(controller.detections[1].finalProduct?.displayName, 'Muffin');
     expect(controller.selectedItemId, isNull);
 
     await controller.submit();
@@ -197,6 +197,9 @@ class _FakeImageFileGateway implements ImageFileGateway {
 
 class _MemoryScanLogRepository implements ScanLogRepository {
   final List<ScanLogRecord> saved = [];
+
+  @override
+  Future<List<ScanLogSummary>> list({int limit = 100}) async => const [];
 
   @override
   Future<void> save(ScanLogRecord record) async => saved.add(record);

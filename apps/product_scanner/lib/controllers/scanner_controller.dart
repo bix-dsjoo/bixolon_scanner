@@ -67,6 +67,8 @@ class ScannerController extends ChangeNotifier {
 
   List<Product> get searchResults => _catalog.search(searchQuery);
 
+  Future<List<ScanLogSummary>> loadScanLogs() => _scanLogRepository.list();
+
   Candidate localizeCandidate(Candidate candidate) =>
       _catalog.localizeCandidate(candidate);
 

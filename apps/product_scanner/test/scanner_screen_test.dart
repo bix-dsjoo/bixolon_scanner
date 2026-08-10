@@ -47,10 +47,10 @@ void main() {
     expect(find.text('Product Scanner'), findsOneWidget);
     expect(find.text('상품 확인이 필요해요'), findsOneWidget);
     expect(find.text('어떤 상품인가요?'), findsOneWidget);
-    expect(find.text('머핀'), findsOneWidget);
+    expect(find.text('Muffin'), findsOneWidget);
     expect(find.text('1 / 2 상품 확인 완료'), findsOneWidget);
 
-    await tester.tap(find.text('머핀'));
+    await tester.tap(find.text('Muffin'));
     await tester.pumpAndSettle();
     expect(find.text('2개 상품을 모두 확인했어요'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '최종 확정'), findsOneWidget);
@@ -97,7 +97,201 @@ void main() {
     expect(find.text('분석하기'), findsNothing);
     controller.dispose();
   });
+
+  testWidgets('Activity에서 저장된 스캔 로그와 상세 정보를 확인한다', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final repository = _MemoryLogRepository(logs: [_logSummary]);
+    final controller = ScannerController(
+      _UnusedApi(),
+      _EmptyCameraGateway(),
+      _EmptyFileGateway(),
+      repository,
+      testCatalog,
+    )..cameraInitializing = false;
+
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.tap(find.text('Activity'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('확정된 스캔 1건'), findsOneWidget);
+    expect(find.text('Muffin'), findsWidgets);
+    expect(find.text('request_activity_1234'), findsOneWidget);
+    expect(find.text('Confirmed'), findsWidgets);
+    controller.dispose();
+  });
+
+  testWidgets('후보에 없는 상품을 영어 원본명으로 검색해 확정한다', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller =
+        ScannerController(
+            _UnusedApi(),
+            _EmptyCameraGateway(),
+            _EmptyFileGateway(),
+            _MemoryLogRepository(),
+            testCatalog,
+          )
+          ..cameraInitializing = false
+          ..processState = ProcessState.reviewing
+          ..response = _response
+          ..detections = _response.items
+              .map(ReviewDetection.fromScanItem)
+              .toList(growable: false)
+          ..selectedItemId = 'item_002';
+
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.tap(find.text('다른 상품 검색'));
+    await tester.pumpAndSettle();
+
+    final field = find.widgetWithText(TextField, '상품명 검색');
+    expect(field, findsOneWidget);
+    await tester.enterText(field, 'Egg');
+    await tester.pump();
+    expect(find.text('Egg Tart'), findsOneWidget);
+
+    await tester.tap(find.text('Egg Tart'));
+    await tester.pumpAndSettle();
+    expect(find.text('2개 상품을 모두 확인했어요'), findsOneWidget);
+    controller.dispose();
+  });
+
+  testWidgets('분석 중과 Worker 오류를 서로 다른 상태로 표시한다', (tester) async {
+    tester.view.physicalSize = const Size(1200, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = ScannerController(
+      _UnusedApi(),
+      _EmptyCameraGateway(),
+      _EmptyFileGateway(),
+      _MemoryLogRepository(),
+      testCatalog,
+    )..cameraInitializing = false;
+
+    controller.processState = ProcessState.analyzing;
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    expect(find.text('분석하고 있어요'), findsOneWidget);
+
+    controller
+      ..processState = ProcessState.error
+      ..errorMessage = 'Worker에 연결할 수 없습니다.'
+      ..notifyListeners();
+    await tester.pump();
+    expect(find.text('분석하지 못했어요'), findsOneWidget);
+    expect(find.text('Worker에 연결할 수 없습니다.'), findsOneWidget);
+    controller.dispose();
+  });
+
+  testWidgets('Activity 빈 상태에서 기록 생성 조건을 안내한다', (tester) async {
+    tester.view.physicalSize = const Size(1200, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = ScannerController(
+      _UnusedApi(),
+      _EmptyCameraGateway(),
+      _EmptyFileGateway(),
+      _MemoryLogRepository(),
+      testCatalog,
+    )..cameraInitializing = false;
+
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.tap(find.text('Activity'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('저장된 활동이 없습니다'), findsOneWidget);
+    expect(find.text('상품을 최종 확정하면 이곳에 기록됩니다.'), findsOneWidget);
+    controller.dispose();
+  });
+
+  testWidgets('800px 좁은 작업대에서도 검수 패널이 넘치지 않는다', (tester) async {
+    tester.view.physicalSize = const Size(800, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller =
+        ScannerController(
+            _UnusedApi(),
+            _EmptyCameraGateway(),
+            _EmptyFileGateway(),
+            _MemoryLogRepository(),
+            testCatalog,
+          )
+          ..cameraInitializing = false
+          ..processState = ProcessState.reviewing
+          ..response = _response
+          ..detections = _response.items
+              .map(ReviewDetection.fromScanItem)
+              .toList(growable: false)
+          ..selectedItemId = 'item_002';
+
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.text('어떤 상품인가요?'), findsOneWidget);
+    expect(find.text('1 / 2 상품 확인 완료'), findsOneWidget);
+    controller.dispose();
+  });
 }
+
+final _logSummary = ScanLogSummary(
+  scanId: 'request_activity_1234',
+  analyzedAt: DateTime.utc(2026, 8, 10, 1),
+  confirmedAt: DateTime.utc(2026, 8, 10, 1, 1),
+  inputMode: InputMode.camera,
+  processingTimeMs: 71.2,
+  modelVersions: const ModelVersions(detector: '0.1.1', classifier: '0.1.1'),
+  items: const [
+    ScanLogItemSummary(
+      itemId: 'item_001',
+      productName: 'Muffin',
+      confidence: .92,
+      userModified: false,
+      confirmationMethod: 'AUTO_APPROVED',
+    ),
+  ],
+);
 
 const _response = ScanResponse(
   requestId: 'request_widget_1234',
@@ -112,7 +306,7 @@ const _response = ScanResponse(
       prediction: Product(
         classId: 'bread_06',
         className: 'Croissant',
-        displayName: '크루아상',
+        displayName: 'Croissant',
       ),
       top3: [],
       confidence: .99,
@@ -127,13 +321,13 @@ const _response = ScanResponse(
         Candidate(
           classId: 'bread_13',
           className: 'Muffin',
-          displayName: '머핀',
+          displayName: 'Muffin',
           confidence: .75,
         ),
         Candidate(
           classId: 'bread_04',
           className: 'Scon',
-          displayName: '스콘',
+          displayName: 'Scon',
           confidence: .16,
         ),
       ],
@@ -171,6 +365,14 @@ class _EmptyFileGateway implements ImageFileGateway {
 }
 
 class _MemoryLogRepository implements ScanLogRepository {
+  _MemoryLogRepository({this.logs = const []});
+
+  final List<ScanLogSummary> logs;
+
+  @override
+  Future<List<ScanLogSummary>> list({int limit = 100}) async =>
+      logs.take(limit).toList();
+
   @override
   Future<void> save(ScanLogRecord record) async {}
 }

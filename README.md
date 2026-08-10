@@ -89,7 +89,7 @@ Health endpoint:
 
 ## Flutter Windows 앱
 
-작업자용 Product Scanner는 [`apps/product_scanner`](apps/product_scanner)에 있습니다. 단일 2-pane 화면에서 Windows 카메라 촬영 또는 JPEG/PNG 선택, `/v1/scan` 분석, Bounding Box와 상품 목록 연동, Top-3/로컬 상품 검색, 최종 확정과 로컬 Scan Log 저장을 처리합니다.
+작업자용 Product Scanner는 [`apps/product_scanner`](apps/product_scanner)에 있습니다. `Scan` 2-pane 작업대에서 Windows 카메라 촬영 또는 JPEG/PNG 선택, `/v1/scan` 분석, Bounding Box와 영문 상품 목록 연동, Top-3/로컬 상품 검색 및 최종 확정을 처리합니다. 저장된 로컬 Scan Log는 `Activity` 화면에서 검색하고 상세 판정을 확인할 수 있습니다.
 
 ```powershell
 cd apps\product_scanner

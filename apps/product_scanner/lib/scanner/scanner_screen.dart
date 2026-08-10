@@ -1,6 +1,7 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import '../activity/activity_screen.dart';
 import '../controllers/scanner_controller.dart';
 import '../models/scan_models.dart';
 import '../theme/app_theme.dart';
@@ -22,6 +23,8 @@ class ScannerScreen extends StatefulWidget {
 }
 
 class _ScannerScreenState extends State<ScannerScreen> {
+  _WorkspaceSection _section = _WorkspaceSection.scan;
+
   @override
   void initState() {
     super.initState();
@@ -78,66 +81,73 @@ class _ScannerScreenState extends State<ScannerScreen> {
           final controller = widget.controller;
           return Column(
             children: [
-              _TopBar(controller: controller),
+              _TopBar(
+                controller: controller,
+                section: _section,
+                onSectionChanged: (section) =>
+                    setState(() => _section = section),
+              ),
               Expanded(
-                child: Stack(
-                  children: [
-                    LayoutBuilder(
-                      builder: (context, constraints) {
-                        if (constraints.maxWidth < 1000) {
-                          return Column(
-                            children: [
-                              Expanded(
-                                flex: 6,
-                                child: _PreviewPane(
-                                  controller: controller,
-                                  onReset: _requestReset,
-                                  onChooseImage: _chooseImage,
+                child: _section == _WorkspaceSection.activity
+                    ? ActivityScreen(loadLogs: controller.loadScanLogs)
+                    : Stack(
+                        children: [
+                          LayoutBuilder(
+                            builder: (context, constraints) {
+                              if (constraints.maxWidth < 840) {
+                                return Column(
+                                  children: [
+                                    Expanded(
+                                      flex: 5,
+                                      child: _PreviewPane(
+                                        controller: controller,
+                                        onReset: _requestReset,
+                                        onChooseImage: _chooseImage,
+                                      ),
+                                    ),
+                                    const Divider(height: 1),
+                                    Expanded(
+                                      flex: 7,
+                                      child: _ResultPanel(
+                                        controller: controller,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
+                              final resultWidth = (constraints.maxWidth * .34)
+                                  .clamp(400.0, 480.0);
+                              return Row(
+                                children: [
+                                  Expanded(
+                                    child: _PreviewPane(
+                                      controller: controller,
+                                      onReset: _requestReset,
+                                      onChooseImage: _chooseImage,
+                                    ),
+                                  ),
+                                  const VerticalDivider(width: 1),
+                                  SizedBox(
+                                    width: resultWidth,
+                                    child: _ResultPanel(controller: controller),
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                          if (controller.completionMessage != null)
+                            Positioned(
+                              top: 20,
+                              left: 0,
+                              right: 0,
+                              child: Center(
+                                child: _CompletionBanner(
+                                  message: controller.completionMessage!,
                                 ),
                               ),
-                              const Divider(height: 1),
-                              Expanded(
-                                flex: 5,
-                                child: _ResultPanel(controller: controller),
-                              ),
-                            ],
-                          );
-                        }
-                        final resultWidth = (constraints.maxWidth * .35).clamp(
-                          420.0,
-                          540.0,
-                        );
-                        return Row(
-                          children: [
-                            Expanded(
-                              child: _PreviewPane(
-                                controller: controller,
-                                onReset: _requestReset,
-                                onChooseImage: _chooseImage,
-                              ),
                             ),
-                            const VerticalDivider(width: 1),
-                            SizedBox(
-                              width: resultWidth,
-                              child: _ResultPanel(controller: controller),
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                    if (controller.completionMessage != null)
-                      Positioned(
-                        top: 20,
-                        left: 0,
-                        right: 0,
-                        child: Center(
-                          child: _CompletionBanner(
-                            message: controller.completionMessage!,
-                          ),
-                        ),
+                        ],
                       ),
-                  ],
-                ),
               ),
             ],
           );
@@ -147,10 +157,18 @@ class _ScannerScreenState extends State<ScannerScreen> {
   }
 }
 
+enum _WorkspaceSection { scan, activity }
+
 class _TopBar extends StatelessWidget {
-  const _TopBar({required this.controller});
+  const _TopBar({
+    required this.controller,
+    required this.section,
+    required this.onSectionChanged,
+  });
 
   final ScannerController controller;
+  final _WorkspaceSection section;
+  final ValueChanged<_WorkspaceSection> onSectionChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -166,64 +184,100 @@ class _TopBar extends StatelessWidget {
         ? '카메라 확인 중'
         : '카메라 확인 필요';
     return Container(
-      height: 72,
-      padding: const EdgeInsets.symmetric(horizontal: 26),
+      height: 52,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: const BoxDecoration(
         color: AppColors.surface,
         border: Border(bottom: BorderSide(color: AppColors.divider)),
       ),
       child: Row(
         children: [
-          Container(
-            width: 38,
-            height: 38,
-            decoration: BoxDecoration(
-              color: AppColors.primarySoft,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: const Icon(
-              Icons.document_scanner_outlined,
-              color: AppColors.primary,
-              size: 22,
+          const Icon(
+            Icons.center_focus_strong_rounded,
+            color: AppColors.ink,
+            size: 20,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Product Scanner',
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              fontWeight: FontWeight.w700,
+              letterSpacing: -.2,
             ),
           ),
-          const SizedBox(width: 13),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                'Product Scanner',
-                style: Theme.of(context).textTheme.titleLarge,
-              ),
-              const SizedBox(height: 1),
-              Text('상품 확인 작업대', style: Theme.of(context).textTheme.bodySmall),
-            ],
+          const SizedBox(width: 28),
+          _NavigationItem(
+            label: 'Scan',
+            selected: section == _WorkspaceSection.scan,
+            onTap: () => onSectionChanged(_WorkspaceSection.scan),
+          ),
+          const SizedBox(width: 4),
+          _NavigationItem(
+            label: 'Activity',
+            selected: section == _WorkspaceSection.activity,
+            onTap: () => onSectionChanged(_WorkspaceSection.activity),
           ),
           const Spacer(),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: AppColors.workspace,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 8,
-                  height: 8,
-                  decoration: BoxDecoration(
-                    color: statusColor,
-                    shape: BoxShape.circle,
-                  ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 6,
+                height: 6,
+                decoration: BoxDecoration(
+                  color: statusColor,
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(width: 8),
-                Text(statusText, style: Theme.of(context).textTheme.bodySmall),
-              ],
-            ),
+              ),
+              const SizedBox(width: 6),
+              Text(statusText, style: Theme.of(context).textTheme.bodySmall),
+            ],
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _NavigationItem extends StatelessWidget {
+  const _NavigationItem({
+    required this.label,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 52,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10),
+            decoration: BoxDecoration(
+              border: Border(
+                bottom: BorderSide(
+                  color: selected ? AppColors.ink : Colors.transparent,
+                  width: 2,
+                ),
+              ),
+            ),
+            alignment: Alignment.center,
+            child: Text(
+              label,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                color: selected ? AppColors.ink : AppColors.muted,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -327,7 +381,7 @@ class _LiveCamera extends StatelessWidget {
       return Center(
         child: AspectRatio(
           aspectRatio: camera.value.aspectRatio,
-          child: CameraPreview(camera),
+          child: Transform.flip(flipX: true, child: CameraPreview(camera)),
         ),
       );
     }
@@ -377,37 +431,29 @@ class _AnalyzingOverlay extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: const Color(0xA6111820),
+      color: const Color(0x8A000000),
       child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
-          decoration: BoxDecoration(
-            color: const Color(0xE61B2531),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(color: Colors.white12),
-          ),
-          child: const Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              SizedBox(
-                width: 22,
-                height: 22,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2.5,
-                  color: Colors.white,
-                ),
+        child: const Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
               ),
-              SizedBox(width: 14),
-              Text(
-                '이미지를 분석하고 있어요',
-                style: TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w600,
-                ),
+            ),
+            SizedBox(width: 10),
+            Text(
+              '분석 중',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 14,
+                fontWeight: FontWeight.w600,
               ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
@@ -463,22 +509,18 @@ class _DetectionBox extends StatelessWidget {
                   child: Container(
                     decoration: BoxDecoration(
                       color: selected ? color.withValues(alpha: .10) : null,
-                      border: Border.all(color: color, width: selected ? 3 : 2),
+                      border: Border.all(color: color, width: selected ? 2 : 1),
                     ),
                   ),
                 ),
-                if (selected)
-                  Positioned.fill(
-                    child: CustomPaint(painter: _CornerBracketPainter(color)),
-                  ),
                 Positioned(
                   left: -1,
                   top: -1,
                   child: Container(
                     constraints: BoxConstraints(maxWidth: rect.width + 80),
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 9,
-                      vertical: 5,
+                      horizontal: 7,
+                      vertical: 3,
                     ),
                     color: color,
                     child: Text(
@@ -487,8 +529,8 @@ class _DetectionBox extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -500,40 +542,6 @@ class _DetectionBox extends StatelessWidget {
       ),
     );
   }
-}
-
-class _CornerBracketPainter extends CustomPainter {
-  const _CornerBracketPainter(this.color);
-
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final length = (size.shortestSide * .18).clamp(12.0, 24.0);
-    final paint = Paint()
-      ..color = color
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 5
-      ..strokeCap = StrokeCap.square;
-    final path = Path()
-      ..moveTo(0, length)
-      ..lineTo(0, 0)
-      ..lineTo(length, 0)
-      ..moveTo(size.width - length, 0)
-      ..lineTo(size.width, 0)
-      ..lineTo(size.width, length)
-      ..moveTo(size.width, size.height - length)
-      ..lineTo(size.width, size.height)
-      ..lineTo(size.width - length, size.height)
-      ..moveTo(length, size.height)
-      ..lineTo(0, size.height)
-      ..lineTo(0, size.height - length);
-    canvas.drawPath(path, paint);
-  }
-
-  @override
-  bool shouldRepaint(_CornerBracketPainter oldDelegate) =>
-      oldDelegate.color != color;
 }
 
 class _CameraGuidePainter extends CustomPainter {
@@ -586,8 +594,8 @@ class _InputActionBar extends StatelessWidget {
         controller.processState == ProcessState.reviewing &&
         !controller.isRecapture;
     return Container(
-      constraints: const BoxConstraints(minHeight: 104),
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 18),
+      constraints: const BoxConstraints(minHeight: 56),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: const BoxDecoration(
         color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.divider)),
@@ -605,7 +613,7 @@ class _InputActionBar extends StatelessWidget {
                 controller.inputMode == InputMode.image
                     ? Icons.image_outlined
                     : Icons.refresh_rounded,
-                size: 19,
+                size: 16,
               ),
               label: Text(
                 controller.inputMode == InputMode.image ? '다른 이미지 선택' : '다시 촬영',
@@ -616,13 +624,13 @@ class _InputActionBar extends StatelessWidget {
             const Spacer(),
             FilledButton.icon(
               onPressed: busy ? null : onChooseImage,
-              icon: const Icon(Icons.image_outlined, size: 19),
+              icon: const Icon(Icons.image_outlined, size: 16),
               label: const Text('다른 이미지 선택'),
             ),
           ] else ...[
             OutlinedButton.icon(
               onPressed: busy ? null : onChooseImage,
-              icon: const Icon(Icons.image_outlined, size: 19),
+              icon: const Icon(Icons.image_outlined, size: 16),
               label: Text(
                 controller.inputMode == InputMode.image && hasImage
                     ? '다른 이미지 선택'
@@ -633,13 +641,13 @@ class _InputActionBar extends StatelessWidget {
             if (controller.processState == ProcessState.error && hasImage)
               FilledButton.icon(
                 onPressed: busy ? null : controller.analyze,
-                icon: const Icon(Icons.refresh_rounded, size: 19),
+                icon: const Icon(Icons.refresh_rounded, size: 16),
                 label: const Text('다시 시도'),
               )
             else if (controller.inputMode == InputMode.image && hasImage)
               FilledButton.icon(
                 onPressed: busy ? null : controller.analyze,
-                icon: const Icon(Icons.auto_awesome_outlined, size: 19),
+                icon: const Icon(Icons.auto_awesome_outlined, size: 16),
                 label: const Text('분석하기'),
               )
             else if (!controller.isCameraReady)
@@ -647,13 +655,13 @@ class _InputActionBar extends StatelessWidget {
                 onPressed: busy || controller.cameraInitializing
                     ? null
                     : controller.reconnectCamera,
-                icon: const Icon(Icons.videocam_outlined, size: 19),
+                icon: const Icon(Icons.videocam_outlined, size: 16),
                 label: const Text('다시 연결'),
               )
             else
               FilledButton.icon(
                 onPressed: busy ? null : controller.captureAndAnalyze,
-                icon: const Icon(Icons.camera_alt_outlined, size: 19),
+                icon: const Icon(Icons.camera_alt_outlined, size: 16),
                 label: Text(controller.isRecapture ? '다시 촬영하기' : '촬영하기'),
               ),
           ],
@@ -671,11 +679,18 @@ class _ResultPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ColoredBox(
-      color: AppColors.workspace,
+      color: AppColors.surface,
       child: Column(
         children: [
           _ResultHeader(controller: controller),
           Expanded(child: _resultBody()),
+          if (controller.processState == ProcessState.reviewing &&
+              !controller.isRecapture &&
+              controller.selectedDetection != null)
+            _ReviewInspector(
+              controller: controller,
+              detection: controller.selectedDetection!,
+            ),
           if (controller.processState == ProcessState.reviewing &&
               !controller.isRecapture &&
               controller.hasResults)
@@ -728,22 +743,20 @@ class _ResultHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      height: 78,
-      padding: const EdgeInsets.symmetric(horizontal: 24),
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
       decoration: const BoxDecoration(
         color: AppColors.surface,
         border: Border(bottom: BorderSide(color: AppColors.divider)),
       ),
       child: Row(
         children: [
-          Text('상품', style: Theme.of(context).textTheme.headlineSmall),
+          Text('Results', style: Theme.of(context).textTheme.titleMedium),
           const Spacer(),
           if (controller.hasResults)
             Text(
-              '${controller.detections.length}개',
-              style: Theme.of(
-                context,
-              ).textTheme.titleMedium?.copyWith(color: AppColors.muted),
+              '${controller.detections.length} items',
+              style: Theme.of(context).textTheme.bodySmall,
             ),
         ],
       ),
@@ -768,26 +781,18 @@ class _PanelMessage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(32),
+        padding: const EdgeInsets.all(16),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: tone.withValues(alpha: .10),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(icon, color: tone, size: 28),
-            ),
-            const SizedBox(height: 20),
+            Icon(icon, color: tone, size: 24),
+            const SizedBox(height: 10),
             Text(
               title,
               textAlign: TextAlign.center,
-              style: Theme.of(context).textTheme.titleLarge,
+              style: Theme.of(context).textTheme.titleMedium,
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 3),
             Text(
               detail,
               textAlign: TextAlign.center,
@@ -810,9 +815,9 @@ class _DetectionList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: EdgeInsets.zero,
       itemCount: controller.detections.length,
-      separatorBuilder: (_, _) => const SizedBox(height: 4),
+      separatorBuilder: (_, _) => const Divider(height: 1),
       itemBuilder: (context, index) {
         final detection = controller.detections[index];
         return _DetectionRow(
@@ -843,121 +848,109 @@ class _DetectionRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final needsReview = !detection.isConfirmed;
     final tone = needsReview ? AppColors.attention : AppColors.success;
-    final duration = MediaQuery.disableAnimationsOf(context)
-        ? Duration.zero
-        : const Duration(milliseconds: 180);
-    return AnimatedContainer(
-      duration: duration,
+    return Container(
+      constraints: const BoxConstraints(minHeight: 52),
       decoration: BoxDecoration(
-        color: selected
-            ? needsReview
-                  ? AppColors.attentionSoft
-                  : AppColors.successSoft
-            : Colors.transparent,
-        borderRadius: BorderRadius.circular(11),
+        color: selected ? AppColors.elevated : Colors.transparent,
         border: selected
-            ? Border.all(color: tone.withValues(alpha: .28))
+            ? const Border(left: BorderSide(color: AppColors.primary, width: 2))
             : null,
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: () => controller.selectDetection(detection.source.itemId),
-          borderRadius: BorderRadius.circular(11),
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 13),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+            child: Row(
               children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      width: 32,
-                      height: 32,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: tone.withValues(alpha: .12),
-                        borderRadius: BorderRadius.circular(9),
-                      ),
-                      child: Text(
-                        '$index',
-                        style: TextStyle(
-                          color: tone,
-                          fontWeight: FontWeight.w800,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            needsReview
-                                ? '상품 확인이 필요해요'
-                                : detection.finalProduct!.displayName,
-                            style: Theme.of(context).textTheme.titleMedium,
-                          ),
-                          const SizedBox(height: 3),
-                          Row(
-                            children: [
-                              Icon(
-                                needsReview
-                                    ? Icons.error_outline_rounded
-                                    : Icons.check_circle_outline_rounded,
-                                size: 15,
-                                color: tone,
-                              ),
-                              const SizedBox(width: 5),
-                              Text(
-                                needsReview ? '상품을 선택해 주세요' : '확정',
-                                style: Theme.of(
-                                  context,
-                                ).textTheme.bodySmall?.copyWith(color: tone),
-                              ),
-                            ],
-                          ),
-                        ],
-                      ),
-                    ),
-                    Icon(
-                      selected ? Icons.expand_less : Icons.expand_more,
-                      color: AppColors.muted,
-                      size: 20,
-                    ),
-                  ],
+                SizedBox(
+                  width: 26,
+                  child: Text(
+                    index.toString().padLeft(2, '0'),
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                 ),
-                if (selected) ...[
-                  const SizedBox(height: 14),
-                  const Divider(height: 1),
-                  const SizedBox(height: 14),
-                  if (controller.searchItemId == detection.source.itemId)
-                    _SearchProducts(
-                      controller: controller,
-                      detection: detection,
-                    )
-                  else if (detection.source.top3.isNotEmpty)
-                    _CandidatePicker(
-                      controller: controller,
-                      detection: detection,
-                    )
-                  else
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: TextButton.icon(
-                        onPressed: () =>
-                            controller.showSearch(detection.source.itemId),
-                        icon: const Icon(Icons.edit_outlined, size: 18),
-                        label: const Text('상품 변경'),
-                      ),
+                Container(
+                  width: 7,
+                  height: 7,
+                  decoration: BoxDecoration(
+                    color: tone,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    needsReview
+                        ? '상품 확인이 필요해요'
+                        : detection.finalProduct!.displayName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
                     ),
-                ],
+                  ),
+                ),
+                Text(
+                  needsReview
+                      ? '확인 필요'
+                      : '${(detection.source.confidence * 100).toStringAsFixed(0)}%',
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: needsReview ? tone : AppColors.muted,
+                  ),
+                ),
+                const SizedBox(width: 6),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: AppColors.subtle,
+                  size: 18,
+                ),
               ],
             ),
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ReviewInspector extends StatelessWidget {
+  const _ReviewInspector({required this.controller, required this.detection});
+
+  final ScannerController controller;
+  final ReviewDetection detection;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      constraints: const BoxConstraints(maxHeight: 238),
+      decoration: const BoxDecoration(
+        color: AppColors.elevated,
+        border: Border(top: BorderSide(color: AppColors.divider)),
+      ),
+      child: SingleChildScrollView(
+        primary: false,
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
+        child: controller.searchItemId == detection.source.itemId
+            ? _SearchProducts(controller: controller, detection: detection)
+            : detection.source.top3.isNotEmpty
+            ? _CandidatePicker(controller: controller, detection: detection)
+            : Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      detection.finalProduct?.displayName ?? '',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ),
+                  TextButton(
+                    onPressed: () =>
+                        controller.showSearch(detection.source.itemId),
+                    child: const Text('상품 변경'),
+                  ),
+                ],
+              ),
       ),
     );
   }
@@ -978,28 +971,24 @@ class _CandidatePicker extends StatelessWidget {
           detection.isConfirmed ? '상품을 변경할까요?' : '어떤 상품인가요?',
           style: Theme.of(context).textTheme.titleMedium,
         ),
-        const SizedBox(height: 10),
+        const SizedBox(height: 6),
         ...detection.source.top3.map((rawCandidate) {
           final candidate = controller.localizeCandidate(rawCandidate);
           final chosen = detection.finalProduct?.classId == candidate.classId;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 8),
-            child: _ProductChoice(
-              product: candidate,
-              selected: chosen,
-              onTap: () => controller.confirmCandidate(
-                detection.source.itemId,
-                rawCandidate,
-              ),
+          return _ProductChoice(
+            product: candidate,
+            selected: chosen,
+            onTap: () => controller.confirmCandidate(
+              detection.source.itemId,
+              rawCandidate,
             ),
           );
         }),
         Align(
           alignment: Alignment.centerLeft,
-          child: TextButton.icon(
+          child: TextButton(
             onPressed: () => controller.showSearch(detection.source.itemId),
-            icon: const Icon(Icons.search_rounded, size: 19),
-            label: const Text('다른 상품 검색'),
+            child: const Text('다른 상품 검색'),
           ),
         ),
       ],
@@ -1020,58 +1009,57 @@ class _ProductChoice extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final confidence = product is Candidate
+        ? '${((product as Candidate).confidence * 100).toStringAsFixed(0)}%'
+        : null;
     return Material(
-      color: selected ? AppColors.successSoft : AppColors.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(10),
-        side: BorderSide(
-          color: selected ? AppColors.success : AppColors.divider,
-        ),
-      ),
+      color: selected ? AppColors.primarySoft : Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Padding(
-          padding: const EdgeInsets.all(10),
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          height: 42,
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppColors.divider)),
+          ),
           child: Row(
             children: [
-              Container(
-                width: 44,
-                height: 44,
-                decoration: BoxDecoration(
-                  color: AppColors.workspace,
-                  borderRadius: BorderRadius.circular(9),
-                ),
-                child: const Icon(
-                  Icons.bakery_dining_outlined,
-                  color: AppColors.attention,
-                  size: 23,
-                ),
+              Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_unchecked_rounded,
+                color: selected ? AppColors.primary : AppColors.subtle,
+                size: 16,
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: 8),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      product.displayName,
-                      style: Theme.of(context).textTheme.titleMedium,
-                    ),
-                    Text(
-                      product.className,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ],
+                child: Text(
+                  product.displayName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  ),
                 ),
               ),
-              if (selected)
-                const Icon(
-                  Icons.check_circle_rounded,
-                  color: AppColors.success,
-                  size: 21,
+              Text(
+                product.classId,
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              if (confidence != null) ...[
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 34,
+                  child: Text(
+                    confidence,
+                    textAlign: TextAlign.right,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      fontFeatures: const [FontFeature.tabularFigures()],
+                    ),
+                  ),
                 ),
+              ],
             ],
           ),
         ),
@@ -1092,29 +1080,29 @@ class _SearchProducts extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Align(
-          alignment: Alignment.centerLeft,
-          child: TextButton.icon(
-            onPressed: controller.hideSearch,
-            icon: const Icon(Icons.arrow_back_rounded, size: 18),
-            label: const Text('후보로 돌아가기'),
-          ),
+        Row(
+          children: [
+            IconButton(
+              tooltip: '후보로 돌아가기',
+              onPressed: controller.hideSearch,
+              icon: const Icon(Icons.arrow_back_rounded, size: 17),
+            ),
+            Expanded(
+              child: TextField(
+                autofocus: true,
+                onChanged: controller.updateSearch,
+                decoration: const InputDecoration(
+                  hintText: '상품명 검색',
+                  prefixIcon: Icon(Icons.search_rounded, size: 18),
+                ),
+              ),
+            ),
+          ],
         ),
-        const SizedBox(height: 6),
-        TextField(
-          autofocus: true,
-          onChanged: controller.updateSearch,
-          decoration: const InputDecoration(
-            hintText: '상품명을 검색해 주세요',
-            prefixIcon: Icon(Icons.search_rounded),
-          ),
-        ),
-        const SizedBox(height: 12),
-        Text('검색 결과', style: Theme.of(context).textTheme.bodySmall),
         const SizedBox(height: 6),
         if (results.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 20),
+            padding: const EdgeInsets.symmetric(vertical: 14),
             child: Text(
               '일치하는 상품이 없어요.',
               textAlign: TextAlign.center,
@@ -1127,15 +1115,37 @@ class _SearchProducts extends StatelessWidget {
           ...results
               .take(8)
               .map(
-                (product) => ListTile(
-                  dense: true,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 4),
-                  title: Text(product.displayName),
-                  subtitle: Text(product.className),
-                  trailing: const Icon(Icons.chevron_right_rounded),
-                  onTap: () => controller.confirmSearchProduct(
-                    detection.source.itemId,
-                    product,
+                (product) => Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => controller.confirmSearchProduct(
+                      detection.source.itemId,
+                      product,
+                    ),
+                    child: Container(
+                      height: 40,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: const BoxDecoration(
+                        border: Border(
+                          bottom: BorderSide(color: AppColors.divider),
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(child: Text(product.displayName)),
+                          Text(
+                            product.classId,
+                            style: Theme.of(context).textTheme.bodySmall,
+                          ),
+                          const SizedBox(width: 4),
+                          const Icon(
+                            Icons.chevron_right_rounded,
+                            size: 16,
+                            color: AppColors.subtle,
+                          ),
+                        ],
+                      ),
+                    ),
                   ),
                 ),
               ),
@@ -1151,59 +1161,40 @@ class _ReviewFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final remaining = controller.detections.length - controller.confirmedCount;
     return Container(
-      padding: const EdgeInsets.fromLTRB(24, 18, 24, 22),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
       decoration: const BoxDecoration(
         color: AppColors.surface,
         border: Border(top: BorderSide(color: AppColors.divider)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      child: Row(
         children: [
           if (controller.errorMessage != null) ...[
-            Container(
-              margin: const EdgeInsets.only(bottom: 14),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.errorSoft,
-                borderRadius: BorderRadius.circular(10),
-              ),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.error_outline_rounded,
-                    color: AppColors.error,
-                    size: 19,
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Text(
-                      controller.errorMessage!,
-                      style: Theme.of(
-                        context,
-                      ).textTheme.bodySmall?.copyWith(color: AppColors.error),
-                    ),
-                  ),
-                ],
+            const Icon(
+              Icons.error_outline_rounded,
+              color: AppColors.error,
+              size: 17,
+            ),
+            const SizedBox(width: 7),
+          ],
+          Expanded(
+            child: Text(
+              controller.errorMessage ??
+                  (controller.allConfirmed
+                      ? '${controller.detections.length}개 상품을 모두 확인했어요'
+                      : '${controller.confirmedCount} / ${controller.detections.length} 상품 확인 완료'),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                fontWeight: FontWeight.w600,
+                color: controller.errorMessage == null
+                    ? AppColors.ink
+                    : AppColors.error,
               ),
             ),
-          ],
-          Text(
-            controller.allConfirmed
-                ? '${controller.detections.length}개 상품을 모두 확인했어요'
-                : '${controller.confirmedCount} / ${controller.detections.length} 상품 확인 완료',
-            style: Theme.of(context).textTheme.titleMedium,
           ),
-          const SizedBox(height: 5),
-          Text(
-            controller.allConfirmed
-                ? '최종 확정하면 결과가 안전하게 저장됩니다.'
-                : '확인이 필요한 상품이 $remaining개 있어요.',
-            style: Theme.of(context).textTheme.bodySmall,
-          ),
-          if (controller.allConfirmed) ...[
-            const SizedBox(height: 16),
+          if (controller.allConfirmed && controller.errorMessage == null) ...[
+            const SizedBox(width: 12),
             FilledButton.icon(
               onPressed: controller.processState == ProcessState.submitting
                   ? null
@@ -1217,7 +1208,7 @@ class _ReviewFooter extends StatelessWidget {
                         color: Colors.white,
                       ),
                     )
-                  : const Icon(Icons.check_rounded, size: 20),
+                  : const Icon(Icons.check_rounded, size: 17),
               label: Text(
                 controller.processState == ProcessState.submitting
                     ? '저장하고 있어요'
@@ -1240,9 +1231,9 @@ class _CompletionBanner extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: AppColors.ink,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: BorderRadius.circular(4),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 13),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
