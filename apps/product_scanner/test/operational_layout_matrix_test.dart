@@ -236,6 +236,14 @@ final _scanScenarios = <_ScanScenario>[
     () => _scanController(processState: ProcessState.ready),
   ),
   _ScanScenario(
+    '촬영 중',
+    '촬영 중',
+    () =>
+        _scanController(processState: ProcessState.capturing, hasImage: false)
+          ..inputMode = InputMode.camera,
+    continuousProgress: true,
+  ),
+  _ScanScenario(
     '분석 중',
     '분석 중',
     () => _scanController(processState: ProcessState.analyzing),
@@ -259,7 +267,7 @@ final _scanScenarios = <_ScanScenario>[
   ),
   _ScanScenario(
     'RECAPTURE',
-    '다른 이미지를 선택해 주세요',
+    '이미지가 흔들렸어요',
     () => _scanController(
       processState: ProcessState.reviewing,
       response: _recaptureResponse,

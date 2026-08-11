@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../theme/app_theme.dart';
 import '../theme/app_tokens.dart';
@@ -10,18 +11,15 @@ class AppBrandMark extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tokens = context.appTokens;
-    return Container(
-      width: tokens.compactVisualSize,
-      height: tokens.compactVisualSize,
-      decoration: BoxDecoration(
-        color: AppColors.primary,
-        borderRadius: BorderRadius.circular(context.appTokens.controlRadius),
-      ),
-      alignment: Alignment.center,
-      child: Icon(
-        Icons.center_focus_strong_rounded,
-        color: AppColors.ink,
-        size: tokens.inlineProgressSize,
+    return SizedBox(
+      width: tokens.brandLogoWidth,
+      height: tokens.brandLogoHeight,
+      child: SvgPicture.asset(
+        'assets/branding/bixolon_logo.svg',
+        width: tokens.brandLogoWidth,
+        height: tokens.brandLogoHeight,
+        fit: BoxFit.contain,
+        semanticsLabel: 'BIXOLON',
       ),
     );
   }
@@ -1289,6 +1287,8 @@ class AppSelectableSurface extends StatefulWidget {
     this.borderRadius,
     this.restingBorder,
     this.backgroundColor,
+    this.selectedBackgroundColor,
+    this.selectedBorder,
     this.semanticLabel,
     this.focusNode,
     this.autofocus = false,
@@ -1306,6 +1306,8 @@ class AppSelectableSurface extends StatefulWidget {
   final BorderRadius? borderRadius;
   final BoxBorder? restingBorder;
   final Color? backgroundColor;
+  final Color? selectedBackgroundColor;
+  final BoxBorder? selectedBorder;
   final String? semanticLabel;
   final FocusNode? focusNode;
   final bool autofocus;
@@ -1402,7 +1404,8 @@ class _AppSelectableSurfaceState extends State<AppSelectableSurface> {
               padding: widget.padding,
               decoration: BoxDecoration(
                 color: widget.selected
-                    ? component.selectionSurface
+                    ? widget.selectedBackgroundColor ??
+                          component.selectionSurface
                     : !widget.enabled
                     ? component.disabledSurface
                     : _hovered
@@ -1415,10 +1418,11 @@ class _AppSelectableSurfaceState extends State<AppSelectableSurface> {
                         width: tokens.focusRingWidth,
                       )
                     : widget.selected
-                    ? Border.all(
-                        color: component.selectionOutline,
-                        width: tokens.selectionOutlineWidth,
-                      )
+                    ? widget.selectedBorder ??
+                          Border.all(
+                            color: component.selectionOutline,
+                            width: tokens.selectionOutlineWidth,
+                          )
                     : widget.restingBorder,
               ),
               child: Opacity(

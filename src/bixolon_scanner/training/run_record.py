@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import platform
 import sys
 from argparse import Namespace
@@ -11,6 +12,22 @@ from typing import Any
 
 
 RECORDED_PACKAGES = ("torch", "torchvision", "transformers", "onnx", "onnxruntime-gpu")
+
+
+def _sha256_path(path: Path, *, suffix: str | None = None) -> str:
+    digest = hashlib.sha256()
+    paths = [path] if path.is_file() else sorted(
+        candidate
+        for candidate in path.rglob("*")
+        if candidate.is_file() and (suffix is None or candidate.suffix == suffix)
+    )
+    for candidate in paths:
+        relative = candidate.name if path.is_file() else candidate.relative_to(path).as_posix()
+        digest.update(relative.encode("utf-8"))
+        with candidate.open("rb") as stream:
+            for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+                digest.update(chunk)
+    return digest.hexdigest()
 
 
 def _package_versions() -> dict[str, str | None]:
@@ -66,7 +83,25 @@ def write_run_record(
         "dataset_sizes": dataset_sizes,
         "dataset": dataset,
         "dependencies": _package_versions(),
+        "source_sha256": _sha256_path(Path(__file__).parent, suffix=".py"),
     }
+    pretrained = getattr(args, "pretrained_name", None)
+    if pretrained is not None and Path(str(pretrained)).exists():
+        checkpoint_path = Path(str(pretrained)).resolve()
+        record["starting_checkpoint"] = {
+            "name": checkpoint_path.name,
+            "sha256": _sha256_path(checkpoint_path),
+        }
+    try:
+        import torch
+
+        record["accelerator"] = {
+            "cuda_version": torch.version.cuda,
+            "cudnn_version": torch.backends.cudnn.version(),
+            "device_name": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
+        }
+    except ImportError:
+        record["accelerator"] = None
     (output_dir / "run.json").write_text(
         json.dumps(record, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

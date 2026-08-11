@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -10,7 +12,6 @@ import '../theme/app_copy.dart';
 import '../theme/app_theme.dart';
 import '../theme/app_tokens.dart';
 import '../widgets/app_components.dart';
-import '../widgets/app_scan_guide.dart';
 
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({
@@ -28,7 +29,8 @@ class ScannerScreen extends StatefulWidget {
   State<ScannerScreen> createState() => _ScannerScreenState();
 }
 
-class _ScannerScreenState extends State<ScannerScreen> {
+class _ScannerScreenState extends State<ScannerScreen>
+    with WidgetsBindingObserver {
   _WorkspaceSection _section = _WorkspaceSection.scan;
   bool _activityMounted = false;
   final GlobalKey<_PreviewSurfaceState> _previewSurfaceKey =
@@ -38,11 +40,15 @@ class _ScannerScreenState extends State<ScannerScreen> {
   final FocusNode _nextImageActionFocusNode = FocusNode(
     debugLabel: 'next-image-action',
   );
+  final FocusNode _cameraPrimaryActionFocusNode = FocusNode(
+    debugLabel: 'camera-primary-action',
+  );
   late ProcessState _previousProcessState;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _previousProcessState = widget.controller.processState;
     widget.controller.addListener(_handleControllerChanged);
     if (widget.autoInitialize) {
@@ -84,10 +90,19 @@ class _ScannerScreenState extends State<ScannerScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     widget.controller.removeListener(_handleControllerChanged);
     _nextImageActionFocusNode.dispose();
+    _cameraPrimaryActionFocusNode.dispose();
     if (widget.disposeController) widget.controller.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(widget.controller.restoreCamera(forceReconnect: true));
+    }
   }
 
   Future<void> _requestReset() async {
@@ -99,6 +114,26 @@ class _ScannerScreenState extends State<ScannerScreen> {
     }
   }
 
+  Future<void> _returnToCamera() async {
+    if (widget.controller.isBusy) return;
+    if (!await _canDiscardChanges(
+      title: '카메라로 돌아갈까요?',
+      confirmLabel: AppActionCopy.returnToCamera,
+    )) {
+      return;
+    }
+    await widget.controller.returnToCamera();
+  }
+
+  Future<void> _prepareRecapture() async {
+    if (widget.controller.isBusy) return;
+    await widget.controller.returnToCamera();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_cameraPrimaryActionFocusNode.canRequestFocus) return;
+      _cameraPrimaryActionFocusNode.requestFocus();
+    });
+  }
+
   void _showSection(_WorkspaceSection section) {
     setState(() {
       _section = section;
@@ -106,6 +141,9 @@ class _ScannerScreenState extends State<ScannerScreen> {
         _activityMounted = true;
       }
     });
+    if (section == _WorkspaceSection.scan) {
+      unawaited(widget.controller.restoreCamera());
+    }
   }
 
   Future<void> _chooseImage({bool showScanOnSelection = false}) async {
@@ -205,7 +243,11 @@ class _ScannerScreenState extends State<ScannerScreen> {
                       previewSurfaceKey: _previewSurfaceKey,
                       onReset: _requestReset,
                       onChooseImage: _chooseImage,
+                      onReturnToCamera: _returnToCamera,
+                      onPrepareRecapture: _prepareRecapture,
                       nextImageActionFocusNode: _nextImageActionFocusNode,
+                      cameraPrimaryActionFocusNode:
+                          _cameraPrimaryActionFocusNode,
                     ),
                   ),
                   const Divider(height: 1),
@@ -233,7 +275,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
                     previewSurfaceKey: _previewSurfaceKey,
                     onReset: _requestReset,
                     onChooseImage: _chooseImage,
+                    onReturnToCamera: _returnToCamera,
+                    onPrepareRecapture: _prepareRecapture,
                     nextImageActionFocusNode: _nextImageActionFocusNode,
+                    cameraPrimaryActionFocusNode: _cameraPrimaryActionFocusNode,
                   ),
                 ),
                 const VerticalDivider(width: 1),
@@ -376,45 +421,48 @@ class _TopBar extends StatelessWidget {
             _ => (AppColors.attention, Icons.videocam_off_rounded, '카메라 확인 필요'),
           };
     return Container(
+      key: const ValueKey('app-top-bar'),
       height: context.appTokens.headerHeight,
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x4),
-      decoration: const BoxDecoration(
-        color: AppColors.surface,
-        border: Border(bottom: BorderSide(color: AppColors.divider)),
-      ),
-      child: Row(
+      color: AppColors.workspace,
+      child: Stack(
         children: [
-          const AppBrandMark(),
-          const SizedBox(width: AppSpacing.x3),
-          Text(
-            'BIXOLON Scanner',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              fontWeight: AppTypography.bold,
-              letterSpacing: AppTypography.brandTracking,
+          Positioned(
+            left: 0,
+            right: 0,
+            bottom: 0,
+            height: context.appTokens.navigationIndicatorThickness,
+            child: const ColoredBox(
+              key: ValueKey('app-top-bar-accent'),
+              color: AppColors.primary,
             ),
           ),
-          const SizedBox(width: AppSpacing.x8),
-          _NavigationItem(
-            key: const ValueKey('navigation-scan'),
-            icon: Icons.center_focus_strong_rounded,
-            label: '스캔',
-            selected: section == _WorkspaceSection.scan,
-            onTap: () => onSectionChanged(_WorkspaceSection.scan),
-          ),
-          const SizedBox(width: AppSpacing.x1),
-          _NavigationItem(
-            key: const ValueKey('navigation-activity'),
-            icon: Icons.history_rounded,
-            label: '활동',
-            selected: section == _WorkspaceSection.activity,
-            onTap: () => onSectionChanged(_WorkspaceSection.activity),
-          ),
-          const Spacer(),
-          AppStatusBadge(
-            label: statusText,
-            icon: statusIcon,
-            color: statusColor,
-            liveRegion: statusText == '카메라 연결됨',
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x6),
+            child: Row(
+              children: [
+                const AppBrandMark(),
+                const SizedBox(width: AppSpacing.x8),
+                _NavigationItem(
+                  key: const ValueKey('navigation-scan'),
+                  label: '스캔',
+                  selected: section == _WorkspaceSection.scan,
+                  onTap: () => onSectionChanged(_WorkspaceSection.scan),
+                ),
+                _NavigationItem(
+                  key: const ValueKey('navigation-activity'),
+                  label: '활동',
+                  selected: section == _WorkspaceSection.activity,
+                  onTap: () => onSectionChanged(_WorkspaceSection.activity),
+                ),
+                const Spacer(),
+                AppStatusBadge(
+                  label: statusText,
+                  icon: statusIcon,
+                  color: statusColor,
+                  liveRegion: statusText == '카메라 연결됨',
+                ),
+              ],
+            ),
           ),
         ],
       ),
@@ -425,13 +473,11 @@ class _TopBar extends StatelessWidget {
 class _NavigationItem extends StatefulWidget {
   const _NavigationItem({
     super.key,
-    required this.icon,
     required this.label,
     required this.selected,
     required this.onTap,
   });
 
-  final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -446,6 +492,15 @@ class _NavigationItemState extends State<_NavigationItem> {
   @override
   Widget build(BuildContext context) {
     final tokens = context.appTokens;
+    final tabRadius = BorderRadius.only(
+      topLeft: Radius.circular(tokens.controlRadius),
+      topRight: Radius.circular(tokens.controlRadius),
+    );
+    final outlineColor = _focused
+        ? context.appComponents.focusRing
+        : widget.selected
+        ? AppColors.primary
+        : Colors.transparent;
     return Semantics(
       container: true,
       excludeSemantics: true,
@@ -455,51 +510,42 @@ class _NavigationItemState extends State<_NavigationItem> {
       label: widget.label,
       onTap: widget.onTap,
       child: SizedBox(
+        width: tokens.navigationItemWidth,
         height: tokens.headerHeight,
-        child: Material(
-          color: Colors.transparent,
-          child: InkWell(
-            onTap: widget.onTap,
-            excludeFromSemantics: true,
-            onFocusChange: (focused) {
-              if (_focused != focused) setState(() => _focused = focused);
-            },
-            child: AnimatedContainer(
-              duration: MediaQuery.disableAnimationsOf(context)
-                  ? Duration.zero
-                  : tokens.motionFast,
-              curve: AppMotion.interactionCurve,
-              decoration: BoxDecoration(
-                border: Border.all(
-                  color: _focused
-                      ? context.appComponents.focusRing
-                      : Colors.transparent,
-                  width: tokens.focusRingWidth,
-                ),
-                borderRadius: BorderRadius.circular(tokens.controlRadius),
-              ),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.x3),
-                decoration: BoxDecoration(
-                  border: Border(
-                    bottom: BorderSide(
-                      color: widget.selected && !_focused
-                          ? AppColors.primary
+        child: Padding(
+          padding: EdgeInsets.only(top: tokens.navigationItemTopInset),
+          child: Material(
+            color: Colors.transparent,
+            borderRadius: tabRadius,
+            clipBehavior: Clip.antiAlias,
+            child: InkWell(
+              onTap: widget.onTap,
+              excludeFromSemantics: true,
+              borderRadius: tabRadius,
+              onFocusChange: (focused) {
+                if (_focused != focused) setState(() => _focused = focused);
+              },
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  AnimatedContainer(
+                    key: ValueKey('navigation-tab-${widget.label}'),
+                    duration: MediaQuery.disableAnimationsOf(context)
+                        ? Duration.zero
+                        : tokens.motionFast,
+                    curve: AppMotion.interactionCurve,
+                    decoration: BoxDecoration(
+                      color: widget.selected
+                          ? AppColors.surface
                           : Colors.transparent,
-                      width: tokens.navigationIndicatorThickness,
+                      border: Border.all(
+                        color: outlineColor,
+                        width: tokens.navigationIndicatorThickness,
+                      ),
+                      borderRadius: tabRadius,
                     ),
-                  ),
-                ),
-                alignment: Alignment.center,
-                child: Row(
-                  children: [
-                    Icon(
-                      widget.icon,
-                      size: 20,
-                      color: widget.selected ? AppColors.ink : AppColors.muted,
-                    ),
-                    const SizedBox(width: AppSpacing.x2),
-                    Text(
+                    alignment: Alignment.center,
+                    child: Text(
                       widget.label,
                       style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                         fontWeight: widget.selected
@@ -510,8 +556,16 @@ class _NavigationItemState extends State<_NavigationItem> {
                             : AppColors.muted,
                       ),
                     ),
-                  ],
-                ),
+                  ),
+                  if (widget.selected && !_focused)
+                    Positioned(
+                      left: tokens.navigationIndicatorThickness,
+                      right: tokens.navigationIndicatorThickness,
+                      bottom: 0,
+                      height: tokens.navigationIndicatorThickness,
+                      child: const ColoredBox(color: AppColors.surface),
+                    ),
+                ],
               ),
             ),
           ),
@@ -527,14 +581,20 @@ class _PreviewPane extends StatelessWidget {
     required this.previewSurfaceKey,
     required this.onReset,
     required this.onChooseImage,
+    required this.onReturnToCamera,
+    required this.onPrepareRecapture,
     required this.nextImageActionFocusNode,
+    required this.cameraPrimaryActionFocusNode,
   });
 
   final ScannerController controller;
   final GlobalKey<_PreviewSurfaceState> previewSurfaceKey;
   final VoidCallback onReset;
   final VoidCallback onChooseImage;
+  final VoidCallback onReturnToCamera;
+  final VoidCallback onPrepareRecapture;
   final FocusNode nextImageActionFocusNode;
+  final FocusNode cameraPrimaryActionFocusNode;
 
   @override
   Widget build(BuildContext context) {
@@ -552,7 +612,10 @@ class _PreviewPane extends StatelessWidget {
             controller: controller,
             onReset: onReset,
             onChooseImage: onChooseImage,
+            onReturnToCamera: onReturnToCamera,
+            onPrepareRecapture: onPrepareRecapture,
             nextImageActionFocusNode: nextImageActionFocusNode,
+            cameraPrimaryActionFocusNode: cameraPrimaryActionFocusNode,
           ),
         ],
       ),
@@ -636,12 +699,6 @@ class _PreviewSurfaceState extends State<_PreviewSurface> {
             );
           }
           final selectedItemId = controller.selectedItemId;
-          final showScanGuide =
-              !controller.hasResults &&
-              controller.processState != ProcessState.error &&
-              !controller.hasActiveCameraIssue &&
-              !controller.isCameraCheckActive &&
-              (controller.imageBytes != null || controller.isCameraReady);
           final orderedDetections = <ReviewDetection>[
             for (final detection in controller.detections)
               if (detection.source.itemId != selectedItemId) detection,
@@ -664,10 +721,6 @@ class _PreviewSurfaceState extends State<_PreviewSurface> {
                 const _ImageInputPlaceholder()
               else
                 _LiveCamera(controller: controller),
-              if (showScanGuide)
-                const Positioned.fill(
-                  child: IgnorePointer(child: AppScanGuide()),
-                ),
               if (imageRect != null && controller.hasResults)
                 ...orderedDetections.map(
                   (detection) => _DetectionBox(
@@ -689,7 +742,8 @@ class _PreviewSurfaceState extends State<_PreviewSurface> {
                         controller.selectDetection(detection.source.itemId),
                   ),
                 ),
-              if (controller.processState == ProcessState.analyzing)
+              if (controller.processState == ProcessState.capturing ||
+                  controller.processState == ProcessState.analyzing)
                 const _AnalyzingOverlay(),
               if (controller.inputMode != InputMode.image ||
                   controller.imageBytes != null)
@@ -1006,15 +1060,16 @@ class _DetectionBoxState extends State<_DetectionBox> {
                     right: hitRect.width - visualLeft - visualRect.width,
                     bottom: hitRect.height - visualTop - visualRect.height,
                     child: Container(
+                      key: ValueKey(
+                        'detection-visual-${widget.detection.source.itemId}',
+                      ),
                       decoration: BoxDecoration(
                         color: widget.selected
-                            ? AppColors.primary.withValues(alpha: .10)
+                            ? statusColor.withValues(alpha: .06)
                             : null,
                         border: Border.all(
-                          color: widget.selected
-                              ? AppColors.primary
-                              : statusColor,
-                          width: widget.selected ? 3 : 1.5,
+                          color: statusColor,
+                          width: widget.selected ? 2 : 1.5,
                         ),
                       ),
                     ),
@@ -1030,17 +1085,17 @@ class _DetectionBoxState extends State<_DetectionBox> {
                         horizontal: AppSpacing.x2,
                         vertical: AppSpacing.x1,
                       ),
-                      color: widget.selected ? AppColors.primary : statusColor,
+                      decoration: BoxDecoration(color: statusColor),
                       child: Text(
                         label,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          color: widget.selected
-                              ? context.appColors.onBrand
-                              : context.appComponents.onPreview,
+                          color: context.appComponents.onPreview,
                           fontSize: AppTypography.captionSize,
-                          fontWeight: AppTypography.semibold,
+                          fontWeight: widget.selected
+                              ? AppTypography.bold
+                              : AppTypography.semibold,
                         ),
                       ),
                     ),
@@ -1097,18 +1152,25 @@ class _InputActionBar extends StatelessWidget {
     required this.controller,
     required this.onReset,
     required this.onChooseImage,
+    required this.onReturnToCamera,
+    required this.onPrepareRecapture,
     required this.nextImageActionFocusNode,
+    required this.cameraPrimaryActionFocusNode,
   });
 
   final ScannerController controller;
   final VoidCallback onReset;
   final VoidCallback onChooseImage;
+  final VoidCallback onReturnToCamera;
+  final VoidCallback onPrepareRecapture;
   final FocusNode nextImageActionFocusNode;
+  final FocusNode cameraPrimaryActionFocusNode;
 
   @override
   Widget build(BuildContext context) {
     final busy = controller.isBusy;
     final hasImage = controller.imageBytes != null;
+    final capturing = controller.processState == ProcessState.capturing;
     final analyzing = controller.processState == ProcessState.analyzing;
     final reviewingSuccess =
         controller.processState == ProcessState.reviewing &&
@@ -1133,23 +1195,28 @@ class _InputActionBar extends StatelessWidget {
         ),
       );
     }
-    if (analyzing) {
+    if (capturing || analyzing) {
       return AppActionBar(
         child: Row(
           children: [
             const Spacer(),
             AppProgressActionButton(
+              focusNode: capturing ? cameraPrimaryActionFocusNode : null,
               onPressed: null,
               progressing: true,
-              progressLabel: AppActionCopy.analyzing,
-              progressAnnouncement: AppActionCopy.analyzingAnnouncement,
+              progressLabel: capturing
+                  ? AppActionCopy.capturing
+                  : AppActionCopy.analyzing,
+              progressAnnouncement: capturing
+                  ? AppActionCopy.capturingAnnouncement
+                  : AppActionCopy.analyzingAnnouncement,
               icon: Icon(
                 controller.inputMode == InputMode.image
                     ? Icons.auto_awesome_outlined
                     : Icons.camera_alt_outlined,
                 size: 18,
               ),
-              label: AppActionCopy.analyze,
+              label: capturing ? AppActionCopy.capture : AppActionCopy.analyze,
             ),
           ],
         ),
@@ -1159,6 +1226,9 @@ class _InputActionBar extends StatelessWidget {
       child: Row(
         children: [
           if (controller.inputMode == InputMode.image && !hasImage) ...[
+            _ReturnToCameraButton(
+              onPressed: controller.canChooseImage ? onReturnToCamera : null,
+            ),
             const Spacer(),
             Tooltip(
               message: '${AppActionCopy.chooseImage} (Ctrl+O)',
@@ -1205,7 +1275,13 @@ class _InputActionBar extends StatelessWidget {
               icon: const Icon(Icons.videocam_outlined, size: 18),
               label: AppActionCopy.reconnect,
             ),
-          ] else if (reviewingSuccess)
+          ] else if (reviewingSuccess) ...[
+            if (controller.inputMode == InputMode.image) ...[
+              _ReturnToCameraButton(
+                onPressed: controller.canChooseImage ? onReturnToCamera : null,
+              ),
+              const SizedBox(width: AppSpacing.x2),
+            ],
             Tooltip(
               message: controller.inputMode == InputMode.image
                   ? '${AppActionCopy.chooseAnotherImage} (Ctrl+O)'
@@ -1228,10 +1304,34 @@ class _InputActionBar extends StatelessWidget {
                       : AppActionCopy.recapture,
                 ),
               ),
-            )
-          else if (controller.isRecapture &&
-              controller.inputMode == InputMode.image) ...[
+            ),
+          ] else if (controller.isRecapture &&
+              controller.inputMode == InputMode.camera) ...[
+            Tooltip(
+              message: '${AppActionCopy.chooseImage} (Ctrl+O)',
+              child: OutlinedButton.icon(
+                onPressed: controller.canChooseImage ? onChooseImage : null,
+                icon: const Icon(Icons.image_outlined, size: 18),
+                label: const Text(AppActionCopy.chooseImage),
+              ),
+            ),
             const Spacer(),
+            _RecaptureLogButton(controller: controller),
+            const SizedBox(width: AppSpacing.x2),
+            FilledButton.icon(
+              focusNode: cameraPrimaryActionFocusNode,
+              onPressed: controller.canChooseImage ? onPrepareRecapture : null,
+              icon: const Icon(Icons.videocam_outlined, size: 18),
+              label: const Text(AppActionCopy.returnToCapture),
+            ),
+          ] else if (controller.isRecapture &&
+              controller.inputMode == InputMode.image) ...[
+            _ReturnToCameraButton(
+              onPressed: controller.canChooseImage ? onReturnToCamera : null,
+            ),
+            const Spacer(),
+            _RecaptureLogButton(controller: controller),
+            const SizedBox(width: AppSpacing.x2),
             FilledButton.icon(
               onPressed: controller.canChooseImage ? onChooseImage : null,
               icon: const Icon(Icons.image_outlined, size: 18),
@@ -1240,26 +1340,39 @@ class _InputActionBar extends StatelessWidget {
           ] else if (controller.processState == ProcessState.error &&
               controller.errorRecovery ==
                   ScannerErrorRecovery.replaceInput) ...[
+            if (controller.inputMode == InputMode.image)
+              _ReturnToCameraButton(
+                onPressed: controller.canChooseImage ? onReturnToCamera : null,
+              ),
             const Spacer(),
             FilledButton.icon(
               onPressed: !controller.canChooseImage
                   ? null
                   : controller.inputMode == InputMode.image
                   ? onChooseImage
-                  : controller.captureAndAnalyze,
+                  : onPrepareRecapture,
+              focusNode: controller.inputMode == InputMode.camera
+                  ? cameraPrimaryActionFocusNode
+                  : null,
               icon: Icon(
                 controller.inputMode == InputMode.image
                     ? Icons.image_outlined
-                    : Icons.camera_alt_outlined,
+                    : Icons.videocam_outlined,
                 size: 18,
               ),
               label: Text(
                 controller.inputMode == InputMode.image
                     ? AppActionCopy.chooseAnotherImage
-                    : AppActionCopy.recapture,
+                    : AppActionCopy.returnToCapture,
               ),
             ),
           ] else ...[
+            if (controller.inputMode == InputMode.image) ...[
+              _ReturnToCameraButton(
+                onPressed: controller.canChooseImage ? onReturnToCamera : null,
+              ),
+              const SizedBox(width: AppSpacing.x2),
+            ],
             Tooltip(
               message: '${AppActionCopy.chooseImage} (Ctrl+O)',
               child: OutlinedButton.icon(
@@ -1299,18 +1412,85 @@ class _InputActionBar extends StatelessWidget {
               )
             else
               AppProgressActionButton(
+                focusNode: cameraPrimaryActionFocusNode,
                 onPressed: busy ? null : controller.captureAndAnalyze,
-                progressing: analyzing,
-                progressLabel: AppActionCopy.analyzing,
-                progressAnnouncement: AppActionCopy.analyzingAnnouncement,
+                progressing: false,
+                progressLabel: AppActionCopy.capturing,
+                progressAnnouncement: AppActionCopy.capturingAnnouncement,
                 icon: const Icon(Icons.camera_alt_outlined, size: 18),
-                label: controller.isRecapture
-                    ? AppActionCopy.recapture
-                    : AppActionCopy.capture,
+                label: AppActionCopy.capture,
               ),
           ],
         ],
       ),
+    );
+  }
+}
+
+class _ReturnToCameraButton extends StatelessWidget {
+  const _ReturnToCameraButton({required this.onPressed});
+
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: AppActionCopy.returnToCamera,
+      child: OutlinedButton.icon(
+        onPressed: onPressed,
+        icon: const Icon(Icons.videocam_outlined, size: 18),
+        label: const Text(AppActionCopy.returnToCamera),
+      ),
+    );
+  }
+}
+
+class _RecaptureLogButton extends StatelessWidget {
+  const _RecaptureLogButton({required this.controller});
+
+  final ScannerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = controller.recaptureLogSaveState;
+    final saving = state == RecaptureLogSaveState.saving;
+    final saved = state == RecaptureLogSaveState.saved;
+    final failed = state == RecaptureLogSaveState.error;
+    final label = saved
+        ? AppActionCopy.recaptureLogSaved
+        : failed
+        ? AppActionCopy.retrySave
+        : saving
+        ? AppActionCopy.saving
+        : AppActionCopy.saveRecaptureLog;
+    final button = OutlinedButton.icon(
+      key: const ValueKey('save-recapture-log'),
+      onPressed: saving || saved ? null : controller.saveRecaptureLog,
+      icon: saving
+          ? AppProgressVisual(
+              size: context.appTokens.inlineProgressSize,
+              strokeWidth: 2,
+              color: AppColors.muted,
+            )
+          : Icon(
+              saved
+                  ? Icons.check_circle_outline_rounded
+                  : Icons.save_alt_rounded,
+              size: 18,
+            ),
+      label: Text(label),
+    );
+    if (!saving) {
+      return Tooltip(message: label, child: button);
+    }
+    return Semantics(
+      container: true,
+      excludeSemantics: true,
+      liveRegion: true,
+      button: true,
+      enabled: false,
+      label: AppActionCopy.savingAnnouncement,
+      child: button,
     );
   }
 }
@@ -1417,6 +1597,13 @@ class _ResultPanelState extends State<_ResultPanel> {
   }
 
   Widget _resultBody() {
+    if (controller.processState == ProcessState.capturing) {
+      return const _PanelMessage(
+        icon: Icons.camera_alt_outlined,
+        title: '촬영 중',
+        detail: '카메라 촬영이 끝나면 자동으로 분석해요.',
+      );
+    }
     if (controller.processState == ProcessState.analyzing) {
       return const _PanelMessage(
         icon: Icons.hourglass_top_rounded,
@@ -1454,12 +1641,17 @@ class _ResultPanelState extends State<_ResultPanel> {
       );
     }
     if (controller.isRecapture) {
+      final saveError = controller.recaptureLogError;
       return _PanelMessage(
         icon: Icons.center_focus_weak_rounded,
         title: controller.recaptureTitle,
-        detail: controller.recaptureDetail,
+        detail: saveError == null
+            ? controller.recaptureDetail
+            : '${controller.recaptureDetail}\n$saveError',
         tone: AppColors.attention,
-        announce: true,
+        announce:
+            saveError != null ||
+            controller.recaptureLogSaveState == RecaptureLogSaveState.idle,
       );
     }
     if (!controller.hasResults) {
@@ -1481,7 +1673,7 @@ class _ResultPanelState extends State<_ResultPanel> {
         return const _PanelMessage(
           icon: Icons.photo_camera_outlined,
           title: '상품을 촬영해 주세요',
-          detail: '가이드 안에 상품이 모두 보이면 촬영하기를 눌러주세요.',
+          detail: '화면 안에 상품이 모두 보이면 촬영하기를 눌러주세요.',
         );
       }
       return const _PanelMessage(
@@ -1589,6 +1781,8 @@ class _ResultHeader extends StatelessWidget {
         ? '재촬영 필요'
         : controller.processState == ProcessState.error
         ? '분석 오류'
+        : controller.processState == ProcessState.capturing
+        ? '촬영 중'
         : controller.processState == ProcessState.analyzing
         ? '분석 중'
         : controller.imageBytes != null
@@ -1598,8 +1792,15 @@ class _ResultHeader extends StatelessWidget {
         : controller.isCameraReady
         ? '촬영 준비'
         : '입력 준비';
+    final response = controller.response;
+    final analysisTime = response == null || response.status == ScanStatus.error
+        ? null
+        : '분석 ${response.processingTimeMs.toStringAsFixed(1)} ms';
     final subtitle = controller.hasResults
         ? '${controller.confirmedCount}/${controller.detections.length}개 확인'
+              '${analysisTime == null ? '' : ' · $analysisTime'}'
+        : controller.isRecapture
+        ? analysisTime
         : null;
     return AppPanelHeader(
       key: const ValueKey('scan-result-header'),
@@ -1859,6 +2060,8 @@ class _DetectionRow extends StatelessWidget {
         : '$index번 상품, ${detection.finalProduct!.displayName}, 확정, 신뢰도 $confidence';
     return AppSelectableSurface(
       selected: selected,
+      selectedBackgroundColor: AppColors.surface,
+      selectedBorder: Border.all(color: tone, width: 2),
       enabled: !controller.isBusy,
       inMutuallyExclusiveGroup: true,
       focusNode: focusNode,
@@ -1911,7 +2114,7 @@ class _DetectionRow extends StatelessWidget {
             selected
                 ? Icons.arrow_forward_rounded
                 : Icons.chevron_right_rounded,
-            color: selected ? AppColors.primary : AppColors.subtle,
+            color: selected ? tone : AppColors.subtle,
             size: 18,
           ),
         ],
@@ -2651,10 +2854,37 @@ class _ReviewFooter extends StatelessWidget {
     final totalCount = controller.detections.length;
     final remainingCount = totalCount - controller.confirmedCount;
     final submitting = controller.processState == ProcessState.submitting;
+    final feedbackState = controller.missedDetectionLogSaveState;
+    final feedbackSaving = feedbackState == MissedDetectionLogSaveState.saving;
+    final feedbackSaved = feedbackState == MissedDetectionLogSaveState.saved;
+    final feedbackFailed = feedbackState == MissedDetectionLogSaveState.error;
+    final visibleError =
+        controller.errorMessage ?? controller.missedDetectionLogError;
+    final feedbackLabel = feedbackSaved
+        ? AppActionCopy.missedDetectionLogSaved
+        : feedbackFailed
+        ? AppActionCopy.retrySave
+        : feedbackSaving
+        ? AppActionCopy.saving
+        : AppActionCopy.saveMissedDetectionLog;
+    final feedbackIcon = feedbackSaving
+        ? AppProgressVisual(
+            size: context.appTokens.inlineProgressSize,
+            strokeWidth: 2,
+            color: AppColors.muted,
+          )
+        : Icon(
+            feedbackSaved
+                ? Icons.check_circle_outline_rounded
+                : Icons.report_problem_outlined,
+            size: 18,
+          );
+    final compactFeedbackAction =
+        MediaQuery.textScalerOf(context).scale(1) > 1.25;
     return AppActionBar(
       child: Row(
         children: [
-          if (controller.errorMessage != null) ...[
+          if (visibleError != null) ...[
             const Icon(
               Icons.error_outline_rounded,
               color: AppColors.error,
@@ -2664,27 +2894,44 @@ class _ReviewFooter extends StatelessWidget {
           ],
           Expanded(
             child: Semantics(
-              container: controller.errorMessage != null,
-              excludeSemantics: controller.errorMessage != null,
-              liveRegion: controller.errorMessage != null,
-              label: controller.errorMessage,
+              container: visibleError != null,
+              excludeSemantics: visibleError != null,
+              liveRegion: visibleError != null,
+              label: visibleError,
               child: Text(
-                controller.errorMessage ??
+                visibleError ??
                     (controller.allConfirmed
                         ? '$totalCount개 상품 확인 완료'
                         : '${controller.confirmedCount} / $totalCount 상품 확인 완료'),
-                maxLines: controller.errorMessage == null ? 1 : 2,
+                maxLines: visibleError == null ? 1 : 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontWeight: AppTypography.bold,
-                  color: controller.errorMessage == null
-                      ? AppColors.ink
-                      : AppColors.error,
+                  color: visibleError == null ? AppColors.ink : AppColors.error,
                 ),
               ),
             ),
           ),
           const SizedBox(width: AppSpacing.x3),
+          if (compactFeedbackAction)
+            IconButton.outlined(
+              key: const ValueKey('save-missed-detection-log'),
+              tooltip: feedbackLabel,
+              onPressed: controller.canSaveMissedDetectionLog
+                  ? controller.saveMissedDetectionLog
+                  : null,
+              icon: feedbackIcon,
+            )
+          else
+            OutlinedButton.icon(
+              key: const ValueKey('save-missed-detection-log'),
+              onPressed: controller.canSaveMissedDetectionLog
+                  ? controller.saveMissedDetectionLog
+                  : null,
+              icon: feedbackIcon,
+              label: Text(feedbackLabel),
+            ),
+          const SizedBox(width: AppSpacing.x2),
           AppProgressActionButton(
             focusNode: finalActionFocusNode,
             onPressed: controller.allConfirmed && !submitting

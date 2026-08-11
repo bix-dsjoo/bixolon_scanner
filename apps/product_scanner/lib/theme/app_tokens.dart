@@ -21,18 +21,6 @@ abstract final class AppPalette {
   static const previewScrim = Color(0x8A000000);
   static const onPreview = Color(0xFFFFFFFF);
   static const onPreviewMuted = Color(0xB3FFFFFF);
-  static const previewGuideOutline = Color.from(
-    alpha: .16,
-    red: 1,
-    green: 1,
-    blue: 1,
-  );
-  static const previewGuideAccent = Color.from(
-    alpha: .9,
-    red: 238 / 255,
-    green: 114 / 255,
-    blue: 3 / 255,
-  );
   static const success = Color(0xFF16865A);
   static const successSoft = Color(0xFFF0F8F4);
   static const attention = Color(0xFFB45F06);
@@ -101,8 +89,6 @@ class AppComponentColors extends ThemeExtension<AppComponentColors> {
     required this.previewScrim,
     required this.onPreview,
     required this.onPreviewMuted,
-    required this.previewGuideOutline,
-    required this.previewGuideAccent,
   });
 
   final Color selectionSurface;
@@ -119,8 +105,6 @@ class AppComponentColors extends ThemeExtension<AppComponentColors> {
   final Color previewScrim;
   final Color onPreview;
   final Color onPreviewMuted;
-  final Color previewGuideOutline;
-  final Color previewGuideAccent;
 
   static const light = AppComponentColors(
     selectionSurface: AppPalette.brandSoft,
@@ -137,8 +121,6 @@ class AppComponentColors extends ThemeExtension<AppComponentColors> {
     previewScrim: AppPalette.previewScrim,
     onPreview: AppPalette.onPreview,
     onPreviewMuted: AppPalette.onPreviewMuted,
-    previewGuideOutline: AppPalette.previewGuideOutline,
-    previewGuideAccent: AppPalette.previewGuideAccent,
   );
 
   @override
@@ -157,8 +139,6 @@ class AppComponentColors extends ThemeExtension<AppComponentColors> {
     Color? previewScrim,
     Color? onPreview,
     Color? onPreviewMuted,
-    Color? previewGuideOutline,
-    Color? previewGuideAccent,
   }) {
     return AppComponentColors(
       selectionSurface: selectionSurface ?? this.selectionSurface,
@@ -175,8 +155,6 @@ class AppComponentColors extends ThemeExtension<AppComponentColors> {
       previewScrim: previewScrim ?? this.previewScrim,
       onPreview: onPreview ?? this.onPreview,
       onPreviewMuted: onPreviewMuted ?? this.onPreviewMuted,
-      previewGuideOutline: previewGuideOutline ?? this.previewGuideOutline,
-      previewGuideAccent: previewGuideAccent ?? this.previewGuideAccent,
     );
   }
 
@@ -218,16 +196,6 @@ class AppComponentColors extends ThemeExtension<AppComponentColors> {
       previewScrim: Color.lerp(previewScrim, other.previewScrim, t)!,
       onPreview: Color.lerp(onPreview, other.onPreview, t)!,
       onPreviewMuted: Color.lerp(onPreviewMuted, other.onPreviewMuted, t)!,
-      previewGuideOutline: Color.lerp(
-        previewGuideOutline,
-        other.previewGuideOutline,
-        t,
-      )!,
-      previewGuideAccent: Color.lerp(
-        previewGuideAccent,
-        other.previewGuideAccent,
-        t,
-      )!,
     );
   }
 }
@@ -363,6 +331,10 @@ class AppDesignTokens extends ThemeExtension<AppDesignTokens> {
     required this.sectionHeaderHeight,
     required this.actionBarHeight,
     required this.compactVisualSize,
+    required this.brandLogoWidth,
+    required this.brandLogoHeight,
+    required this.navigationItemWidth,
+    required this.navigationItemTopInset,
     required this.stepNavigatorLabelWidth,
     required this.previewLabelMinHeight,
     required this.previewSourceMarkerSize,
@@ -370,10 +342,6 @@ class AppDesignTokens extends ThemeExtension<AppDesignTokens> {
     required this.inlineProgressSize,
     required this.previewProgressSize,
     required this.pageProgressSize,
-    required this.scanGuideFraction,
-    required this.scanGuideCornerLength,
-    required this.scanGuideCenterMarkSize,
-    required this.scanGuideStrokeWidth,
     required this.scanResultPanelFraction,
     required this.scanResultPanelMinWidth,
     required this.scanResultPanelMaxWidth,
@@ -403,6 +371,10 @@ class AppDesignTokens extends ThemeExtension<AppDesignTokens> {
   final double sectionHeaderHeight;
   final double actionBarHeight;
   final double compactVisualSize;
+  final double brandLogoWidth;
+  final double brandLogoHeight;
+  final double navigationItemWidth;
+  final double navigationItemTopInset;
   final double stepNavigatorLabelWidth;
   final double previewLabelMinHeight;
   final double previewSourceMarkerSize;
@@ -410,10 +382,6 @@ class AppDesignTokens extends ThemeExtension<AppDesignTokens> {
   final double inlineProgressSize;
   final double previewProgressSize;
   final double pageProgressSize;
-  final double scanGuideFraction;
-  final double scanGuideCornerLength;
-  final double scanGuideCenterMarkSize;
-  final double scanGuideStrokeWidth;
   final double scanResultPanelFraction;
   final double scanResultPanelMinWidth;
   final double scanResultPanelMaxWidth;
@@ -443,6 +411,10 @@ class AppDesignTokens extends ThemeExtension<AppDesignTokens> {
     sectionHeaderHeight: 40,
     actionBarHeight: 72,
     compactVisualSize: 32,
+    brandLogoWidth: 105,
+    brandLogoHeight: 30,
+    navigationItemWidth: 112,
+    navigationItemTopInset: 8,
     stepNavigatorLabelWidth: 52,
     previewLabelMinHeight: 36,
     previewSourceMarkerSize: 6,
@@ -450,10 +422,6 @@ class AppDesignTokens extends ThemeExtension<AppDesignTokens> {
     inlineProgressSize: 20,
     previewProgressSize: 24,
     pageProgressSize: 28,
-    scanGuideFraction: .64,
-    scanGuideCornerLength: 34,
-    scanGuideCenterMarkSize: 7,
-    scanGuideStrokeWidth: 2.5,
     scanResultPanelFraction: .36,
     scanResultPanelMinWidth: 440,
     scanResultPanelMaxWidth: 520,
@@ -485,6 +453,10 @@ class AppDesignTokens extends ThemeExtension<AppDesignTokens> {
     double? sectionHeaderHeight,
     double? actionBarHeight,
     double? compactVisualSize,
+    double? brandLogoWidth,
+    double? brandLogoHeight,
+    double? navigationItemWidth,
+    double? navigationItemTopInset,
     double? stepNavigatorLabelWidth,
     double? previewLabelMinHeight,
     double? previewSourceMarkerSize,
@@ -492,10 +464,6 @@ class AppDesignTokens extends ThemeExtension<AppDesignTokens> {
     double? inlineProgressSize,
     double? previewProgressSize,
     double? pageProgressSize,
-    double? scanGuideFraction,
-    double? scanGuideCornerLength,
-    double? scanGuideCenterMarkSize,
-    double? scanGuideStrokeWidth,
     double? scanResultPanelFraction,
     double? scanResultPanelMinWidth,
     double? scanResultPanelMaxWidth,
@@ -525,6 +493,11 @@ class AppDesignTokens extends ThemeExtension<AppDesignTokens> {
       sectionHeaderHeight: sectionHeaderHeight ?? this.sectionHeaderHeight,
       actionBarHeight: actionBarHeight ?? this.actionBarHeight,
       compactVisualSize: compactVisualSize ?? this.compactVisualSize,
+      brandLogoWidth: brandLogoWidth ?? this.brandLogoWidth,
+      brandLogoHeight: brandLogoHeight ?? this.brandLogoHeight,
+      navigationItemWidth: navigationItemWidth ?? this.navigationItemWidth,
+      navigationItemTopInset:
+          navigationItemTopInset ?? this.navigationItemTopInset,
       stepNavigatorLabelWidth:
           stepNavigatorLabelWidth ?? this.stepNavigatorLabelWidth,
       previewLabelMinHeight:
@@ -536,12 +509,6 @@ class AppDesignTokens extends ThemeExtension<AppDesignTokens> {
       inlineProgressSize: inlineProgressSize ?? this.inlineProgressSize,
       previewProgressSize: previewProgressSize ?? this.previewProgressSize,
       pageProgressSize: pageProgressSize ?? this.pageProgressSize,
-      scanGuideFraction: scanGuideFraction ?? this.scanGuideFraction,
-      scanGuideCornerLength:
-          scanGuideCornerLength ?? this.scanGuideCornerLength,
-      scanGuideCenterMarkSize:
-          scanGuideCenterMarkSize ?? this.scanGuideCenterMarkSize,
-      scanGuideStrokeWidth: scanGuideStrokeWidth ?? this.scanGuideStrokeWidth,
       scanResultPanelFraction:
           scanResultPanelFraction ?? this.scanResultPanelFraction,
       scanResultPanelMinWidth:
@@ -591,6 +558,18 @@ class AppDesignTokens extends ThemeExtension<AppDesignTokens> {
         other.compactVisualSize,
         t,
       ),
+      brandLogoWidth: _lerpDouble(brandLogoWidth, other.brandLogoWidth, t),
+      brandLogoHeight: _lerpDouble(brandLogoHeight, other.brandLogoHeight, t),
+      navigationItemWidth: _lerpDouble(
+        navigationItemWidth,
+        other.navigationItemWidth,
+        t,
+      ),
+      navigationItemTopInset: _lerpDouble(
+        navigationItemTopInset,
+        other.navigationItemTopInset,
+        t,
+      ),
       stepNavigatorLabelWidth: _lerpDouble(
         stepNavigatorLabelWidth,
         other.stepNavigatorLabelWidth,
@@ -624,26 +603,6 @@ class AppDesignTokens extends ThemeExtension<AppDesignTokens> {
       pageProgressSize: _lerpDouble(
         pageProgressSize,
         other.pageProgressSize,
-        t,
-      ),
-      scanGuideFraction: _lerpDouble(
-        scanGuideFraction,
-        other.scanGuideFraction,
-        t,
-      ),
-      scanGuideCornerLength: _lerpDouble(
-        scanGuideCornerLength,
-        other.scanGuideCornerLength,
-        t,
-      ),
-      scanGuideCenterMarkSize: _lerpDouble(
-        scanGuideCenterMarkSize,
-        other.scanGuideCenterMarkSize,
-        t,
-      ),
-      scanGuideStrokeWidth: _lerpDouble(
-        scanGuideStrokeWidth,
-        other.scanGuideStrokeWidth,
         t,
       ),
       scanResultPanelFraction: _lerpDouble(

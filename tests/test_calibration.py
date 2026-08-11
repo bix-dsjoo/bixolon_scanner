@@ -26,6 +26,19 @@ def test_risk_control_uses_one_sided_binomial_upper_bound():
     assert binomial_rate_upper_bound(0, 100) > 0.005
 
 
+def test_threshold_keeps_all_equal_confidence_samples_together():
+    probabilities = np.asarray(
+        [[0.9, 0.1], [0.9, 0.1], [0.8, 0.2], [0.8, 0.2]], dtype=float
+    )
+    targets = np.asarray([0, 0, 0, 1])
+    result = select_approval_threshold(
+        probabilities, targets, max_false_approval_rate=0.0, confidence_level=None
+    )
+    assert result.threshold == 0.9
+    assert result.approved_count == 2
+    assert result.approved_precision == 1.0
+
+
 def test_evaluation_combines_oof_archives(tmp_path):
     first = tmp_path / "fold0.npz"
     second = tmp_path / "fold1.npz"

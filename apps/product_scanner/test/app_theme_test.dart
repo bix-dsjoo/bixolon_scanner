@@ -13,6 +13,9 @@ import 'package:product_scanner/widgets/app_components.dart';
 void main() {
   test('핵심 행동 콘텐츠 토큰은 같은 작업에 하나의 이름을 사용한다', () {
     expect(AppActionCopy.capture, '촬영하기');
+    expect(AppActionCopy.returnToCapture, '촬영 화면으로 돌아가기');
+    expect(AppActionCopy.capturing, '촬영 중');
+    expect(AppActionCopy.capturingAnnouncement, '촬영 중. 카메라 응답을 기다려 주세요');
     expect(AppActionCopy.recapture, '다시 촬영');
     expect(AppActionCopy.analyze, '분석하기');
     expect(AppActionCopy.analyzing, '분석 중');
@@ -110,6 +113,8 @@ void main() {
     );
     expect(AppColors.primary, const Color(0xFFEE7203));
     expect(AppColors.focus, const Color(0xFFD96500));
+    expect(AppColors.attention, const Color(0xFFB45F06));
+    expect(AppColors.attention, isNot(AppColors.primary));
   });
 
   test('운영형 토큰은 터치 최소 크기와 브랜드 값을 고정한다', () {
@@ -121,6 +126,10 @@ void main() {
     expect(AppDesignTokens.standard.sectionHeaderHeight, 40);
     expect(AppDesignTokens.standard.actionBarHeight, greaterThanOrEqualTo(72));
     expect(AppDesignTokens.standard.compactVisualSize, 32);
+    expect(AppDesignTokens.standard.brandLogoWidth, 105);
+    expect(AppDesignTokens.standard.brandLogoHeight, 30);
+    expect(AppDesignTokens.standard.navigationItemWidth, 112);
+    expect(AppDesignTokens.standard.navigationItemTopInset, 8);
     expect(AppDesignTokens.standard.stepNavigatorLabelWidth, 52);
     expect(AppDesignTokens.standard.previewLabelMinHeight, 36);
     expect(AppDesignTokens.standard.previewSourceMarkerSize, 6);
@@ -128,10 +137,6 @@ void main() {
     expect(AppDesignTokens.standard.inlineProgressSize, 20);
     expect(AppDesignTokens.standard.previewProgressSize, 24);
     expect(AppDesignTokens.standard.pageProgressSize, 28);
-    expect(AppDesignTokens.standard.scanGuideFraction, .64);
-    expect(AppDesignTokens.standard.scanGuideCornerLength, 34);
-    expect(AppDesignTokens.standard.scanGuideCenterMarkSize, 7);
-    expect(AppDesignTokens.standard.scanGuideStrokeWidth, 2.5);
     expect(AppDesignTokens.standard.scanResultPanelFraction, .36);
     expect(AppDesignTokens.standard.scanResultPanelMinWidth, 440);
     expect(AppDesignTokens.standard.scanResultPanelMaxWidth, 520);
@@ -156,14 +161,6 @@ void main() {
     expect(AppDesignTokens.standard.feedbackHold, const Duration(seconds: 3));
     expect(AppMotion.interactionCurve, Curves.easeOutCubic);
     expect(AppComponentColors.light.previewScrim, AppPalette.previewScrim);
-    expect(
-      AppComponentColors.light.previewGuideOutline,
-      AppPalette.previewGuideOutline,
-    );
-    expect(
-      AppComponentColors.light.previewGuideAccent,
-      AppPalette.previewGuideAccent,
-    );
     expect(AppBreakpoints.supportedMinimumWidth, 1280);
     expect(AppBreakpoints.supportedMinimumHeight, 720);
     expect(AppBreakpoints.scanStacked, 960);
@@ -209,6 +206,8 @@ void main() {
       AppDesignTokens.standard.headerHeight,
       AppDesignTokens.standard.sectionHeaderHeight,
       AppDesignTokens.standard.compactVisualSize,
+      AppDesignTokens.standard.navigationItemWidth,
+      AppDesignTokens.standard.navigationItemTopInset,
       AppDesignTokens.standard.previewLabelMinHeight,
       AppDesignTokens.standard.inlineProgressSize,
       AppDesignTokens.standard.previewProgressSize,
@@ -231,10 +230,10 @@ void main() {
       metadataLabelWidth: 96,
       focusRingWidth: 4,
       selectionOutlineWidth: 2.5,
-      scanGuideFraction: .72,
-      scanGuideCornerLength: 38,
-      scanGuideCenterMarkSize: 9,
-      scanGuideStrokeWidth: 3.5,
+      brandLogoWidth: 125,
+      brandLogoHeight: 34,
+      navigationItemWidth: 128,
+      navigationItemTopInset: 12,
       stepNavigatorLabelWidth: 60,
       previewSourceMarkerSize: 8,
       navigationIndicatorThickness: 5,
@@ -246,10 +245,10 @@ void main() {
     expect(midpoint.metadataLabelWidth, 92);
     expect(midpoint.focusRingWidth, 3);
     expect(midpoint.selectionOutlineWidth, 2);
-    expect(midpoint.scanGuideFraction, closeTo(.68, .000001));
-    expect(midpoint.scanGuideCornerLength, 36);
-    expect(midpoint.scanGuideCenterMarkSize, 8);
-    expect(midpoint.scanGuideStrokeWidth, 3);
+    expect(midpoint.brandLogoWidth, 115);
+    expect(midpoint.brandLogoHeight, 32);
+    expect(midpoint.navigationItemWidth, 120);
+    expect(midpoint.navigationItemTopInset, 10);
     expect(midpoint.stepNavigatorLabelWidth, 56);
     expect(midpoint.previewSourceMarkerSize, 7);
     expect(midpoint.navigationIndicatorThickness, 4);

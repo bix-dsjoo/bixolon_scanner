@@ -1,3 +1,4 @@
+import '../presentation/recapture_presentation.dart';
 import '../services/scan_log_repository.dart';
 import '../theme/app_copy.dart';
 
@@ -15,6 +16,41 @@ bool activityItemMatchesQuery(ScanLogItemSummary item, String query) {
   return activityProductLabel(item).toLowerCase().contains(normalized) ||
       (item.className?.toLowerCase().contains(normalized) ?? false) ||
       (item.classId?.toLowerCase().contains(normalized) ?? false);
+}
+
+bool activityLogMatchesQuery(ScanLogSummary log, String query) {
+  final normalized = query.trim().toLowerCase();
+  if (normalized.isEmpty) return true;
+  if (log.scanId.toLowerCase().contains(normalized) ||
+      log.reasonCodes.any(
+        (reason) => reason.toLowerCase().contains(normalized),
+      ) ||
+      log.items.any((item) => activityItemMatchesQuery(item, normalized))) {
+    return true;
+  }
+  if (!log.isRecapture) return false;
+  final presentation = presentRecaptureReasons(
+    reasonCodes: log.reasonCodes,
+    inputMode: log.inputMode,
+  );
+  return presentation.title.toLowerCase().contains(normalized) ||
+      presentation.detail.toLowerCase().contains(normalized);
+}
+
+String activityLogContentLabel(ScanLogSummary log, {required String query}) {
+  if (!log.isRecapture) {
+    return summarizeActivityProducts(log.items, query: query);
+  }
+  return presentRecaptureReasons(
+    reasonCodes: log.reasonCodes,
+    inputMode: log.inputMode,
+  ).title;
+}
+
+String activityLogResultLabel(ScanLogSummary log) {
+  if (log.isRecapture) return '재촬영';
+  final modifiedCount = log.items.where((item) => item.userModified).length;
+  return modifiedCount > 0 ? '$modifiedCount개 수정' : '자동 확정';
 }
 
 String summarizeActivityProducts(

@@ -30,7 +30,9 @@ class WindowsCameraGateway implements CameraGateway {
 
   @override
   Future<void> initialize() async {
-    await _controller?.dispose();
+    final previous = _controller;
+    _controller = null;
+    await previous?.dispose();
     final cameras = await availableCameras();
     if (cameras.isEmpty) {
       throw CameraException('NO_CAMERA', '연결된 카메라가 없습니다.');
@@ -40,8 +42,13 @@ class WindowsCameraGateway implements CameraGateway {
       ResolutionPreset.max,
       enableAudio: false,
     );
-    await controller.initialize();
-    _controller = controller;
+    try {
+      await controller.initialize();
+      _controller = controller;
+    } catch (_) {
+      await controller.dispose();
+      rethrow;
+    }
   }
 
   @override

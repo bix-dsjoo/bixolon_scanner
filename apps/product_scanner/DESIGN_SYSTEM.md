@@ -6,7 +6,7 @@
 
 - **한 화면, 한 핵심 행동:** 현재 단계에서 가장 중요한 행동만 Primary로 표시합니다.
 - **검수 장비다운 정밀함:** 표면과 경계는 중립적으로 유지하고 선택, 포커스, 핵심 행동에만 BIXOLON Orange를 사용합니다.
-- **의미 있는 브랜드 표현:** BIXOLON 로고의 `X`에서 파생한 대각선은 프리뷰의 촬영 가이드에만 사용합니다. 헤더나 패널에 장식용 대각선을 반복하지 않습니다.
+- **의미 있는 브랜드 표현:** BIXOLON Orange는 핵심 행동과 선택·포커스에만 사용하고, 카메라 프리뷰 위에는 장식용 선이나 표식을 추가하지 않습니다.
 - **색상에 의존하지 않는 상태:** 모든 상태는 색상과 함께 아이콘 및 한국어 문구로 표시합니다.
 - **오류와 재촬영의 분리:** 시스템 장애인 `ERROR`와 모델 판정인 `RECAPTURE`를 같은 시각 또는 행동으로 표현하지 않습니다.
 
@@ -25,7 +25,20 @@
 | [고객관리](https://tossplace.com/product/crm) | 필요한 고객 맥락은 결제 순간에 보여주고 설정·분석은 별도 깊이로 분리 | 상품 결과를 먼저 보여주고 Scan ID·모델 버전은 접힌 진단 정보로 이동 |
 | [프랜차이즈](https://tossplace.com/product/franchise) | 대시보드에서 전체 현황을 먼저 파악하고 매장·상품 단위로 좁힘 | Activity에서 결과 건수와 상품을 먼저, 검색·입력원·기간으로 점진적으로 좁힘 |
 
-이 프로젝트의 고유한 시각 요소는 BIXOLON `X`에서 파생한 프리뷰 촬영 가이드 하나로 제한합니다. 나머지는 토스플레이스처럼 조용한 표면, 명확한 선택, 직접적인 문구로 구성합니다.
+이 프로젝트의 고유한 시각 요소는 BIXOLON Orange 핵심 행동과 정밀한 검수 경계에 집중합니다. 카메라 프리뷰는 상품 재배치를 방해하지 않도록 흰색 선·중앙 X·대각선 가이드 없이 입력 자체만 보여줍니다.
+
+## 사용자 시나리오 계약
+
+같은 화면을 정상 경로만으로 검증하지 않습니다. 아래 사용자가 각자 예측할 수 있고 복구 가능한 흐름을 가져야 완료된 UX로 봅니다.
+
+| 사용자 | 대표 행동 | 완료 조건 |
+| --- | --- | --- |
+| 처음 사용하는 작업자 | 안내 문구와 Primary만 따라 촬영·재촬영·저장 | 버튼을 눌렀을 때 이름 그대로의 결과가 발생하고 다음 행동이 한 개로 보임 |
+| 세부사항을 엄격히 확인하는 작업자 | 모든 reason code, 입력원, 오류 문구를 비교 | 원인·복구 동사·입력원 라벨이 일치하고 `ERROR`와 `RECAPTURE`가 섞이지 않음 |
+| 중복 입력으로 오류를 유도하는 작업자 | 촬영·파일 선택·새로고침을 연타하고 처리 중 단축키 실행 | 비동기 작업은 한 번만 실행되고 완료 전 다른 입력이 상태를 덮어쓰지 않음 |
+| 키보드·보조기기 사용자 | Tab·Enter·Space·단축키와 큰 글자로 전체 흐름 진행 | 포커스가 다음 실제 행동으로 이어지고 진행 상태는 단일 live region으로 전달됨 |
+
+카메라 `RECAPTURE`는 `촬영 이미지 → 촬영 화면으로 돌아가기 → 라이브 카메라 → 촬영하기 → 촬영 중 → 분석 중` 순서를 지킵니다. `촬영 화면으로 돌아가기`는 세션과 이전 판정만 비우며 촬영 API를 호출하지 않습니다. 실제 `촬영하기`를 실행한 뒤에는 `capturing`을 busy 상태로 사용해 중복 촬영·이미지 선택·세션 초기화를 막습니다.
 
 ## 토큰
 
@@ -33,7 +46,7 @@
 
 1. **원시 토큰 `AppPalette`:** 브랜드·중립·상태색의 고정값
 2. **의미 토큰 `AppSemanticColors`:** `brand`, `surface`, `success`, `error`처럼 화면 맥락과 무관한 역할
-3. **컴포넌트 토큰 `AppComponentColors`:** `selectionSurface`, `selectionOutline`, `actionBarSurface`, `toastSurface`, `focusRing`, `previewScrim`, `previewGuideOutline`, `previewGuideAccent`처럼 상호작용·표면 역할
+3. **컴포넌트 토큰 `AppComponentColors`:** `selectionSurface`, `selectionOutline`, `actionBarSurface`, `toastSurface`, `focusRing`, `previewScrim`처럼 상호작용·표면 역할
 
 화면 코드는 가능한 한 의미·컴포넌트 토큰을 사용합니다. 원시 토큰을 직접 사용해 새로운 선택색이나 피드백색을 만들지 않습니다. 타이포그래피는 `AppTypography`, 간격은 `AppSpacing`, 높이·반경·모션은 `AppDesignTokens`, 핵심 행동 문구는 `AppActionCopy`, 프리뷰 출처 문구는 `AppPreviewCopy`를 단일 구현 기준으로 사용합니다.
 
@@ -41,13 +54,13 @@
 
 - 브랜드 원본값은 `BIXOLON_Brand_Guidelines_English_Apr26_V1.pdf`의 Orange `#EE7203`, Orange Tint `#F28E00·#F7AA4E`, 승인 중립색 `#000000·#3F3D3E·#878786·#AEAEAE·#F5F5F5`를 기준으로 확인합니다.
 - UI 본문 Ink `#171717`과 Selection Surface `#FFF4E9`는 앱 접근성과 선택 피드백을 위한 파생 토큰이며 공식 로고나 브랜드 텍스트에 적용하지 않습니다.
-- 공식 로고는 앱에서 재제작하지 않으며, `X` 기반 대각선은 원본 가이드의 Visual Concept을 스캔 가이드로 제한해 번역합니다.
+- 공식 로고는 앱에서 재제작하지 않으며, `X` 기반 대각선을 카메라 프리뷰 오버레이로 사용하지 않습니다.
 
 ### 색상
 
 | 역할 | 값 | 사용 |
 | --- | --- | --- |
-| Brand | `#EE7203` | Primary CTA, 선택선, 촬영 가이드 |
+| Brand | `#EE7203` | Primary CTA, 선택선, 포커스 |
 | On Brand | `#171717` | Brand 배경 위 텍스트와 아이콘 |
 | Focus Ring | `#D96500` | 밝은 Surface에서 3:1 이상을 유지하는 키보드 포커스 경계 |
 | Selection Surface | `#FFF4E9` | 선택 행과 선택 옵션에만 사용하는 파생 배경 |
@@ -60,8 +73,6 @@
 | Success | `#16865A` | 완료, 승인, 저장됨 |
 | Attention | `#B45F06` | 확인 필요, 재촬영 |
 | Error | `#B42318` | 분석 서버, 저장, 입력 오류 |
-| Preview Guide Outline | `16% White` | 어두운 프리뷰 위 촬영 범위와 중앙 표식 |
-| Preview Guide Accent | `90% Brand` | BIXOLON 대각선 코너 가이드 |
 
 Brand 배경에는 흰색 텍스트를 사용하지 않습니다. `#EE7203`과 흰색의 대비는 일반 본문 기준을 충족하지 않으며 Ink와의 대비는 4.5:1 이상입니다. Brand Orange는 흰색에서 2.98:1이므로 단독 포커스 경계에는 사용하지 않고, 포커스 역할은 파생 Deep Orange `#D96500`으로 분리해 Surface·Workspace·Brand Soft에서 3:1 이상을 유지합니다.
 
@@ -88,16 +99,15 @@ Pretendard Variable을 기본으로 사용하고 미지원 환경에서는 `Sego
 - 공통 컴포넌트와 화면의 패딩·요소 간 간격은 숫자를 직접 복제하지 않고 `AppSpacing.x1/x2/x3/x4/x6/x8`에 연결합니다. 아이콘의 광학 크기와 모델 좌표는 간격 토큰 대상에서 제외합니다.
 - 최소 조작 영역은 `44px`, 주요 행동은 `48px`, 목록 행은 `60px`, 상단·패널 헤더는 `60px`, 섹션·표 헤더는 `40px`, 고정 액션 바는 최소 `72px`입니다.
 - 운영 레이아웃 수치는 `AppDesignTokens`와 `AppBreakpoints`에서 관리합니다. 스캔 결과 패널은 폭 `36%`, 최소 `440px`, 최대 `520px`, 선택 객체 검수 영역은 최대 높이이자 다수 객체에서 우선 확보할 높이 `340px`, Activity 검색창은 `320px`이며 스캔 적층 전환점은 `960px`입니다. 확인 대화상자 `dialogWidth 400px`, 빈 상태 `emptyStateMaxWidth 360px`, 진단 레이블 `metadataLabelWidth 88px`도 화면에서 숫자를 복제하지 않습니다.
-- 스캔 가이드는 프리뷰의 `64%` 범위, 대각선 코너 `34px`, 중앙 표식 `7px`, Brand 선 `2.5px`를 `AppDesignTokens`에서 관리합니다. `34px`·`7px`는 4px 간격을 만드는 레이아웃 값이 아니라 BIXOLON 시그니처의 광학 치수이므로 리듬 예외이며, 화면이나 painter에서 원시값을 다시 만들지 않습니다.
-- 비조작 상태 요소는 `compactVisualSize 32px`, 단계 탐색 중앙 레이블은 `stepNavigatorLabelWidth 52px`, 프리뷰 출처 칩은 최소 `previewLabelMinHeight 36px`와 `previewSourceMarkerSize 6px`, 상단 탐색의 현재 위치 표시는 `navigationIndicatorThickness 3px`를 사용합니다. 진행 표시는 문맥에 따라 `inline 20px`, `preview 24px`, `page 28px`로 구분하며 모두 `AppDesignTokens`에서 관리합니다. 콘텐츠가 커지면 상태 배지와 출처 칩은 고정 높이에 가두지 않고 최소 높이 위로 확장합니다.
+- 헤더는 `60px`, 공식 SVG 로고는 `105×30px`, 텍스트 탭은 `112×52px`와 상단 여백 `8px`, Orange 기준선·선택 윤곽은 `navigationIndicatorThickness 3px`를 사용합니다. 비조작 상태 요소는 `compactVisualSize 32px`, 단계 탐색 중앙 레이블은 `stepNavigatorLabelWidth 52px`, 프리뷰 출처 칩은 최소 `previewLabelMinHeight 36px`와 `previewSourceMarkerSize 6px`를 사용합니다. 진행 표시는 문맥에 따라 `inline 20px`, `preview 24px`, `page 28px`로 구분하며 모두 `AppDesignTokens`에서 관리합니다. 콘텐츠가 커지면 상태 배지와 출처 칩은 고정 높이에 가두지 않고 최소 높이 위로 확장합니다.
 - Windows의 적응형 compact 밀도로 크기가 줄지 않도록 `VisualDensity.standard`와 padded tap target을 명시합니다.
 - 컨트롤 반경은 `8px`, 패널과 다이얼로그는 `12px`, 상태 배지는 `pillRadius`로 완전한 pill 형태를 유지합니다. 키보드 포커스는 `focusRingWidth 2px`, 선택 표면은 `selectionOutlineWidth 1.5px`를 Theme·필터·드롭다운·공통 선택 표면이 공유합니다. 선택 불가 콘텐츠는 `disabledContentOpacity 0.56`을 사용하고 배경·Semantics·pointer·keyboard 행동도 함께 비활성화합니다.
 - 짧은 상태 전환은 `160ms`, 패널 전환은 `240ms`, 완료 피드백 유지 시간은 `3초`를 사용합니다. 상호작용 전환 곡선은 `AppMotion.interactionCurve`의 `easeOutCubic` 하나로 통일합니다. 전환 애니메이션은 시스템의 reduced motion 설정을 존중해 즉시 완료하고, 자동 스크롤은 점프하며, 불확정 진행 표시는 회전 대신 정적인 대기 아이콘으로 바뀝니다.
 
 ## 공통 컴포넌트
 
-- **Brand mark:** 공식 로고를 재제작하지 않습니다. Orange 포커스 아이콘과 `BIXOLON Scanner` 앱명을 사용합니다. 같은 포커스 심볼을 Windows 제목 표시줄·작업 표시줄·실행 파일 아이콘에도 적용해 Flutter 기본 로고가 제품 표면에 남지 않도록 합니다. 네이티브 ICO는 `tool/generate_windows_icon.py`로 재생성하며 Brand Orange·Ink 역할을 그대로 사용합니다.
-- **Navigation item:** 아이콘과 한국어 레이블, Orange 하단선으로 현재 작업 영역을 표시합니다.
+- **Brand mark:** 화면 헤더는 제공된 BIXOLON 공식 SVG 워드마크만 `105×30px`로 표시하고 임시 포커스 아이콘·인접 제품명을 반복하지 않습니다. Windows 제목은 `BIXOLON Scanner`를 유지하고 실행 파일 아이콘은 `tool/generate_windows_icon.py`로 관리합니다.
+- **Navigation item:** `스캔·활동`은 아이콘 없는 텍스트 탭입니다. Workspace 헤더 위에 선택 탭만 Surface 면·Orange 상·좌·우 윤곽·Bold로 올리고, 비선택은 Muted Semibold로 낮춥니다. 포커스는 선택과 관계없이 Deep Orange 윤곽을 우선합니다.
 - **Status badge:** 아이콘과 경계에는 상태색, 문구에는 Ink를 사용합니다. 장식이나 카테고리 분류에는 사용하지 않습니다.
 - **Status priority:** 카메라 미연결은 스캔 화면에서 카메라 촬영을 막을 때만 Attention으로 표시합니다. 이미지 검수 중에는 `이미지 입력 · 카메라 미연결`, Activity에서는 `카메라 미연결`의 중립 배지로 낮추어 현재 작업과 경고가 경쟁하지 않게 합니다.
 - **Panel header:** `headerHeight`의 최소 `60px` 안에 제목, 선택적 설명, 한정된 보조 행동만 포함합니다.
@@ -109,7 +119,7 @@ Pretendard Variable을 기본으로 사용하고 미지원 환경에서는 `Sego
 - **Icon action:** 새로고침·이전/다음·검색어 지우기·검색 닫기 같은 아이콘 단독 행동은 모두 48px 고정 조작면과 Tooltip을 사용하고 평상시 별도 표면을 추가하지 않습니다. 키보드 포커스에서만 사방 2px Focus Ring을 표시하며, 진행 중에는 같은 위치의 스피너·구체적인 live region·disabled 상태로 전환합니다.
 - **Button focus:** Filled Primary는 Orange 면과 4.5:1 이상 대비되는 Ink 2px 경계를, Outlined·Text 행동은 Focus Ring 2px 경계를 사용합니다. 포커스는 면색을 추가하지 않아 선택·hover·pressed 상태와 혼동하지 않으며 Theme의 상태 토큰으로 모든 화면에 동일하게 적용합니다.
 - **Preview source label:** 프리뷰 좌상단 칩은 현재 단계를 반복하지 않고 `라이브 카메라`, `촬영 이미지`, `선택한 이미지`, `카메라 미리보기` 중 실제 입력 출처만 표시합니다. `AppPreviewCopy`를 시각 문구와 `입력 미리보기, …` Semantics의 단일 소스로 사용합니다.
-- **Scan guide:** `AppScanGuide`는 실제 카메라 프리뷰 또는 입력 이미지가 있고 정렬·분석·재촬영에 도움이 되는 Scan 상태에서만 촬영 범위와 BIXOLON 대각선 코너를 표시합니다. 비율·광학 치수·색 역할은 ThemeExtension을 소비하고 장식이므로 포인터와 Semantics에서 제외합니다. 카메라 확인 중·미연결·복구 필요, `ERROR`, 결과 bounding box가 나타난 상태에서는 제거하며 Activity·선택 행·CTA에는 사용하지 않습니다. 모델이 촬영 구도를 고치라고 판정한 `RECAPTURE`에는 유지해 시스템 장애와 시각적으로도 분리합니다.
+- **Camera preview:** 라이브 카메라와 촬영·선택 이미지 위에 흰색 테두리, 중앙 X, BIXOLON 대각선 가이드를 표시하지 않습니다. 촬영·분석 진행 피드백과 검출 bounding box만 기능적 오버레이로 허용합니다.
 - **Selectable surface:** 선택되면 전체 면에 Brand Soft와 사방 1.5px Brand 외곽선을 표시합니다. 확정 후보처럼 값이 선택된 경우에는 radio/check, 객체·Activity처럼 현재 상세 대상을 가리키는 경우에는 화살표를 사용합니다. 왼쪽 띠는 사용하지 않습니다. pointer `tapDown`과 키보드 `ActivateIntent`를 구분해 동적 단계 전환의 포커스 인계는 Enter·Space 사용 시에만 실행합니다.
 - **Candidate row:** Top-3와 전체 상품 검색 결과를 같은 60px 선택 행으로 표시합니다. 상품명을 우선하고 class ID와 confidence는 오른쪽 보조 정보로 낮춥니다. 현재 항목 번호와 선택 후 다음 항목으로 이동한다는 결과를 검수 영역에서 먼저 안내합니다. 검색 결과도 전체 면 hover·사방 포커스 링·단일 Semantics를 공유합니다. 레이블은 상품명·신뢰도만 읽고 버튼 역할과 tap 액션이 행동을 담당하며, Top-3·검색 결과는 보조기기에 상호 배타적인 단일 선택 그룹으로 노출합니다.
 - **Step navigator:** 선택된 다중 객체가 있을 때만 `이전 | 현재/전체 | 다음`을 하나의 컨트롤로 묶어 표시합니다. 외곽선이 내부 조작 영역을 줄이지 않게 이전·다음 각각 정확히 48px를 유지하고 독립적인 포커스 링을 제공합니다. 항목이 하나이거나 선택이 해제된 완료 상태에서는 숨겨 최종 확정 행동과 경쟁하지 않게 합니다.
@@ -147,7 +157,7 @@ Pretendard Variable을 기본으로 사용하고 미지원 환경에서는 `Sego
 - 사용자가 누른 행동과 확인 대화상자의 질문·확정 버튼은 같은 대상과 동사를 사용합니다. `AppActionCopy`의 `촬영하기`, `다시 촬영`, `분석하기`, `분석 중`, `다시 분석`, `다시 연결`, `연결 확인 중`, `새로고침`, `모두 초기화`, `저장 중`, `다시 저장`을 화면별로 변형하지 않습니다.
 - 이미지 입력은 `다른 이미지 선택 → 다른 이미지를 선택할까요? → 다른 이미지 선택`, 카메라 입력은 `다시 촬영 → 다시 촬영할까요? → 다시 촬영`의 흐름을 유지합니다.
 - 사용자 화면에서는 구현 용어인 `Worker` 대신 `분석 서버`를 사용합니다. `Scan ID`, 모델명, reason code, 상태 enum처럼 식별에 필요한 기술 용어만 영어로 유지합니다.
-- 앱과 Windows 창의 제품명은 `BIXOLON Scanner`로 통일합니다.
+- 앱과 Windows 창의 제품명은 `BIXOLON Scanner`로 유지하되 화면 헤더는 BIXOLON 워드마크만 표시합니다.
 - 질문은 결과를 먼저 알 수 있는 짧은 능동형 문장으로 쓰고, 되돌릴 수 없는 영향은 본문 한 문장으로 분리합니다.
 
 ## 화면 계약
@@ -172,7 +182,8 @@ Pretendard Variable을 기본으로 사용하고 미지원 환경에서는 `Sego
 | --- | --- | --- |
 | 카메라 초기화·재연결 진행 | `카메라 확인 중` · 연결 상태 확인 | 비활성 `연결 확인 중`; 이미지 선택은 계속 가능 |
 | 카메라 미연결 | `입력 준비` · 카메라 연결 또는 이미지 파일 선택 | `다시 연결` |
-| 카메라 연결 완료 | `촬영 준비` · 가이드 안에 상품 배치 | `촬영하기`; `이미지 선택`은 Secondary |
+| 카메라 연결 완료 | `촬영 준비` · 화면 안에 상품 배치 | `촬영하기`; `이미지 선택`은 Secondary |
+| 카메라 촬영 실행 | `촬영 중` · 카메라 응답 대기 | 비활성 진행 `촬영 중` 하나만 표시; 중복 촬영과 이미지 선택 차단 |
 | 이미지 선택 완료 | `분석 준비` · 이미지에서 상품을 찾을 준비 완료 | `분석하기` |
 | 분석 실행 | `분석 중` · 현재 이미지 처리 | 진행 `분석 중` 하나만 표시; 새 입력과 최종 확정은 숨김 |
 
@@ -184,16 +195,16 @@ Pretendard Variable을 기본으로 사용하고 미지원 환경에서는 `Sego
 
 | 상태·원인 | 시각·문구 | Primary 복구 행동 |
 | --- | --- | --- |
-| `ERROR` · 손상/미지원/과대 이미지 | Error 색상, 손상 이미지 아이콘, 구체적인 입력 조건 | 이미지 입력은 `다른 이미지 선택`, 카메라 입력은 `다시 촬영` |
+| `ERROR` · 손상/미지원/과대 이미지 | Error 색상, 손상 이미지 아이콘, 구체적인 입력 조건 | 이미지 입력은 `다른 이미지 선택`, 카메라 입력은 `촬영 화면으로 돌아가기` |
 | `ERROR` · 연결/시간 초과/서버 응답 | Error 색상, 연결 끊김 아이콘, 서버 또는 처리 원인 | 현재 이미지를 유지한 `다시 분석` |
-| `RECAPTURE` · 모델 촬영 부적합 판정 | Attention 색상, 촬영 가이드 아이콘, 구도·조명 등 교정 방법 | 입력 방식에 맞는 `다른 이미지 선택` 또는 `다시 촬영` |
+| `RECAPTURE` · 모델 촬영 부적합 판정 | Attention 색상, 촬영 가이드 아이콘, 구도·조명 등 교정 방법 | 이미지 입력은 `다른 이미지 선택`, 카메라 입력은 `촬영 화면으로 돌아가기` |
 | Flutter 카메라 초기화·재연결 실패 | Attention 색상, `카메라 확인 필요`, `카메라를 사용할 수 없어요`와 연결 확인 안내 | `다시 연결` |
 | Flutter 카메라 촬영 호출 실패 | Attention 색상, `카메라 확인 필요`, `촬영하지 못했어요`와 응답·복구 안내 | `다시 연결` |
 | Flutter 로컬 저장 실패 | Error 색상, `저장하지 못했어요. 확인 결과는 유지됐어요.` 단일 live region | 보존된 동일 결과의 `다시 저장` |
 
-공개 상태는 계속 `ERROR` 또는 `RECAPTURE`이며 Flutter 내부의 `ScannerErrorRecovery`만 다음 행동을 결정합니다. 입력 오류를 `RECAPTURE`로 바꾸거나 연결 오류에 재촬영을 요구하지 않습니다. 로컬 저장 실패도 Worker 상태를 바꾸지 않고 `reviewing`과 확정 결과·원본 입력을 유지합니다. 버튼과 복구 본문은 `다시 시도`처럼 모호한 표현 대신 실제 실행인 `다시 분석`, `새로고침`, `다른 이미지 선택`, `다시 촬영`, `다시 저장`을 같은 동사로 사용합니다.
+공개 상태는 계속 `ERROR` 또는 `RECAPTURE`이며 Flutter 내부의 `ScannerErrorRecovery`만 다음 행동을 결정합니다. 입력 오류를 `RECAPTURE`로 바꾸거나 연결 오류에 재촬영을 요구하지 않습니다. 로컬 저장 실패도 Worker 상태를 바꾸지 않고 `reviewing`과 확정 결과·원본 입력을 유지합니다. 버튼과 복구 본문은 `다시 시도`처럼 모호한 표현 대신 실제 실행인 `다시 분석`, `새로고침`, `다른 이미지 선택`, `촬영 화면으로 돌아가기`, `촬영하기`, `다시 저장`을 사용합니다.
 
-카메라 초기화·재연결·촬영 호출 실패는 Worker 응답이 아니므로 공개 `ERROR` 또는 `RECAPTURE`로 변환하지 않습니다. 내부 `CameraIssueType`은 장치 사용 불가 `unavailable`과 촬영 호출 실패 `captureFailed`를 구분해 사용자가 실제로 수행한 단계와 제목을 일치시킵니다. 최초 촬영 실패는 `cameraMessage`만 설정하고 `processState: ready`·응답 `null`을 유지합니다. 기존 `RECAPTURE` 또는 `ERROR`에서 다시 촬영하다 실패한 경우에는 이전 응답을 내부에 보존하되, 상단 배지·프리뷰·헤더·본문·Action bar 모두 현재 카메라 복구 상태가 우선합니다. 활성 Primary는 `다시 연결` 하나로 교체합니다. 재연결 Future가 진행되는 동안에는 `isCameraCheckActive`가 이전 판정보다 우선하고 비활성 `연결 확인 중`으로 중복 실행을 막으며, 성공 후 메시지를 지워 이전 판정과 재촬영 행동으로 안전하게 돌아갑니다.
+카메라 초기화·재연결·촬영 호출 실패는 Worker 응답이 아니므로 공개 `ERROR` 또는 `RECAPTURE`로 변환하지 않습니다. 내부 `CameraIssueType`은 장치 사용 불가 `unavailable`과 촬영 호출 실패 `captureFailed`를 구분해 사용자가 실제로 수행한 단계와 제목을 일치시킵니다. 촬영 실패는 `processState: ready`·응답 `null`을 유지하고 상단 배지·프리뷰·헤더·본문·Action bar를 `카메라 확인 필요`와 단일 `다시 연결`로 전환합니다. 재연결 Future가 진행되는 동안에는 `isCameraCheckActive`와 비활성 `연결 확인 중`으로 중복 실행을 막으며, 성공하면 라이브 카메라의 `촬영 준비`·`촬영하기`로 돌아갑니다.
 
 ### 활동
 
@@ -232,7 +243,7 @@ Pretendard Variable을 기본으로 사용하고 미지원 환경에서는 `Sego
 - 포커스는 Focus Ring `#D96500` 2px 경계 또는 동등한 가시적 표시로 확인할 수 있어야 합니다.
 - 선택 표면의 키보드 포커스는 선택 여부와 관계없이 사방 2px Focus Ring으로 표시합니다. 선택의 Brand Orange보다 약간 깊은 색으로 현재 키보드 위치와 선택값을 구분합니다.
 - 마우스가 선택 가능한 전체 면에 진입하면 `rowHover`로 면을 전환하고 클릭 커서를 표시합니다. 이미 선택된 면은 hover가 덮지 않습니다.
-- 상단 탐색은 `스캔 → 활동` 순서로 Tab 이동하며 Enter·Space로 실행합니다. 선택 하단선과 키보드 포커스 사방선은 다른 레이어로 구분합니다.
+- 상단 탐색은 `스캔 → 활동` 순서로 Tab 이동하며 Enter·Space로 실행합니다. Orange 돌출 탭은 `selected`, Deep Orange 전체 윤곽은 `focused`로 구분하고 둘 다 Semantics에 명시합니다.
 - Activity의 Tab 순서는 `검색 → 검색어 지우기(입력 중) → 새로고침 → 입력원 필터 → 기간 필터 → 모두 초기화(활성 시) → 정렬 → 기록 목록`의 시각적 읽기 순서를 따릅니다. `AppFilterChip`은 포커스 시 사방 2px `focusRing`, 선택 시 1.5px `selectionOutline`을 사용하고 Space로 선택합니다. 정렬 드롭다운도 `AppDropdownControl`의 사방 2px `focusRing`으로 현재 위치를 표시합니다.
 - Activity 필터는 화면의 그룹 제목에만 의존하지 않고 각 칩을 `입력원, 전체`, `기간, 전체`처럼 `그룹, 값`으로 읽습니다. 각 칩은 중복 없는 단일 Semantics 노드에서 `button`·`selected`·`focused`·상호 배타 그룹·`tap`을 함께 제공합니다.
 - 검색이 비어 있을 때의 `/` 키캡은 `검색 단축키: /`로 읽히지만 Tab 정지점은 만들지 않습니다. Activity 도구는 명시적 순서 그룹을 사용해 검색 필드가 첫 Tab 위치를 유지합니다.
@@ -259,7 +270,7 @@ Pretendard Variable을 기본으로 사용하고 미지원 환경에서는 `Sego
 
 검증 순서는 `준비 → 분석 중 → UNKNOWN 선택 → 최종 확정 → 완료 → Activity 검색·필터·상세 → RECAPTURE → ERROR`입니다. 매 사이클에서 발견한 문제는 먼저 토큰 또는 공통 컴포넌트에서 해결하고 화면별 예외는 마지막 수단으로 사용합니다.
 
-`1440×900 UNKNOWN·선택 후보·단계 탐색 포커스·완료·상품 검색·상품 검색 빈 상태·상품 검색 포커스·Activity 목록·Activity 완료 토스트·Activity 검색 지우기 포커스·Activity 진단 포커스·Activity 진단 상세·Activity 새로고침 포커스·Activity 필터 포커스·Activity 정렬 포커스·Activity 오류`, `1280×720 카메라 확인 중·카메라 미연결 준비·카메라 사용 불가·카메라 촬영 준비·카메라 Secondary 포커스·카메라 Primary 포커스·카메라 촬영 실패·재촬영 중 촬영 실패·재연결 진행·이미지 분석 준비·분석 중·APPROVED·저장 중·저장 중 검수 잠금·저장 실패 복구·완료 포커스·RECAPTURE·재분석형 ERROR·입력 교체형 ERROR·Activity 최초 로딩·Activity 최초 로드 오류·Activity 빈 상태·Activity 결과 없음·새 저장 동기화·새 저장 동기화 실패·상단 탐색 포커스·이미지 폐기 취소 포커스·이미지 폐기 확정 포커스·150% 재촬영 확인·8개 상품 자동 스크롤·밀집 프리뷰·20개 Activity 정렬·Activity 새로고침 중·비차단 새로고침 오류`, `1280×720 125%·150% 큰 글자의 UNKNOWN·Activity, 150% 카메라 촬영 준비와 125% 검색·초기화 상태`, 선택 표면의 Resting·Hover·Selected·Focused·Disabled 상태는 Pretendard와 Material Icons를 실제로 로드한 60개 골든 이미지로 검증합니다. 골든은 단순 업데이트하지 않고 디자이너·PM·현장 사용자 관점의 시각 비평 후에만 갱신합니다.
+`1440×900 UNKNOWN·선택 후보·단계 탐색 포커스·완료·상품 검색·상품 검색 빈 상태·상품 검색 포커스·Activity 목록·Activity 완료 토스트·Activity 검색 지우기 포커스·Activity 진단 포커스·Activity 진단 상세·Activity 새로고침 포커스·Activity 필터 포커스·Activity 정렬 포커스·Activity 오류`, `1280×720 카메라 확인 중·카메라 미연결 준비·카메라 사용 불가·카메라 촬영 준비·카메라 Secondary 포커스·카메라 Primary 포커스·카메라 촬영 실패·카메라 RECAPTURE·재촬영 라이브 복귀 포커스·촬영 중·재연결 진행·이미지 분석 준비·분석 중·APPROVED·저장 중·저장 중 검수 잠금·저장 실패 복구·완료 포커스·RECAPTURE·재분석형 ERROR·입력 교체형 ERROR·Activity 최초 로딩·Activity 최초 로드 오류·Activity 빈 상태·Activity 결과 없음·새 저장 동기화·새 저장 동기화 실패·상단 탐색 포커스·이미지 폐기 취소 포커스·이미지 폐기 확정 포커스·150% 재촬영 확인·8개 상품 자동 스크롤·밀집 프리뷰·20개 Activity 정렬·Activity 새로고침 중·비차단 새로고침 오류`, `1280×720 125%·150% 큰 글자의 UNKNOWN·Activity, 150% 카메라 촬영 준비와 125% 검색·초기화 상태`, 선택 표면의 Resting·Hover·Selected·Focused·Disabled 상태는 Pretendard와 Material Icons를 실제로 로드한 73개 골든 이미지로 검증합니다. 골든은 단순 업데이트하지 않고 디자이너·PM·현장 사용자 관점의 시각 비평 후에만 갱신합니다.
 
 ### 개선 기록
 
@@ -333,7 +344,7 @@ Pretendard Variable을 기본으로 사용하고 미지원 환경에서는 `Sego
 | 21 | 44px 외곽 컨테이너에 1px 경계를 더하면 내부 IconButton의 실제 조작 영역이 42px로 축소 | 외곽 높이를 48px action 토큰에 연결하고 두 버튼의 실제 렌더 높이가 각각 44px 이상인지 위젯 테스트로 검증 |
 | 22 | 저장 기록이 0건인데도 검색·필터·정렬이 모두 보여 작동하지 않는 도구가 빈 상태의 다음 행동보다 먼저 노출 | 데이터가 있을 때만 Activity 도구를 공개하고 빈 상태에는 `스캔 화면으로 이동` 단일 Primary를 제공 |
 | 22 | 최초 Activity 로드 오류에서 화면 제목이 사라지고 유일한 복구 행동도 Secondary로 표시 | `활동 기록` 제목을 유지하고 `새로고침`을 단일 Primary로 격상하되 기존 기록이 있는 비차단 오류는 기존 방식 유지 |
-| 22 | 검색 필드의 일반 키보드 아이콘이 실제 `/` 단축키를 설명하지 못하고 150%에서 긴 placeholder가 잘림 | 짧은 `상품명 또는 Scan ID` 문구와 24px `/` 키캡을 사용하고 44px suffix 슬롯·Semantics·명시적 첫 Tab 순서를 검증 |
+| 22 | 검색 필드의 일반 키보드 아이콘이 실제 `/` 단축키를 설명하지 못하고 150%에서 placeholder가 잘릴 수 있음 | `상품명, Scan ID 또는 사유 코드` 안내와 24px `/` 키캡을 사용하고 44px suffix 슬롯·Semantics·명시적 첫 Tab 순서를 125%·150% 레이아웃에서 검증 |
 | 23 | 카메라 초기화·미연결·이미지 준비는 골든이 있지만 실제 기본 경로인 카메라 연결 성공의 `촬영 준비` 화면 증거가 없음 | 결정적 라이브 프리뷰 픽스처를 추가하고 상태 배지·프리뷰·패널·단일 `촬영하기` Primary를 100%·150% 골든과 위젯 테스트로 검증 |
 | 24 | 카메라가 연결된 뒤 촬영 호출만 실패하면 `cameraMessage`는 생기지만 연결 성공 배지·`촬영 준비`·`촬영하기`가 그대로 남아 실패와 복구 행동이 보이지 않음 | 상단 배지·프리뷰·헤더·본문을 `카메라 확인 필요` 복구 상태로 일치시키고 활성 Primary를 `다시 연결` 하나로 교체 |
 | 24 | 로컬 카메라 실패를 Worker `ERROR` 또는 모델 `RECAPTURE`처럼 표현하면 공개 상태 계약과 원인 도메인이 섞임 | `processState: ready`·응답 `null`을 유지하는 Flutter 내부 복구 상태로 분리하고 촬영 실패·재연결 성공 회귀 테스트 추가 |
@@ -552,6 +563,17 @@ Pretendard Variable을 기본으로 사용하고 미지원 환경에서는 `Sego
 | 103 | 상품 검색 TextField에 포커스가 있으면 전역 단축키 보호가 `Esc`까지 차단할 수 있고, 검색을 닫은 뒤 사라진 입력에 포커스가 남아 키보드 작업 흐름이 끊김 | 검색 범위가 `Esc`를 직접 처리하고 현재 상품 선택은 그대로 보존한 뒤 `다른 상품 검색/상품 변경` 진입 행동으로 포커스를 복원. 뒤로 아이콘의 Enter·Space도 같은 복귀 계약을 사용하고 pointer 취소는 포커스를 강제로 이동하지 않음 |
 | 103 | 이미 확정된 동일 상품을 검색 결과에서 다시 선택하면 실제 상품 변경이 없는데도 `confirmation_method`가 `SEARCH_SELECTED` 또는 `USER_CORRECTED`로 덮여 Activity가 수정으로 집계될 수 있음 | class ID가 기존 `finalProduct`와 같으면 검색을 닫고 다음 검수 위치로 진행하되 기존 `AUTO_APPROVED`·`TOP3_SELECTED`·`SEARCH_SELECTED` 확정 근거와 `user_modified` 의미를 보존. 다른 상품을 선택했을 때만 기존 수정 계약을 적용 |
 | 103 | 뒤로 아이콘의 `후보로 돌아가기`가 Top-3가 없는 APPROVED 상품 검색에도 노출되면 돌아갈 후보가 있는 것처럼 안내 | Top-3가 있으면 `후보로 돌아가기`, 없으면 `검색 닫기`로 실제 복귀 화면에 맞춰 접근 가능한 이름과 tooltip을 전환 |
+| 104 | 카메라 `RECAPTURE`의 `다시 촬영`이 라이브 프리뷰 없이 즉시 새 프레임을 찍어 사용자가 상품을 재배치할 기회를 잃음 | Primary를 `촬영 화면으로 돌아가기`로 바꾸고 이전 판정만 비운 뒤 라이브 프리뷰·`촬영하기`로 이어지는 두 단계 흐름을 고정 |
+| 104 | 업로드 이미지에도 카메라 고정·재촬영 문구가 노출되고 일부 detector reason은 일반 문구로 합쳐져 원인과 복구 행동이 어긋남 | 모든 운영 reason code를 원인별로 매핑하고 카메라는 위치·조명 조정, 이미지는 조건에 맞는 다른 이미지 선택으로 문구를 분리 |
+| 105 | 카메라 API가 응답하기 전에는 `isBusy`가 false라 연타가 여러 촬영을 시작하고 `Ctrl+O`나 세션 초기화가 상태를 덮어쓸 수 있음 | `ProcessState.capturing`을 촬영 호출 전에 설정하고 단일 `촬영 중` live region·비활성 CTA로 중복 촬영과 다른 입력을 차단 |
+| 105 | OS 파일 선택창이 열리는 동안 선택 상태가 잠기지 않아 클릭·단축키 연타가 Gateway를 중복 호출할 수 있음 | 파일 선택 in-flight 가드와 `canChooseImage`를 연결해 첫 요청이 완료·취소될 때까지 후속 선택을 무시하고 controller 경쟁 상태 테스트로 고정 |
+| 106 | 흰색 촬영 범위와 중앙 X·대각선이 실제 상품 경계를 가리고 재배치에 불필요한 시각 소음을 추가 | `AppScanGuide`와 전용 색·치수 토큰을 제거하고, 라이브·촬영·선택 프리뷰에는 입력 자체만 표시 |
+| 107 | 임시 Orange 아이콘·`BIXOLON Scanner` 텍스트와 작은 아이콘 탭이 BIXOLON POS 헤더의 브랜드 구조와 다르고 선택 영역이 약함 | 제공된 SVG 워드마크를 `105×30px`로 사용하고, Workspace 배경·전체 Orange 기준선·`112×52px` 텍스트형 돌출 탭으로 현재 영역을 즉시 구분 |
+| 107 | 헤더 Border가 `60px` 레이아웃 높이를 소비하면 계획한 `52px` 탭이 `49px`로 줄어 최소 조작 리듬과 참고 비례가 달라짐 | Orange 기준선을 Stack 배경 레이어로 분리해 헤더·탭 크기를 정확히 유지하고 위젯 크기 테스트로 고정 |
+| 108 | Activity가 판정 텍스트만 보여 실제 촬영 구도와 판정 원인을 함께 감사하기 어렵고, 최근 100건 원본을 즉시 디코딩하면 메모리 사용이 급증 | 목록에 44px 제한 폭 지연 디코딩 썸네일, 상세에 최대 240px 원본 비율 미리보기를 제공. 누락·손상·안전하지 않은 경로는 경로를 노출하지 않는 동일 크기 대체 상태로 격리 |
+| 108 | `RECAPTURE`는 최종 확정 흐름이 없어 운영 장면을 Activity에 남길 방법이 없고 저장 행동이 Primary와 경쟁할 수 있음 | Primary `촬영 화면으로 돌아가기`·`다른 이미지 선택`은 유지하고 Outlined `재촬영 기록 저장`을 보조 행동으로 배치. `저장 중 → 기록 저장됨`, 오류 시 `다시 저장`으로 전환하며 성공 뒤 현재 판정과 이미지를 유지 |
+| 108 | 상품 결과의 판정 수만으로는 현장 추론 지연을 확인할 수 없고 클라이언트 왕복시간과 Worker 처리시간이 혼동될 수 있음 | 결과 헤더에 `n/n개 확인 · 분석 72.1 ms`, `RECAPTURE`에 `분석 72.1 ms`를 표시. 값은 Worker의 `processing_time_ms`이며 디코딩·전처리·추론·후처리를 포함하고 응답 없는 `ERROR`에는 생성하지 않음 |
+| 108 | Scan 안내와 Activity가 reason code를 따로 번역하면 동일 판정이 서로 다른 원인으로 보일 수 있음 | 공통 reason-code 표현기를 사용해 우선순위·한국어 제목·입력원별 교정 문구를 공유하고, Activity 진단에는 원본 reason code를 별도로 보존 |
 
 ## 금지 사항
 

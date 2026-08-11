@@ -4,6 +4,7 @@
 
 #include "flutter_window.h"
 #include "utils.h"
+#include "worker_process.h"
 
 namespace {
 
@@ -28,6 +29,9 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
 
   flutter::DartProject project(L"data");
 
+  WorkerProcess worker_process;
+  worker_process.Start();
+
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
 
@@ -39,6 +43,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   window.SetMinimumSize(
       Win32Window::Size(kMinimumWindowWidth, kMinimumWindowHeight));
   if (!window.Create(L"BIXOLON Scanner", origin, size)) {
+    worker_process.Stop();
     return EXIT_FAILURE;
   }
   window.SetQuitOnClose(true);
@@ -49,6 +54,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
     ::DispatchMessage(&msg);
   }
 
+  worker_process.Stop();
   ::CoUninitialize();
   return EXIT_SUCCESS;
 }

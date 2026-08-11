@@ -36,6 +36,42 @@ void main() {
     expect(response.items.single.prediction?.classId, 'bread_06');
   });
 
+  test('Worker 준비가 끝난 뒤 scan 요청을 전송한다', () async {
+    var readinessChecks = 0;
+    final methods = <String>[];
+    final client = MockClient((request) async {
+      methods.add('${request.method} ${request.url.path}');
+      if (request.url.path == '/health/ready') {
+        readinessChecks += 1;
+        return http.Response(
+          readinessChecks == 1
+              ? '{"status":"not_ready"}'
+              : '{"status":"ready"}',
+          readinessChecks == 1 ? 503 : 200,
+        );
+      }
+      return http.Response(_approvedBody, 200);
+    });
+    final api = WorkerScannerApi(
+      baseUrl: 'http://127.0.0.1:8000',
+      client: client,
+      waitForReady: true,
+      readinessPollInterval: Duration.zero,
+    );
+
+    final response = await api.scan(
+      imageBytes: Uint8List.fromList([0xff, 0xd8, 0xff, 0xd9]),
+      fileName: 'scan.jpg',
+    );
+
+    expect(response.status, ScanStatus.approved);
+    expect(methods, [
+      'GET /health/ready',
+      'GET /health/ready',
+      'POST /v1/scan',
+    ]);
+  });
+
   test('Worker ERROR 응답은 ScannerApiException으로 변환한다', () async {
     final client = MockClient(
       (_) async => http.Response('''{

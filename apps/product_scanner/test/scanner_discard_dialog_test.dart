@@ -145,6 +145,18 @@ void main() {
     expect(find.byType(AppConfirmDialog), findsNothing);
     expect(controller.hasUserChanges, isTrue);
 
+    await tester.tap(find.widgetWithText(OutlinedButton, '카메라로 돌아가기'));
+    await tester.pumpAndSettle();
+    expect(find.text('카메라로 돌아갈까요?'), findsOneWidget);
+    final returnToCamera = find.widgetWithText(FilledButton, '카메라로 돌아가기');
+    expect(returnToCamera, findsOneWidget);
+    await tester.tap(returnToCamera);
+    await tester.pumpAndSettle();
+    expect(controller.inputMode, InputMode.camera);
+    expect(controller.processState, ProcessState.ready);
+    expect(controller.imageBytes, isNull);
+    expect(controller.hasUserChanges, isFalse);
+
     semantics.dispose();
     controller.dispose();
   });

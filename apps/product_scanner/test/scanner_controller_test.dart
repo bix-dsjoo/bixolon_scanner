@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -240,6 +241,165 @@ void main() {
     controller.dispose();
   });
 
+  test('RECAPTURE 기록 저장은 화면을 유지하고 같은 Scan ID를 중복 저장하지 않는다', () async {
+    final logs = _MemoryScanLogRepository();
+    final response = _recaptureResponseFor(['DETECTOR_UNCERTAIN_OBJECT']);
+    final controller = ScannerController(
+      _FakeScannerApi(response),
+      _FakeCameraGateway(),
+      _FakeImageFileGateway(_testImage),
+      logs,
+      testCatalog,
+    );
+    await controller.chooseImage();
+    await controller.analyze();
+
+    await controller.saveRecaptureLog();
+    await controller.saveRecaptureLog();
+
+    expect(logs.saved, hasLength(1));
+    final record = logs.saved.single;
+    expect(record.scanId, response.requestId);
+    expect(record.workerStatus, ScanStatus.recapture);
+    expect(record.reasonCodes, ['DETECTOR_UNCERTAIN_OBJECT']);
+    expect(record.confirmedAt, isNull);
+    expect(record.detections, isEmpty);
+    expect(controller.recaptureLogSaveState, RecaptureLogSaveState.saved);
+    expect(controller.isRecapture, isTrue);
+    expect(controller.imageBytes, isNotNull);
+    expect(controller.activityDataRevision, 1);
+    expect(controller.latestSavedScanId, response.requestId);
+    expect(controller.completionMessage, '재촬영 기록을 저장했어요');
+
+    controller.resetSession();
+    await controller.chooseImage();
+    await controller.analyze();
+    await controller.saveRecaptureLog();
+
+    expect(logs.saved, hasLength(1));
+    expect(controller.recaptureLogSaveState, RecaptureLogSaveState.saved);
+    expect(controller.activityDataRevision, 1);
+    controller.dispose();
+  });
+
+  test('RECAPTURE 기록 저장 실패는 판정을 유지하고 다시 저장할 수 있다', () async {
+    final logs = _FailOnceScanLogRepository();
+    final response = _recaptureResponse();
+    final controller = ScannerController(
+      _FakeScannerApi(response),
+      _FakeCameraGateway(),
+      _FakeImageFileGateway(_testImage),
+      logs,
+      testCatalog,
+    );
+    await controller.chooseImage();
+    await controller.analyze();
+
+    await controller.saveRecaptureLog();
+
+    expect(controller.recaptureLogSaveState, RecaptureLogSaveState.error);
+    expect(controller.recaptureLogError, contains('저장하지 못했어요'));
+    expect(controller.isRecapture, isTrue);
+    expect(controller.imageBytes, isNotNull);
+
+    await controller.saveRecaptureLog();
+
+    expect(logs.saveCalls, 2);
+    expect(logs.saved, hasLength(1));
+    expect(controller.recaptureLogSaveState, RecaptureLogSaveState.saved);
+    expect(controller.recaptureLogError, isNull);
+    controller.dispose();
+  });
+
+  test('RECAPTURE 기록 저장 중에는 중복 저장과 입력 교체를 막는다', () async {
+    final logs = _DeferredScanLogRepository();
+    final controller = ScannerController(
+      _FakeScannerApi(_recaptureResponse()),
+      _FakeCameraGateway(),
+      _FakeImageFileGateway(_testImage),
+      logs,
+      testCatalog,
+    );
+    await controller.chooseImage();
+    await controller.analyze();
+
+    final firstSave = controller.saveRecaptureLog();
+    final repeatedSave = controller.saveRecaptureLog();
+    final chooseImage = controller.chooseImage();
+    controller.resetSession();
+
+    expect(controller.isBusy, isTrue);
+    expect(controller.canChooseImage, isFalse);
+    expect(controller.isRecapture, isTrue);
+    expect(logs.saveCalls, 1);
+    expect(await chooseImage, isFalse);
+    logs.complete();
+    await Future.wait([firstSave, repeatedSave]);
+
+    expect(logs.saveCalls, 1);
+    expect(controller.recaptureLogSaveState, RecaptureLogSaveState.saved);
+    controller.dispose();
+  });
+
+  test('APPROVED/UNKNOWN 결과에서 박스 미검출 신고를 별도 피드백으로 저장한다', () async {
+    final logs = _MemoryScanLogRepository();
+    final response = _reviewResponse();
+    final controller = ScannerController(
+      _FakeScannerApi(response),
+      _FakeCameraGateway(),
+      _FakeImageFileGateway(_testImage),
+      logs,
+      testCatalog,
+    );
+    await controller.chooseImage();
+    await controller.analyze();
+
+    expect(controller.canSaveMissedDetectionLog, isTrue);
+    await controller.saveMissedDetectionLog();
+    await controller.saveMissedDetectionLog();
+
+    expect(logs.saved, hasLength(1));
+    final record = logs.saved.single;
+    expect(record.scanId, response.requestId);
+    expect(record.workerStatus, ScanStatus.unknown);
+    expect(record.reasonCodes, response.reasonCodes);
+    expect(record.detections, hasLength(response.items.length));
+    expect(record.confirmedAt, isNull);
+    expect(record.operatorFeedback, ScanOperatorFeedback.missedObject);
+    expect(
+      controller.missedDetectionLogSaveState,
+      MissedDetectionLogSaveState.saved,
+    );
+    expect(controller.canSaveMissedDetectionLog, isFalse);
+    expect(controller.imageBytes, isNotNull);
+    expect(controller.activityDataRevision, 0);
+    expect(controller.completionMessage, '박스 미검출 기록을 저장했어요');
+    controller.dispose();
+  });
+
+  test('RECAPTURE 결과는 박스 미검출 신고 대상으로 중복 저장하지 않는다', () async {
+    final logs = _MemoryScanLogRepository();
+    final controller = ScannerController(
+      _FakeScannerApi(_recaptureResponse()),
+      _FakeCameraGateway(),
+      _FakeImageFileGateway(_testImage),
+      logs,
+      testCatalog,
+    );
+    await controller.chooseImage();
+    await controller.analyze();
+
+    expect(controller.canSaveMissedDetectionLog, isFalse);
+    await controller.saveMissedDetectionLog();
+
+    expect(logs.saved, isEmpty);
+    expect(
+      controller.missedDetectionLogSaveState,
+      MissedDetectionLogSaveState.idle,
+    );
+    controller.dispose();
+  });
+
   test('수동 세션 초기화는 이미지 작업 중에도 기본 카메라 입력으로 돌아간다', () {
     final controller = ScannerController(
       _FakeScannerApi(_reviewResponse()),
@@ -256,21 +416,260 @@ void main() {
     controller.dispose();
   });
 
-  test('일반 RECAPTURE 안내는 입력원별 실제 복구 행동을 명시한다', () {
+  test('이미지 검수에서 카메라로 복귀하면 세션을 비우고 연결을 복구한다', () async {
+    final camera = _ReconnectableCameraGateway();
+    final response = _reviewResponse();
+    final controller =
+        ScannerController(
+            _FakeScannerApi(response),
+            camera,
+            _FakeImageFileGateway(_testImage),
+            _MemoryScanLogRepository(),
+            testCatalog,
+          )
+          ..cameraInitializing = false
+          ..inputMode = InputMode.image
+          ..imageBytes = _testImage.bytes
+          ..imageFileName = _testImage.fileName
+          ..processState = ProcessState.reviewing
+          ..response = response
+          ..detections = response.items
+              .map(ReviewDetection.fromScanItem)
+              .toList(growable: false);
+
+    await controller.returnToCamera();
+
+    expect(controller.inputMode, InputMode.camera);
+    expect(controller.processState, ProcessState.ready);
+    expect(controller.imageBytes, isNull);
+    expect(controller.response, isNull);
+    expect(controller.detections, isEmpty);
+    expect(camera.initializeCalls, 1);
+    expect(controller.isCameraReady, isTrue);
+    controller.dispose();
+  });
+
+  test('앱 복귀 시 기존 초기화 표시와 관계없이 네이티브 카메라 세션을 재생성한다', () async {
+    final camera = _ReconnectableCameraGateway(ready: true);
+    final controller = ScannerController(
+      _FakeScannerApi(_reviewResponse()),
+      camera,
+      _FakeImageFileGateway(_testImage),
+      _MemoryScanLogRepository(),
+      testCatalog,
+    )..cameraInitializing = false;
+
+    await controller.restoreCamera();
+    expect(camera.initializeCalls, 0);
+
+    await controller.restoreCamera(forceReconnect: true);
+    expect(camera.initializeCalls, 1);
+    controller.dispose();
+  });
+
+  test('모든 RECAPTURE reason은 입력원별 원인과 실제 복구 행동을 안내한다', () {
+    final cases =
+        <
+          ({
+            List<String> reasons,
+            String title,
+            String cameraDetail,
+            String imageDetail,
+          })
+        >[
+          (
+            reasons: ['DETECTOR_NO_OBJECT'],
+            title: '상품을 찾지 못했어요',
+            cameraDetail: '상품이 화면 안에 모두 보이도록 위치를 조정해 주세요.',
+            imageDetail: '상품이 화면 안에 보이는 다른 이미지를 선택해 주세요.',
+          ),
+          (
+            reasons: ['DETECTOR_CAPACITY_EXCEEDED'],
+            title: '상품이 너무 많거나 겹쳐 보여요',
+            cameraDetail: '상품 사이를 벌리고 모두 보이도록 배치해 주세요.',
+            imageDetail: '상품이 겹치지 않고 모두 보이는 다른 이미지를 선택해 주세요.',
+          ),
+          (
+            reasons: ['DETECTOR_OBJECT_TOO_SMALL'],
+            title: '상품이 너무 작게 보여요',
+            cameraDetail: '카메라를 가까이 옮겨 상품을 크게 보여 주세요.',
+            imageDetail: '상품이 더 크게 보이는 다른 이미지를 선택해 주세요.',
+          ),
+          (
+            reasons: ['DETECTOR_BORDER_CLIPPED'],
+            title: '상품 일부가 잘렸어요',
+            cameraDetail: '잘린 상품을 화면 안쪽으로 옮겨 주세요.',
+            imageDetail: '상품 전체가 이미지 안에 있는 다른 이미지를 선택해 주세요.',
+          ),
+          (
+            reasons: ['DETECTOR_COUNT_MISMATCH'],
+            title: '상품 수를 확인하기 어려워요',
+            cameraDetail: '상품 사이를 벌리고 모두 보이도록 배치해 주세요.',
+            imageDetail: '상품이 서로 떨어져 모두 보이는 다른 이미지를 선택해 주세요.',
+          ),
+          (
+            reasons: ['DETECTOR_COUNT_UNCERTAIN'],
+            title: '상품 수를 확인하기 어려워요',
+            cameraDetail: '상품 사이를 벌리고 모두 보이도록 배치해 주세요.',
+            imageDetail: '상품이 서로 떨어져 모두 보이는 다른 이미지를 선택해 주세요.',
+          ),
+          (
+            reasons: ['DETECTOR_UNCERTAIN_OBJECT'],
+            title: '상품 수를 확인하기 어려워요',
+            cameraDetail: '상품 사이를 벌리고 모두 보이도록 배치해 주세요.',
+            imageDetail: '상품이 서로 떨어져 모두 보이는 다른 이미지를 선택해 주세요.',
+          ),
+          (
+            reasons: ['DETECTOR_BLUR'],
+            title: '이미지가 흔들렸어요',
+            cameraDetail: '카메라를 고정하고 상품이 선명하게 보이도록 조정해 주세요.',
+            imageDetail: '상품이 선명한 다른 이미지를 선택해 주세요.',
+          ),
+          (
+            reasons: ['DETECTOR_UNDEREXPOSED'],
+            title: '이미지가 너무 어두워요',
+            cameraDetail: '더 밝은 곳으로 옮기거나 조명을 조정해 주세요.',
+            imageDetail: '밝게 촬영된 다른 이미지를 선택해 주세요.',
+          ),
+          (
+            reasons: ['DETECTOR_OVEREXPOSED'],
+            title: '이미지가 너무 밝아요',
+            cameraDetail: '빛 반사를 줄이거나 조명을 조정해 주세요.',
+            imageDetail: '빛 반사가 적은 다른 이미지를 선택해 주세요.',
+          ),
+          (
+            reasons: ['CLASSIFIER_QUALITY_CLASS'],
+            title: '상품 상태를 확인하기 어려워요',
+            cameraDetail: '상품 앞면과 모양이 선명하도록 방향을 조정해 주세요.',
+            imageDetail: '상품 모양이 선명한 다른 이미지를 선택해 주세요.',
+          ),
+          (
+            reasons: ['FUTURE_QUALITY_REASON'],
+            title: '촬영 조건을 다시 확인해 주세요',
+            cameraDetail: '상품이 화면 안에 선명하게 보이도록 위치를 조정해 주세요.',
+            imageDetail: '상품이 잘 보이는 다른 이미지를 선택해 주세요.',
+          ),
+        ];
     final controller = ScannerController(
       _FakeScannerApi(_genericRecaptureResponse()),
       _FakeCameraGateway(),
       _FakeImageFileGateway(_testImage),
       _MemoryScanLogRepository(),
       testCatalog,
-    )..response = _genericRecaptureResponse();
+    );
 
+    for (final testCase in cases) {
+      controller.response = _recaptureResponseFor(testCase.reasons);
+      controller.inputMode = InputMode.camera;
+      expect(controller.recaptureTitle, testCase.title);
+      expect(controller.recaptureDetail, testCase.cameraDetail);
+
+      controller.inputMode = InputMode.image;
+      expect(
+        controller.recaptureTitle,
+        testCase.reasons.single == 'FUTURE_QUALITY_REASON'
+            ? '다른 이미지를 선택해 주세요'
+            : testCase.title,
+      );
+      expect(controller.recaptureDetail, testCase.imageDetail);
+    }
+
+    controller.response = _recaptureResponseFor([
+      'DETECTOR_BLUR',
+      'DETECTOR_NO_OBJECT',
+    ]);
     controller.inputMode = InputMode.camera;
-    expect(controller.recaptureDetail, contains('다시 촬영해 주세요'));
-    expect(controller.recaptureDetail, isNot(contains('다시 시도')));
+    expect(controller.recaptureTitle, '상품을 찾지 못했어요');
+    controller.dispose();
+  });
 
-    controller.inputMode = InputMode.image;
-    expect(controller.recaptureDetail, '상품이 잘 보이는 다른 이미지를 선택해 주세요.');
+  test('재촬영 화면 복귀는 촬영과 분석 없이 이전 판정만 비운다', () async {
+    final camera = _ReconnectableCameraGateway(ready: true);
+    final api = _CountingScannerApi(_reviewResponse());
+    final controller =
+        ScannerController(
+            api,
+            camera,
+            _FakeImageFileGateway(_testImage),
+            _MemoryScanLogRepository(),
+            testCatalog,
+          )
+          ..cameraInitializing = false
+          ..inputMode = InputMode.camera
+          ..processState = ProcessState.reviewing
+          ..response = _recaptureResponse()
+          ..imageBytes = _testImage.bytes
+          ..imageFileName = _testImage.fileName;
+
+    await controller.returnToCamera();
+
+    expect(controller.processState, ProcessState.ready);
+    expect(controller.inputMode, InputMode.camera);
+    expect(controller.imageBytes, isNull);
+    expect(controller.response, isNull);
+    expect(camera.captureCalls, 0);
+    expect(api.calls, 0);
+    controller.dispose();
+  });
+
+  test('느린 촬영의 연타와 다른 입력은 한 번의 촬영과 분석만 실행한다', () async {
+    final camera = _DeferredCameraGateway();
+    final api = _CountingScannerApi(_reviewResponse());
+    final fileGateway = _DeferredImageFileGateway();
+    final controller = ScannerController(
+      api,
+      camera,
+      fileGateway,
+      _MemoryScanLogRepository(),
+      testCatalog,
+    )..cameraInitializing = false;
+
+    final firstCapture = controller.captureAndAnalyze();
+    final repeatedCapture = controller.captureAndAnalyze();
+    final imageSelection = controller.chooseImage();
+    controller.resetSession();
+    await controller.reconnectCamera();
+
+    expect(controller.processState, ProcessState.capturing);
+    expect(controller.isBusy, isTrue);
+    expect(controller.canChooseImage, isFalse);
+    expect(camera.captureCalls, 1);
+    expect(camera.initializeCalls, 0);
+    expect(fileGateway.pickCalls, 0);
+    expect(await imageSelection, isFalse);
+
+    camera.completeCapture();
+    await Future.wait([firstCapture, repeatedCapture]);
+
+    expect(camera.captureCalls, 1);
+    expect(api.calls, 1);
+    expect(controller.processState, ProcessState.reviewing);
+    controller.dispose();
+  });
+
+  test('느린 이미지 선택 연타는 파일 선택창을 한 번만 요청한다', () async {
+    final fileGateway = _DeferredImageFileGateway();
+    final controller = ScannerController(
+      _FakeScannerApi(_reviewResponse()),
+      _FakeCameraGateway(),
+      fileGateway,
+      _MemoryScanLogRepository(),
+      testCatalog,
+    );
+
+    final firstSelection = controller.chooseImage();
+    final repeatedSelection = controller.chooseImage();
+
+    expect(controller.isChoosingImage, isTrue);
+    expect(controller.canChooseImage, isFalse);
+    expect(fileGateway.pickCalls, 1);
+    expect(await repeatedSelection, isFalse);
+
+    fileGateway.completeSelection(_testImage);
+    expect(await firstSelection, isTrue);
+    expect(controller.isChoosingImage, isFalse);
+    expect(controller.inputMode, InputMode.image);
+    expect(fileGateway.pickCalls, 1);
     controller.dispose();
   });
 
@@ -467,6 +866,15 @@ ScanResponse _genericRecaptureResponse() => const ScanResponse(
   modelVersions: ModelVersions(detector: '0.1.1', classifier: '0.1.1'),
 );
 
+ScanResponse _recaptureResponseFor(List<String> reasons) => ScanResponse(
+  requestId: 'request_reason_mapping',
+  status: ScanStatus.recapture,
+  reasonCodes: reasons,
+  items: const [],
+  processingTimeMs: 43,
+  modelVersions: const ModelVersions(detector: '0.1.1', classifier: '0.1.1'),
+);
+
 class _FakeScannerApi implements ScannerApi {
   const _FakeScannerApi(this.response);
   final ScanResponse response;
@@ -476,6 +884,22 @@ class _FakeScannerApi implements ScannerApi {
     required Uint8List imageBytes,
     required String fileName,
   }) async => response;
+}
+
+class _CountingScannerApi implements ScannerApi {
+  _CountingScannerApi(this.response);
+
+  final ScanResponse response;
+  int calls = 0;
+
+  @override
+  Future<ScanResponse> scan({
+    required Uint8List imageBytes,
+    required String fileName,
+  }) async {
+    calls += 1;
+    return response;
+  }
 }
 
 class _ThrowingScannerApi implements ScannerApi {
@@ -530,6 +954,61 @@ class _CaptureFailingCameraGateway implements CameraGateway {
   Future<void> initialize() async => initializeCalls += 1;
 }
 
+class _ReconnectableCameraGateway implements CameraGateway {
+  _ReconnectableCameraGateway({this._ready = false});
+
+  bool _ready;
+  int initializeCalls = 0;
+  int captureCalls = 0;
+
+  @override
+  CameraController? get controller => null;
+
+  @override
+  bool get isReady => _ready;
+
+  @override
+  Future<InputImage> capture() async {
+    captureCalls += 1;
+    return _testImage;
+  }
+
+  @override
+  Future<void> dispose() async => _ready = false;
+
+  @override
+  Future<void> initialize() async {
+    initializeCalls += 1;
+    _ready = true;
+  }
+}
+
+class _DeferredCameraGateway implements CameraGateway {
+  final Completer<InputImage> _captureCompleter = Completer<InputImage>();
+  int captureCalls = 0;
+  int initializeCalls = 0;
+
+  void completeCapture() => _captureCompleter.complete(_testImage);
+
+  @override
+  CameraController? get controller => null;
+
+  @override
+  bool get isReady => true;
+
+  @override
+  Future<InputImage> capture() {
+    captureCalls += 1;
+    return _captureCompleter.future;
+  }
+
+  @override
+  Future<void> dispose() async {}
+
+  @override
+  Future<void> initialize() async => initializeCalls += 1;
+}
+
 class _InitializationFailingCameraGateway implements CameraGateway {
   @override
   CameraController? get controller => null;
@@ -553,6 +1032,20 @@ class _FakeImageFileGateway implements ImageFileGateway {
 
   @override
   Future<InputImage?> pick() async => image;
+}
+
+class _DeferredImageFileGateway implements ImageFileGateway {
+  final Completer<InputImage?> _selectionCompleter = Completer<InputImage?>();
+  int pickCalls = 0;
+
+  void completeSelection(InputImage? image) =>
+      _selectionCompleter.complete(image);
+
+  @override
+  Future<InputImage?> pick() {
+    pickCalls += 1;
+    return _selectionCompleter.future;
+  }
 }
 
 class _MemoryScanLogRepository implements ScanLogRepository {
@@ -589,5 +1082,21 @@ class _FailOnceScanLogRepository implements ScanLogRepository {
     saveCalls += 1;
     if (saveCalls == 1) throw StateError('disk unavailable');
     saved.add(record);
+  }
+}
+
+class _DeferredScanLogRepository implements ScanLogRepository {
+  final Completer<void> _completer = Completer<void>();
+  int saveCalls = 0;
+
+  void complete() => _completer.complete();
+
+  @override
+  Future<List<ScanLogSummary>> list({int limit = 100}) async => const [];
+
+  @override
+  Future<void> save(ScanLogRecord record) {
+    saveCalls += 1;
+    return _completer.future;
   }
 }

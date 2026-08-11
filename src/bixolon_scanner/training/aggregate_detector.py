@@ -31,7 +31,9 @@ def aggregate(args: argparse.Namespace) -> None:
     records = [
         record
         for record in read_manifest(args.manifest)
-        if record["record_type"] == "detection" and record["split"] == "development"
+        if record["record_type"] == "detection"
+        and record["split"] == "development"
+        and not record.get("exclude_from_detector_training", False)
     ]
     by_image_id = _read_predictions(args.predictions)
     expected = {str(record["image_id"]) for record in records}
@@ -42,10 +44,14 @@ def aggregate(args: argparse.Namespace) -> None:
             f"OOF prediction coverage mismatch: missing={len(missing)}, unexpected={len(unexpected)}"
         )
     ordered_predictions = [by_image_id[str(record["image_id"])] for record in records]
+    fixed_threshold = getattr(args, "score_threshold", None)
+    thresholds = (
+        np.asarray([fixed_threshold], dtype=np.float64)
+        if fixed_threshold is not None
+        else np.linspace(args.min_score_threshold, args.max_score_threshold, args.threshold_steps)
+    )
     candidates = []
-    for threshold in np.linspace(
-        args.min_score_threshold, args.max_score_threshold, args.threshold_steps
-    ):
+    for threshold in thresholds:
         metrics = _metrics(
             records,
             ordered_predictions,
@@ -75,7 +81,7 @@ def aggregate(args: argparse.Namespace) -> None:
         "match_iou_threshold": args.match_iou_threshold,
         "nms_iou_threshold": args.nms_threshold,
         "target_recall": args.target_recall,
-        "threshold_policy": "selected_on_oof-development",
+        "threshold_policy": "fixed" if fixed_threshold is not None else "selected_on_oof-development",
         "selected_score_threshold": selected["score_threshold"],
         "target_recall_satisfied": selected["recall"] >= args.target_recall,
         "metrics": selected,
@@ -94,6 +100,11 @@ def main() -> None:
     parser.add_argument("--nms-threshold", type=float, default=0.7)
     parser.add_argument("--match-iou-threshold", type=float, default=0.5)
     parser.add_argument("--target-recall", type=float, default=0.99)
+    parser.add_argument(
+        "--score-threshold",
+        type=float,
+        help="Evaluate one pre-committed threshold instead of selecting a new threshold.",
+    )
     parser.add_argument("--min-score-threshold", type=float, default=0.05)
     parser.add_argument("--max-score-threshold", type=float, default=0.95)
     parser.add_argument("--threshold-steps", type=int, default=91)

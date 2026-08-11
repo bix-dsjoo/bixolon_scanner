@@ -62,36 +62,45 @@ def select_approval_threshold(
     targets = np.asarray(targets)
     predictions = probabilities.argmax(axis=1)
     confidence = probabilities.max(axis=1)
-    candidates = sorted({float(value) for value in confidence}, reverse=True)
-    best: ThresholdResult | None = None
-    for threshold in candidates:
-        approved = confidence >= threshold
-        count = int(approved.sum())
-        if count == 0:
-            continue
-        correct = int((predictions[approved] == targets[approved]).sum())
-        errors = count - correct
-        precision = correct / count
-        false_rate = 1.0 - precision
-        false_rate_upper = (
-            binomial_rate_upper_bound(errors, count, confidence_level)
-            if confidence_level is not None
-            else false_rate
-        )
-        if false_rate_upper <= max_false_approval_rate:
-            candidate = ThresholdResult(
-                threshold,
-                count,
-                precision,
-                count / len(targets),
-                false_rate_upper,
-                True,
-            )
-            if best is None or candidate.coverage > best.coverage:
-                best = candidate
-    if best is None:
+    if len(confidence) == 0:
         return ThresholdResult(1.0, 0, 1.0, 0.0, 1.0, False)
-    return best
+    order = np.argsort(-confidence, kind="stable")
+    sorted_confidence = confidence[order]
+    sorted_errors = (predictions[order] != targets[order]).astype(np.int64)
+    cumulative_errors = np.cumsum(sorted_errors)
+    # A threshold includes every sample tied at that confidence, so only the
+    # final row of each equal-confidence group is a valid candidate.
+    endpoints = np.flatnonzero(
+        np.r_[sorted_confidence[1:] != sorted_confidence[:-1], True]
+    )
+    counts = endpoints + 1
+    errors = cumulative_errors[endpoints]
+    precision = (counts - errors) / counts
+    if confidence_level is None:
+        false_rate_upper = errors / counts
+    else:
+        from scipy.stats import beta
+
+        false_rate_upper = np.ones(len(counts), dtype=np.float64)
+        nonterminal = errors < counts
+        false_rate_upper[nonterminal] = beta.ppf(
+            confidence_level,
+            errors[nonterminal] + 1,
+            counts[nonterminal] - errors[nonterminal],
+        )
+    valid = np.flatnonzero(false_rate_upper <= max_false_approval_rate)
+    if len(valid) == 0:
+        return ThresholdResult(1.0, 0, 1.0, 0.0, 1.0, False)
+    best = int(valid[-1])
+    count = int(counts[best])
+    return ThresholdResult(
+        float(sorted_confidence[endpoints[best]]),
+        count,
+        float(precision[best]),
+        count / len(targets),
+        float(false_rate_upper[best]),
+        True,
+    )
 
 
 def topk_accuracy(probabilities: np.ndarray, targets: np.ndarray, k: int = 3) -> float:

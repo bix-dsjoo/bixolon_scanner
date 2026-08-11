@@ -119,6 +119,40 @@ void main() {
     expect(search('muffin'), ['localized']);
     expect(search('bread_13'), ['localized']);
   });
+
+  test('RECAPTURE는 reason code와 한국어 원인으로 검색하고 기록 시각으로 정렬한다', () {
+    final recapture = ScanLogSummary(
+      scanId: 'recapture',
+      analyzedAt: DateTime(2026, 8, 10, 8),
+      confirmedAt: null,
+      recordedAt: DateTime(2026, 8, 10, 12),
+      inputMode: InputMode.camera,
+      processingTimeMs: 41,
+      modelVersions: const ModelVersions(detector: '0.1.1', classifier: null),
+      items: const [],
+      workerStatus: ScanStatus.recapture,
+      reasonCodes: const ['DETECTOR_UNCERTAIN_OBJECT'],
+    );
+    final confirmed = _log(
+      'confirmed',
+      DateTime(2026, 8, 10, 10),
+      InputMode.camera,
+      'Muffin',
+    );
+
+    List<String> search(String query) => filterActivityLogs(
+      logs: [confirmed, recapture],
+      query: query,
+      inputFilter: ActivityInputFilter.all,
+      dateFilter: ActivityDateFilter.all,
+      sortOrder: ActivitySortOrder.newest,
+      now: now,
+    ).map((item) => item.scanId).toList();
+
+    expect(search('DETECTOR_UNCERTAIN_OBJECT'), ['recapture']);
+    expect(search('상품 수'), ['recapture']);
+    expect(search(''), ['recapture', 'confirmed']);
+  });
 }
 
 ScanLogSummary _log(
