@@ -1,0 +1,130 @@
+{
+  "schema_version": "1.1",
+  "dataset_version": "bread-6bda7c231384",
+  "base_dataset_version": "bread-43093242294f",
+  "fold_count": 3,
+  "record_count": 341,
+  "detection_record_count": 341,
+  "operational_record_count": 42,
+  "operational_capture_session_count": 1,
+  "operational_decisions": {
+    "continue_count": 34,
+    "empty_recapture_count": 7,
+    "blur_recapture_count": 1,
+    "promotion_evidence": false,
+    "note": "Single-session fit data; never use as production promotion evidence."
+  },
+  "labels": [
+    {
+      "category_id": 1,
+      "class_id": "bread_01",
+      "class_name": "Walnut Donut"
+    },
+    {
+      "category_id": 2,
+      "class_id": "bread_02",
+      "class_name": "Croffle"
+    },
+    {
+      "category_id": 3,
+      "class_id": "bread_03",
+      "class_name": "Waffle"
+    },
+    {
+      "category_id": 4,
+      "class_id": "bread_04",
+      "class_name": "Scon"
+    },
+    {
+      "category_id": 5,
+      "class_id": "bread_05",
+      "class_name": "Half-moon Croissant"
+    },
+    {
+      "category_id": 6,
+      "class_id": "bread_06",
+      "class_name": "Croissant"
+    },
+    {
+      "category_id": 7,
+      "class_id": "bread_07",
+      "class_name": "Flower Bread"
+    },
+    {
+      "category_id": 8,
+      "class_id": "bread_08",
+      "class_name": "Almond Scon"
+    },
+    {
+      "category_id": 9,
+      "class_id": "bread_09",
+      "class_name": "Dinner Roll"
+    },
+    {
+      "category_id": 10,
+      "class_id": "bread_10",
+      "class_name": "Sugar Donut"
+    },
+    {
+      "category_id": 11,
+      "class_id": "bread_11",
+      "class_name": "Bagel"
+    },
+    {
+      "category_id": 12,
+      "class_id": "bread_12",
+      "class_name": "Egg Tart"
+    },
+    {
+      "category_id": 13,
+      "class_id": "bread_13",
+      "class_name": "Muffin"
+    },
+    {
+      "category_id": 14,
+      "class_id": "bread_14",
+      "class_name": "Burger"
+    },
+    {
+      "category_id": 15,
+      "class_id": "bread_15",
+      "class_name": "Sandwich"
+    },
+    {
+      "category_id": 16,
+      "class_id": "bread_16",
+      "class_name": "Grain Campagne"
+    },
+    {
+      "category_id": 17,
+      "class_id": "bread_17",
+      "class_name": "Almond Campagne"
+    },
+    {
+      "category_id": 18,
+      "class_id": "bread_18",
+      "class_name": "Mini Bread"
+    },
+    {
+      "category_id": 19,
+      "class_id": "bread_19",
+      "class_name": "Pastry Bread"
+    },
+    {
+      "category_id": 20,
+      "class_id": "bread_20",
+      "class_name": "Plain Bread"
+    }
+  ],
+  "manifest_sha256": "6bda7c2313842831316ed1a3c301e4f0fbdbb74ece8b355ee5632f18bde1e9ae",
+  "decision_contract_sha256": "452fe242789f149b112b6ca2a46e4e1068fe3f1f0fbbf09306cedc57822bb4b3",
+  "draft_label_package": {
+    "package_version": "0.1.1",
+    "detector_version": "0.1.0",
+    "classifier_version": "0.1.0",
+    "detector_sha256": "635dd93ccde8a244692ad4cc14aaf259790d59d05fbde20e00588d47f3edefdc",
+    "classifier_sha256": "835a13da0a8f0084da42500c4721c738a4569b5520c844b0e7f054d348083c02",
+    "provider": "cpu"
+  },
+  "annotation_review_status": "approved"
+}

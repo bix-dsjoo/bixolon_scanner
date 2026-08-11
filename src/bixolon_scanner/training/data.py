@@ -133,6 +133,8 @@ class DetectionDataset:
         for record in records:
             if record["record_type"] != "detection":
                 continue
+            if record.get("exclude_from_detector_training", False) and mode != "test":
+                continue
             include = (
                 mode == "test" and record["split"] == "test"
                 or mode == "validation" and record["split"] == "development" and record["fold"] == fold

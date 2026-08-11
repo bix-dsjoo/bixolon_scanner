@@ -97,7 +97,7 @@ flutter pub get
 flutter run -d windows
 ```
 
-기본 Worker 주소는 `http://127.0.0.1:8000`이며 다른 호스트를 사용할 때는 `--dart-define=SCANNER_API_BASE_URL=http://host:port`를 전달합니다. Flutter 설치, 테스트, release build와 로컬 저장 위치는 앱 디렉터리의 README를 참고하십시오.
+기본 Worker 주소는 `http://127.0.0.1:8000`입니다. Windows 앱은 실행될 때 설치된 `bixolon-worker`와 release bundle의 승격 모델 패키지를 자동으로 시작하고, 직접 시작한 Worker를 앱 종료 시 함께 종료합니다. release에 `worker\cuda-runtime`이 포함돼 있으면 런처가 해당 DLL 경로와 `cuda` provider를 강제해 CUDA 초기화 실패가 CPU 장기 실행으로 숨지 않게 합니다. 이미 같은 주소에 Worker가 실행 중이면 기존 서버를 사용합니다. 다른 호스트를 사용할 때는 `--dart-define=SCANNER_API_BASE_URL=http://host:port`를 전달하고 `SCANNER_AUTO_START_WORKER=0`으로 로컬 자동 실행을 끕니다. Flutter 설치, 테스트, CUDA runtime bundle과 로컬 저장 위치는 앱 디렉터리의 README를 참고하십시오.
 
 ## 설치와 Worker 실행
 
@@ -200,6 +200,24 @@ bixolon-train-classifier --config configs\training.json `
   --output-dir artifacts\classifier\dinov3-final `
   --final-training
 ```
+
+### RPC Classifier 시각 다양성·Worker-gated 데이터 규모 실험
+
+`retail_product_checkout` 200개 상품의 최소 학습 이미지 수를 클래스당 5·10·15·20장과 세 seed로 비교합니다. 20장 조건을 비열등성 기준으로 사용합니다. camera 이름만 순환하지 않고 실제 ROI 외형 거리를 우선하며, Worker 흐름에서 `RECAPTURE`된 이미지는 정상 classifier 지표에서 분리해 별도 보고합니다.
+
+```powershell
+bixolon-rpc-data-scale `
+  --config configs\rpc_data_scale.json `
+  --dataset-root C:\workspace\raw_data\archive\retail_product_checkout `
+  --weights C:\workspace\raw_data\model_cache\dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth `
+  --output-dir artifacts\experiments\rpc-data-scale-diverse-worker-gated `
+  --phase all `
+  --resume
+```
+
+`detector`, `prepare`, `train`, `select`, `test` phase를 따로 실행할 수 있습니다. `detector`는 RPC `val2019` 촬영 그룹 기준 3-fold OOF 학습·예측과 calibration 전용 threshold 선택을 수행합니다. `prepare`는 Worker `RECAPTURE` 이미지를 정상군에서 분리하고, 실제 예측 bbox crop의 DINOv3 임베딩으로 시각 다양성 순서를 고정합니다.
+
+제외 이미지는 삭제하지 않으며 비율과 reason code를 `prepared/worker_gate_report.json`에 기록합니다. 클래스·seed별 첫 5장 bbox/crop은 `prepared/sampling_contact_sheets`에서 확인할 수 있습니다. 선택 조건을 통과한 N이 있을 때만 val 전체로 최종 detector를 학습하고 `test2019`를 엽니다. `--resume`은 detector epoch 상태, 완료 marker, source/checkpoint hash와 cache fingerprint를 검증합니다. 운영 Worker, 20종 bread label map과 모델 패키지는 변경하지 않습니다.
 
 ## Detector 학습·OOF threshold
 
@@ -365,3 +383,26 @@ CPU와 CUDA의 전체 test 집계 결과는 동일했습니다. CPU는 기능·�
 - [DINOv2 baseline](https://arxiv.org/abs/2304.07193)
 - [Learn then Test: Calibrating Predictive Algorithms to Achieve Risk Control](https://arxiv.org/abs/2110.01052)
 - [ONNX Runtime CUDA Execution Provider와 I/O Binding](https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html)
+# 운영 로그 기반 detector 후보 `0.1.2`
+
+Scan Log v2의 `DETECTOR_UNCERTAIN_OBJECT` 기록을 외부 데이터셋으로 수집하려면 다음 명령을 사용합니다. 원본과 복사 이미지는 Git 외부에 두고 manifest에는 상대 경로와 SHA-256만 기록합니다. CPU가 기본 provider이며, 모델 보조 bbox/class 초안의 재현 가능한 hash를 만들기 위한 선택입니다.
+
+```powershell
+bixolon-ingest-operational-logs `
+  --log-dir "$env:APPDATA\bixolon\BIXOLON Scanner\ProductScanner\scan_logs" `
+  --decisions configs\operational_logs_0.1.2.json `
+  --package-dir artifacts\packages\bread-worker-0.1.1 `
+  --base-manifest manifests\bread-v1\manifest.jsonl `
+  --base-metadata manifests\bread-v1\metadata.json `
+  --base-dataset-root C:\workspace\raw_data\bread_project `
+  --dataset-root C:\workspace\raw_data `
+  --manifest-dir manifests\bread-ops-v2 `
+  --review-dir artifacts\reports\operational-label-review-0.1.2 `
+  --annotation-review-status approved
+```
+
+승인된 manifest `bread-6bda7c231384`는 기존 detector development 205장에 단일 운영 세션 42장을 추가합니다. 정상 34장은 positive, 빈 트레이 7장은 annotation이 없는 hard negative, blur 1장은 품질 회귀 전용이며 detector positive 학습에서는 제외합니다. 이 운영 세션은 학습 적합도 진단일 뿐 production 승격 근거가 아닙니다.
+
+후보 package `0.1.2`는 schema `1.1`, detector `0.1.1`, classifier `0.1.0`으로 생성되며 classifier ONNX SHA-256 `835a13da0a8f0084da42500c4721c738a4569b5520c844b0e7f054d348083c02`는 `0.1.1`과 동일합니다. detector 정책 `0.56/0.20/0.039/0.5`와 classifier 승인 임계값은 변경하지 않았습니다.
+
+현재 후보는 `development`입니다. 운영 fit 정상 진행 20/34, 재촬영 유지 7/8, 기존 누락 이미지 차단 2/4, `UNKNOWN` Top-3 17/20, RTX 5080 full-path p95 100.461ms로 승격 게이트를 통과하지 못했습니다. 독립 운영 test 데이터도 없습니다. 따라서 Windows CMake와 앱 기본 package는 계속 `bread-worker-0.1.1`을 사용합니다. 원시 승격 판단은 `manifests/bread-ops-v2/promotion.json`에 기록합니다.

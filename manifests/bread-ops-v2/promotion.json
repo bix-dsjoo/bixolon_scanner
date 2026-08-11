@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "candidate": {
+    "package_version": "0.1.2",
+    "detector_version": "0.1.1",
+    "classifier_version": "0.1.0",
+    "dataset_version": "bread-6bda7c231384",
+    "promotion_status": "development"
+  },
+  "decision": "rejected",
+  "waiver_used": false,
+  "app_integration": {
+    "default_package_changed": false,
+    "retained_default_package": "bread-worker-0.1.1"
+  },
+  "fixed_policy": {
+    "score_threshold": 0.56,
+    "uncertainty_score_threshold": 0.2,
+    "uncertainty_min_area_ratio": 0.039,
+    "uncertainty_match_iou_threshold": 0.5,
+    "classifier_approval_threshold": 0.9611232766969969,
+    "min_sharpness": null
+  },
+  "gates": {
+    "operational_fit_normal_continue": {
+      "observed_count": 20,
+      "sample_count": 34,
+      "observed_rate": 0.5882352941176471,
+      "required_rate": 1.0,
+      "passed": false
+    },
+    "operational_fit_recapture_recall": {
+      "observed_count": 7,
+      "sample_count": 8,
+      "observed_rate": 0.875,
+      "required_rate": 1.0,
+      "passed": false
+    },
+    "fixed_test_detector_recall": {
+      "observed_count": 507,
+      "sample_count": 511,
+      "observed_rate": 0.9921722113502935,
+      "required_rate": 0.99,
+      "passed": true
+    },
+    "existing_missed_image_block": {
+      "observed_count": 2,
+      "sample_count": 4,
+      "required_count": 4,
+      "passed": false
+    },
+    "approved_precision": {
+      "observed_count": 486,
+      "sample_count": 487,
+      "observed_rate": 0.997946611909651,
+      "required_rate": 0.995,
+      "passed": true
+    },
+    "unknown_top3_accuracy": {
+      "observed_count": 17,
+      "sample_count": 20,
+      "observed_rate": 0.85,
+      "required_rate": 0.95,
+      "passed": false
+    },
+    "pytorch_onnx_cpu_parity": {
+      "passed": true
+    },
+    "pytorch_onnx_cuda_parity": {
+      "passed": true
+    },
+    "rtx5080_full_path_p95_ms": {
+      "sample_count": 498,
+      "p50_ms": 71.26770002651028,
+      "p95_ms": 100.46089000534266,
+      "p99_ms": 107.95793897937978,
+      "required_p95_ms": 100.0,
+      "passed": false
+    }
+  },
+  "independent_data": {
+    "available": false,
+    "promotion_evidence_sample_count": 0,
+    "required": {
+      "normal_images": 100,
+      "recapture_images": 100,
+      "minimum_capture_sessions_per_group": 3,
+      "unknown_items_with_class_ground_truth": 20,
+      "recapture_categories_minimum_each": {
+        "no_object_or_missed_dense": 20,
+        "occlusion": 20,
+        "blur": 20,
+        "border_or_crop": 20,
+        "exposure": 20
+      }
+    }
+  },
+  "artifacts": {
+    "operational_fit": "operational-fit-0.1.2-cuda.json",
+    "fixed_detector_test": "detector-ops-0.1.1-fixed-test.json",
+    "fixed_worker_test": "worker-0.1.2-fixed-test-cuda.json",
+    "difficulty_regression": "worker-difficulty-0.1.2-cuda.json",
+    "cpu_parity": "parity-0.1.2-cpu.json",
+    "cuda_parity": "parity-0.1.2-cuda.json",
+    "benchmark": "benchmark-0.1.2-rtx5080.json"
+  }
+}

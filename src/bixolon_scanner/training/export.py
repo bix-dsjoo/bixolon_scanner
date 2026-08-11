@@ -2,11 +2,21 @@ from __future__ import annotations
 
 import argparse
 import json
+import shutil
 from pathlib import Path
 
-from ..package import sha256_file
+from ..package import load_model_package, sha256_file
 from .models import build_dino_classifier, require_torch
 from .config_file import parse_args_with_config
+
+
+def _copy_reused_classifier(package_dir: Path, classifier_path: Path) -> dict:
+    reused_package = load_model_package(package_dir)
+    reused_metadata = json.loads((package_dir / "metadata.json").read_text(encoding="utf-8"))
+    shutil.copy2(reused_package.classifier_path, classifier_path)
+    if sha256_file(classifier_path) != sha256_file(reused_package.classifier_path):
+        raise RuntimeError("reused classifier checksum mismatch")
+    return reused_metadata
 
 
 def export_models(args: argparse.Namespace) -> None:
@@ -14,35 +24,49 @@ def export_models(args: argparse.Namespace) -> None:
     from transformers import RTDetrV2ForObjectDetection
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
-    classifier_checkpoint = torch.load(args.classifier_checkpoint, map_location="cpu", weights_only=False)
-    calibration = json.loads(args.calibration_report.read_text(encoding="utf-8"))
     detector_evaluation = json.loads(args.detector_evaluation_report.read_text(encoding="utf-8"))
-    classifier = build_dino_classifier(
-        classifier_checkpoint.get("backbone_kind", "dinov2"),
-        classifier_checkpoint["num_classes"],
-        pretrained_name=classifier_checkpoint["pretrained_name"],
-        hub_repository=(
-            f"facebookresearch/dinov3:{classifier_checkpoint['source_revision']}"
-            if classifier_checkpoint.get("source_revision")
-            else "facebookresearch/dinov3"
-        ),
-    )
-    classifier.load_state_dict(classifier_checkpoint["state_dict"])
-    classifier.eval()
     classifier_path = args.output_dir / "classifier.onnx"
-    classifier_dummy = torch.zeros(
-        1, 3, classifier_checkpoint["image_size"], classifier_checkpoint["image_size"], dtype=torch.float32
-    )
-    torch.onnx.export(
-        classifier,
-        (classifier_dummy,),
-        classifier_path,
-        input_names=["pixel_values"],
-        output_names=["logits"],
-        dynamic_axes={"pixel_values": {0: "batch"}, "logits": {0: "batch"}},
-        opset_version=args.opset,
-        dynamo=False,
-    )
+    reused_metadata = None
+    if args.reuse_classifier_package is not None:
+        reused_metadata = _copy_reused_classifier(args.reuse_classifier_package, classifier_path)
+    else:
+        if args.classifier_checkpoint is None or args.calibration_report is None:
+            raise ValueError(
+                "classifier checkpoint and calibration report are required unless a package is reused"
+            )
+        classifier_checkpoint = torch.load(
+            args.classifier_checkpoint, map_location="cpu", weights_only=False
+        )
+        calibration = json.loads(args.calibration_report.read_text(encoding="utf-8"))
+        classifier = build_dino_classifier(
+            classifier_checkpoint.get("backbone_kind", "dinov2"),
+            classifier_checkpoint["num_classes"],
+            pretrained_name=classifier_checkpoint["pretrained_name"],
+            hub_repository=(
+                f"facebookresearch/dinov3:{classifier_checkpoint['source_revision']}"
+                if classifier_checkpoint.get("source_revision")
+                else "facebookresearch/dinov3"
+            ),
+        )
+        classifier.load_state_dict(classifier_checkpoint["state_dict"])
+        classifier.eval()
+        classifier_dummy = torch.zeros(
+            1,
+            3,
+            classifier_checkpoint["image_size"],
+            classifier_checkpoint["image_size"],
+            dtype=torch.float32,
+        )
+        torch.onnx.export(
+            classifier,
+            (classifier_dummy,),
+            classifier_path,
+            input_names=["pixel_values"],
+            output_names=["logits"],
+            dynamic_axes={"pixel_values": {0: "batch"}, "logits": {0: "batch"}},
+            opset_version=args.opset,
+            dynamo=False,
+        )
 
     detector_model = RTDetrV2ForObjectDetection.from_pretrained(args.detector_checkpoint).eval()
 
@@ -78,6 +102,32 @@ def export_models(args: argparse.Namespace) -> None:
         {"class_id": label["class_id"], "class_name": label["class_name"], "recapture": False}
         for label in manifest_metadata["labels"]
     ]
+    if reused_metadata is not None:
+        classifier_metadata = dict(reused_metadata["classifier"])
+        classifier_metadata["filename"] = classifier_path.name
+        if classifier_metadata["version"] != args.classifier_version:
+            raise ValueError("reused classifier version does not match --classifier-version")
+        if [label["class_id"] for label in classifier_metadata["labels"]] != [
+            label["class_id"] for label in labels
+        ]:
+            raise ValueError("reused classifier labels do not match dataset metadata")
+    else:
+        classifier_metadata = {
+            "filename": classifier_path.name,
+            "version": args.classifier_version,
+            "input_name": "pixel_values",
+            "logits_output": "logits",
+            "input_size": [classifier_checkpoint["image_size"], classifier_checkpoint["image_size"]],
+            "color_order": "RGB",
+            "mean": [0.485, 0.456, 0.406],
+            "std": [0.229, 0.224, 0.225],
+            "crop_margin_ratio": args.crop_margin,
+            "approval_threshold": calibration["approval_threshold"],
+            "temperature": calibration["temperature"],
+            "labels": labels,
+            "resize_reducing_gap": args.resize_reducing_gap,
+            "warmup_batch_sizes": list(range(1, args.classifier_warmup_max_batch + 1)),
+        }
     metadata = {
         "schema_version": "1.1",
         "package_version": args.package_version,
@@ -103,22 +153,7 @@ def export_models(args: argparse.Namespace) -> None:
             "box_format": "normalized_cxcywh",
             "resize_reducing_gap": args.resize_reducing_gap,
         },
-        "classifier": {
-            "filename": classifier_path.name,
-            "version": args.classifier_version,
-            "input_name": "pixel_values",
-            "logits_output": "logits",
-            "input_size": [classifier_checkpoint["image_size"], classifier_checkpoint["image_size"]],
-            "color_order": "RGB",
-            "mean": [0.485, 0.456, 0.406],
-            "std": [0.229, 0.224, 0.225],
-            "crop_margin_ratio": args.crop_margin,
-            "approval_threshold": calibration["approval_threshold"],
-            "temperature": calibration["temperature"],
-            "labels": labels,
-            "resize_reducing_gap": args.resize_reducing_gap,
-            "warmup_batch_sizes": list(range(1, args.classifier_warmup_max_batch + 1)),
-        },
+        "classifier": classifier_metadata,
         "quality": {
             "min_object_area_ratio": args.min_object_area_ratio,
             "border_margin_ratio": args.border_margin_ratio,
@@ -133,13 +168,13 @@ def export_models(args: argparse.Namespace) -> None:
         },
         "licenses": {
             "detector": "Apache-2.0: https://huggingface.co/PekingU/rtdetr_v2_r18vd",
-            "classifier": (
+            "classifier": reused_metadata["licenses"]["classifier"] if reused_metadata else (
                 "DINOv3 License (authorized by model recipient): https://github.com/facebookresearch/dinov3"
                 if classifier_checkpoint.get("backbone_kind") == "dinov3_convnext_tiny"
                 else "Apache-2.0: https://github.com/facebookresearch/dinov2"
             ),
         },
-        "sources": {
+        "sources": reused_metadata.get("sources", {}) if reused_metadata else {
             "classifier": {
                 "architecture": classifier_checkpoint.get("backbone_architecture"),
                 "revision": classifier_checkpoint.get("source_revision"),
@@ -147,7 +182,7 @@ def export_models(args: argparse.Namespace) -> None:
                 "weight_sha256": classifier_checkpoint.get("source_weight_sha256"),
             }
         },
-        "calibration": {
+        "calibration": reused_metadata.get("calibration") if reused_metadata else {
             "sample_count": calibration["sample_count"],
             "approved_precision": calibration["approved_precision"],
             "approval_coverage": calibration["approval_coverage"],
@@ -169,8 +204,13 @@ def export_models(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Export detector and classifier to a Worker model package")
     parser.add_argument("--detector-checkpoint", type=Path, required=True)
-    parser.add_argument("--classifier-checkpoint", type=Path, required=True)
-    parser.add_argument("--calibration-report", type=Path, required=True)
+    parser.add_argument("--classifier-checkpoint", type=Path)
+    parser.add_argument("--calibration-report", type=Path)
+    parser.add_argument(
+        "--reuse-classifier-package",
+        type=Path,
+        help="Copy a validated classifier ONNX and its metadata byte-for-byte from a package.",
+    )
     parser.add_argument("--detector-evaluation-report", type=Path, required=True)
     parser.add_argument("--manifest-metadata", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)

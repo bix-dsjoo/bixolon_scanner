@@ -47,6 +47,9 @@ bixolon-evaluate = "bixolon_scanner.training.evaluate:main"
 bixolon-evaluate-worker = "bixolon_scanner.training.evaluate_worker:main"
 bixolon-evaluate-difficulty = "bixolon_scanner.training.evaluate_difficulty:main"
 bixolon-render-detection-overlays = "bixolon_scanner.training.render_detection_overlays:main"
+bixolon-ingest-operational-logs = "bixolon_scanner.training.operational_logs:main"
+bixolon-evaluate-operational = "bixolon_scanner.training.evaluate_operational:main"
+bixolon-rpc-data-scale = "bixolon_scanner.training.rpc_data_scale:main"
 bixolon-benchmark = "bixolon_scanner.benchmark:main"
 
 [tool.hatch.build.targets.wheel]
