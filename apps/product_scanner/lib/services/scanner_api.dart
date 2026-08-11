@@ -34,10 +34,16 @@ class WorkerScannerApi implements ScannerApi {
     required this.baseUrl,
     http.Client? client,
     this.timeout = const Duration(seconds: 35),
+    this.waitForReady = false,
+    this.readinessTimeout = const Duration(seconds: 35),
+    this.readinessPollInterval = const Duration(milliseconds: 250),
   }) : _client = client ?? http.Client();
 
   final String baseUrl;
   final Duration timeout;
+  final bool waitForReady;
+  final Duration readinessTimeout;
+  final Duration readinessPollInterval;
   final http.Client _client;
 
   @override
@@ -46,6 +52,9 @@ class WorkerScannerApi implements ScannerApi {
     required String fileName,
   }) async {
     try {
+      if (waitForReady) {
+        await _waitUntilReady();
+      }
       final request =
           http.MultipartRequest('POST', Uri.parse('$baseUrl/v1/scan'))
             ..files.add(
@@ -77,6 +86,30 @@ class WorkerScannerApi implements ScannerApi {
       throw const ScannerApiException('분석 서버의 응답을 확인할 수 없어요.');
     } catch (_) {
       throw const ScannerApiException('분석 서버에 연결할 수 없어요.');
+    }
+  }
+
+  Future<void> _waitUntilReady() async {
+    final deadline = DateTime.now().add(readinessTimeout);
+    final readyUrl = Uri.parse('$baseUrl/health/ready');
+    while (true) {
+      try {
+        final response = await _client
+            .get(readyUrl)
+            .timeout(const Duration(seconds: 1));
+        if (response.statusCode >= 200 && response.statusCode < 300) {
+          return;
+        }
+      } catch (_) {
+        // The local Worker may still be starting or warming its model sessions.
+      }
+
+      if (!DateTime.now().isBefore(deadline)) {
+        throw const ScannerApiException(
+          '분석 서버를 시작하지 못했어요. 앱을 종료한 뒤 다시 실행해 주세요.',
+        );
+      }
+      await Future<void>.delayed(readinessPollInterval);
     }
   }
 

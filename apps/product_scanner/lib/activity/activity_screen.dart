@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -545,7 +547,7 @@ class _ActivityToolbar extends StatelessWidget {
                       focusNode: searchFocusNode,
                       onChanged: onQueryChanged,
                       decoration: InputDecoration(
-                        hintText: '상품명 또는 Scan ID',
+                        hintText: '상품명, Scan ID 또는 사유 코드',
                         prefixIcon: const Icon(Icons.search_rounded, size: 19),
                         suffixIcon: query.isEmpty
                             ? const AppKeyboardShortcutHint(
@@ -905,7 +907,7 @@ class _LogTableHeader extends StatelessWidget {
       child: Row(
         children: [
           const SizedBox(width: AppSpacing.x4),
-          Expanded(flex: 3, child: Text('확정 시각', style: style)),
+          Expanded(flex: 3, child: Text('기록 시각', style: style)),
           Expanded(flex: 4, child: Text('상품', style: style)),
           Expanded(flex: 2, child: Text('입력원', style: style)),
           Expanded(flex: 2, child: Text('검수 결과', style: style)),
@@ -934,17 +936,19 @@ class _LogRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final products = summarizeActivityProducts(log.items, query: query);
+    final contentLabel = activityLogContentLabel(log, query: query);
     final source = log.inputMode == InputMode.camera ? '카메라' : '이미지';
-    final reviewSummary = _reviewSummary(log.items);
+    final resultLabel = activityLogResultLabel(log);
     return AppSelectableSurface(
       selected: selected,
       inMutuallyExclusiveGroup: true,
       focusNode: focusNode,
       onTap: onTap,
       semanticLabel:
-          '${_formatDate(log.confirmedAt)} ${_formatTime(log.confirmedAt)}, '
-          '$products, $source, $reviewSummary 활동 기록',
+          '${_formatDate(log.recordedAt)} ${_formatTime(log.recordedAt)}, '
+          '$contentLabel, '
+          '${log.originalImagePath == null ? '저장 이미지 없음' : '저장 이미지 있음'}, '
+          '$source, $resultLabel 활동 기록',
       restingBorder: const Border(top: BorderSide(color: AppColors.divider)),
       child: Row(
         children: [
@@ -956,13 +960,13 @@ class _LogRow extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Text(
-                  _formatDate(log.confirmedAt),
+                  _formatDate(log.recordedAt),
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     fontWeight: AppTypography.bold,
                   ),
                 ),
                 Text(
-                  _formatTime(log.confirmedAt),
+                  _formatTime(log.recordedAt),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ],
@@ -970,17 +974,28 @@ class _LogRow extends StatelessWidget {
           ),
           Expanded(
             flex: 4,
-            child: Text(
-              products,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: AppTypography.semibold,
-              ),
+            child: Row(
+              children: [
+                _ActivityLogImage(
+                  imagePath: log.originalImagePath,
+                  compact: true,
+                ),
+                const SizedBox(width: AppSpacing.x3),
+                Expanded(
+                  child: Text(
+                    contentLabel,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      fontWeight: AppTypography.semibold,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
           Expanded(flex: 2, child: _SourceLabel(mode: log.inputMode)),
-          Expanded(flex: 2, child: _ReviewSummary(items: log.items)),
+          Expanded(flex: 2, child: _ReviewSummary(log: log)),
           SizedBox(
             width: context.appTokens.compactVisualSize,
             child: Icon(
@@ -998,26 +1013,37 @@ class _LogRow extends StatelessWidget {
 }
 
 class _ReviewSummary extends StatelessWidget {
-  const _ReviewSummary({required this.items});
+  const _ReviewSummary({required this.log});
 
-  final List<ScanLogItemSummary> items;
+  final ScanLogSummary log;
 
   @override
   Widget build(BuildContext context) {
-    final modifiedCount = _modifiedItemCount(items);
+    final modifiedCount = _modifiedItemCount(log.items);
     final modified = modifiedCount > 0;
+    final recapture = log.isRecapture;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
-          modified ? Icons.edit_outlined : Icons.check_circle_outline_rounded,
+          recapture
+              ? Icons.center_focus_weak_rounded
+              : modified
+              ? Icons.edit_outlined
+              : Icons.check_circle_outline_rounded,
           size: 17,
-          color: modified ? AppColors.attention : AppColors.success,
+          color: recapture || modified
+              ? AppColors.attention
+              : AppColors.success,
         ),
         const SizedBox(width: AppSpacing.x2),
         Flexible(
           child: Text(
-            modified ? '$modifiedCount개 수정' : '자동 확정',
+            recapture
+                ? '재촬영'
+                : modified
+                ? '$modifiedCount개 수정'
+                : '자동 확정',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
@@ -1085,6 +1111,8 @@ class _LogDetail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final recapture = log.isRecapture;
+    final contentLabel = activityLogContentLabel(log, query: '');
     return Focus(
       canRequestFocus: false,
       skipTraversal: true,
@@ -1097,15 +1125,23 @@ class _LogDetail extends StatelessWidget {
           padding: EdgeInsets.zero,
           children: [
             AppPanelHeader(
-              title: '확정 상품',
-              subtitle: '${log.items.length}개',
-              trailing: const AppStatusBadge(
-                label: '저장됨',
-                icon: Icons.check_circle_outline_rounded,
-                color: AppColors.success,
-                backgroundColor: AppColors.successSoft,
-              ),
+              title: recapture ? '재촬영 기록' : '확정 상품',
+              subtitle: recapture ? contentLabel : '${log.items.length}개',
+              trailing: recapture
+                  ? const AppStatusBadge(
+                      label: '재촬영',
+                      icon: Icons.center_focus_weak_rounded,
+                      color: AppColors.attention,
+                      backgroundColor: AppColors.attentionSoft,
+                    )
+                  : const AppStatusBadge(
+                      label: '저장됨',
+                      icon: Icons.check_circle_outline_rounded,
+                      color: AppColors.success,
+                      backgroundColor: AppColors.successSoft,
+                    ),
             ),
+            _ActivityLogImage(imagePath: log.originalImagePath),
             ...log.items.map((item) => _LogItem(item: item)),
             AppDisclosure(
               title: '진단 정보',
@@ -1119,9 +1155,9 @@ class _LogDetail extends StatelessWidget {
                   selectable: true,
                 ),
                 _DetailLine(
-                  label: '확정 시각',
+                  label: recapture ? '기록 시각' : '확정 시각',
                   value:
-                      '${_formatDate(log.confirmedAt)}  ${_formatTime(log.confirmedAt)}',
+                      '${_formatDate(log.recordedAt)}  ${_formatTime(log.recordedAt)}',
                 ),
                 _DetailLine(
                   label: '입력원',
@@ -1136,15 +1172,114 @@ class _LogDetail extends StatelessWidget {
                   value:
                       'Detector ${log.modelVersions.detector ?? '—'}  ·  Classifier ${log.modelVersions.classifier ?? '—'}',
                 ),
-                const _DiagnosticSectionTitle(label: '객체별 판정'),
-                ...log.items.indexed.map(
-                  (entry) =>
-                      _DiagnosticItem(index: entry.$1 + 1, item: entry.$2),
-                ),
+                if (log.reasonCodes.isNotEmpty)
+                  _DetailLine(
+                    label: 'Reason code',
+                    value: log.reasonCodes.join(', '),
+                    selectable: true,
+                  ),
+                if (log.items.isNotEmpty) ...[
+                  const _DiagnosticSectionTitle(label: '객체별 판정'),
+                  ...log.items.indexed.map(
+                    (entry) =>
+                        _DiagnosticItem(index: entry.$1 + 1, item: entry.$2),
+                  ),
+                ],
               ],
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _ActivityLogImage extends StatelessWidget {
+  const _ActivityLogImage({required this.imagePath, this.compact = false});
+
+  final String? imagePath;
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    final imagePath = this.imagePath;
+    final placeholder = _ActivityImagePlaceholder(compact: compact);
+    final image = imagePath == null
+        ? placeholder
+        : Image.file(
+            File(imagePath),
+            key: ValueKey(
+              'activity-image-$imagePath-${compact ? 'thumb' : 'detail'}',
+            ),
+            fit: compact ? BoxFit.cover : BoxFit.contain,
+            cacheWidth: compact ? 132 : 960,
+            filterQuality: FilterQuality.medium,
+            errorBuilder: (context, error, stackTrace) => placeholder,
+          );
+
+    if (compact) {
+      return Semantics(
+        image: true,
+        label: imagePath == null ? '저장 이미지 없음' : '저장 이미지 썸네일',
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(AppSpacing.x2),
+          child: SizedBox.square(
+            dimension: 44,
+            child: ColoredBox(color: AppColors.elevated, child: image),
+          ),
+        ),
+      );
+    }
+
+    return Semantics(
+      image: true,
+      label: imagePath == null ? '저장 이미지 없음' : '저장된 스캔 이미지',
+      child: Container(
+        key: const ValueKey('activity-detail-image'),
+        width: double.infinity,
+        height: 240,
+        color: AppColors.preview,
+        padding: const EdgeInsets.all(AppSpacing.x3),
+        child: image,
+      ),
+    );
+  }
+}
+
+class _ActivityImagePlaceholder extends StatelessWidget {
+  const _ActivityImagePlaceholder({required this.compact});
+
+  final bool compact;
+
+  @override
+  Widget build(BuildContext context) {
+    if (compact) {
+      return const ColoredBox(
+        color: AppColors.elevated,
+        child: Icon(
+          Icons.image_not_supported_outlined,
+          size: 18,
+          color: AppColors.subtle,
+        ),
+      );
+    }
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.image_not_supported_outlined,
+            size: 28,
+            color: AppColors.subtle,
+          ),
+          const SizedBox(height: AppSpacing.x2),
+          Text(
+            '저장 이미지를 불러올 수 없어요',
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppColors.subtle),
+          ),
+        ],
       ),
     );
   }
@@ -1317,8 +1452,3 @@ String _formatTime(DateTime value) {
 
 int _modifiedItemCount(List<ScanLogItemSummary> items) =>
     items.where((item) => item.userModified).length;
-
-String _reviewSummary(List<ScanLogItemSummary> items) {
-  final modifiedCount = _modifiedItemCount(items);
-  return modifiedCount > 0 ? '$modifiedCount개 수정' : '자동 확정';
-}

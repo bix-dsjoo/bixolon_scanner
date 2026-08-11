@@ -1,11 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:ui' show SemanticsAction, Tristate;
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:product_scanner/activity/activity_filters.dart';
 import 'package:product_scanner/app.dart';
 import 'package:product_scanner/controllers/scanner_controller.dart';
@@ -14,8 +16,8 @@ import 'package:product_scanner/services/image_input.dart';
 import 'package:product_scanner/services/scan_log_repository.dart';
 import 'package:product_scanner/services/scanner_api.dart';
 import 'package:product_scanner/theme/app_copy.dart';
+import 'package:product_scanner/theme/app_theme.dart';
 import 'package:product_scanner/theme/app_tokens.dart';
-import 'package:product_scanner/widgets/app_scan_guide.dart';
 
 import 'support/test_catalog.dart';
 
@@ -27,12 +29,13 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     final semantics = tester.ensureSemantics();
 
+    final repository = _MemoryLogRepository();
     final controller =
         ScannerController(
             _UnusedApi(),
             _EmptyCameraGateway(),
             _EmptyFileGateway(),
-            _MemoryLogRepository(),
+            repository,
             testCatalog,
           )
           ..cameraInitializing = false
@@ -53,8 +56,49 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
+    expect(find.text('1/2개 확인 · 분석 70.0 ms'), findsOneWidget);
 
-    expect(find.byType(AppScanGuide), findsNothing);
+    expect(find.byType(SvgPicture), findsOneWidget);
+    expect(find.bySemanticsLabel('BIXOLON'), findsOneWidget);
+    expect(tester.getSize(find.byType(SvgPicture)), const Size(105, 30));
+    expect(find.text('BIXOLON Scanner'), findsNothing);
+    final topBar = tester.widget<Container>(
+      find.byKey(const ValueKey('app-top-bar')),
+    );
+    expect(topBar.color, AppColors.workspace);
+    final topBarAccent = find.byKey(const ValueKey('app-top-bar-accent'));
+    expect(tester.widget<ColoredBox>(topBarAccent).color, AppColors.primary);
+    expect(
+      tester.getSize(topBarAccent).height,
+      AppDesignTokens.standard.navigationIndicatorThickness,
+    );
+    final scanNavigation = find.byKey(const ValueKey('navigation-scan'));
+    final activityNavigation = find.byKey(
+      const ValueKey('navigation-activity'),
+    );
+    expect(
+      tester.getSize(find.byKey(const ValueKey('navigation-tab-스캔'))),
+      const Size(112, 52),
+    );
+    final selectedTab = tester.widget<AnimatedContainer>(
+      find.byKey(const ValueKey('navigation-tab-스캔')),
+    );
+    final selectedTabDecoration = selectedTab.decoration! as BoxDecoration;
+    final selectedTabBorder = selectedTabDecoration.border! as Border;
+    expect(selectedTabDecoration.color, AppColors.surface);
+    expect(selectedTabBorder.top.color, AppColors.primary);
+    expect(
+      selectedTabBorder.top.width,
+      AppDesignTokens.standard.navigationIndicatorThickness,
+    );
+    expect(
+      find.descendant(of: scanNavigation, matching: find.byType(Icon)),
+      findsNothing,
+    );
+    expect(
+      find.descendant(of: activityNavigation, matching: find.byType(Icon)),
+      findsNothing,
+    );
     expect(find.text('이미지 입력 · 카메라 미연결'), findsOneWidget);
     expect(find.text('카메라 확인 필요'), findsNothing);
     expect(tester.getSize(find.byType(Scaffold).first), const Size(1440, 900));
@@ -120,7 +164,7 @@ void main() {
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
 
-    expect(find.text('BIXOLON Scanner'), findsOneWidget);
+    expect(find.text('BIXOLON Scanner'), findsNothing);
     expect(find.text('상품 확인이 필요해요'), findsOneWidget);
     expect(find.text('2번 상품을 확인해 주세요'), findsOneWidget);
     expect(find.text('선택하면 다음 확인 항목으로 이동해요.'), findsOneWidget);
@@ -197,6 +241,19 @@ void main() {
       find.byType(Scaffold).first,
       matchesGoldenFile('goldens/scanner_candidate_selected_1440x900.png'),
     );
+    final missedDetectionAction = find.widgetWithText(
+      OutlinedButton,
+      AppActionCopy.saveMissedDetectionLog,
+    );
+    expect(missedDetectionAction, findsOneWidget);
+    await tester.tap(missedDetectionAction);
+    await tester.pumpAndSettle();
+    expect(repository.saved, hasLength(1));
+    expect(
+      repository.saved.single.operatorFeedback,
+      ScanOperatorFeedback.missedObject,
+    );
+    expect(find.text(AppActionCopy.missedDetectionLogSaved), findsOneWidget);
     semantics.dispose();
     controller.dispose();
   });
@@ -491,6 +548,12 @@ void main() {
       tester.getSemantics(scan).getSemanticsData().flagsCollection.isFocused,
       Tristate.isTrue,
     );
+    final focusedScanTab = tester.widget<AnimatedContainer>(
+      find.byKey(const ValueKey('navigation-tab-스캔')),
+    );
+    final focusedScanBorder =
+        (focusedScanTab.decoration! as BoxDecoration).border! as Border;
+    expect(focusedScanBorder.top.color, AppPalette.focusRing);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pumpAndSettle();
@@ -531,12 +594,13 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
+    final repository = _MemoryLogRepository();
     final controller =
         ScannerController(
             _UnusedApi(),
             _EmptyCameraGateway(),
             _EmptyFileGateway(),
-            _MemoryLogRepository(),
+            repository,
             testCatalog,
           )
           ..cameraInitializing = false
@@ -563,17 +627,21 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byType(AppScanGuide), findsOneWidget);
     await expectLater(
       find.byType(Scaffold).first,
       matchesGoldenFile('goldens/scanner_recapture_1280x720.png'),
     );
 
-    expect(find.text('다른 이미지를 선택해 주세요'), findsOneWidget);
+    expect(find.text('상품 일부가 잘렸어요'), findsOneWidget);
+    expect(find.text('분석 40.0 ms'), findsOneWidget);
+    expect(
+      find.widgetWithText(OutlinedButton, AppActionCopy.saveRecaptureLog),
+      findsOneWidget,
+    );
     expect(find.widgetWithText(FilledButton, '다른 이미지 선택'), findsOneWidget);
     expect(find.text('분석하기'), findsNothing);
     final recaptureMessage = find.bySemanticsLabel(
-      '다른 이미지를 선택해 주세요. 일부 상품이 이미지 밖으로 잘려 있어요.',
+      '상품 일부가 잘렸어요. 상품 전체가 이미지 안에 있는 다른 이미지를 선택해 주세요.',
     );
     expect(recaptureMessage, findsOneWidget);
     final recaptureData = tester
@@ -588,6 +656,14 @@ void main() {
           .hasAction(SemanticsAction.tap),
       isTrue,
     );
+    await tester.tap(
+      find.widgetWithText(OutlinedButton, AppActionCopy.saveRecaptureLog),
+    );
+    await tester.pumpAndSettle();
+    expect(repository.saved, hasLength(1));
+    expect(repository.saved.single.workerStatus, ScanStatus.recapture);
+    expect(find.text(AppActionCopy.recaptureLogSaved), findsOneWidget);
+    expect(find.text('상품 일부가 잘렸어요'), findsOneWidget);
     controller.dispose();
     semantics.dispose();
   });
@@ -626,7 +702,9 @@ void main() {
     );
 
     expect(
-      tester.getSize(find.widgetWithText(TextField, '상품명 또는 Scan ID')).width,
+      tester
+          .getSize(find.widgetWithText(TextField, '상품명, Scan ID 또는 사유 코드'))
+          .width,
       AppDesignTokens.standard.activitySearchWidth,
     );
 
@@ -710,6 +788,120 @@ void main() {
       matchesGoldenFile('goldens/activity_diagnostics_1440x900.png'),
     );
     semantics.dispose();
+    controller.dispose();
+  });
+
+  testWidgets('Activity는 저장 이미지 썸네일과 상세 이미지를 지연 로드한다', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final directory = Directory.systemTemp.createTempSync(
+      'product-scanner-activity-image-',
+    );
+    addTearDown(() {
+      if (directory.existsSync()) directory.deleteSync(recursive: true);
+    });
+    final image = File('${directory.path}${Platform.pathSeparator}scan.png');
+    image.writeAsBytesSync(_testInputImage.bytes);
+    final log = ScanLogSummary(
+      scanId: 'activity-image',
+      analyzedAt: DateTime.utc(2026, 8, 11, 1),
+      confirmedAt: DateTime.utc(2026, 8, 11, 1, 1),
+      inputMode: InputMode.image,
+      processingTimeMs: 52,
+      modelVersions: const ModelVersions(
+        detector: '0.1.1',
+        classifier: '0.1.1',
+      ),
+      items: _logSummary.items,
+      originalImagePath: image.path,
+    );
+    final controller = ScannerController(
+      _UnusedApi(),
+      _EmptyCameraGateway(),
+      _EmptyFileGateway(),
+      _MemoryLogRepository(logs: [log]),
+      testCatalog,
+    )..cameraInitializing = false;
+
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.tap(find.text('활동'));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget is Semantics && widget.properties.label == '저장 이미지 썸네일',
+      ),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel(RegExp('저장 이미지 있음')), findsOneWidget);
+    expect(find.bySemanticsLabel('저장된 스캔 이미지'), findsOneWidget);
+    expect(find.text('저장 이미지를 불러올 수 없어요'), findsNothing);
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump();
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    controller.dispose();
+  });
+
+  testWidgets('Activity는 RECAPTURE 원인과 raw reason code를 분리해 표시한다', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final log = ScanLogSummary(
+      scanId: 'activity-recapture',
+      analyzedAt: DateTime.utc(2026, 8, 11, 2),
+      confirmedAt: null,
+      recordedAt: DateTime.utc(2026, 8, 11, 2, 1),
+      inputMode: InputMode.camera,
+      processingTimeMs: 41,
+      modelVersions: const ModelVersions(detector: '0.1.1', classifier: null),
+      items: const [],
+      workerStatus: ScanStatus.recapture,
+      reasonCodes: const ['DETECTOR_UNCERTAIN_OBJECT'],
+    );
+    final controller = ScannerController(
+      _UnusedApi(),
+      _EmptyCameraGateway(),
+      _EmptyFileGateway(),
+      _MemoryLogRepository(logs: [log]),
+      testCatalog,
+    )..cameraInitializing = false;
+
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.tap(find.text('활동'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('재촬영 기록'), findsOneWidget);
+    expect(find.text('상품 수를 확인하기 어려워요'), findsWidgets);
+    expect(find.text('재촬영'), findsWidgets);
+    expect(find.text('저장 이미지를 불러올 수 없어요'), findsOneWidget);
+    await expectLater(
+      find.byType(Scaffold).first,
+      matchesGoldenFile('goldens/activity_recapture_1280x720.png'),
+    );
+    await tester.tap(find.bySemanticsLabel('진단 정보'));
+    await tester.pumpAndSettle();
+    expect(find.text('DETECTOR_UNCERTAIN_OBJECT'), findsOneWidget);
+    expect(find.text('Classifier —', findRichText: true), findsNothing);
+    expect(find.textContaining('Classifier —'), findsOneWidget);
     controller.dispose();
   });
 
@@ -1108,7 +1300,6 @@ void main() {
       ..notifyListeners();
     await tester.pump();
 
-    expect(find.byType(AppScanGuide), findsNothing);
     expect(find.text('이미지 입력 · 카메라 미연결'), findsOneWidget);
 
     await expectLater(
@@ -1138,7 +1329,6 @@ void main() {
       ..notifyListeners();
     await tester.pump();
 
-    expect(find.byType(AppScanGuide), findsNothing);
     await expectLater(
       find.byType(Scaffold).first,
       matchesGoldenFile('goldens/scanner_input_error_1280x720.png'),
@@ -1393,7 +1583,7 @@ void main() {
     expect(find.text('에그 타르트'), findsWidgets);
     expect(find.text('머핀'), findsNothing);
 
-    final search = find.widgetWithText(TextField, '상품명 또는 Scan ID');
+    final search = find.widgetWithText(TextField, '상품명, Scan ID 또는 사유 코드');
     await tester.enterText(search, '에그');
     await tester.pump();
     await tester.tap(find.text('스캔'));
@@ -1434,7 +1624,7 @@ void main() {
     await tester.tap(find.text('활동'));
     await tester.pumpAndSettle();
 
-    final search = find.widgetWithText(TextField, '상품명 또는 Scan ID');
+    final search = find.widgetWithText(TextField, '상품명, Scan ID 또는 사유 코드');
     await tester.enterText(search, '에그');
     await tester.pumpAndSettle();
     expect(find.text('검색 결과'), findsOneWidget);
@@ -1564,7 +1754,7 @@ void main() {
     expect(find.bySemanticsLabel('기간, 전체'), findsOneWidget);
     expect(find.bySemanticsLabel('전체'), findsNothing);
 
-    final search = find.widgetWithText(TextField, '상품명 또는 Scan ID');
+    final search = find.widgetWithText(TextField, '상품명, Scan ID 또는 사유 코드');
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
     expect(tester.widget<TextField>(search).focusNode?.hasFocus, isTrue);
@@ -1715,7 +1905,7 @@ void main() {
 
     await tester.sendKeyEvent(LogicalKeyboardKey.slash);
     await tester.pump();
-    final search = find.widgetWithText(TextField, '상품명 또는 Scan ID');
+    final search = find.widgetWithText(TextField, '상품명, Scan ID 또는 사유 코드');
     expect(tester.widget<TextField>(search).focusNode?.hasFocus, isTrue);
     await tester.enterText(search, '머핀');
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
@@ -2223,6 +2413,7 @@ class _MemoryLogRepository implements ScanLogRepository {
   _MemoryLogRepository({this.logs = const []});
 
   final List<ScanLogSummary> logs;
+  final List<ScanLogRecord> saved = [];
   int listCalls = 0;
 
   @override
@@ -2232,7 +2423,7 @@ class _MemoryLogRepository implements ScanLogRepository {
   }
 
   @override
-  Future<void> save(ScanLogRecord record) async {}
+  Future<void> save(ScanLogRecord record) async => saved.add(record);
 }
 
 class _DeferredSaveLogRepository implements ScanLogRepository {

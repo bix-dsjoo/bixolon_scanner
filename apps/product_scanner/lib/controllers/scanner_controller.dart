@@ -7,12 +7,17 @@ import 'package:flutter/widgets.dart';
 
 import '../catalog/product_catalog.dart';
 import '../models/scan_models.dart';
+import '../presentation/recapture_presentation.dart';
 import '../services/image_input.dart';
 import '../services/scan_log_repository.dart';
 import '../services/scanner_api.dart';
 import '../theme/app_tokens.dart';
 
 enum CameraIssueType { unavailable, captureFailed }
+
+enum RecaptureLogSaveState { idle, saving, saved, error }
+
+enum MissedDetectionLogSaveState { idle, saving, saved, error }
 
 class ScannerController extends ChangeNotifier {
   ScannerController(
@@ -45,12 +50,20 @@ class ScannerController extends ChangeNotifier {
   String searchQuery = '';
   String? errorMessage;
   ScannerErrorRecovery errorRecovery = ScannerErrorRecovery.retryAnalysis;
+  RecaptureLogSaveState recaptureLogSaveState = RecaptureLogSaveState.idle;
+  String? recaptureLogError;
+  MissedDetectionLogSaveState missedDetectionLogSaveState =
+      MissedDetectionLogSaveState.idle;
+  String? missedDetectionLogError;
   String? completionMessage;
   int _activityDataRevision = 0;
   String? _latestSavedScanId;
+  final Set<String> _savedRecaptureScanIds = <String>{};
+  final Set<String> _savedMissedDetectionScanIds = <String>{};
   bool cameraInitializing = true;
   String? cameraMessage;
   CameraIssueType? cameraIssueType;
+  bool _imageSelectionInProgress = false;
   bool _disposed = false;
 
   CameraController? get cameraController => _cameraGateway.controller;
@@ -65,12 +78,26 @@ class ScannerController extends ChangeNotifier {
     null => '카메라를 확인해 주세요',
   };
   bool get isBusy =>
+      processState == ProcessState.capturing ||
       processState == ProcessState.analyzing ||
-      processState == ProcessState.submitting;
+      processState == ProcessState.submitting ||
+      recaptureLogSaveState == RecaptureLogSaveState.saving ||
+      missedDetectionLogSaveState == MissedDetectionLogSaveState.saving;
   int get activityDataRevision => _activityDataRevision;
   String? get latestSavedScanId => _latestSavedScanId;
-  bool get canChooseImage => !isBusy;
+  bool get isChoosingImage => _imageSelectionInProgress;
+  bool get canChooseImage => !isBusy && !_imageSelectionInProgress;
   bool get isRecapture => response?.status == ScanStatus.recapture;
+  bool get canSaveMissedDetectionLog {
+    final status = response?.status;
+    return !isBusy &&
+        imageBytes != null &&
+        imageFileName != null &&
+        detections.isNotEmpty &&
+        (status == ScanStatus.approved || status == ScanStatus.unknown) &&
+        missedDetectionLogSaveState != MissedDetectionLogSaveState.saved;
+  }
+
   bool get hasResults => detections.isNotEmpty;
   int get confirmedCount =>
       detections.where((detection) => detection.isConfirmed).length;
@@ -105,9 +132,13 @@ class ScannerController extends ChangeNotifier {
             scanId: log.scanId,
             analyzedAt: log.analyzedAt,
             confirmedAt: log.confirmedAt,
+            recordedAt: log.recordedAt,
             inputMode: log.inputMode,
             processingTimeMs: log.processingTimeMs,
             modelVersions: log.modelVersions,
+            workerStatus: log.workerStatus,
+            reasonCodes: log.reasonCodes,
+            originalImagePath: log.originalImagePath,
             items: log.items
                 .map(
                   (item) => item.withProductName(
@@ -163,8 +194,26 @@ class ScannerController extends ChangeNotifier {
     }
   }
 
+  /// Restores the live camera after returning from another input or after the
+  /// desktop app resumes. A forced restore replaces a controller that still
+  /// reports initialized but may have lost its native device session.
+  Future<void> restoreCamera({bool forceReconnect = false}) async {
+    if (inputMode != InputMode.camera || cameraInitializing || isBusy) return;
+    if (!forceReconnect && isCameraReady && cameraIssueType == null) return;
+    await reconnectCamera();
+  }
+
+  Future<void> returnToCamera() async {
+    if (isBusy) return;
+    _resetSession();
+    _notify();
+    await restoreCamera();
+  }
+
   Future<bool> chooseImage() async {
     if (!canChooseImage) return false;
+    _imageSelectionInProgress = true;
+    _notify();
     try {
       final selected = await _imageFileGateway.pick();
       if (selected == null) return false;
@@ -178,18 +227,26 @@ class ScannerController extends ChangeNotifier {
       processState = ProcessState.error;
       errorMessage = '이미지를 열지 못했어요. 다른 이미지를 선택해 주세요.';
       errorRecovery = ScannerErrorRecovery.replaceInput;
-      _notify();
       return true;
+    } finally {
+      _imageSelectionInProgress = false;
+      _notify();
     }
   }
 
   Future<void> captureAndAnalyze() async {
     if (isBusy) return;
+    processState = ProcessState.capturing;
+    cameraMessage = null;
+    cameraIssueType = null;
+    _notify();
     try {
       final captured = await _cameraGateway.capture();
       await _setInputImage(captured, mode: InputMode.camera);
+      processState = ProcessState.ready;
       await analyze();
     } catch (_) {
+      processState = ProcessState.ready;
       cameraMessage = '카메라 응답을 받지 못했어요. 다시 연결해 주세요.';
       cameraIssueType = CameraIssueType.captureFailed;
       _notify();
@@ -207,6 +264,10 @@ class ScannerController extends ChangeNotifier {
     detections = [];
     selectedItemId = null;
     searchItemId = null;
+    recaptureLogSaveState = RecaptureLogSaveState.idle;
+    recaptureLogError = null;
+    missedDetectionLogSaveState = MissedDetectionLogSaveState.idle;
+    missedDetectionLogError = null;
     _notify();
     try {
       final result = await _scannerApi.scan(
@@ -343,17 +404,21 @@ class ScannerController extends ChangeNotifier {
     errorMessage = null;
     _notify();
     try {
+      final confirmedAt = DateTime.now();
       await _scanLogRepository.save(
         ScanLogRecord(
           scanId: activeResponse.requestId,
           analyzedAt: analyzedAt ?? DateTime.now(),
-          confirmedAt: DateTime.now(),
+          confirmedAt: confirmedAt,
+          recordedAt: confirmedAt,
           inputMode: inputMode,
           imageBytes: bytes,
           imageFileName: fileName,
           processingTimeMs: activeResponse.processingTimeMs,
           modelVersions: activeResponse.modelVersions,
           detections: detections,
+          workerStatus: activeResponse.status,
+          reasonCodes: activeResponse.reasonCodes,
         ),
       );
       final count = detections.length;
@@ -361,17 +426,115 @@ class ScannerController extends ChangeNotifier {
       _resetSession(nextInputMode: completedInputMode);
       _latestSavedScanId = activeResponse.requestId;
       _activityDataRevision += 1;
-      _completionFeedbackTimer?.cancel();
-      completionMessage = '$count개 상품을 확정했어요';
-      _notify();
-      _completionFeedbackTimer = Timer(completionFeedbackDuration, () {
-        if (_disposed) return;
-        completionMessage = null;
-        notifyListeners();
-      });
+      _showCompletionMessage('$count개 상품을 확정했어요');
     } catch (_) {
       processState = ProcessState.reviewing;
       errorMessage = '저장하지 못했어요. 확인 결과는 유지됐어요.';
+      _notify();
+    }
+  }
+
+  Future<void> saveRecaptureLog() async {
+    final activeResponse = response;
+    final bytes = imageBytes;
+    final fileName = imageFileName;
+    if (activeResponse == null ||
+        activeResponse.status != ScanStatus.recapture ||
+        bytes == null ||
+        fileName == null ||
+        recaptureLogSaveState == RecaptureLogSaveState.saving ||
+        recaptureLogSaveState == RecaptureLogSaveState.saved) {
+      return;
+    }
+    if (_savedRecaptureScanIds.contains(activeResponse.requestId)) {
+      recaptureLogSaveState = RecaptureLogSaveState.saved;
+      recaptureLogError = null;
+      _notify();
+      return;
+    }
+
+    recaptureLogSaveState = RecaptureLogSaveState.saving;
+    recaptureLogError = null;
+    _notify();
+    try {
+      final recordedAt = DateTime.now();
+      await _scanLogRepository.save(
+        ScanLogRecord(
+          scanId: activeResponse.requestId,
+          analyzedAt: analyzedAt ?? recordedAt,
+          confirmedAt: null,
+          recordedAt: recordedAt,
+          inputMode: inputMode,
+          imageBytes: bytes,
+          imageFileName: fileName,
+          processingTimeMs: activeResponse.processingTimeMs,
+          modelVersions: activeResponse.modelVersions,
+          detections: const [],
+          workerStatus: ScanStatus.recapture,
+          reasonCodes: activeResponse.reasonCodes,
+        ),
+      );
+      _savedRecaptureScanIds.add(activeResponse.requestId);
+      recaptureLogSaveState = RecaptureLogSaveState.saved;
+      _latestSavedScanId = activeResponse.requestId;
+      _activityDataRevision += 1;
+      _showCompletionMessage('재촬영 기록을 저장했어요');
+    } catch (_) {
+      recaptureLogSaveState = RecaptureLogSaveState.error;
+      recaptureLogError = '재촬영 기록을 저장하지 못했어요. 다시 저장해 주세요.';
+      _notify();
+    }
+  }
+
+  Future<void> saveMissedDetectionLog() async {
+    final activeResponse = response;
+    final bytes = imageBytes;
+    final fileName = imageFileName;
+    final status = activeResponse?.status;
+    if (activeResponse == null ||
+        (status != ScanStatus.approved && status != ScanStatus.unknown) ||
+        bytes == null ||
+        fileName == null ||
+        detections.isEmpty ||
+        missedDetectionLogSaveState == MissedDetectionLogSaveState.saving ||
+        missedDetectionLogSaveState == MissedDetectionLogSaveState.saved) {
+      return;
+    }
+    if (_savedMissedDetectionScanIds.contains(activeResponse.requestId)) {
+      missedDetectionLogSaveState = MissedDetectionLogSaveState.saved;
+      missedDetectionLogError = null;
+      _notify();
+      return;
+    }
+
+    missedDetectionLogSaveState = MissedDetectionLogSaveState.saving;
+    missedDetectionLogError = null;
+    _notify();
+    try {
+      final recordedAt = DateTime.now();
+      await _scanLogRepository.save(
+        ScanLogRecord(
+          scanId: activeResponse.requestId,
+          analyzedAt: analyzedAt ?? recordedAt,
+          confirmedAt: null,
+          recordedAt: recordedAt,
+          inputMode: inputMode,
+          imageBytes: bytes,
+          imageFileName: fileName,
+          processingTimeMs: activeResponse.processingTimeMs,
+          modelVersions: activeResponse.modelVersions,
+          detections: detections,
+          workerStatus: activeResponse.status,
+          reasonCodes: activeResponse.reasonCodes,
+          operatorFeedback: ScanOperatorFeedback.missedObject,
+        ),
+      );
+      _savedMissedDetectionScanIds.add(activeResponse.requestId);
+      missedDetectionLogSaveState = MissedDetectionLogSaveState.saved;
+      _showCompletionMessage('박스 미검출 기록을 저장했어요');
+    } catch (_) {
+      missedDetectionLogSaveState = MissedDetectionLogSaveState.error;
+      missedDetectionLogError = '박스 미검출 기록을 저장하지 못했어요. 다시 저장해 주세요.';
       _notify();
     }
   }
@@ -382,37 +545,14 @@ class ScannerController extends ChangeNotifier {
     _notify();
   }
 
-  String get recaptureTitle {
-    final reasons = response?.reasonCodes ?? const <String>[];
-    if (reasons.contains('DETECTOR_NO_OBJECT')) return '상품을 찾지 못했어요';
-    return inputMode == InputMode.camera ? '다시 촬영해 주세요' : '다른 이미지를 선택해 주세요';
-  }
+  String get recaptureTitle => _recapturePresentation.title;
 
-  String get recaptureDetail {
-    final reasons = response?.reasonCodes ?? const <String>[];
-    if (reasons.contains('DETECTOR_NO_OBJECT')) {
-      return '상품이 화면 안에 잘 보이도록 다시 촬영해 주세요.';
-    }
-    if (reasons.contains('DETECTOR_BLUR')) {
-      return '이미지가 흔들렸어요. 카메라를 고정하고 다시 촬영해 주세요.';
-    }
-    if (reasons.contains('DETECTOR_UNDEREXPOSED')) {
-      return '이미지가 너무 어두워요. 밝은 곳에서 다시 촬영해 주세요.';
-    }
-    if (reasons.contains('DETECTOR_OVEREXPOSED')) {
-      return '이미지가 너무 밝아요. 빛 반사를 줄이고 다시 촬영해 주세요.';
-    }
-    if (reasons.contains('DETECTOR_BORDER_CLIPPED')) {
-      return '일부 상품이 이미지 밖으로 잘려 있어요.';
-    }
-    if (reasons.contains('DETECTOR_CAPACITY_EXCEEDED') ||
-        reasons.contains('DETECTOR_COUNT_MISMATCH')) {
-      return '상품이 겹치지 않고 모두 보이도록 다시 촬영해 주세요.';
-    }
-    return inputMode == InputMode.camera
-        ? '상품을 정확하게 확인하기 어려워요. 구도를 조정해 다시 촬영해 주세요.'
-        : '상품이 잘 보이는 다른 이미지를 선택해 주세요.';
-  }
+  String get recaptureDetail => _recapturePresentation.detail;
+
+  RecapturePresentation get _recapturePresentation => presentRecaptureReasons(
+    reasonCodes: response?.reasonCodes ?? const <String>[],
+    inputMode: inputMode,
+  );
 
   Future<void> _setInputImage(
     InputImage image, {
@@ -455,6 +595,10 @@ class ScannerController extends ChangeNotifier {
     analyzedAt = null;
     errorMessage = null;
     errorRecovery = ScannerErrorRecovery.retryAnalysis;
+    recaptureLogSaveState = RecaptureLogSaveState.idle;
+    recaptureLogError = null;
+    missedDetectionLogSaveState = MissedDetectionLogSaveState.idle;
+    missedDetectionLogError = null;
   }
 
   void _resetSession({InputMode nextInputMode = InputMode.camera}) {
@@ -468,6 +612,17 @@ class ScannerController extends ChangeNotifier {
 
   void _notify() {
     if (!_disposed) notifyListeners();
+  }
+
+  void _showCompletionMessage(String message) {
+    _completionFeedbackTimer?.cancel();
+    completionMessage = message;
+    _notify();
+    _completionFeedbackTimer = Timer(completionFeedbackDuration, () {
+      if (_disposed) return;
+      completionMessage = null;
+      notifyListeners();
+    });
   }
 
   @override

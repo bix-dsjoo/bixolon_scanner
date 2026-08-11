@@ -14,7 +14,6 @@ import 'package:product_scanner/services/scan_log_repository.dart';
 import 'package:product_scanner/services/scanner_api.dart';
 import 'package:product_scanner/theme/app_copy.dart';
 import 'package:product_scanner/theme/app_tokens.dart';
-import 'package:product_scanner/widgets/app_scan_guide.dart';
 
 import 'support/test_catalog.dart';
 
@@ -44,7 +43,6 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.byType(AppScanGuide), findsNothing);
     expect(find.text('카메라 확인 중'), findsWidgets);
     expect(find.text('카메라를 준비하고 있어요'), findsWidgets);
     final initializingAction = find.widgetWithText(FilledButton, '연결 확인 중');
@@ -76,7 +74,6 @@ void main() {
       ..notifyListeners();
     await tester.pumpAndSettle();
 
-    expect(find.byType(AppScanGuide), findsNothing);
     expect(find.text('입력 준비'), findsOneWidget);
     expect(find.text('카메라를 연결해 주세요'), findsWidgets);
     expect(find.widgetWithText(FilledButton, '다시 연결'), findsOneWidget);
@@ -96,7 +93,6 @@ void main() {
       ..notifyListeners();
     await tester.pumpAndSettle();
 
-    expect(find.byType(AppScanGuide), findsOneWidget);
     expect(find.text('분석 준비'), findsOneWidget);
     expect(find.text(AppPreviewCopy.selectedImage), findsOneWidget);
     expect(find.bySemanticsLabel('입력 미리보기, 선택한 이미지'), findsOneWidget);
@@ -233,6 +229,71 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('느린 촬영은 진행 상태를 알리고 중복 촬영과 이미지 선택을 막는다', (tester) async {
+    final semantics = tester.ensureSemantics();
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final camera = _ReadyCameraGateway()..deferNextCapture();
+    final fileGateway = _EmptyFileGateway();
+    final controller = ScannerController(
+      const _StaticApi(_recaptureResponse),
+      camera,
+      fileGateway,
+      _MemoryLogRepository(),
+      testCatalog,
+    )..cameraInitializing = false;
+
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(FilledButton, '촬영하기'));
+    await tester.pump();
+
+    expect(controller.processState, ProcessState.capturing);
+    expect(camera.captureCalls, 1);
+    expect(find.text('촬영 중'), findsNWidgets(3));
+    expect(find.text('카메라 촬영이 끝나면 자동으로 분석해요.'), findsOneWidget);
+    final progress = find.bySemanticsLabel('촬영 중. 카메라 응답을 기다려 주세요');
+    expect(progress, findsOneWidget);
+    final progressData = tester.getSemantics(progress).getSemanticsData();
+    expect(progressData.flagsCollection.isLiveRegion, isTrue);
+    expect(progressData.flagsCollection.isButton, isTrue);
+    expect(progressData.hasAction(SemanticsAction.tap), isFalse);
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.keyO);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.keyO);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump(const Duration(milliseconds: 600));
+    expect(fileGateway.pickCalls, 0);
+    expect(camera.captureCalls, 1);
+    await expectLater(
+      find.byType(Scaffold).first,
+      matchesGoldenFile('goldens/scanner_capturing_1280x720.png'),
+    );
+
+    camera.completeDeferredCapture();
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 300));
+    expect(controller.processState, ProcessState.reviewing);
+    expect(controller.isRecapture, isTrue);
+    expect(camera.captureCalls, 1);
+    controller.dispose();
+    semantics.dispose();
+  });
+
   testWidgets('카메라 초기화 실패는 촬영 실패가 아닌 사용 불가 상태로 복구한다', (tester) async {
     final semantics = tester.ensureSemantics();
     tester.view.physicalSize = const Size(1280, 720);
@@ -260,11 +321,14 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(controller.cameraIssueType, CameraIssueType.unavailable);
-    expect(find.byType(AppScanGuide), findsNothing);
     expect(find.text('카메라 확인 필요'), findsWidgets);
+    final unavailableStatus = find.descendant(
+      of: find.byKey(const ValueKey('app-top-bar')),
+      matching: find.bySemanticsLabel('카메라 확인 필요'),
+    );
     expect(
       tester
-          .getSemantics(find.bySemanticsLabel('카메라 확인 필요'))
+          .getSemantics(unavailableStatus)
           .getSemanticsData()
           .flagsCollection
           .isLiveRegion,
@@ -326,16 +390,19 @@ void main() {
     expect(controller.processState, ProcessState.ready);
     expect(controller.isRecapture, isFalse);
     expect(find.text('카메라 확인 필요'), findsWidgets);
+    final captureFailedStatus = find.descendant(
+      of: find.byKey(const ValueKey('app-top-bar')),
+      matching: find.bySemanticsLabel('카메라 확인 필요'),
+    );
     expect(
       tester
-          .getSemantics(find.bySemanticsLabel('카메라 확인 필요'))
+          .getSemantics(captureFailedStatus)
           .getSemanticsData()
           .flagsCollection
           .isLiveRegion,
       isFalse,
     );
     expect(find.text('촬영하지 못했어요'), findsOneWidget);
-    expect(find.byType(AppScanGuide), findsNothing);
     expect(find.text('카메라 응답을 받지 못했어요. 다시 연결해 주세요.'), findsOneWidget);
     expect(find.text('분석 오류'), findsNothing);
     expect(find.text('재촬영 필요'), findsNothing);
@@ -380,12 +447,12 @@ void main() {
     );
     expect(find.widgetWithText(FilledButton, '촬영하기'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '다시 연결'), findsNothing);
-    expect(find.byType(AppScanGuide), findsOneWidget);
     controller.dispose();
     semantics.dispose();
   });
 
-  testWidgets('재촬영 중 카메라가 실패하면 이전 판정보다 재연결을 우선한다', (tester) async {
+  testWidgets('재촬영은 라이브 화면에서 재배치한 뒤 명시적으로 촬영한다', (tester) async {
+    final semantics = tester.ensureSemantics();
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -424,18 +491,54 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('재촬영 필요'), findsWidgets);
-    await tester.tap(find.widgetWithText(FilledButton, '다시 촬영'));
+    expect(find.text('상품을 찾지 못했어요'), findsOneWidget);
+    expect(find.bySemanticsLabel('입력 미리보기, 촬영 이미지'), findsOneWidget);
+    final returnToCapture = find.widgetWithText(FilledButton, '촬영 화면으로 돌아가기');
+    expect(returnToCapture, findsOneWidget);
+    expect(camera.captureCalls, 0);
+    await expectLater(
+      find.byType(Scaffold).first,
+      matchesGoldenFile('goldens/scanner_recapture_camera_1280x720.png'),
+    );
+
+    await tester.tap(returnToCapture);
     await tester.pumpAndSettle();
 
-    expect(controller.processState, ProcessState.reviewing);
-    expect(controller.response, same(_recaptureResponse));
+    expect(controller.processState, ProcessState.ready);
+    expect(controller.response, isNull);
+    expect(controller.imageBytes, isNull);
+    expect(camera.captureCalls, 0);
+    expect(find.text('재촬영 필요'), findsNothing);
+    expect(find.text('촬영 준비'), findsOneWidget);
+    expect(find.text('상품을 촬영해 주세요'), findsOneWidget);
+    expect(find.bySemanticsLabel('입력 미리보기, 라이브 카메라'), findsOneWidget);
+    final capture = find.widgetWithText(FilledButton, '촬영하기');
+    expect(capture, findsOneWidget);
+    expect(
+      tester
+          .getSemantics(find.bySemanticsLabel('촬영하기'))
+          .getSemanticsData()
+          .flagsCollection
+          .isFocused,
+      Tristate.isTrue,
+    );
+    await expectLater(
+      find.byType(Scaffold).first,
+      matchesGoldenFile('goldens/scanner_recapture_live_focus_1280x720.png'),
+    );
+
+    await tester.tap(capture);
+    await tester.pumpAndSettle();
+
+    expect(camera.captureCalls, 1);
+    expect(controller.processState, ProcessState.ready);
+    expect(controller.response, isNull);
     expect(controller.hasActiveCameraIssue, isTrue);
-    expect(find.byType(AppScanGuide), findsNothing);
     expect(find.text('카메라 확인 필요'), findsWidgets);
     expect(find.text('촬영하지 못했어요'), findsOneWidget);
     expect(find.text('재촬영 필요'), findsNothing);
     expect(find.text('상품을 찾지 못했어요'), findsNothing);
-    expect(find.widgetWithText(FilledButton, '다시 촬영'), findsNothing);
+    expect(find.widgetWithText(FilledButton, '촬영 화면으로 돌아가기'), findsNothing);
     final reconnect = find.widgetWithText(FilledButton, '다시 연결');
     expect(reconnect, findsOneWidget);
     expect(find.byType(FilledButton), findsOneWidget);
@@ -451,12 +554,11 @@ void main() {
     await tester.tap(reconnect);
     await tester.pump();
     expect(controller.isCameraCheckActive, isTrue);
-    expect(find.byType(AppScanGuide), findsNothing);
     expect(find.text('카메라 확인 중'), findsWidgets);
     expect(find.text('카메라를 준비하고 있어요'), findsOneWidget);
     expect(find.text('재촬영 필요'), findsNothing);
     expect(find.text('상품을 찾지 못했어요'), findsNothing);
-    expect(find.widgetWithText(FilledButton, '다시 촬영'), findsNothing);
+    expect(find.widgetWithText(FilledButton, '촬영 화면으로 돌아가기'), findsNothing);
     final checking = find.widgetWithText(FilledButton, '연결 확인 중');
     expect(checking, findsOneWidget);
     expect(tester.widget<FilledButton>(checking).onPressed, isNull);
@@ -476,10 +578,39 @@ void main() {
     expect(camera.initializeCalls, 1);
     expect(controller.hasActiveCameraIssue, isFalse);
     expect(controller.isCameraCheckActive, isFalse);
-    expect(find.byType(AppScanGuide), findsOneWidget);
-    expect(find.text('재촬영 필요'), findsWidgets);
-    expect(find.widgetWithText(FilledButton, '다시 촬영'), findsOneWidget);
+    expect(find.text('촬영 준비'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '촬영하기'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '다시 연결'), findsNothing);
+    controller.dispose();
+    semantics.dispose();
+  });
+
+  testWidgets('앱으로 다시 들어오면 표시상 연결 상태와 관계없이 카메라를 재연결한다', (tester) async {
+    final camera = _ReadyCameraGateway();
+    final controller = ScannerController(
+      _UnusedApi(),
+      camera,
+      _EmptyFileGateway(),
+      _MemoryLogRepository(),
+      testCatalog,
+    )..cameraInitializing = false;
+
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(camera.initializeCalls, 0);
+
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await tester.pumpAndSettle();
+
+    expect(camera.initializeCalls, 1);
+    expect(controller.hasActiveCameraIssue, isFalse);
     controller.dispose();
   });
 }
@@ -508,6 +639,18 @@ class _UnusedApi implements ScannerApi {
   }) => throw UnimplementedError();
 }
 
+class _StaticApi implements ScannerApi {
+  const _StaticApi(this.response);
+
+  final ScanResponse response;
+
+  @override
+  Future<ScanResponse> scan({
+    required Uint8List imageBytes,
+    required String fileName,
+  }) async => response;
+}
+
 class _EmptyCameraGateway implements CameraGateway {
   @override
   CameraController? get controller => null;
@@ -532,7 +675,9 @@ class _ReadyCameraGateway implements CameraGateway {
   final _TestCameraController _controller;
   final bool captureFails;
   int initializeCalls = 0;
+  int captureCalls = 0;
   Completer<void>? _initializeCompleter;
+  Completer<InputImage>? _captureCompleter;
 
   void deferNextInitialize() {
     _initializeCompleter = Completer<void>();
@@ -543,6 +688,15 @@ class _ReadyCameraGateway implements CameraGateway {
     _initializeCompleter = null;
   }
 
+  void deferNextCapture() {
+    _captureCompleter = Completer<InputImage>();
+  }
+
+  void completeDeferredCapture() {
+    _captureCompleter?.complete(_testInputImage);
+    _captureCompleter = null;
+  }
+
   @override
   CameraController get controller => _controller;
 
@@ -551,6 +705,9 @@ class _ReadyCameraGateway implements CameraGateway {
 
   @override
   Future<InputImage> capture() async {
+    captureCalls += 1;
+    final completer = _captureCompleter;
+    if (completer != null) return completer.future;
     if (captureFails) throw StateError('capture failed');
     return _testInputImage;
   }

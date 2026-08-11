@@ -69,6 +69,7 @@ void main() {
     );
 
     expect(find.widgetWithText(FilledButton, '1개 상품 최종 확정'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '카메라로 돌아가기'), findsOneWidget);
     expect(find.byType(FilledButton), findsOneWidget);
     expect(find.byKey(const ValueKey('step-navigator')), findsNothing);
 
@@ -358,7 +359,7 @@ void main() {
       Tristate.isTrue,
     );
     expect(find.widgetWithText(FilledButton, '다시 연결'), findsNothing);
-    expect(find.byType(OutlinedButton), findsNothing);
+    expect(find.widgetWithText(OutlinedButton, '카메라로 돌아가기'), findsOneWidget);
     expect(find.text('다음 이미지를 선택해 주세요'), findsOneWidget);
     expect(find.bySemanticsLabel('이미지 미리보기 영역, 선택된 이미지 없음'), findsOneWidget);
     await expectLater(

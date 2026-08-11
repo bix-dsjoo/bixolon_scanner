@@ -5,7 +5,11 @@
 abstract final class AppActionCopy {
   static const chooseImage = '이미지 선택';
   static const chooseAnotherImage = '다른 이미지 선택';
+  static const returnToCamera = '카메라로 돌아가기';
+  static const returnToCapture = '촬영 화면으로 돌아가기';
   static const capture = '촬영하기';
+  static const capturing = '촬영 중';
+  static const capturingAnnouncement = '촬영 중. 카메라 응답을 기다려 주세요';
   static const recapture = '다시 촬영';
   static const analyze = '분석하기';
   static const analyzing = '분석 중';
@@ -21,6 +25,10 @@ abstract final class AppActionCopy {
   static const retrySave = '다시 저장';
   static const saving = '저장 중';
   static const savingAnnouncement = '저장 중. 완료될 때까지 기다려 주세요';
+  static const saveRecaptureLog = '재촬영 기록 저장';
+  static const recaptureLogSaved = '기록 저장됨';
+  static const saveMissedDetectionLog = '박스 미검출 기록';
+  static const missedDetectionLogSaved = '미검출 기록됨';
 }
 
 /// Content tokens that identify the image shown in the scan preview.

@@ -106,3 +106,74 @@ install(DIRECTORY "${PROJECT_BUILD_DIR}/${FLUTTER_ASSET_DIR_NAME}"
 install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
+
+# Bundle the promoted model package beside the Windows application. The Python
+# Worker executable can be installed globally or placed in the worker folder.
+set(SCANNER_MODEL_PACKAGE_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/packages/bread-worker-0.1.1"
+  CACHE PATH "Promoted BIXOLON Worker model package")
+if(EXISTS "${SCANNER_MODEL_PACKAGE_DIR}/metadata.json")
+  install(DIRECTORY "${SCANNER_MODEL_PACKAGE_DIR}/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/worker/model-package"
+    COMPONENT Runtime)
+else()
+  message(WARNING
+    "BIXOLON Worker model package was not found at "
+    "${SCANNER_MODEL_PACKAGE_DIR}; automatic Worker startup will require "
+    "BIXOLON_PACKAGE_DIR at runtime.")
+endif()
+
+# Optionally make the Release bundle self-contained for ONNX Runtime CUDA.
+# The source directory must contain only redistributable CUDA/cuDNN runtime
+# libraries; PyTorch itself is never installed or imported by the Worker.
+set(SCANNER_CUDA_RUNTIME_DIR "" CACHE PATH
+  "Directory containing redistributable CUDA 13 and cuDNN 9 DLLs")
+if(NOT SCANNER_CUDA_RUNTIME_DIR AND DEFINED ENV{BIXOLON_CUDA_DLL_DIR})
+  file(TO_CMAKE_PATH "$ENV{BIXOLON_CUDA_DLL_DIR}" SCANNER_CUDA_RUNTIME_DIR)
+endif()
+
+set(SCANNER_CUDA_RUNTIME_FILES
+  cublas64_13.dll
+  cublasLt64_13.dll
+  cudart64_13.dll
+  cudnn64_9.dll
+  cudnn_adv64_9.dll
+  cudnn_cnn64_9.dll
+  cudnn_engines_precompiled64_9.dll
+  cudnn_engines_runtime_compiled64_9.dll
+  cudnn_graph64_9.dll
+  cudnn_heuristic64_9.dll
+  cudnn_ops64_9.dll
+  cufft64_12.dll
+  zlibwapi.dll
+)
+
+if(SCANNER_CUDA_RUNTIME_DIR)
+  set(SCANNER_CUDA_RUNTIME_PATHS)
+  set(SCANNER_CUDA_RUNTIME_COMPLETE TRUE)
+  foreach(RUNTIME_FILE IN LISTS SCANNER_CUDA_RUNTIME_FILES)
+    set(RUNTIME_PATH "${SCANNER_CUDA_RUNTIME_DIR}/${RUNTIME_FILE}")
+    if(EXISTS "${RUNTIME_PATH}")
+      list(APPEND SCANNER_CUDA_RUNTIME_PATHS "${RUNTIME_PATH}")
+    else()
+      set(SCANNER_CUDA_RUNTIME_COMPLETE FALSE)
+      message(WARNING
+        "CUDA runtime file is missing: ${RUNTIME_PATH}")
+    endif()
+  endforeach()
+  if(SCANNER_CUDA_RUNTIME_COMPLETE)
+    install(FILES ${SCANNER_CUDA_RUNTIME_PATHS}
+      DESTINATION "${CMAKE_INSTALL_PREFIX}/worker/cuda-runtime"
+      COMPONENT Runtime)
+    message(STATUS
+      "Bundling ONNX Runtime CUDA dependencies from "
+      "${SCANNER_CUDA_RUNTIME_DIR}")
+  else()
+    message(WARNING
+      "CUDA runtime bundle is incomplete; no CUDA DLLs will be installed.")
+  endif()
+else()
+  message(STATUS
+    "SCANNER_CUDA_RUNTIME_DIR is empty; the app will use an externally "
+    "configured BIXOLON_CUDA_DLL_DIR or allow Worker auto provider selection.")
+endif()

@@ -55,6 +55,34 @@ void main() {
     expect(find.text('2  현재 검수'), findsOneWidget);
     expect(find.text('2 / 6'), findsOneWidget);
     expect(find.text('3  ?'), findsOneWidget);
+
+    BoxDecoration visualDecoration(String itemId) {
+      return tester
+              .widget<Container>(
+                find.byKey(ValueKey('detection-visual-$itemId')),
+              )
+              .decoration!
+          as BoxDecoration;
+    }
+
+    expect(
+      visualDecoration('item_002').color,
+      AppPalette.attention.withValues(alpha: .06),
+    );
+    expect(visualDecoration('item_001').color, isNull);
+    expect(visualDecoration('item_002').border!.top.width, 2);
+    expect(visualDecoration('item_001').border!.top.width, 1.5);
+
+    controller.selectDetection('item_001');
+    await tester.pumpAndSettle();
+    expect(
+      visualDecoration('item_001').color,
+      AppPalette.success.withValues(alpha: .06),
+    );
+    expect(visualDecoration('item_002').color, isNull);
+
+    controller.selectDetection('item_002');
+    await tester.pumpAndSettle();
     for (final item in _denseResponse.items) {
       final box = find.byKey(ValueKey('detection-box-${item.itemId}'));
       expect(box, findsOneWidget);

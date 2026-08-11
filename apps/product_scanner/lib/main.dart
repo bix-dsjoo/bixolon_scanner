@@ -15,7 +15,7 @@ Future<void> main() async {
   );
   final catalog = await ProductCatalog.load();
   final controller = ScannerController(
-    WorkerScannerApi(baseUrl: baseUrl),
+    WorkerScannerApi(baseUrl: baseUrl, waitForReady: true),
     WindowsCameraGateway(),
     WindowsImageFileGateway(),
     FileScanLogRepository(),
