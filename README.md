@@ -219,6 +219,56 @@ bixolon-rpc-data-scale `
 
 제외 이미지는 삭제하지 않으며 비율과 reason code를 `prepared/worker_gate_report.json`에 기록합니다. 클래스·seed별 첫 5장 bbox/crop은 `prepared/sampling_contact_sheets`에서 확인할 수 있습니다. 선택 조건을 통과한 N이 있을 때만 val 전체로 최종 detector를 학습하고 `test2019`를 엽니다. `--resume`은 detector epoch 상태, 완료 marker, source/checkpoint hash와 cache fingerprint를 검증합니다. 운영 Worker, 20종 bread label map과 모델 패키지는 변경하지 않습니다.
 
+### 빵 DINO 단품 학습 데이터량 실험
+
+현재 운영 classifier는 단품 보조 사진 84장씩 1,680장과 development ROI 895개를 함께 사용합니다. 종류별 최종 학습 ROI는 119~138개이며 전체는 2,575개입니다. 아래 실험은 단품 사진만 종류별 5·10·15·20장으로 제한하고, 운영 `bread-worker-0.1.1`의 detector와 판정 정책을 고정한 채 DINOv3 classifier의 데이터량 효과를 비교합니다.
+
+```powershell
+bixolon-bread-data-scale `
+  --config configs\bread_data_scale.json `
+  --manifest manifests\bread-v1\manifest.jsonl `
+  --manifest-metadata manifests\bread-v1\metadata.json `
+  --dataset-root C:\workspace\raw_data\bread_project `
+  --weights C:\workspace\raw_data\model_cache\dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth `
+  --production-package artifacts\packages\bread-worker-0.1.1 `
+  --classifier-cache-dir artifacts\cache\classifier-bread-v1-mmap `
+  --benchmark-images artifacts\benchmark_images `
+  --current-oof-report artifacts\reports\classifier-dinov3-oof-runtime-crop.json `
+  --current-test-report artifacts\reports\worker-final-test-cuda.json `
+  --current-benchmark-report artifacts\reports\benchmark-0.1.1-cuda.json `
+  --output-dir artifacts\experiments\bread-dino-data-scale `
+  --phase all `
+  --approve-selection `
+  --resume
+```
+
+`prepare`, `train`, `calibrate`, `export`, `evaluate`, `benchmark`, `report` phase를 따로 실행할 수 있습니다. `prepare`는 SHA-256 누출 검사, 회전 불변 perceptual hash 중복 후보 검사, DINO 중심점→farthest-first 중첩 순서와 종류별 first-5/order-20 contact sheet를 생성합니다. contact sheet를 검수한 뒤에만 `--approve-selection`으로 학습을 허용하십시오.
+
+각 조건은 seed `20260810` 한 번만 학습합니다. threshold는 development 3-fold에서 held-out fold를 제외하고 교차 보정하며, 실험 package의 최종 threshold만 development 전체로 다시 계산합니다. CPU/CUDA ONNX parity와 RTX 5080의 30회 warm-up·1,000회 benchmark를 기록하지만 자동으로 N을 선택하거나 production으로 승격하지 않습니다. 최종 test 94장은 접근하지 않으며 보고서의 `test_accessed`는 `false`를 유지합니다. JSON·CSV·한국어 요약과 contact sheet는 지정한 실험 디렉터리 아래 생성됩니다.
+
+소량 데이터 개선 재평가는 같은 명령에서 config와 output만 바꿉니다.
+
+```powershell
+bixolon-bread-data-scale `
+  --config configs\bread_data_scale_small_data.json `
+  --manifest manifests\bread-v1\manifest.jsonl `
+  --manifest-metadata manifests\bread-v1\metadata.json `
+  --dataset-root C:\workspace\raw_data\bread_project `
+  --weights C:\workspace\raw_data\model_cache\dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth `
+  --production-package artifacts\packages\bread-worker-0.1.1 `
+  --classifier-cache-dir artifacts\cache\classifier-bread-v1-mmap `
+  --benchmark-images artifacts\benchmark_images `
+  --current-oof-report artifacts\reports\classifier-dinov3-oof-runtime-crop.json `
+  --current-test-report artifacts\reports\worker-final-test-cuda.json `
+  --current-benchmark-report artifacts\reports\benchmark-0.1.1-cuda.json `
+  --output-dir artifacts\experiments\bread-dino-small-data-v2 `
+  --phase all `
+  --approve-selection `
+  --resume
+```
+
+이 config는 DINOv3 backbone을 고정하고 spatial feature에 brightness `c²FroFA`를 적용한 뒤 L2 정규화된 max-margin linear SVM head만 학습합니다. 적용 근거, 제외한 대안과 사전 검증은 [빵 DINO 소량 학습 개선 근거](docs/bread-small-data-research.md)에 기록합니다.
+
 ## Detector 학습·OOF threshold
 
 COCO의 20개 category를 단일 `bread` detector class로 통합해 Apache-2.0 `PekingU/rtdetr_v2_r18vd`를 640×640으로 미세조정합니다.

@@ -80,6 +80,92 @@ def _metrics(
     }
 
 
+def _metrics_grid(
+    records: list[dict],
+    predictions: list[dict],
+    *,
+    score_thresholds,
+    nms_iou_threshold: float,
+    match_iou_threshold: float,
+    max_queries: int,
+) -> list[dict[str, float | int]]:
+    """Evaluate a score grid with one greedy-NMS pass per image.
+
+    Greedy NMS visits detections in descending score order. A detection below a
+    later threshold cannot suppress a survivor at that threshold, because it is
+    visited after every qualifying detection. Therefore NMS at the minimum grid
+    threshold, followed by score-filtering its survivors, is exactly equivalent
+    to filtering first and independently running NMS at every threshold. Python's
+    stable sort also preserves the original tie order in both paths.
+    """
+    thresholds = [float(value) for value in score_thresholds]
+    if not thresholds:
+        raise ValueError("detector metric threshold grid must not be empty")
+    minimum_threshold = min(thresholds)
+    totals = [
+        {
+            "ground_truth_count": 0,
+            "prediction_count": 0,
+            "matched_count": 0,
+            "count_correct": 0,
+            "capacity_saturated_images": 0,
+        }
+        for _ in thresholds
+    ]
+    for record, prediction in zip(records, predictions):
+        raw = [
+            Detection(*box, score)
+            for box, score in zip(prediction["boxes_xyxy"], prediction["scores"])
+            if score >= minimum_threshold
+        ]
+        nms_survivors = _nms(raw, nms_iou_threshold)
+        gt_boxes = [_xywh_to_xyxy(annotation["bbox_xywh"]) for annotation in record["annotations"]]
+        for threshold, total in zip(thresholds, totals):
+            raw_count = sum(detection.score >= threshold for detection in raw)
+            selected = [
+                detection for detection in nms_survivors if detection.score >= threshold
+            ]
+            unmatched = set(range(len(gt_boxes)))
+            matched = 0
+            for detection in selected:
+                box = np.asarray(
+                    [detection.x1, detection.y1, detection.x2, detection.y2]
+                )
+                candidates = [(index, _iou(box, gt_boxes[index])) for index in unmatched]
+                if not candidates:
+                    continue
+                index, overlap = max(candidates, key=lambda item: item[1])
+                if overlap >= match_iou_threshold:
+                    unmatched.remove(index)
+                    matched += 1
+            total["ground_truth_count"] += len(gt_boxes)
+            total["prediction_count"] += len(selected)
+            total["matched_count"] += matched
+            total["count_correct"] += int(len(selected) == len(gt_boxes))
+            total["capacity_saturated_images"] += int(raw_count >= max_queries)
+    results: list[dict[str, float | int]] = []
+    for threshold, total in zip(thresholds, totals):
+        predicted_total = int(total["prediction_count"])
+        gt_total = int(total["ground_truth_count"])
+        matched_total = int(total["matched_count"])
+        results.append(
+            {
+                "image_count": len(records),
+                "ground_truth_count": gt_total,
+                "prediction_count": predicted_total,
+                "matched_count": matched_total,
+                "recall": matched_total / gt_total if gt_total else 0.0,
+                "precision": matched_total / predicted_total if predicted_total else 0.0,
+                "count_accuracy": (
+                    int(total["count_correct"]) / len(records) if records else 0.0
+                ),
+                "capacity_saturated_images": int(total["capacity_saturated_images"]),
+                "score_threshold": threshold,
+            }
+        )
+    return results
+
+
 def evaluate(args: argparse.Namespace) -> None:
     torch = require_torch()
     from transformers import AutoImageProcessor, RTDetrV2ForObjectDetection
@@ -123,18 +209,14 @@ def evaluate(args: argparse.Namespace) -> None:
         if args.score_threshold is not None
         else np.linspace(args.min_score_threshold, args.max_score_threshold, args.threshold_steps)
     )
-    candidates = []
-    for threshold in thresholds:
-        result = _metrics(
-            dataset.records,
-            predictions,
-            score_threshold=float(threshold),
-            nms_iou_threshold=args.nms_threshold,
-            match_iou_threshold=args.match_iou_threshold,
-            max_queries=int(model.config.num_queries),
-        )
-        result["score_threshold"] = float(threshold)
-        candidates.append(result)
+    candidates = _metrics_grid(
+        dataset.records,
+        predictions,
+        score_thresholds=thresholds,
+        nms_iou_threshold=args.nms_threshold,
+        match_iou_threshold=args.match_iou_threshold,
+        max_queries=int(model.config.num_queries),
+    )
     eligible = [item for item in candidates if item["recall"] >= args.target_recall]
     if eligible:
         selected = max(

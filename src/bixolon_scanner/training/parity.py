@@ -2,15 +2,30 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
 from ..inference import Detection, OnnxDetector, OrtRunner, _nms, _prepare_rgb, _sigmoid
-from ..package import load_model_package
+from ..package import load_model_package, sha256_file
 from ..pipeline import _softmax
 from .models import build_dino_classifier, require_torch
+
+
+def _detector_checkpoint_sha256(checkpoint: Path) -> str:
+    candidates = [
+        path
+        for path in (
+            checkpoint / "model.safetensors",
+            checkpoint / "pytorch_model.bin",
+        )
+        if path.is_file()
+    ]
+    if len(candidates) != 1:
+        raise FileNotFoundError("detector checkpoint weights are missing or ambiguous")
+    return sha256_file(candidates[0])
 
 
 def _postprocess_detector(logits, boxes, metadata, image_shape) -> list[Detection]:
@@ -92,6 +107,16 @@ def _classifier_batch(image: np.ndarray, detections, metadata) -> np.ndarray:
 
 
 def parity(args: argparse.Namespace) -> None:
+    if not math.isfinite(args.detector_min_iou) or not 0.0 <= args.detector_min_iou <= 1.0:
+        raise ValueError("detector_min_iou must be finite and in [0, 1]")
+    for name in (
+        "detector_coordinate_tolerance",
+        "detector_score_tolerance",
+        "classifier_tolerance",
+    ):
+        value = float(getattr(args, name))
+        if not math.isfinite(value) or value < 0.0:
+            raise ValueError(f"{name} must be finite and non-negative")
     torch = require_torch()
     from transformers import RTDetrV2ForObjectDetection
 
@@ -185,6 +210,15 @@ def parity(args: argparse.Namespace) -> None:
         "dataset_version": metadata.dataset_version,
         "detector_version": metadata.detector.version,
         "classifier_version": metadata.classifier.version,
+        "detector_checkpoint_sha256": _detector_checkpoint_sha256(
+            args.detector_checkpoint
+        ),
+        "classifier_checkpoint_sha256": sha256_file(args.classifier_checkpoint),
+        "package_artifact_sha256": {
+            "metadata.json": sha256_file(args.package_dir / "metadata.json"),
+            metadata.detector.filename: sha256_file(package.detector_path),
+            metadata.classifier.filename: sha256_file(package.classifier_path),
+        },
         "provider": provider,
         "image": args.image.name,
         "item_count": len(detection_result.detections),

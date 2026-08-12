@@ -10,6 +10,7 @@ import numpy as np
 import pytest
 from PIL import Image
 
+from bixolon_scanner.package import sha256_file
 from bixolon_scanner.training.rpc_data_scale import (
     _balanced_training_order,
     _crop,
@@ -26,6 +27,9 @@ from bixolon_scanner.training.rpc_data_scale import (
     train_all,
 )
 from bixolon_scanner.training.rpc_worker_gate import (
+    _best_detector_epoch,
+    _checkpoint_complete,
+    _detector_namespace,
     assign_oof_folds,
     postprocess_worker_gate,
 )
@@ -40,6 +44,114 @@ def _write_coco(root: Path, split: str, categories: list[dict], images: list[dic
     for image in images:
         canvas = Image.new("RGB", (image["width"], image["height"]), "white")
         canvas.save(root / f"{split}2019" / image["file_name"])
+
+
+def test_oof_detector_uses_identical_initialization_seed_for_all_folds(tmp_path):
+    options = {
+        "pretrained_name": "detector",
+        "image_size": 640,
+        "batch_size": 8,
+        "workers": 0,
+        "epochs": 100,
+        "patience": 20,
+        "learning_rate": 1e-5,
+        "head_lr_multiplier": 1.0,
+        "class_head_prior_probability": 0.5,
+        "warmup_epochs": 0,
+        "weight_decay": 1e-4,
+        "min_score_threshold": 0.05,
+        "max_score_threshold": 0.95,
+        "threshold_steps": 91,
+        "nms_iou_threshold": 0.7,
+        "match_iou_threshold": 0.5,
+        "target_recall": 0.99,
+        "max_queries": 300,
+        "seed": 20260810,
+    }
+
+    namespaces = [
+        _detector_namespace(
+            options,
+            tmp_path / "manifest.jsonl",
+            tmp_path,
+            tmp_path / f"fold{fold}",
+            fold,
+        )
+        for fold in range(3)
+    ]
+    seeds = {namespace.seed for namespace in namespaces}
+
+    assert seeds == {20260810}
+    assert {namespace.head_lr_multiplier for namespace in namespaces} == {1.0}
+    assert {namespace.class_head_prior_probability for namespace in namespaces} == {0.5}
+    assert {namespace.warmup_epochs for namespace in namespaces} == {0}
+    assert {namespace.weight_decay for namespace in namespaces} == {1e-4}
+    assert {namespace.min_score_threshold for namespace in namespaces} == {0.05}
+    assert {namespace.max_score_threshold for namespace in namespaces} == {0.95}
+    assert {namespace.threshold_steps for namespace in namespaces} == {91}
+    assert {namespace.nms_iou_threshold for namespace in namespaces} == {0.7}
+    assert {namespace.match_iou_threshold for namespace in namespaces} == {0.5}
+    assert {namespace.target_recall for namespace in namespaces} == {0.99}
+    assert {namespace.max_queries for namespace in namespaces} == {300}
+
+
+def test_detector_completion_rejects_a_different_initialization_seed(tmp_path):
+    checkpoint = tmp_path / "fold"
+    best = checkpoint / "best"
+    best.mkdir(parents=True)
+    (best / "config.json").write_text("{}", encoding="utf-8")
+    weights = best / "model.safetensors"
+    weights.write_bytes(b"weights")
+    history = [{"epoch": 1, "validation_loss": 1.0}]
+    (checkpoint / "history.json").write_text(json.dumps(history), encoding="utf-8")
+    recipe = {"optimizer": "AdamW", "head_lr_multiplier": 10.0}
+    (checkpoint / "run.json").write_text(
+        json.dumps(
+            {"arguments": {"seed": 20260810}, "optimizer_recipe": recipe}
+        ),
+        encoding="utf-8",
+    )
+    (checkpoint / "complete.json").write_text(
+        json.dumps(
+            {
+                "complete": True,
+                "history_epochs": 1,
+                "weights_sha256": sha256_file(weights),
+                "optimizer_recipe": recipe,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    assert _checkpoint_complete(checkpoint, expected_seed=20260810)
+    assert not _checkpoint_complete(checkpoint, expected_seed=20260811)
+    assert _checkpoint_complete(checkpoint, expected_optimizer_recipe=recipe)
+    assert not _checkpoint_complete(
+        checkpoint,
+        expected_optimizer_recipe={"optimizer": "AdamW", "head_lr_multiplier": 20.0},
+    )
+
+
+def test_final_detector_epoch_policy_uses_metric_quality_not_lowest_loss(tmp_path):
+    detector_dir = tmp_path / "detector"
+    histories = [
+        [
+            {"epoch": 1, "validation_loss": 1.0, "detector_quality_key": [0.0, 0.98, 0.5, 0.5]},
+            {"epoch": 2, "validation_loss": 1.2, "detector_quality_key": [1.0, 0.4, 0.6, 0.2]},
+        ],
+        [
+            {"epoch": 3, "validation_loss": 0.9, "detector_quality_key": [1.0, 0.5, 0.7, 0.3]},
+        ],
+        [
+            {"epoch": 4, "validation_loss": 0.8, "detector_quality_key": [1.0, 0.6, 0.8, 0.4]},
+        ],
+    ]
+    for fold, history in enumerate(histories):
+        path = detector_dir / "folds" / f"fold{fold}"
+        path.mkdir(parents=True)
+        (path / "history.json").write_text(json.dumps(history), encoding="utf-8")
+
+    assert _best_detector_epoch(detector_dir, 3) == 3
 
 
 def test_training_order_is_nested_balanced_and_reproducible():
@@ -685,9 +797,18 @@ def test_full_dataset_final_test_uses_locked_model_without_n_logic(tmp_path, mon
     monkeypatch.setattr(
         "bixolon_scanner.training.rpc_data_scale.require_torch", lambda: FakeTorch()
     )
+
+    def fake_prepare_final_test_records(*_args, **_kwargs):
+        detector_report_path = tmp_path / "test" / "detector_report.json"
+        detector_report_path.parent.mkdir(parents=True, exist_ok=True)
+        detector_report_path.write_text(
+            json.dumps(detector_report), encoding="utf-8"
+        )
+        return ([{"sample_id": "test:1"}], detector_report)
+
     monkeypatch.setattr(
         "bixolon_scanner.training.rpc_data_scale.prepare_final_test_records",
-        lambda *_args, **_kwargs: ([{"sample_id": "test:1"}], detector_report),
+        fake_prepare_final_test_records,
     )
     monkeypatch.setattr(
         "bixolon_scanner.training.rpc_data_scale._build_cache",

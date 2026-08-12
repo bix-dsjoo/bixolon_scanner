@@ -2182,8 +2182,18 @@ def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str,
     if full_dataset:
         final["model_run"] = str(lock["model_run"])
         final["seed"] = int(lock["seed"])
+        final["classifier_checkpoint_sha256"] = sha256_file(
+            args.output_dir / str(lock["model_run"]) / "best.pt"
+        )
     else:
         final["selected_n"] = int(selected_n)
+    final["model_lock_sha256"] = sha256_file(lock_path)
+    final["detector_report_sha256"] = sha256_file(
+        args.output_dir / "test" / "detector_report.json"
+    )
+    final["detector_checkpoint_sha256"] = detector_test_report[
+        "detector_checkpoint_sha256"
+    ]
     reports_dir = args.output_dir / "reports"
     _write_json(reports_dir / "final_test.json", final)
     lines = ["# RPC Classifier 최종 test 평가", ""]

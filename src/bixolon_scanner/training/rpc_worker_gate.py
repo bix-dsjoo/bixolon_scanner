@@ -15,7 +15,7 @@ from PIL import Image
 from ..inference import Detection, _box_iou, _nms
 from ..package import sha256_file
 from .evaluate_detector import _iou, _metrics, _xywh_to_xyxy
-from .train_detector import train as train_detector
+from .train_detector import detector_optimizer_recipe, train as train_detector
 
 
 SCHEMA_VERSION = "1.0"
@@ -206,7 +206,21 @@ def _detector_namespace(
         epochs=int(options["epochs"]),
         patience=int(options["patience"]),
         learning_rate=float(options["learning_rate"]),
-        seed=int(options["seed"]) + fold,
+        head_lr_multiplier=float(options.get("head_lr_multiplier", 10.0)),
+        class_head_prior_probability=float(options.get("class_head_prior_probability", 0.01)),
+        warmup_epochs=int(options.get("warmup_epochs", 3)),
+        weight_decay=float(options.get("weight_decay", 1e-4)),
+        min_score_threshold=float(options["min_score_threshold"]),
+        max_score_threshold=float(options["max_score_threshold"]),
+        threshold_steps=int(options["threshold_steps"]),
+        nms_iou_threshold=float(options["nms_iou_threshold"]),
+        match_iou_threshold=float(options["match_iou_threshold"]),
+        target_recall=float(options["target_recall"]),
+        max_queries=int(options["max_queries"]),
+        # The one-class heads are randomly reinitialized by Transformers. Keep
+        # that initialization identical across OOF folds so fold assignment is
+        # the only intended training difference.
+        seed=int(options["seed"]),
         cpu=False,
         resume=resume,
     )
@@ -222,10 +236,20 @@ def _detector_weights_path(checkpoint: Path) -> Path:
     return candidates[0]
 
 
-def _checkpoint_complete(path: Path) -> bool:
+def _checkpoint_complete(
+    path: Path,
+    *,
+    expected_seed: int | None = None,
+    expected_optimizer_recipe: dict[str, Any] | None = None,
+) -> bool:
     marker_path = path / "complete.json"
     history_path = path / "history.json"
-    if not history_path.is_file() or not (path / "best" / "config.json").is_file():
+    run_path = path / "run.json"
+    if (
+        not history_path.is_file()
+        or not run_path.is_file()
+        or not (path / "best" / "config.json").is_file()
+    ):
         return False
     if not marker_path.is_file() and not (path / "training_progress.pt").is_file():
         try:
@@ -234,19 +258,41 @@ def _checkpoint_complete(path: Path) -> bool:
             return False
     try:
         marker = json.loads(marker_path.read_text(encoding="utf-8"))
+        run = json.loads(run_path.read_text(encoding="utf-8"))
         weights = _detector_weights_path(path / "best")
         history = json.loads(history_path.read_text(encoding="utf-8"))
         return (
             marker.get("complete") is True
             and marker.get("weights_sha256") == sha256_file(weights)
             and int(marker.get("history_epochs", -1)) == len(history)
+            and (
+                expected_seed is None
+                or int(run.get("arguments", {}).get("seed", -1)) == expected_seed
+            )
+            and (
+                expected_optimizer_recipe is None
+                or (
+                    marker.get("optimizer_recipe") == expected_optimizer_recipe
+                    and run.get("optimizer_recipe") == expected_optimizer_recipe
+                )
+            )
         )
     except (OSError, ValueError, TypeError, json.JSONDecodeError):
         return False
 
 
-def _mark_checkpoint_complete(path: Path) -> None:
+def _mark_checkpoint_complete(
+    path: Path, *, optimizer_recipe: dict[str, Any] | None = None
+) -> None:
     history = json.loads((path / "history.json").read_text(encoding="utf-8"))
+    metric_rows = [
+        row for row in history if isinstance(row.get("detector_quality_key"), list)
+    ]
+    best_metric_row = max(
+        metric_rows,
+        key=lambda row: (list(row["detector_quality_key"]), -int(row["epoch"])),
+        default=None,
+    )
     _write_json(
         path / "complete.json",
         {
@@ -254,6 +300,17 @@ def _mark_checkpoint_complete(path: Path) -> None:
             "completed_at": datetime.now(UTC).isoformat(),
             "history_epochs": len(history),
             "weights_sha256": sha256_file(_detector_weights_path(path / "best")),
+            "optimizer_recipe": optimizer_recipe,
+            "best_epoch": None if best_metric_row is None else int(best_metric_row["epoch"]),
+            "best_detector_metrics": (
+                None if best_metric_row is None else best_metric_row["detector_metrics"]
+            ),
+            "selected_score_threshold": (
+                None if best_metric_row is None else best_metric_row["selected_score_threshold"]
+            ),
+            "target_recall_satisfied": (
+                None if best_metric_row is None else best_metric_row["target_recall_satisfied"]
+            ),
         },
     )
 
@@ -263,15 +320,19 @@ def train_oof_detectors(
 ) -> None:
     for fold in range(int(options["fold_count"])):
         output = detector_dir / "folds" / f"fold{fold}"
-        if resume and _checkpoint_complete(output):
+        namespace = _detector_namespace(
+            options, manifest, dataset_root, output, fold, resume=resume
+        )
+        recipe = detector_optimizer_recipe(namespace)
+        if resume and _checkpoint_complete(
+            output,
+            expected_seed=int(namespace.seed),
+            expected_optimizer_recipe=recipe,
+        ):
             print(json.dumps({"skipped_complete_detector_fold": fold}), flush=True)
             continue
-        train_detector(
-            _detector_namespace(
-                options, manifest, dataset_root, output, fold, resume=resume
-            )
-        )
-        _mark_checkpoint_complete(output)
+        train_detector(namespace)
+        _mark_checkpoint_complete(output, optimizer_recipe=recipe)
 
 
 def predict_records(
@@ -705,10 +766,18 @@ def _best_detector_epoch(detector_dir: Path, fold_count: int) -> int:
         history = json.loads(
             (detector_dir / "folds" / f"fold{fold}" / "history.json").read_text(encoding="utf-8")
         )
-        eligible = [row for row in history if row.get("validation_loss") is not None]
+        eligible = [
+            row
+            for row in history
+            if row.get("validation_loss") is not None
+            and isinstance(row.get("detector_quality_key"), list)
+        ]
         if not eligible:
-            raise ValueError(f"detector fold {fold} has no validation loss")
-        best = min(eligible, key=lambda row: (float(row["validation_loss"]), int(row["epoch"])))
+            raise ValueError(f"detector fold {fold} has no metric-aware validation history")
+        best = max(
+            eligible,
+            key=lambda row: (list(row["detector_quality_key"]), -int(row["epoch"])),
+        )
         epochs.append(int(best["epoch"]))
     return max(1, int(round(float(np.median(epochs)))))
 
@@ -719,8 +788,6 @@ def train_final_detector(
     options = config["detector"]
     detector_dir = args.output_dir / "detector"
     output = detector_dir / "final"
-    if resume and _checkpoint_complete(output):
-        return output / "best"
     epochs = _best_detector_epoch(detector_dir, int(options["fold_count"]))
     namespace = _detector_namespace(
         options,
@@ -733,13 +800,16 @@ def train_final_detector(
     namespace.final_training = True
     namespace.epochs = epochs
     namespace.seed = int(options["seed"])
+    recipe = detector_optimizer_recipe(namespace)
+    if resume and _checkpoint_complete(output, expected_optimizer_recipe=recipe):
+        return output / "best"
     train_detector(namespace)
-    _mark_checkpoint_complete(output)
+    _mark_checkpoint_complete(output, optimizer_recipe=recipe)
     _write_json(
         output / "final_training.json",
         {
             "schema_version": SCHEMA_VERSION,
-            "epoch_policy": "median_oof_best_epoch",
+            "epoch_policy": "median_oof_metric_best_epoch",
             "epochs": epochs,
             "trained_on": "val2019_all_groups",
         },

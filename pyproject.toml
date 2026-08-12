@@ -50,6 +50,9 @@ bixolon-render-detection-overlays = "bixolon_scanner.training.render_detection_o
 bixolon-ingest-operational-logs = "bixolon_scanner.training.operational_logs:main"
 bixolon-evaluate-operational = "bixolon_scanner.training.evaluate_operational:main"
 bixolon-rpc-data-scale = "bixolon_scanner.training.rpc_data_scale:main"
+bixolon-bread-data-scale = "bixolon_scanner.training.bread_data_scale:main"
+bixolon-compare-difficulty = "bixolon_scanner.training.compare_difficulty:main"
+bixolon-rpc-operational = "bixolon_scanner.training.rpc_operational:main"
 bixolon-benchmark = "bixolon_scanner.benchmark:main"
 
 [tool.hatch.build.targets.wheel]

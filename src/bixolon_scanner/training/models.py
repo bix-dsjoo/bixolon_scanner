@@ -4,14 +4,18 @@ from pathlib import Path
 
 
 DINO_V3_CONVNEXT_TINY = "dinov3_convnext_tiny"
-DINO_V3_HUB_REPOSITORY = "facebookresearch/dinov3:6876159a11b4df116f30f667f8c9888617df0751"
+DINO_V3_HUB_REPOSITORY = (
+    "facebookresearch/dinov3:6876159a11b4df116f30f667f8c9888617df0751"
+)
 
 
 def require_torch():
     try:
         import torch
     except ImportError as exc:
-        raise RuntimeError("install the 'training' extra to use training commands") from exc
+        raise RuntimeError(
+            "install the 'training' extra to use training commands"
+        ) from exc
     return torch
 
 
@@ -22,21 +26,70 @@ def build_dino_classifier(
     pretrained_name: str = "facebook/dinov2-small",
     weights_path: Path | None = None,
     hub_repository: str = DINO_V3_HUB_REPOSITORY,
+    feature_l2_normalize: bool = False,
+    classifier_head_kind: str = "linear",
+    support_per_class: int | None = None,
+    hybrid_knn_k: int = 3,
+    hybrid_prototype_weight: float = 0.5,
 ):
     torch = require_torch()
+
+    class PrototypeKnnHybridHead(torch.nn.Module):
+        def __init__(self, hidden_size: int):
+            super().__init__()
+            if support_per_class is None or support_per_class < 1:
+                raise ValueError("hybrid classifier requires support_per_class")
+            if not 1 <= hybrid_knn_k <= support_per_class:
+                raise ValueError("hybrid k must be between 1 and support_per_class")
+            if not 0.0 <= hybrid_prototype_weight <= 1.0:
+                raise ValueError("hybrid prototype weight must be between 0 and 1")
+            self.register_buffer("prototypes", torch.zeros(num_classes, hidden_size))
+            self.register_buffer(
+                "exemplars",
+                torch.zeros(num_classes, support_per_class, hidden_size),
+            )
+            self.knn_k = int(hybrid_knn_k)
+            self.prototype_weight = float(hybrid_prototype_weight)
+
+        def forward(self, features):
+            prototype_scores = features @ self.prototypes.transpose(0, 1)
+            flat_exemplars = self.exemplars.flatten(0, 1)
+            exemplar_scores = features @ flat_exemplars.transpose(0, 1)
+            exemplar_scores = exemplar_scores.reshape(
+                features.shape[0], num_classes, int(support_per_class)
+            )
+            knn_scores = torch.topk(
+                exemplar_scores, self.knn_k, dim=-1, largest=True, sorted=False
+            ).values.mean(dim=-1)
+            return (
+                self.prototype_weight * prototype_scores
+                + (1.0 - self.prototype_weight) * knn_scores
+            )
 
     class DinoClassifier(torch.nn.Module):
         def __init__(self, backbone, hidden_size: int, kind: str):
             super().__init__()
             self.backbone = backbone
             self.backbone_kind = kind
-            self.classifier = torch.nn.Linear(hidden_size, num_classes)
+            self.feature_l2_normalize = feature_l2_normalize
+            if classifier_head_kind == "linear":
+                self.classifier = torch.nn.Linear(hidden_size, num_classes)
+            elif classifier_head_kind == "prototype_knn_hybrid":
+                self.classifier = PrototypeKnnHybridHead(hidden_size)
+            else:
+                raise ValueError(f"unsupported classifier head: {classifier_head_kind}")
 
         def forward(self, pixel_values):
             if self.backbone_kind == "dinov2":
-                features = self.backbone(pixel_values=pixel_values).last_hidden_state[:, 0]
+                features = self.backbone(pixel_values=pixel_values).last_hidden_state[
+                    :, 0
+                ]
             else:
                 features = self.backbone(pixel_values)
+            if self.feature_l2_normalize:
+                features = torch.nn.functional.normalize(
+                    features, p=2.0, dim=-1, eps=1e-12
+                )
             return self.classifier(features)
 
     if backbone_kind == "dinov2":
