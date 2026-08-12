@@ -20,6 +20,133 @@ from ..pipeline import DecisionPipeline, quality_reasons
 
 SCHEMA_VERSION = "1.0"
 DEFAULT_SELECTION_SALT = "bixolon-rpc-full-path-v1"
+RPC_OPERATION_DAG_VERSION = "rpc-operational-dag-v1"
+
+
+def _worker_policy_from_config(config: dict[str, Any]) -> dict[str, Any]:
+    """Return the package metadata contract implied by rpc_data_scale.json."""
+    detector = config.get("detector")
+    training = config.get("training")
+    if not isinstance(detector, dict) or not isinstance(training, dict):
+        raise ValueError("RPC config must define detector and training sections")
+    required_detector = (
+        "image_size",
+        "max_queries",
+        "uncertainty_score_threshold",
+        "uncertainty_min_area_ratio",
+        "uncertainty_match_iou_threshold",
+        "min_object_area_ratio",
+        "border_margin_ratio",
+        "border_policy",
+    )
+    missing = [field for field in required_detector if field not in detector]
+    if missing:
+        raise ValueError("RPC config lacks Worker policy fields: " + ", ".join(missing))
+    if "image_size" not in training or "eval_margin_ratio" not in training:
+        raise ValueError("RPC config lacks classifier crop/preprocess policy")
+    worker = config.get("worker", {})
+    if not isinstance(worker, dict):
+        raise ValueError("RPC worker configuration must be an object")
+    detector_size = int(detector["image_size"])
+    classifier_size = int(training["image_size"])
+    resize_reducing_gap = float(worker.get("resize_reducing_gap", 1.0))
+    return {
+        "input": {"jpeg_draft_size": int(worker.get("jpeg_draft_size", 1500))},
+        "detector": {
+            "input_size": [detector_size, detector_size],
+            "color_order": "RGB",
+            "mean": [0.0, 0.0, 0.0],
+            "std": [1.0, 1.0, 1.0],
+            "max_queries": int(detector["max_queries"]),
+            "uncertainty_score_threshold": float(
+                detector["uncertainty_score_threshold"]
+            ),
+            "uncertainty_min_area_ratio": float(
+                detector["uncertainty_min_area_ratio"]
+            ),
+            "uncertainty_match_iou_threshold": float(
+                detector["uncertainty_match_iou_threshold"]
+            ),
+            "resize_reducing_gap": resize_reducing_gap,
+        },
+        "classifier": {
+            "input_size": [classifier_size, classifier_size],
+            "color_order": "RGB",
+            "mean": [0.485, 0.456, 0.406],
+            "std": [0.229, 0.224, 0.225],
+            "crop_margin_ratio": float(training["eval_margin_ratio"]),
+            "resize_reducing_gap": resize_reducing_gap,
+        },
+        "quality": {
+            "min_object_area_ratio": float(detector["min_object_area_ratio"]),
+            "border_margin_ratio": float(detector["border_margin_ratio"]),
+            "border_policy": str(detector["border_policy"]),
+            "min_sharpness": detector.get("min_sharpness"),
+            "min_mean_luminance": detector.get("min_mean_luminance"),
+            "max_mean_luminance": detector.get("max_mean_luminance"),
+        },
+    }
+
+
+def _export_bridge(config: dict[str, Any], config_path: Path) -> dict[str, Any]:
+    policy = _worker_policy_from_config(config)
+    return {
+        "schema_version": SCHEMA_VERSION,
+        "contract": "rpc-export-worker-policy-v1",
+        "source_config_sha256": sha256_file(config_path),
+        # This section is consumed directly by training.export --config.
+        "export": {
+            "detector_size": policy["detector"]["input_size"][0],
+            "uncertainty_score_threshold": policy["detector"][
+                "uncertainty_score_threshold"
+            ],
+            "uncertainty_min_area_ratio": policy["detector"][
+                "uncertainty_min_area_ratio"
+            ],
+            "uncertainty_match_iou_threshold": policy["detector"][
+                "uncertainty_match_iou_threshold"
+            ],
+            "crop_margin": policy["classifier"]["crop_margin_ratio"],
+            "resize_reducing_gap": policy["classifier"]["resize_reducing_gap"],
+            "jpeg_draft_size": policy["input"]["jpeg_draft_size"],
+            "min_object_area_ratio": policy["quality"]["min_object_area_ratio"],
+            "border_margin_ratio": policy["quality"]["border_margin_ratio"],
+            "border_policy": policy["quality"]["border_policy"],
+            "min_sharpness": policy["quality"]["min_sharpness"],
+            "min_mean_luminance": policy["quality"]["min_mean_luminance"],
+            "max_mean_luminance": policy["quality"]["max_mean_luminance"],
+        },
+        # max_queries and preprocessing fields are derived/validated rather than CLI args.
+        "expected_package_metadata": policy,
+    }
+
+
+def _metadata_value(metadata: Any, section: str, field: str) -> Any:
+    section_value = getattr(metadata, section)
+    return getattr(section_value, field)
+
+
+def _validate_export_worker_policy(package: Any, bridge: dict[str, Any]) -> None:
+    expected = bridge.get("expected_package_metadata")
+    if not isinstance(expected, dict):
+        raise ValueError("export bridge has no expected package metadata")
+    for section, fields in expected.items():
+        if not isinstance(fields, dict):
+            raise ValueError(f"export bridge section is invalid: {section}")
+        for field, expected_value in fields.items():
+            actual = _metadata_value(package.metadata, section, field)
+            if isinstance(actual, tuple):
+                actual = list(actual)
+            if isinstance(expected_value, float) and expected_value is not None:
+                matches = actual is not None and math.isclose(
+                    float(actual), expected_value, rel_tol=0.0, abs_tol=1e-12
+                )
+            else:
+                matches = actual == expected_value
+            if not matches:
+                raise ValueError(
+                    f"package Worker policy mismatch: {section}.{field}"
+                )
 
 
 class _CapturingDetector:
@@ -425,12 +552,14 @@ def package_inputs(
         "category_count": expected_count,
         "labels": labels,
     }
+    export_bridge = _export_bridge(config, config_path)
 
     destination.mkdir(parents=True, exist_ok=True)
     outputs = {
         "detector-evaluation.json": detector_evaluation,
         "classifier-calibration.json": classifier_calibration,
         "manifest-metadata.json": manifest_metadata,
+        "export-config.json": export_bridge,
     }
     for name, value in outputs.items():
         _write_json(destination / name, value)
@@ -667,6 +796,153 @@ def _read_manifest(path: Path) -> list[dict[str, Any]]:
             for image in sorted(payload["images"], key=lambda row: int(row["id"]))
         ]
     raise ValueError("JSON manifest is neither a benchmark manifest nor RPC COCO")
+
+
+def _manifest_kind(path: Path) -> str:
+    if path.suffix.lower() == ".jsonl":
+        return "jsonl"
+    payload = _read_json(path)
+    if isinstance(payload.get("images"), list) and isinstance(
+        payload.get("annotations"), list
+    ):
+        return "rpc_coco_test"
+    if isinstance(payload.get("records"), list):
+        return "benchmark_records"
+    return "unknown"
+
+
+def _image_ids_sha256(image_ids: Iterable[int]) -> str:
+    return _sha256_bytes(
+        _canonical_bytes(sorted(int(image_id) for image_id in image_ids))
+    )
+
+
+def _source_set_sha256(rows: Iterable[dict[str, Any]]) -> str:
+    canonical = [
+        {
+            "image_id": int(row["image_id"]),
+            "source_image_sha256": str(row["source_image_sha256"]),
+        }
+        for row in rows
+    ]
+    return _sha256_bytes(_canonical_bytes(canonical))
+
+
+def _worker_manifest_provenance(
+    manifest_path: Path,
+    records: list[dict[str, Any]],
+    completed: list[dict[str, Any]],
+    rows_path: Path,
+    state_path: Path,
+) -> dict[str, Any]:
+    state = _read_json(state_path)
+    kind = _manifest_kind(manifest_path)
+    manifest_ids = [int(record["image_id"]) for record in records]
+    completed_ids = [int(row["image_id"]) for row in completed]
+    return {
+        "contract": "sealed-rpc-test-manifest-v1",
+        "manifest_format": kind,
+        "sealed_full_test": kind == "rpc_coco_test",
+        "manifest_sha256": sha256_file(manifest_path),
+        "test_annotation_sha256": (
+            sha256_file(manifest_path) if kind == "rpc_coco_test" else None
+        ),
+        "manifest_row_count": len(records),
+        "evaluated_row_count": len(completed),
+        "manifest_image_ids_sha256": _image_ids_sha256(manifest_ids),
+        "evaluated_image_ids_sha256": _image_ids_sha256(completed_ids),
+        "source_image_set_sha256": _source_set_sha256(completed),
+        "rows_filename": rows_path.name,
+        "rows_file_sha256": sha256_file(rows_path),
+        "rows_chain_sha256": state.get("rows_sha256"),
+        "state_filename": state_path.name,
+        "state_file_sha256": sha256_file(state_path),
+        "state_completed_count": int(state.get("completed_count", -1)),
+        "state_input_fingerprint": state.get("input_fingerprint"),
+        "state_rows_checksum_scheme": state.get("rows_checksum_scheme"),
+    }
+
+
+def _evidence_sibling(report_path: Path, filename: Any, label: str) -> Path:
+    if not isinstance(filename, str) or not filename or Path(filename).name != filename:
+        raise ValueError(f"Worker accuracy provenance has invalid {label} filename")
+    return report_path.parent / filename
+
+
+def _validate_worker_test_manifest_evidence(
+    worker_report_path: Path,
+    worker_report: dict[str, Any],
+    detector_report: dict[str, Any],
+    test_annotation_sha256: str,
+) -> dict[str, Any]:
+    provenance = worker_report.get("test_manifest")
+    if not isinstance(provenance, dict):
+        raise ValueError("Worker accuracy report has no sealed test manifest provenance")
+    if provenance.get("contract") != "sealed-rpc-test-manifest-v1" or not provenance.get(
+        "sealed_full_test"
+    ):
+        raise ValueError("Worker accuracy was not evaluated on a sealed full test manifest")
+    if provenance.get("manifest_format") != "rpc_coco_test":
+        raise ValueError("Worker accuracy used an arbitrary or partial manifest")
+    for field in ("manifest_sha256", "test_annotation_sha256"):
+        if provenance.get(field) != test_annotation_sha256:
+            raise ValueError("Worker accuracy manifest is not the final test annotation")
+
+    outcomes = detector_report.get("outcomes")
+    if not isinstance(outcomes, list) or not outcomes:
+        raise ValueError("final detector report has no test outcomes")
+    detector_ids = [int(row["image_id"]) for row in outcomes]
+    if len(detector_ids) != len(set(detector_ids)):
+        raise ValueError("final detector report contains duplicate test image IDs")
+    expected_count = len(detector_ids)
+    counts = (
+        provenance.get("manifest_row_count"),
+        provenance.get("evaluated_row_count"),
+        provenance.get("state_completed_count"),
+        worker_report.get("image_count"),
+    )
+    if any(int(count) != expected_count for count in counts):
+        raise ValueError("Worker accuracy did not evaluate the complete sealed test manifest")
+    expected_ids_sha256 = _image_ids_sha256(detector_ids)
+    if provenance.get("manifest_image_ids_sha256") != expected_ids_sha256:
+        raise ValueError("Worker accuracy manifest image IDs differ from detector final test")
+    if provenance.get("evaluated_image_ids_sha256") != expected_ids_sha256:
+        raise ValueError("Worker accuracy rows are not the complete test manifest")
+
+    rows_path = _evidence_sibling(
+        worker_report_path, provenance.get("rows_filename"), "rows"
+    )
+    state_path = _evidence_sibling(
+        worker_report_path, provenance.get("state_filename"), "state"
+    )
+    if not rows_path.is_file() or not state_path.is_file():
+        raise FileNotFoundError("Worker accuracy rows/state evidence is missing")
+    if sha256_file(rows_path) != provenance.get("rows_file_sha256"):
+        raise ValueError("Worker accuracy rows artifact checksum mismatch")
+    if sha256_file(state_path) != provenance.get("state_file_sha256"):
+        raise ValueError("Worker accuracy state artifact checksum mismatch")
+    rows = [
+        json.loads(line)
+        for line in rows_path.read_text(encoding="utf-8").splitlines()
+        if line.strip()
+    ]
+    rows_chain_sha256, scanned_count = _rows_chain(rows_path)
+    state = _read_json(state_path)
+    if scanned_count != expected_count or len(rows) != expected_count:
+        raise ValueError("Worker accuracy row artifact is incomplete")
+    if rows_chain_sha256 != provenance.get("rows_chain_sha256") or state.get(
+        "rows_sha256"
+    ) != rows_chain_sha256:
+        raise ValueError("Worker accuracy rows chain checksum mismatch")
+    if state.get("input_fingerprint") != worker_report.get("input_fingerprint"):
+        raise ValueError("Worker accuracy state input fingerprint mismatch")
+    if state.get("rows_checksum_scheme") != "sha256-chain-v1":
+        raise ValueError("Worker accuracy state checksum scheme is unsupported")
+    if _image_ids_sha256(int(row["image_id"]) for row in rows) != expected_ids_sha256:
+        raise ValueError("Worker accuracy row IDs differ from detector final test")
+    if _source_set_sha256(rows) != provenance.get("source_image_set_sha256"):
+        raise ValueError("Worker accuracy test source image hash mismatch")
+    return provenance
 
 
 def _xywh_to_xyxy(box: Iterable[float]) -> np.ndarray:
@@ -1124,6 +1400,9 @@ def worker_eval(
             )
 
     aggregation = aggregate_worker_rows(completed)
+    manifest_provenance = _worker_manifest_provenance(
+        manifest_path, records, completed, rows_path, state_path
+    )
     report = {
         "schema_version": SCHEMA_VERSION,
         "phase": "worker-eval",
@@ -1137,6 +1416,7 @@ def worker_eval(
         "match_iou_threshold": match_iou_threshold,
         "input_fingerprint": fingerprint,
         "rows_sha256": sha256_file(rows_path),
+        "test_manifest": manifest_provenance,
         **aggregation,
     }
     _write_json(output_path, report)
@@ -1209,6 +1489,7 @@ def integrate(
         "package_classifier_calibration": package_inputs_dir
         / "classifier-calibration.json",
         "package_manifest_metadata": package_inputs_dir / "manifest-metadata.json",
+        "package_export_config": package_inputs_dir / "export-config.json",
         "worker_ort_accuracy": worker_report_path,
         "benchmark": benchmark_report_path,
         "benchmark_manifest": output_root / "benchmark" / "manifest.json",
@@ -1295,9 +1576,13 @@ def integrate(
     classifier_calibration = _read_json(
         package_inputs_dir / "classifier-calibration.json"
     )
+    export_bridge = _read_json(package_inputs_dir / "export-config.json")
     _validate_package_bridge_metadata(
         package, detector_evaluation, classifier_calibration
     )
+    if export_bridge.get("source_config_sha256") != sha256_file(config_path):
+        raise ValueError("export bridge is not bound to rpc_data_scale config")
+    _validate_export_worker_policy(package, export_bridge)
     if manifest_metadata.get("dataset_version") != package.metadata.dataset_version:
         raise ValueError("package dataset version does not match RPC manifest metadata")
     expected_labels = [
@@ -1316,6 +1601,18 @@ def integrate(
     benchmark = _read_json(benchmark_report_path)
     _validate_package_evidence(
         worker_report, "Worker accuracy report", package, expected_package_hashes
+    )
+    worker_manifest_provenance = _validate_worker_test_manifest_evidence(
+        worker_report_path,
+        worker_report,
+        detector_test_report,
+        test_annotation_sha256,
+    )
+    artifact_hashes["worker_ort_accuracy_rows"] = str(
+        worker_manifest_provenance["rows_file_sha256"]
+    )
+    artifact_hashes["worker_ort_accuracy_state"] = str(
+        worker_manifest_provenance["state_file_sha256"]
     )
     _validate_package_evidence(
         benchmark, "benchmark report", package, expected_package_hashes
@@ -1501,6 +1798,15 @@ def integrate(
         "artifact_sha256": artifact_hashes,
         "dataset_evidence": {
             "test_annotation_sha256": test_annotation_sha256,
+            "worker_manifest_sha256": worker_manifest_provenance[
+                "manifest_sha256"
+            ],
+            "worker_test_source_image_set_sha256": worker_manifest_provenance[
+                "source_image_set_sha256"
+            ],
+            "worker_test_row_count": worker_manifest_provenance[
+                "evaluated_row_count"
+            ],
         },
         "parity_evidence": {
             "providers": sorted(parity_providers),
@@ -1564,6 +1870,152 @@ def integrate(
         },
         "gates": gates,
         "all_evaluable_gates_satisfied": all(gates.values()),
+        "certification": {
+            "status": "not_certified",
+            "production_certified": False,
+            "non_certified_requirements": ["recapture_recall"],
+            "recapture_recall": {
+                "status": "not_evaluable",
+                "certified": False,
+                "reason": "RPC test data has no capture-quality ground truth",
+            },
+        },
+    }
+    _write_json(output_path, report)
+    return report
+
+
+def operation_plan(
+    output_root: Path,
+    package_dir: Path,
+    *,
+    config_path: Path,
+    output_path: Path | None = None,
+) -> dict[str, Any]:
+    """Write a machine-readable DAG and identify the currently runnable stages."""
+    output_root = output_root.resolve()
+    package_dir = package_dir.resolve()
+    config_path = config_path.resolve()
+    output_path = _artifact_path(
+        output_path, output_root / "reports" / "rpc-operation-plan.json"
+    )
+    stage_specs = [
+        (
+            "final_test",
+            [],
+            [output_root / "model_lock.json"],
+            [
+                output_root / "test" / "detector_report.json",
+                output_root / "reports" / "final_test.json",
+            ],
+        ),
+        (
+            "package_inputs",
+            ["final_test"],
+            [],
+            [
+                output_root / "package-inputs" / "checksums.json",
+                output_root / "package-inputs" / "export-config.json",
+            ],
+        ),
+        (
+            "detector_classifier_package",
+            ["package_inputs"],
+            [],
+            [
+                package_dir / "detector.onnx",
+                package_dir / "classifier.onnx",
+                package_dir / "metadata.json",
+            ],
+        ),
+        (
+            "parity_cpu",
+            ["detector_classifier_package"],
+            [],
+            [output_root / "reports" / "parity-cpu.json"],
+        ),
+        (
+            "parity_cuda",
+            ["detector_classifier_package"],
+            [],
+            [output_root / "reports" / "parity-cuda.json"],
+        ),
+        (
+            "worker_accuracy_full_test",
+            ["detector_classifier_package"],
+            [output_root / "test" / "detector_report.json"],
+            [
+                output_root / "reports" / "worker-ort-accuracy.json",
+                output_root / "reports" / "worker-ort-accuracy.jsonl",
+                output_root / "reports" / "worker-ort-accuracy.jsonl.state.json",
+            ],
+        ),
+        (
+            "benchmark_manifest",
+            ["final_test"],
+            [],
+            [
+                output_root / "benchmark" / "manifest.json",
+                output_root / "benchmark" / "checksums.json",
+            ],
+        ),
+        (
+            "benchmark_cuda",
+            ["detector_classifier_package", "benchmark_manifest"],
+            [],
+            [output_root / "reports" / "benchmark.json"],
+        ),
+        (
+            "integrate",
+            [
+                "parity_cpu",
+                "parity_cuda",
+                "worker_accuracy_full_test",
+                "benchmark_cuda",
+            ],
+            [],
+            [output_root / "reports" / "integrated-worker-kpi.json"],
+        ),
+    ]
+    completed = {
+        stage: all(path.is_file() for path in artifacts)
+        for stage, _dependencies, _required_inputs, artifacts in stage_specs
+    }
+    stages = []
+    for stage, dependencies, required_inputs, artifacts in stage_specs:
+        inputs_available = all(path.is_file() for path in required_inputs)
+        if completed[stage]:
+            status = "completed"
+        elif inputs_available and all(completed[dependency] for dependency in dependencies):
+            status = "ready"
+        else:
+            status = "blocked"
+        stages.append(
+            {
+                "id": stage,
+                "dependencies": dependencies,
+                "status": status,
+                "required_inputs": [str(path) for path in required_inputs],
+                "missing_required_inputs": [
+                    str(path) for path in required_inputs if not path.is_file()
+                ],
+                "artifacts": [str(path) for path in artifacts],
+                "missing_artifacts": [str(path) for path in artifacts if not path.is_file()],
+            }
+        )
+    report = {
+        "schema_version": SCHEMA_VERSION,
+        "phase": "operation-plan",
+        "dag_contract": RPC_OPERATION_DAG_VERSION,
+        "config_sha256": sha256_file(config_path),
+        "output_root": str(output_root),
+        "package_dir": str(package_dir),
+        "stages": stages,
+        "next_steps": [stage["id"] for stage in stages if stage["status"] == "ready"],
+        "certification_constraint": {
+            "recapture_recall": "not_evaluable",
+            "production_certification": "not_certified",
+        },
     }
     _write_json(output_path, report)
     return report
@@ -1613,6 +2065,12 @@ def _parser() -> argparse.ArgumentParser:
     integrate_parser.add_argument("--worker-report", type=Path)
     integrate_parser.add_argument("--benchmark-report", type=Path)
     integrate_parser.add_argument("--output", type=Path)
+
+    plan_parser = subparsers.add_parser("next-steps")
+    plan_parser.add_argument("--output-root", type=Path, required=True)
+    plan_parser.add_argument("--package-dir", type=Path, required=True)
+    plan_parser.add_argument("--config", type=Path, required=True)
+    plan_parser.add_argument("--output", type=Path)
     return parser
 
 
@@ -1648,7 +2106,7 @@ def main() -> None:
             match_iou_threshold=args.match_iou_threshold,
             resume=args.resume,
         )
-    else:
+    elif args.phase == "integrate":
         report = integrate(
             args.output_root,
             args.package_dir,
@@ -1659,6 +2117,13 @@ def main() -> None:
             parity_report_paths=args.parity_report,
             worker_report_path=args.worker_report,
             benchmark_report_path=args.benchmark_report,
+            output_path=args.output,
+        )
+    else:
+        report = operation_plan(
+            args.output_root,
+            args.package_dir,
+            config_path=args.config,
             output_path=args.output,
         )
     print(json.dumps(report, ensure_ascii=False, indent=2))

@@ -49,6 +49,7 @@ def test_finalize_counts_uses_requested_error_denominators():
             "unblocked_missed_boxes": 2,
             "unblocked_false_positive_boxes": 3,
             "end_to_end_latency_ms_total": 650.0,
+            "end_to_end_latency_ms_samples": [50.0, 60.0, 70.0, 80.0, 90.0],
         }
     )
     counts["response_status"]["RECAPTURE"] = 2
@@ -62,6 +63,10 @@ def test_finalize_counts_uses_requested_error_denominators():
     assert result["rates"]["unknown_top3_missing_rate"] == 0.2
     assert result["rates"]["unknown_top3_accuracy"] == 0.8
     assert result["rates"]["classifier_top1_accuracy_excluding_recapture"] == 12 / 17
+    assert result["rates"]["approval_coverage_of_classified_detections"] == 12 / 17
+    assert result["rates"]["e2e_top1_accuracy_all_ground_truth"] == 12 / 20
+    assert result["rates"]["e2e_top3_conservative_accuracy_all_ground_truth"] == 14 / 20
+    assert result["rates"]["e2e_safe_resolution_rate_all_ground_truth"] == 15 / 20
     assert result["all_ground_truth_box_outcomes"] == {
         "denominator": 20,
         "counts": {
@@ -85,7 +90,15 @@ def test_finalize_counts_uses_requested_error_denominators():
         "raw_detector_missed_boxes": 2,
         "raw_detector_false_positive_boxes": 3,
     }
-    assert result["end_to_end_latency_ms"] == {"sample_count": 10, "mean": 65.0}
+    assert result["end_to_end_latency_ms"] == {
+        "sample_count": 10,
+        "mean": 70.0,
+        "p50": 70.0,
+        "p95": 88.0,
+        "p99": 89.6,
+        "minimum": 50.0,
+        "maximum": 90.0,
+    }
 
 
 def test_load_records_supports_root_coco_with_difficulty_directories(tmp_path):

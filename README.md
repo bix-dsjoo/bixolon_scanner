@@ -1,5 +1,20 @@
 # Bixolon Multi-Bread Scanner Worker
 
+## `0.2.0` strict 10-shot classifier
+
+`0.2.0`은 detector와 Worker API 계약을 `0.1.1` 그대로 유지하고 classifier 학습 경로만 교체합니다. classifier 가중치 학습에는 `C:\workspace\raw_data\bread_project_3`의 클래스별 정확히 10장만 사용합니다. `DETECTOR_UNCERTAIN_OBJECT`는 계속 classifier 호출 전 `RECAPTURE` hard gate이며 이 경로의 `model_versions.classifier`는 `null`입니다.
+
+검증한 manifest 생성 명령은 다음과 같습니다.
+
+```powershell
+python -m bixolon_scanner.training.ten_shot_manifest `
+  --dataset-root C:\workspace\raw_data\bread_project_3 `
+  --labels-metadata manifests\bread-10shot-v1\metadata.json `
+  --output-dir manifests\bread-10shot-v1
+```
+
+결과는 20개 클래스 × 10장, dataset version `bread-10shot-9df0df1d32c5`입니다. 전체 설계와 아직 실행되지 않은 학습·parity·benchmark 단계는 [0.2.0 개발 설계](docs/plans/bread-10shot-classifier-0.2.0.md)에 기록합니다. 실제 gate 증거가 완성되기 전에는 `0.1.1`을 운영 package로 유지합니다.
+
 한 장의 JPEG/PNG에서 여러 빵을 검출하고 20개 등록 클래스 중 하나로 분류하는 Windows용 Worker입니다. JPEG에 MPF/MPO 정보가 포함된 경우 첫 프레임을 입력 이미지로 사용합니다. 학습은 PyTorch, 배포는 ONNX Runtime만 사용합니다.
 
 현재 운영 패키지 버전은 `0.1.1`, 데이터셋 버전은 `bread-43093242294f`, 승격 상태는 `production`입니다. `0.1.1`은 `0.1.0`과 동일한 ONNX 가중치를 사용하고 detector 불확실 객체 후처리만 추가합니다. 300장 단일 실행에서 `UNKNOWN` Top-3가 90%로 기준에 미달하고 299장이 정책 적합 세트와 중복된다는 사실을 보존한 채 프로젝트 책임자 요청에 따라 수동 예외 승격했습니다.
@@ -456,3 +471,38 @@ bixolon-ingest-operational-logs `
 후보 package `0.1.2`는 schema `1.1`, detector `0.1.1`, classifier `0.1.0`으로 생성되며 classifier ONNX SHA-256 `835a13da0a8f0084da42500c4721c738a4569b5520c844b0e7f054d348083c02`는 `0.1.1`과 동일합니다. detector 정책 `0.56/0.20/0.039/0.5`와 classifier 승인 임계값은 변경하지 않았습니다.
 
 현재 후보는 `development`입니다. 운영 fit 정상 진행 20/34, 재촬영 유지 7/8, 기존 누락 이미지 차단 2/4, `UNKNOWN` Top-3 17/20, RTX 5080 full-path p95 100.461ms로 승격 게이트를 통과하지 못했습니다. 독립 운영 test 데이터도 없습니다. 따라서 Windows CMake와 앱 기본 package는 계속 `bread-worker-0.1.1`을 사용합니다. 원시 승격 판단은 `manifests/bread-ops-v2/promotion.json`에 기록합니다.
+
+### 엄격한 10-shot classifier `0.2.1` 실험
+
+`0.2.1`은 detector와 API를 변경하지 않고 border-connected foreground, 7% padding, DINOv3 local/global feature, normal/flipped 2-proxy cosine head와 2-view TTA를 평가합니다. 아래 명령에서 `prepare`, `baseline`, `train`, `challenger`, `calibrate` phase를 이 순서로 각각 실행했습니다.
+
+```powershell
+bixolon-bread-10shot `
+  --config configs\bread_10shot_0.2.1.json `
+  --manifest manifests\bread-10shot-v1\manifest.jsonl `
+  --manifest-metadata manifests\bread-10shot-v1\metadata.json `
+  --dataset-root C:\workspace\raw_data\bread_project_3 `
+  --evaluation-manifest manifests\bread-v1\manifest.jsonl `
+  --evaluation-dataset-root C:\workspace\raw_data\bread_project `
+  --weights C:\workspace\raw_data\model_cache\dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth `
+  --base-package artifacts\packages\bread-worker-0.1.1 `
+  --output-dir artifacts\experiments\bread-10shot-0.2.1 `
+  --provider cuda `
+  --phase prepare
+```
+
+최선 development 결과는 Top-1 `95.1631%`, Top-3 `99.3251%`입니다. 전체 calibration은 승인 680/889, precision `100%`, false-approval 95% 상한 `0.4396%`였지만 coverage가 `76.4904%`에 그쳤고 capture-session 교차 calibration은 세 fold 모두 승인 0건이었습니다. 승격 상태는 `experiment_only`이며 test, ONNX export와 benchmark는 실행하지 않았습니다. 상세 결과는 [0.2.1 실험 보고서](docs/reports/bread-10shot-0.2.1.md)에 기록합니다.
+
+### 엄격한 10-shot classifier `0.2.3` 최종 판정
+
+`0.2.3`은 정확히 200장의 10-shot 학습만 사용해 development ROI Top-1 `97.630%`, Top-3 `99.774%`, 승인 precision `100%`, coverage `85.102%`를 얻었습니다. PyTorch CUDA/CPU ONNX/CUDA ONNX의 최종 상태와 Top-1·Top-3 순서도 886개에서 모두 일치했습니다.
+
+하지만 pre-test lock 이후 실행한 기존 test 94장의 Top-1은 `93.096%`, 승인 precision `99.462%`, coverage `77.824%`였고 RTX 5080 full-path p95는 `117.874ms`였습니다. `bread_project_2` 300장도 coverage `82.625%`와 false approval 95% 상한 `0.558%`로 하한에 미달했습니다. 최종 상태는 `experiment_only`이며 운영 package는 계속 `bread-worker-0.1.1`입니다. 상세 lock, parity, 회귀 및 benchmark 결과는 [0.2.3 최종 평가](docs/reports/bread-10shot-0.2.3.md)에 기록합니다.
+
+### 엄격한 10-shot classifier `0.2.4` parameter soup
+
+`0.2.4`는 seed `20260813`·`20260814`의 strict checkpoint 전체 파라미터를 균등 평균한 단일 runtime 모델입니다. Development Top-1 `97.856%`, Top-3 `100%`, 승인 precision `100%`, coverage `89.391%`이며 PyTorch/CPU ONNX/CUDA ONNX 판정 parity를 통과했습니다.
+
+잠긴 test 94장에서는 Top-1 `94.979%`, precision `99.254%`, coverage `84.100%`로 하한에 근접했지만 실패했습니다. `bread_project_2`는 Top-1 `96.943%`, precision `99.583%`, coverage `87.263%`를 통과했으나 false approval 95% 상한 `0.875%`가 실패했습니다. Full-path p95 `110.948ms` 측정 중에는 별도의 detector GPU 학습이 실행 중이어서 clean 재측정도 필요합니다.
+
+또한 test 94장의 classifier-active ROI는 최대 478개라, 오류가 0건이어도 `0.5%` 한쪽 95% risk 상한 증명에 필요한 최소 598개에 미달합니다. 최종 상태는 `experiment_only`이며 상세 내용은 [0.2.4 최종 평가](docs/reports/bread-10shot-0.2.4.md)에 기록합니다.

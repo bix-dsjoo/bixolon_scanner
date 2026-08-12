@@ -28,6 +28,7 @@ class DetectionResult:
     verified_count: int | None = None
     count_confidence: float | None = None
     uncertain_candidate_count: int = 0
+    uncertain_candidate_scores: tuple[float, ...] = ()
 
 
 def _sigmoid(values: np.ndarray) -> np.ndarray:
@@ -206,6 +207,7 @@ class OnnxDetector:
 
         detections = _nms(convert(selected_indices), self.metadata.nms_iou_threshold)
         uncertain_candidate_count = 0
+        uncertain_candidate_scores: list[float] = []
         if self.metadata.uncertainty_score_threshold is not None:
             shadow_indices = np.flatnonzero(
                 scores >= self.metadata.uncertainty_score_threshold
@@ -227,10 +229,12 @@ class OnnxDetector:
                     or max(overlaps) < self.metadata.uncertainty_match_iou_threshold
                 ):
                     uncertain_candidate_count += 1
+                    uncertain_candidate_scores.append(candidate.score)
         return DetectionResult(
             detections,
             raw_saturated,
             uncertain_candidate_count=uncertain_candidate_count,
+            uncertain_candidate_scores=tuple(sorted(uncertain_candidate_scores, reverse=True)),
         )
 
 
@@ -351,6 +355,7 @@ class CountVerifiedDetector:
             verified_count=verified_count,
             count_confidence=confidence,
             uncertain_candidate_count=result.uncertain_candidate_count,
+            uncertain_candidate_scores=result.uncertain_candidate_scores,
         )
 
 

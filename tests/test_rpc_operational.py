@@ -12,12 +12,16 @@ from bixolon_scanner.inference import Detection, DetectionResult
 from bixolon_scanner.package import sha256_file
 from bixolon_scanner.package import ClassifierMetadata, QualityMetadata
 from bixolon_scanner.training.rpc_operational import (
+    _image_ids_sha256,
+    _rows_chain,
+    _source_set_sha256,
     _validate_benchmark_manifest_evidence,
     _expected_hard_gate_reasons,
     _match_items,
     aggregate_worker_rows,
     build_benchmark_manifest,
     integrate,
+    operation_plan,
     package_inputs,
     worker_eval,
 )
@@ -39,7 +43,18 @@ def _locked_training_root(tmp_path: Path) -> tuple[Path, Path]:
         config_path,
         {
             "experiment": {"mode": "full_dataset", "expected_num_classes": 200},
-            "detector": {"nms_iou_threshold": 0.7},
+            "detector": {
+                "image_size": 640,
+                "nms_iou_threshold": 0.7,
+                "max_queries": 300,
+                "uncertainty_score_threshold": 0.2,
+                "uncertainty_min_area_ratio": 0.039,
+                "uncertainty_match_iou_threshold": 0.5,
+                "min_object_area_ratio": 0.005,
+                "border_margin_ratio": 0.002,
+                "border_policy": "classifier_confidence",
+            },
+            "training": {"image_size": 224, "eval_margin_ratio": 0.05},
         },
     )
     _write_json(
@@ -102,6 +117,7 @@ def test_package_inputs_preserves_rpc_logit_order_and_checksums(tmp_path: Path):
     detector = json.loads((destination / "detector-evaluation.json").read_text())
     calibration = json.loads((destination / "classifier-calibration.json").read_text())
     metadata = json.loads((destination / "manifest-metadata.json").read_text())
+    export_config = json.loads((destination / "export-config.json").read_text())
 
     assert detector["metrics"]["recall"] == 0.995
     assert detector["nms_iou_threshold"] == 0.7
@@ -110,6 +126,9 @@ def test_package_inputs_preserves_rpc_logit_order_and_checksums(tmp_path: Path):
     assert [row["logit_index"] for row in metadata["labels"]] == list(range(200))
     assert metadata["labels"][0]["class_id"] == "1"
     assert len(metadata["dataset_identity_sha256"]) == 64
+    assert export_config["export"]["uncertainty_min_area_ratio"] == 0.039
+    assert export_config["export"]["crop_margin"] == 0.05
+    assert export_config["expected_package_metadata"]["detector"]["max_queries"] == 300
     assert first == package_inputs(root, config, resume=True)
 
     config.write_text(config.read_text() + "\n", encoding="utf-8")
@@ -495,8 +514,12 @@ def _package(package_dir: Path, labels: list[dict[str, object]], dataset_version
                 "filename": "detector.onnx",
                 "version": "1.0.0",
                 "score_threshold": 0.42,
+                "uncertainty_score_threshold": 0.2,
+                "uncertainty_min_area_ratio": 0.039,
+                "uncertainty_match_iou_threshold": 0.5,
                 "nms_iou_threshold": 0.7,
                 "max_queries": 300,
+                "resize_reducing_gap": 1.0,
             },
             "classifier": {
                 "filename": "classifier.onnx",
@@ -505,12 +528,18 @@ def _package(package_dir: Path, labels: list[dict[str, object]], dataset_version
                 "std": [0.229, 0.224, 0.225],
                 "approval_threshold": 0.91,
                 "temperature": 1.1,
+                "crop_margin_ratio": 0.05,
+                "resize_reducing_gap": 1.0,
                 "labels": [
                     {"class_id": row["class_id"], "class_name": row["class_name"]}
                     for row in labels
                 ],
             },
-            "quality": {"border_policy": "classifier_confidence"},
+            "quality": {
+                "min_object_area_ratio": 0.005,
+                "border_margin_ratio": 0.002,
+                "border_policy": "classifier_confidence",
+            },
             "calibration": {
                 "sample_count": 100,
                 "approved_precision": 0.999,
@@ -531,6 +560,50 @@ def _package(package_dir: Path, labels: list[dict[str, object]], dataset_version
             "licenses": {"detector": "test", "classifier": "test"},
         },
     )
+
+
+def _sealed_worker_provenance(
+    worker_path: Path, annotation_path: Path, source_path: Path
+) -> dict[str, object]:
+    rows_path = worker_path.with_suffix(".jsonl")
+    state_path = rows_path.with_suffix(".jsonl.state.json")
+    rows = [{"image_id": 1, "source_image_sha256": sha256_file(source_path)}]
+    rows_path.write_text(json.dumps(rows[0], sort_keys=True) + "\n", encoding="utf-8")
+    rows_chain, row_count = _rows_chain(rows_path)
+    fingerprint = "e" * 64
+    _write_json(
+        state_path,
+        {
+            "completed_count": row_count,
+            "input_fingerprint": fingerprint,
+            "rows_sha256": rows_chain,
+            "rows_checksum_scheme": "sha256-chain-v1",
+        },
+    )
+    annotation_sha256 = sha256_file(annotation_path)
+    return {
+        "input_fingerprint": fingerprint,
+        "test_manifest": {
+            "contract": "sealed-rpc-test-manifest-v1",
+            "manifest_format": "rpc_coco_test",
+            "sealed_full_test": True,
+            "manifest_sha256": annotation_sha256,
+            "test_annotation_sha256": annotation_sha256,
+            "manifest_row_count": 1,
+            "evaluated_row_count": 1,
+            "manifest_image_ids_sha256": _image_ids_sha256([1]),
+            "evaluated_image_ids_sha256": _image_ids_sha256([1]),
+            "source_image_set_sha256": _source_set_sha256(rows),
+            "rows_filename": rows_path.name,
+            "rows_file_sha256": sha256_file(rows_path),
+            "rows_chain_sha256": rows_chain,
+            "state_filename": state_path.name,
+            "state_file_sha256": sha256_file(state_path),
+            "state_completed_count": 1,
+            "state_input_fingerprint": fingerprint,
+            "state_rows_checksum_scheme": "sha256-chain-v1",
+        },
+    }
 
 
 def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_path: Path):
@@ -628,11 +701,19 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
             },
         )
         parities.append(parity)
+    worker_path = root / "reports" / "worker-ort-accuracy.json"
+    worker_provenance = _sealed_worker_provenance(
+        worker_path,
+        rpc_root / "instances_test2019.json",
+        rpc_root / "test2019" / "frame-1.jpg",
+    )
     _write_json(
-        root / "reports" / "worker-ort-accuracy.json",
+        worker_path,
         {
             **identity,
+            **worker_provenance,
             "provider": "cuda",
+            "image_count": 1,
             "match_iou_threshold": 0.5,
             "detector": {"recall": 0.995, "precision": 0.99, "count_accuracy": 0.98},
             "classifier": {
@@ -695,6 +776,8 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
         root, package_dir, config_path=config_path, parity_report_paths=parities
     )
     assert report["metrics"]["recapture_recall"] == "not_evaluable"
+    assert report["certification"]["status"] == "not_certified"
+    assert report["certification"]["production_certified"] is False
     assert report["gates"]["full_path_p95_at_most_100_ms"] is False
     assert report["gates"]["worker_match_iou_threshold_is_0_5"] is True
     assert report["gates"]["approved_truth_sample_present"] is True
@@ -713,6 +796,7 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
     assert report["dataset_evidence"]["test_annotation_sha256"] == sha256_file(
         rpc_root / "instances_test2019.json"
     )
+    assert report["dataset_evidence"]["worker_test_row_count"] == 1
     assert report["all_evaluable_gates_satisfied"] is False
     assert report["artifact_sha256"]["worker_ort_accuracy"] == sha256_file(
         root / "reports" / "worker-ort-accuracy.json"
@@ -724,7 +808,6 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
             sha256_file(root / "test" / "detector_report.json"),
             "f" * 64,
         )
-    worker_path = root / "reports" / "worker-ort-accuracy.json"
     worker_payload = json.loads(worker_path.read_text())
     no_truth_payload = json.loads(json.dumps(worker_payload))
     no_truth_payload["match_iou_threshold"] = 0.4
@@ -743,6 +826,14 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
     assert no_truth_report["gates"]["approved_truth_sample_present"] is False
     assert no_truth_report["gates"]["unknown_truth_sample_present"] is False
     assert no_truth_report["gates"]["worker_match_iou_threshold_is_0_5"] is False
+    _write_json(worker_path, worker_payload)
+    partial_payload = json.loads(json.dumps(worker_payload))
+    partial_payload["test_manifest"]["manifest_row_count"] = 0
+    _write_json(worker_path, partial_payload)
+    with pytest.raises(ValueError, match="complete sealed test manifest"):
+        integrate(
+            root, package_dir, config_path=config_path, parity_report_paths=parities
+        )
     _write_json(worker_path, worker_payload)
     cpu_parity_payload = json.loads(parities[0].read_text())
     altered_parity = json.loads(json.dumps(cpu_parity_payload))
@@ -776,3 +867,36 @@ def test_integrate_fails_when_required_evidence_is_absent(tmp_path: Path):
             config_path=tmp_path / "config.json",
             parity_report_paths=[],
         )
+
+
+def test_operation_plan_reports_ready_stages_without_running_gpu(tmp_path: Path):
+    root, config_path = _locked_training_root(tmp_path)
+    _write_json(root / "test" / "detector_report.json", {"outcomes": []})
+    _write_json(root / "reports" / "final_test.json", {"status": "test_certified"})
+    package_dir = tmp_path / "package"
+    report = operation_plan(root, package_dir, config_path=config_path)
+
+    by_id = {stage["id"]: stage for stage in report["stages"]}
+    assert report["dag_contract"] == "rpc-operational-dag-v1"
+    assert by_id["final_test"]["status"] == "completed"
+    assert by_id["package_inputs"]["status"] == "ready"
+    assert by_id["detector_classifier_package"]["status"] == "blocked"
+    assert report["next_steps"] == ["package_inputs", "benchmark_manifest"]
+    assert report["certification_constraint"]["production_certification"] == (
+        "not_certified"
+    )
+
+
+def test_operation_plan_blocks_final_test_until_model_lock_exists(tmp_path: Path):
+    root = tmp_path / "experiment"
+    config_path = tmp_path / "config.json"
+    _write_json(config_path, {"experiment": {"mode": "full_dataset"}})
+
+    report = operation_plan(root, tmp_path / "package", config_path=config_path)
+
+    by_id = {stage["id"]: stage for stage in report["stages"]}
+    assert by_id["final_test"]["status"] == "blocked"
+    assert by_id["final_test"]["missing_required_inputs"] == [
+        str((root / "model_lock.json").resolve())
+    ]
+    assert "final_test" not in report["next_steps"]

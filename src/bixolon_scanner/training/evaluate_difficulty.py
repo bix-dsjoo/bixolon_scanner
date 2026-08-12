@@ -169,6 +169,7 @@ def _empty_counts() -> dict[str, Any]:
         "unblocked_missed_boxes": 0,
         "unblocked_false_positive_boxes": 0,
         "end_to_end_latency_ms_total": 0.0,
+        "end_to_end_latency_ms_samples": [],
     }
 
 
@@ -178,6 +179,10 @@ def _safe_rate(numerator: int, denominator: int) -> float | None:
 
 def _finalize_counts(counts: dict[str, Any]) -> dict[str, Any]:
     result = dict(counts)
+    latency_samples = np.asarray(
+        counts["end_to_end_latency_ms_samples"], dtype=np.float64
+    )
+    result.pop("end_to_end_latency_ms_samples", None)
     ground_truth_outcome_counts = {
         "recognized_approved_correct": counts["approved_correct"],
         "top3_candidate": counts["unknown_top3_correct"],
@@ -224,6 +229,22 @@ def _finalize_counts(counts: dict[str, Any]) -> dict[str, Any]:
         "classifier_top1_accuracy_excluding_recapture": _safe_rate(
             counts["top1_correct"], counts["classified_matched_boxes"]
         ),
+        "approval_coverage_of_classified_detections": _safe_rate(
+            counts["approved_boxes"], counts["classified_matched_boxes"]
+        ),
+        "e2e_top1_accuracy_all_ground_truth": _safe_rate(
+            counts["top1_correct"], counts["ground_truth_boxes"]
+        ),
+        "e2e_top3_conservative_accuracy_all_ground_truth": _safe_rate(
+            counts["approved_correct"] + counts["unknown_top3_correct"],
+            counts["ground_truth_boxes"],
+        ),
+        "e2e_safe_resolution_rate_all_ground_truth": _safe_rate(
+            counts["approved_correct"]
+            + counts["unknown_top3_correct"]
+            + counts["recapture_ground_truth_boxes"],
+            counts["ground_truth_boxes"],
+        ),
     }
     result["all_ground_truth_box_outcomes"] = {
         "denominator": counts["ground_truth_boxes"],
@@ -241,11 +262,12 @@ def _finalize_counts(counts: dict[str, Any]) -> dict[str, Any]:
     }
     result["end_to_end_latency_ms"] = {
         "sample_count": counts["images"],
-        "mean": (
-            counts["end_to_end_latency_ms_total"] / counts["images"]
-            if counts["images"]
-            else None
-        ),
+        "mean": float(latency_samples.mean()) if len(latency_samples) else None,
+        "p50": float(np.percentile(latency_samples, 50)) if len(latency_samples) else None,
+        "p95": float(np.percentile(latency_samples, 95)) if len(latency_samples) else None,
+        "p99": float(np.percentile(latency_samples, 99)) if len(latency_samples) else None,
+        "minimum": float(latency_samples.min()) if len(latency_samples) else None,
+        "maximum": float(latency_samples.max()) if len(latency_samples) else None,
     }
     return result
 
@@ -328,6 +350,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             bucket["exact_detection_images"] += int(exact_detection)
             bucket["failed_detection_images"] += int(not exact_detection)
             bucket["end_to_end_latency_ms_total"] += elapsed_ms
+            bucket["end_to_end_latency_ms_samples"].append(elapsed_ms)
 
         common = {
             "group": record["group"],

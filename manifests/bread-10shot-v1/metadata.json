@@ -1,0 +1,124 @@
+{
+  "schema_version": "1.0",
+  "dataset_version": "bread-10shot-9df0df1d32c5",
+  "source_dataset": "bread_project_3",
+  "record_count": 200,
+  "class_count": 20,
+  "shots_per_class": 10,
+  "labels": [
+    {
+      "category_id": 1,
+      "class_id": "bread_01",
+      "class_name": "Walnut Donut"
+    },
+    {
+      "category_id": 2,
+      "class_id": "bread_02",
+      "class_name": "Croffle"
+    },
+    {
+      "category_id": 3,
+      "class_id": "bread_03",
+      "class_name": "Waffle"
+    },
+    {
+      "category_id": 4,
+      "class_id": "bread_04",
+      "class_name": "Scon"
+    },
+    {
+      "category_id": 5,
+      "class_id": "bread_05",
+      "class_name": "Half-moon Croissant"
+    },
+    {
+      "category_id": 6,
+      "class_id": "bread_06",
+      "class_name": "Croissant"
+    },
+    {
+      "category_id": 7,
+      "class_id": "bread_07",
+      "class_name": "Flower Bread"
+    },
+    {
+      "category_id": 8,
+      "class_id": "bread_08",
+      "class_name": "Almond Scon"
+    },
+    {
+      "category_id": 9,
+      "class_id": "bread_09",
+      "class_name": "Dinner Roll"
+    },
+    {
+      "category_id": 10,
+      "class_id": "bread_10",
+      "class_name": "Sugar Donut"
+    },
+    {
+      "category_id": 11,
+      "class_id": "bread_11",
+      "class_name": "Bagel"
+    },
+    {
+      "category_id": 12,
+      "class_id": "bread_12",
+      "class_name": "Egg Tart"
+    },
+    {
+      "category_id": 13,
+      "class_id": "bread_13",
+      "class_name": "Muffin"
+    },
+    {
+      "category_id": 14,
+      "class_id": "bread_14",
+      "class_name": "Burger"
+    },
+    {
+      "category_id": 15,
+      "class_id": "bread_15",
+      "class_name": "Sandwich"
+    },
+    {
+      "category_id": 16,
+      "class_id": "bread_16",
+      "class_name": "Grain Campagne"
+    },
+    {
+      "category_id": 17,
+      "class_id": "bread_17",
+      "class_name": "Almond Campagne"
+    },
+    {
+      "category_id": 18,
+      "class_id": "bread_18",
+      "class_name": "Mini Bread"
+    },
+    {
+      "category_id": 19,
+      "class_id": "bread_19",
+      "class_name": "Pastry Bread"
+    },
+    {
+      "category_id": 20,
+      "class_id": "bread_20",
+      "class_name": "Plain Bread"
+    }
+  ],
+  "manifest_sha256": "9df0df1d32c5139cbd549a5b04c67ac317f8b60a873d19c1d3f504e67fb13a6a",
+  "capture_contract": {
+    "sides": [
+      "normal",
+      "flipped"
+    ],
+    "views": [
+      "vertical",
+      "ground30_dir1",
+      "ground30_dir2",
+      "ground30_dir3",
+      "ground30_dir4"
+    ]
+  }
+}

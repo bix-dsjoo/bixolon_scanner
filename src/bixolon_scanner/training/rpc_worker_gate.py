@@ -7,7 +7,7 @@ import math
 from collections import Counter, defaultdict
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Iterable
+from typing import Any, Callable, Iterable
 
 import numpy as np
 from PIL import Image
@@ -37,6 +37,88 @@ def _write_jsonl(path: Path, values: Iterable[dict[str, Any]]) -> None:
 
 def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
+
+
+def _records_sha256(records: Iterable[dict[str, Any]]) -> str:
+    payload = "".join(_canonical_json(record) + "\n" for record in records)
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+def _prediction_metadata_path(predictions_path: Path) -> Path:
+    return predictions_path.with_name(predictions_path.name + ".metadata.json")
+
+
+def _prediction_identity(
+    records: list[dict[str, Any]],
+    checkpoints: Iterable[Path],
+    *,
+    source_sha256: str,
+    inference_config: dict[str, Any],
+) -> dict[str, Any]:
+    weights = {
+        str(index): sha256_file(_detector_weights_path(checkpoint))
+        for index, checkpoint in enumerate(checkpoints)
+    }
+    return {
+        "source_sha256": source_sha256,
+        "records_sha256": _records_sha256(records),
+        "checkpoint_weights_sha256": weights,
+        "inference_config_fingerprint": hashlib.sha256(
+            _canonical_json(inference_config).encode()
+        ).hexdigest(),
+        "record_count": len(records),
+        "records": records,
+    }
+
+
+def _prediction_artifact_valid(
+    predictions_path: Path, identity: dict[str, Any]
+) -> bool:
+    metadata_path = _prediction_metadata_path(predictions_path)
+    if not predictions_path.is_file() or not metadata_path.is_file():
+        return False
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        if metadata.get("complete") is not True:
+            return False
+        if any(
+            metadata.get(key) != value
+            for key, value in identity.items()
+            if key != "records"
+        ):
+            return False
+        if metadata.get("predictions_sha256") != sha256_file(predictions_path):
+            return False
+        predictions = _read_jsonl(predictions_path)
+        sample_keys = [str(item["sample_key"]) for item in predictions]
+        expected_keys = [
+            f"{record['source']}:{record['image_id']}" for record in identity["records"]
+        ]
+        return (
+            len(predictions) == int(identity["record_count"])
+            and len(sample_keys) == len(set(sample_keys))
+            and set(sample_keys) == set(expected_keys)
+        )
+    except (KeyError, OSError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+
+
+def _write_prediction_artifact(
+    predictions_path: Path,
+    predictions: list[dict[str, Any]],
+    identity: dict[str, Any],
+) -> None:
+    _write_jsonl(predictions_path, predictions)
+    public_identity = {key: value for key, value in identity.items() if key != "records"}
+    _write_json(
+        _prediction_metadata_path(predictions_path),
+        {
+            "schema_version": SCHEMA_VERSION,
+            "complete": True,
+            **public_identity,
+            "predictions_sha256": sha256_file(predictions_path),
+        },
+    )
 
 
 def checkout_group(filename: str) -> str:
@@ -315,6 +397,87 @@ def _mark_checkpoint_complete(
     )
 
 
+def _detector_phase_complete(
+    detector_dir: Path,
+    dataset_root: Path | None = None,
+    config: dict[str, Any] | None = None,
+) -> bool:
+    marker_path = detector_dir / "complete.json"
+    artifacts = {
+        "threshold_sha256": detector_dir / "threshold.json",
+        "val_predictions_sha256": detector_dir / "predictions" / "val_oof.jsonl",
+        "val_predictions_metadata_sha256": _prediction_metadata_path(
+            detector_dir / "predictions" / "val_oof.jsonl"
+        ),
+        "train_predictions_sha256": detector_dir / "predictions" / "train_assigned.jsonl",
+        "train_predictions_metadata_sha256": _prediction_metadata_path(
+            detector_dir / "predictions" / "train_assigned.jsonl"
+        ),
+    }
+    if not marker_path.is_file():
+        return False
+    try:
+        marker = json.loads(marker_path.read_text(encoding="utf-8"))
+        hashes_valid = all(
+            path.is_file() and marker.get(key) == sha256_file(path)
+            for key, path in artifacts.items()
+        )
+        if not hashes_valid or dataset_root is None or config is None:
+            return hashes_valid
+        options = config["detector"]
+        fold_count = int(options["fold_count"])
+        manifest = detector_dir / "manifest" / "manifest.jsonl"
+        if not _manifest_valid(manifest, dataset_root, fold_count=fold_count):
+            return False
+        checkpoints = [
+            detector_dir / "folds" / f"fold{fold}" / "best"
+            for fold in range(fold_count)
+        ]
+        inference_config = {
+            "batch_size": int(options["inference_batch_size"]),
+            "minimum_score": float(options["min_score_threshold"]),
+        }
+        val_records = _read_jsonl(manifest)
+        val_identity = _prediction_identity(
+            val_records,
+            checkpoints,
+            source_sha256=sha256_file(dataset_root / "instances_val2019.json"),
+            inference_config={**inference_config, "partition": "validation_oof"},
+        )
+        train_records = _train_records(dataset_root)
+        train_identity = _prediction_identity(
+            train_records,
+            checkpoints,
+            source_sha256=sha256_file(dataset_root / "instances_train2019.json"),
+            inference_config={**inference_config, "partition": "train_assigned"},
+        )
+        return _prediction_artifact_valid(
+            detector_dir / "predictions" / "val_oof.jsonl", val_identity
+        ) and _prediction_artifact_valid(
+            detector_dir / "predictions" / "train_assigned.jsonl", train_identity
+        )
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+
+
+def _manifest_valid(
+    manifest: Path, dataset_root: Path, *, fold_count: int
+) -> bool:
+    metadata_path = manifest.parent / "metadata.json"
+    if not manifest.is_file() or not metadata_path.is_file():
+        return False
+    try:
+        metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+        return (
+            int(metadata.get("fold_count", -1)) == fold_count
+            and metadata.get("source_sha256")
+            == sha256_file(dataset_root / "instances_val2019.json")
+            and metadata.get("manifest_sha256") == sha256_file(manifest)
+        )
+    except (OSError, TypeError, ValueError, json.JSONDecodeError):
+        return False
+
+
 def train_oof_detectors(
     options: dict[str, Any], manifest: Path, dataset_root: Path, detector_dir: Path, *, resume: bool
 ) -> None:
@@ -562,24 +725,46 @@ def prepare_detector_phase(args: argparse.Namespace, config: dict[str, Any]) -> 
     options = config["detector"]
     detector_dir = args.output_dir / "detector"
     manifest = detector_dir / "manifest" / "manifest.jsonl"
-    if args.resume and manifest.is_file():
+    fold_count = int(options["fold_count"])
+    if args.resume and _manifest_valid(manifest, args.dataset_root, fold_count=fold_count):
         records = _read_jsonl(manifest)
     else:
-        records = build_rpc_detector_manifest(args.dataset_root, detector_dir, int(options["fold_count"]))
+        records = build_rpc_detector_manifest(args.dataset_root, detector_dir, fold_count)
     roles = assign_validation_roles(
         records, int(config["experiment"]["expected_num_classes"]), int(config["experiment"]["validation_split_seed"])
     )
     for record in records:
         record["role"] = roles[str(record["capture_session_id"])]
     _write_jsonl(manifest, records)
+    manifest_metadata_path = manifest.parent / "metadata.json"
+    manifest_metadata = json.loads(manifest_metadata_path.read_text(encoding="utf-8"))
+    manifest_metadata.update(
+        {
+            "fold_count": fold_count,
+            "record_count": len(records),
+            "source_sha256": sha256_file(args.dataset_root / "instances_val2019.json"),
+            "manifest_sha256": sha256_file(manifest),
+        }
+    )
+    _write_json(manifest_metadata_path, manifest_metadata)
     train_oof_detectors(options, manifest, args.dataset_root, detector_dir, resume=args.resume)
 
     val_predictions_path = detector_dir / "predictions" / "val_oof.jsonl"
-    if args.resume and val_predictions_path.is_file():
+    inference_config = {
+        "batch_size": int(options["inference_batch_size"]),
+        "minimum_score": float(options["min_score_threshold"]),
+    }
+    val_identity = _prediction_identity(
+        records,
+        [detector_dir / "folds" / f"fold{fold}" / "best" for fold in range(fold_count)],
+        source_sha256=sha256_file(args.dataset_root / "instances_val2019.json"),
+        inference_config={**inference_config, "partition": "validation_oof"},
+    )
+    if args.resume and _prediction_artifact_valid(val_predictions_path, val_identity):
         val_predictions = _read_jsonl(val_predictions_path)
     else:
         val_predictions = []
-        for fold in range(int(options["fold_count"])):
+        for fold in range(fold_count):
             subset = [record for record in records if int(record["fold"]) == fold]
             val_predictions.extend(
                 predict_records(
@@ -590,7 +775,7 @@ def prepare_detector_phase(args: argparse.Namespace, config: dict[str, Any]) -> 
                     minimum_score=float(options["min_score_threshold"]),
                 )
             )
-        _write_jsonl(val_predictions_path, val_predictions)
+        _write_prediction_artifact(val_predictions_path, val_predictions, val_identity)
     threshold_report = select_detector_threshold(records, val_predictions, options)
     _write_json(detector_dir / "threshold.json", threshold_report)
     if not threshold_report["target_recall_satisfied"]:
@@ -598,7 +783,13 @@ def prepare_detector_phase(args: argparse.Namespace, config: dict[str, Any]) -> 
 
     train_records = _train_records(args.dataset_root)
     train_predictions_path = detector_dir / "predictions" / "train_assigned.jsonl"
-    if args.resume and train_predictions_path.is_file():
+    train_identity = _prediction_identity(
+        train_records,
+        [detector_dir / "folds" / f"fold{fold}" / "best" for fold in range(fold_count)],
+        source_sha256=sha256_file(args.dataset_root / "instances_train2019.json"),
+        inference_config={**inference_config, "partition": "train_assigned"},
+    )
+    if args.resume and _prediction_artifact_valid(train_predictions_path, train_identity):
         train_predictions = _read_jsonl(train_predictions_path)
     else:
         train_predictions = _predict_partitioned_train(
@@ -608,7 +799,7 @@ def prepare_detector_phase(args: argparse.Namespace, config: dict[str, Any]) -> 
             int(options["inference_batch_size"]),
             float(options["min_score_threshold"]),
         )
-        _write_jsonl(train_predictions_path, train_predictions)
+        _write_prediction_artifact(train_predictions_path, train_predictions, train_identity)
     completed = {
         "schema_version": SCHEMA_VERSION,
         "completed_at": datetime.now(UTC).isoformat(),
@@ -617,7 +808,13 @@ def prepare_detector_phase(args: argparse.Namespace, config: dict[str, Any]) -> 
         "train_images": len(train_records),
         "threshold_sha256": sha256_file(detector_dir / "threshold.json"),
         "val_predictions_sha256": sha256_file(val_predictions_path),
+        "val_predictions_metadata_sha256": sha256_file(
+            _prediction_metadata_path(val_predictions_path)
+        ),
         "train_predictions_sha256": sha256_file(train_predictions_path),
+        "train_predictions_metadata_sha256": sha256_file(
+            _prediction_metadata_path(train_predictions_path)
+        ),
     }
     _write_json(detector_dir / "complete.json", completed)
     return completed
@@ -627,6 +824,8 @@ def load_worker_gated_records(
     dataset_root: Path, output_dir: Path, config: dict[str, Any]
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     detector_dir = output_dir / "detector"
+    if not _detector_phase_complete(detector_dir, dataset_root, config):
+        raise ValueError("detector complete marker or artifact checksum is invalid")
     threshold = json.loads((detector_dir / "threshold.json").read_text(encoding="utf-8"))
     options = dict(config["detector"])
     options["score_threshold"] = float(threshold["selected_score_threshold"])
@@ -801,7 +1000,11 @@ def train_final_detector(
     namespace.epochs = epochs
     namespace.seed = int(options["seed"])
     recipe = detector_optimizer_recipe(namespace)
-    if resume and _checkpoint_complete(output, expected_optimizer_recipe=recipe):
+    if resume and _checkpoint_complete(
+        output,
+        expected_seed=int(namespace.seed),
+        expected_optimizer_recipe=recipe,
+    ):
         return output / "best"
     train_detector(namespace)
     _mark_checkpoint_complete(output, optimizer_recipe=recipe)
@@ -851,11 +1054,17 @@ def _load_checkout_split_records(dataset_root: Path, split: str) -> list[dict[st
 
 
 def prepare_final_test_records(
-    args: argparse.Namespace, config: dict[str, Any], *, resume: bool
+    args: argparse.Namespace,
+    config: dict[str, Any],
+    *,
+    resume: bool,
+    before_test_access: Callable[[], None] | None = None,
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Train the final detector first, then open and gate test2019 exactly once."""
     checkpoint = train_final_detector(args, config, resume=resume)
     detector_dir = args.output_dir / "detector"
+    if before_test_access is not None:
+        before_test_access()
     test_records = _load_checkout_split_records(args.dataset_root, "test")
     val_groups = {
         str(record["capture_session_id"])
@@ -866,7 +1075,17 @@ def prepare_final_test_records(
     if overlap:
         raise ValueError(f"validation/test checkout groups overlap: {sorted(overlap)[:5]}")
     predictions_path = detector_dir / "predictions" / "test_final.jsonl"
-    if resume and predictions_path.is_file():
+    prediction_identity = _prediction_identity(
+        test_records,
+        [checkpoint],
+        source_sha256=sha256_file(args.dataset_root / "instances_test2019.json"),
+        inference_config={
+            "batch_size": int(config["detector"]["inference_batch_size"]),
+            "minimum_score": float(config["detector"]["min_score_threshold"]),
+            "partition": "test_final",
+        },
+    )
+    if resume and _prediction_artifact_valid(predictions_path, prediction_identity):
         predictions = _read_jsonl(predictions_path)
     else:
         predictions = predict_records(
@@ -876,7 +1095,7 @@ def prepare_final_test_records(
             batch_size=int(config["detector"]["inference_batch_size"]),
             minimum_score=float(config["detector"]["min_score_threshold"]),
         )
-        _write_jsonl(predictions_path, predictions)
+        _write_prediction_artifact(predictions_path, predictions, prediction_identity)
     by_key = {str(item["sample_key"]): item for item in predictions}
     threshold = json.loads((detector_dir / "threshold.json").read_text(encoding="utf-8"))
     options = dict(config["detector"])

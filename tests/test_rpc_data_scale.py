@@ -19,6 +19,7 @@ from bixolon_scanner.training.rpc_data_scale import (
     _load_stage_progress,
     _run_complete,
     _save_stage_progress,
+    _test_operational_gate,
     _validation_partition,
     evaluate_logits,
     prepare,
@@ -30,6 +31,10 @@ from bixolon_scanner.training.rpc_worker_gate import (
     _best_detector_epoch,
     _checkpoint_complete,
     _detector_namespace,
+    _detector_phase_complete,
+    _prediction_artifact_valid,
+    _prediction_identity,
+    _write_prediction_artifact,
     assign_oof_folds,
     postprocess_worker_gate,
 )
@@ -44,6 +49,26 @@ def _write_coco(root: Path, split: str, categories: list[dict], images: list[dic
     for image in images:
         canvas = Image.new("RGB", (image["width"], image["height"]), "white")
         canvas.save(root / f"{split}2019" / image["file_name"])
+
+
+def _write_detector_phase_completion(output_dir: Path) -> None:
+    detector_dir = output_dir / "detector"
+    predictions_dir = detector_dir / "predictions"
+    predictions_dir.mkdir(parents=True, exist_ok=True)
+    artifacts = {
+        "threshold_sha256": detector_dir / "threshold.json",
+        "val_predictions_sha256": predictions_dir / "val_oof.jsonl",
+        "val_predictions_metadata_sha256": predictions_dir / "val_oof.jsonl.metadata.json",
+        "train_predictions_sha256": predictions_dir / "train_assigned.jsonl",
+        "train_predictions_metadata_sha256": predictions_dir
+        / "train_assigned.jsonl.metadata.json",
+    }
+    for path in artifacts.values():
+        path.write_text("{}\n", encoding="utf-8")
+    (detector_dir / "complete.json").write_text(
+        json.dumps({key: sha256_file(path) for key, path in artifacts.items()}),
+        encoding="utf-8",
+    )
 
 
 def test_oof_detector_uses_identical_initialization_seed_for_all_folds(tmp_path):
@@ -130,6 +155,105 @@ def test_detector_completion_rejects_a_different_initialization_seed(tmp_path):
         checkpoint,
         expected_optimizer_recipe={"optimizer": "AdamW", "head_lr_multiplier": 20.0},
     )
+
+
+def test_detector_prediction_resume_requires_inputs_weights_config_and_checksum(tmp_path):
+    checkpoint = tmp_path / "fold0" / "best"
+    checkpoint.mkdir(parents=True)
+    (checkpoint / "model.safetensors").write_bytes(b"weights-v1")
+    records = [
+        {"source": "rpc_val2019", "image_id": 1, "image_path": "val2019/a.jpg"}
+    ]
+    predictions_path = tmp_path / "predictions" / "val_oof.jsonl"
+    identity = _prediction_identity(
+        records,
+        [checkpoint],
+        source_sha256="annotation-v1",
+        inference_config={"batch_size": 8, "minimum_score": 0.05},
+    )
+    _write_prediction_artifact(
+        predictions_path,
+        [{"sample_key": "rpc_val2019:1", "boxes_xyxy": [], "scores": []}],
+        identity,
+    )
+    assert _prediction_artifact_valid(predictions_path, identity)
+
+    changed_manifest = _prediction_identity(
+        [dict(records[0], image_path="val2019/changed.jpg")],
+        [checkpoint],
+        source_sha256="annotation-v1",
+        inference_config={"batch_size": 8, "minimum_score": 0.05},
+    )
+    assert not _prediction_artifact_valid(predictions_path, changed_manifest)
+    changed_annotation = _prediction_identity(
+        records,
+        [checkpoint],
+        source_sha256="annotation-v2",
+        inference_config={"batch_size": 8, "minimum_score": 0.05},
+    )
+    assert not _prediction_artifact_valid(predictions_path, changed_annotation)
+    changed_config = _prediction_identity(
+        records,
+        [checkpoint],
+        source_sha256="annotation-v1",
+        inference_config={"batch_size": 8, "minimum_score": 0.10},
+    )
+    assert not _prediction_artifact_valid(predictions_path, changed_config)
+
+    (checkpoint / "model.safetensors").write_bytes(b"weights-v2")
+    changed_weights = _prediction_identity(
+        records,
+        [checkpoint],
+        source_sha256="annotation-v1",
+        inference_config={"batch_size": 8, "minimum_score": 0.05},
+    )
+    assert not _prediction_artifact_valid(predictions_path, changed_weights)
+
+    (checkpoint / "model.safetensors").write_bytes(b"weights-v1")
+    predictions_path.write_text("{}\n", encoding="utf-8")
+    assert not _prediction_artifact_valid(predictions_path, identity)
+
+
+def test_detector_complete_marker_validates_every_internal_artifact_hash(tmp_path):
+    detector_dir = tmp_path / "detector"
+    predictions_dir = detector_dir / "predictions"
+    predictions_dir.mkdir(parents=True)
+    artifacts = {
+        "threshold_sha256": detector_dir / "threshold.json",
+        "val_predictions_sha256": predictions_dir / "val_oof.jsonl",
+        "val_predictions_metadata_sha256": predictions_dir / "val_oof.jsonl.metadata.json",
+        "train_predictions_sha256": predictions_dir / "train_assigned.jsonl",
+        "train_predictions_metadata_sha256": predictions_dir
+        / "train_assigned.jsonl.metadata.json",
+    }
+    for path in artifacts.values():
+        path.write_text("{}\n", encoding="utf-8")
+    marker = {key: sha256_file(path) for key, path in artifacts.items()}
+    (detector_dir / "complete.json").write_text(json.dumps(marker), encoding="utf-8")
+    assert _detector_phase_complete(detector_dir)
+
+    (predictions_dir / "train_assigned.jsonl").write_text("tampered\n", encoding="utf-8")
+    assert not _detector_phase_complete(detector_dir)
+
+
+def test_prepare_rejects_a_tampered_detector_completion_before_loading_data(
+    tmp_path, monkeypatch
+):
+    _write_detector_phase_completion(tmp_path)
+    (tmp_path / "detector" / "threshold.json").write_text("tampered\n", encoding="utf-8")
+    monkeypatch.setattr(
+        "bixolon_scanner.training.rpc_data_scale._load_coco",
+        lambda *_args, **_kwargs: pytest.fail("dataset must not be loaded"),
+    )
+    config = {
+        "experiment": {"expected_num_classes": 1},
+        "training": {},
+    }
+    with pytest.raises(ValueError, match="artifact checksum"):
+        prepare(
+            Namespace(dataset_root=tmp_path, output_dir=tmp_path, resume=True),
+            config,
+        )
 
 
 def test_final_detector_epoch_policy_uses_metric_quality_not_lowest_loss(tmp_path):
@@ -442,10 +566,13 @@ def test_prepare_builds_cache_without_reading_test_and_resume_reuses_it(tmp_path
         },
     }
     output = tmp_path / "output"
-    (output / "detector").mkdir(parents=True)
-    (output / "detector" / "complete.json").write_text('{"complete": true}', encoding="utf-8")
+    _write_detector_phase_completion(output)
     weights = tmp_path / "weights.pth"
     weights.write_bytes(b"weights")
+    monkeypatch.setattr(
+        "bixolon_scanner.training.rpc_data_scale._detector_phase_complete",
+        lambda *_args, **_kwargs: True,
+    )
 
     gated_train = []
     for annotation in train_annotations:
@@ -520,10 +647,7 @@ def test_prepare_builds_cache_without_reading_test_and_resume_reuses_it(tmp_path
     assert second_fingerprint != first_fingerprint
 
     full_output = tmp_path / "full_output"
-    (full_output / "detector").mkdir(parents=True)
-    (full_output / "detector" / "complete.json").write_text(
-        '{"complete": true}', encoding="utf-8"
-    )
+    _write_detector_phase_completion(full_output)
     config["experiment"] = {
         "mode": "full_dataset",
         "expected_num_classes": 2,
@@ -735,6 +859,107 @@ def test_full_dataset_summary_locks_the_single_model_without_selected_n(tmp_path
     assert not (tmp_path / "selected_n.json").exists()
 
 
+def test_final_test_gate_rejects_zero_approved_or_unknown_evaluable_samples():
+    calibration = {"risk_control_satisfied": True}
+    passing_metrics = {
+        "approved_precision": 1.0,
+        "approved_count": 1,
+        "unknown_top3_accuracy": 1.0,
+        "unknown_matched_count": 1,
+    }
+    assert _test_operational_gate(calibration, passing_metrics)
+    assert not _test_operational_gate(
+        calibration, {**passing_metrics, "approved_count": 0}
+    )
+    assert not _test_operational_gate(
+        calibration,
+        {
+            **passing_metrics,
+            "unknown_top3_accuracy": None,
+            "unknown_matched_count": 0,
+        },
+    )
+
+
+def test_failed_full_dataset_lock_blocks_before_test_access(tmp_path, monkeypatch):
+    prepared = tmp_path / "prepared"
+    prepared.mkdir()
+    metadata_path = prepared / "experiment.json"
+    metadata_path.write_text('{"test_accessed":false}', encoding="utf-8")
+    (tmp_path / "model_lock.json").write_text(
+        json.dumps(
+            {
+                "mode": "full_dataset",
+                "status": "validation_gate_failed",
+                "operational_gate": False,
+            }
+        ),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        "bixolon_scanner.training.rpc_data_scale.prepare_final_test_records",
+        lambda *_args, **_kwargs: pytest.fail("test2019 must not be accessed"),
+    )
+    config = {"experiment": {"mode": "full_dataset"}}
+    with pytest.raises(RuntimeError, match="validation/model lock gate"):
+        run_final_test(
+            Namespace(dataset_root=tmp_path, output_dir=tmp_path, resume=False), config
+        )
+    assert json.loads(metadata_path.read_text(encoding="utf-8"))["test_accessed"] is False
+
+
+def test_test_access_seal_is_persisted_before_a_test_read_crash(tmp_path, monkeypatch):
+    prepared = tmp_path / "prepared"
+    prepared.mkdir()
+    metadata_path = prepared / "experiment.json"
+    metadata_path.write_text('{"test_accessed":false}', encoding="utf-8")
+    run_dir = tmp_path / "runs" / "full" / "seed20260810"
+    run_dir.mkdir(parents=True)
+    artifacts = {
+        "best.pt": b"checkpoint",
+        "calibration.json": b"{}",
+        "selection_report.json": b"{}",
+    }
+    for filename, contents in artifacts.items():
+        (run_dir / filename).write_bytes(contents)
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    summary_path = reports_dir / "selection_summary.json"
+    summary_path.write_text(
+        '{"status":"validation_passed","operational_gate":true}', encoding="utf-8"
+    )
+    lock = {
+        "mode": "full_dataset",
+        "status": "validation_passed",
+        "operational_gate": True,
+        "model_run": "runs/full/seed20260810",
+        "seed": 20260810,
+        "checkpoint_sha256": sha256_file(run_dir / "best.pt"),
+        "calibration_sha256": sha256_file(run_dir / "calibration.json"),
+        "selection_report_sha256": sha256_file(run_dir / "selection_report.json"),
+        "selection_summary_sha256": sha256_file(summary_path),
+    }
+    (tmp_path / "model_lock.json").write_text(json.dumps(lock), encoding="utf-8")
+
+    def crash_on_test_access(*_args, **kwargs):
+        kwargs["before_test_access"]()
+        assert json.loads(metadata_path.read_text(encoding="utf-8"))["test_accessed"] is True
+        raise RuntimeError("simulated crash")
+
+    monkeypatch.setattr(
+        "bixolon_scanner.training.rpc_data_scale.prepare_final_test_records",
+        crash_on_test_access,
+    )
+    config = {"experiment": {"mode": "full_dataset"}}
+    with pytest.raises(RuntimeError, match="simulated crash"):
+        run_final_test(
+            Namespace(dataset_root=tmp_path, output_dir=tmp_path, resume=False), config
+        )
+    sealed = json.loads(metadata_path.read_text(encoding="utf-8"))
+    assert sealed["test_accessed"] is True
+    assert sealed["test_access_started_at"]
+
+
 def test_full_dataset_final_test_uses_locked_model_without_n_logic(tmp_path, monkeypatch):
     prepared = tmp_path / "prepared"
     prepared.mkdir()
@@ -748,7 +973,16 @@ def test_full_dataset_final_test_uses_locked_model_without_n_logic(tmp_path, mon
         json.dumps({"risk_control_satisfied": True}), encoding="utf-8"
     )
     (run_dir / "selection_report.json").write_text("{}", encoding="utf-8")
+    reports_dir = tmp_path / "reports"
+    reports_dir.mkdir()
+    summary_path = reports_dir / "selection_summary.json"
+    summary_path.write_text(
+        '{"status":"validation_passed","operational_gate":true}', encoding="utf-8"
+    )
     lock = {
+        "mode": "full_dataset",
+        "status": "validation_passed",
+        "operational_gate": True,
         "model_run": "runs/full/seed20260810",
         "seed": 20260810,
         "checkpoint_sha256": hashlib.sha256(b"checkpoint").hexdigest(),
@@ -756,6 +990,7 @@ def test_full_dataset_final_test_uses_locked_model_without_n_logic(tmp_path, mon
             (run_dir / "calibration.json").read_bytes()
         ).hexdigest(),
         "selection_report_sha256": hashlib.sha256(b"{}").hexdigest(),
+        "selection_summary_sha256": sha256_file(summary_path),
     }
     (tmp_path / "model_lock.json").write_text(json.dumps(lock), encoding="utf-8")
 
@@ -799,6 +1034,7 @@ def test_full_dataset_final_test_uses_locked_model_without_n_logic(tmp_path, mon
     )
 
     def fake_prepare_final_test_records(*_args, **_kwargs):
+        _kwargs["before_test_access"]()
         detector_report_path = tmp_path / "test" / "detector_report.json"
         detector_report_path.parent.mkdir(parents=True, exist_ok=True)
         detector_report_path.write_text(
@@ -834,6 +1070,8 @@ def test_full_dataset_final_test_uses_locked_model_without_n_logic(tmp_path, mon
             "overall_top1_accuracy": 1.0,
             "overall_top3_accuracy": 1.0,
             "approved_precision": 1.0,
+            "approved_count": 1,
+            "unknown_matched_count": 1,
             "unknown_top3_accuracy": 1.0,
         },
     )

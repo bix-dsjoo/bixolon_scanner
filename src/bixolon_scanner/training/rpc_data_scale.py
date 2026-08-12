@@ -6,6 +6,7 @@ import hashlib
 import importlib.metadata
 import json
 import math
+import os
 import platform
 import random
 import re
@@ -25,6 +26,7 @@ from ..package import sha256_file
 from .calibration import fit_temperature, select_approval_threshold, softmax, topk_accuracy
 from .models import build_dino_classifier, require_torch, set_frozen_backbone
 from .rpc_worker_gate import (
+    _detector_phase_complete,
     load_worker_gated_records,
     prepare_detector_phase,
     prepare_final_test_records,
@@ -44,6 +46,23 @@ def _canonical_json(value: Any) -> str:
 def _write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+
+def _write_json_durable(path: Path, value: Any) -> None:
+    """Atomically persist a seal before any protected dataset access."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    payload = json.dumps(value, ensure_ascii=False, indent=2) + "\n"
+    try:
+        with temporary.open("w", encoding="utf-8", newline="") as handle:
+            handle.write(payload)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        with path.open("r+b") as handle:
+            os.fsync(handle.fileno())
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _write_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> None:
@@ -713,13 +732,17 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
     training_options = config["training"]
     prepared_dir = args.output_dir / "prepared"
     prepared_dir.mkdir(parents=True, exist_ok=True)
+    detector_complete = args.output_dir / "detector" / "complete.json"
+    if not detector_complete.is_file():
+        raise FileNotFoundError("detector phase has not completed")
+    if not _detector_phase_complete(
+        args.output_dir / "detector", args.dataset_root, config
+    ):
+        raise ValueError("detector complete marker or artifact checksum is invalid")
     _, categories = _load_coco(args.dataset_root, "train")
     expected_count = int(experiment_options["expected_num_classes"])
     if len(categories) != expected_count:
         raise ValueError(f"expected {expected_count} categories, found {len(categories)}")
-    detector_complete = args.output_dir / "detector" / "complete.json"
-    if not detector_complete.is_file():
-        raise FileNotFoundError("detector phase has not completed")
     train_records, val_records, worker_gate_report = load_worker_gated_records(
         args.dataset_root, args.output_dir, config
     )
@@ -1755,6 +1778,15 @@ def _operational_gate(calibration: dict[str, Any], report: dict[str, Any]) -> bo
     )
 
 
+def _test_operational_gate(calibration: dict[str, Any], report: dict[str, Any]) -> bool:
+    """Require both decision KPIs to have evaluable final-test samples."""
+    return (
+        _operational_gate(calibration, report)
+        and int(report.get("approved_count", 0)) > 0
+        and int(report.get("unknown_matched_count", 0)) > 0
+    )
+
+
 def _summarize_full_dataset(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
     experiment = config["experiment"]
     seed = int(experiment["seeds"][0])
@@ -2052,9 +2084,6 @@ def _load_checkpoint_model(checkpoint_path: Path, config: dict[str, Any], device
 
 
 def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any] | None:
-    torch = require_torch()
-    from torch.utils.data import DataLoader
-
     full_dataset = _is_full_dataset(config)
     lock_path = args.output_dir / ("model_lock.json" if full_dataset else "selected_n.json")
     if not lock_path.is_file():
@@ -2069,6 +2098,12 @@ def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str,
         print(json.dumps({"test_skipped": "no eligible N"}), flush=True)
         return None
     if full_dataset:
+        if (
+            lock.get("mode") != "full_dataset"
+            or lock.get("status") != "validation_passed"
+            or lock.get("operational_gate") is not True
+        ):
+            raise RuntimeError("full_dataset validation/model lock gate has not passed")
         locked_run_dir = args.output_dir / str(lock["model_run"])
         for filename, key in (
             ("best.pt", "checkpoint_sha256"),
@@ -2077,10 +2112,32 @@ def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str,
         ):
             if sha256_file(locked_run_dir / filename) != lock[key]:
                 raise ValueError(f"model lock checksum mismatch: {filename}")
+        summary_path = args.output_dir / "reports" / "selection_summary.json"
+        if (
+            not summary_path.is_file()
+            or sha256_file(summary_path) != lock.get("selection_summary_sha256")
+        ):
+            raise ValueError("model lock checksum mismatch: selection_summary.json")
+        summary = json.loads(summary_path.read_text(encoding="utf-8"))
+        if (
+            summary.get("status") != "validation_passed"
+            or summary.get("operational_gate") is not True
+        ):
+            raise RuntimeError("full_dataset validation/model lock gate has not passed")
     metadata_path = args.output_dir / "prepared" / "experiment.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+
+    def seal_test_access() -> None:
+        if not metadata.get("test_accessed", False):
+            metadata["test_accessed"] = True
+            metadata["test_access_started_at"] = datetime.now(UTC).isoformat()
+            _write_json_durable(metadata_path, metadata)
+
     test_records, detector_test_report = prepare_final_test_records(
-        args, config, resume=args.resume
+        args,
+        config,
+        resume=args.resume,
+        before_test_access=seal_test_access,
     )
     test_metadata = {
         "schema_version": SCHEMA_VERSION,
@@ -2101,9 +2158,11 @@ def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str,
         config["training"],
         resume=args.resume,
     )
-    metadata["test_accessed"] = True
     metadata["test_source_hash"] = test_metadata["instances_test2019_sha256"]
-    _write_json(metadata_path, metadata)
+    _write_json_durable(metadata_path, metadata)
+    torch = require_torch()
+    from torch.utils.data import DataLoader
+
     if not torch.cuda.is_available():
         raise RuntimeError("RPC final test requires CUDA")
     device = torch.device("cuda")
@@ -2146,7 +2205,7 @@ def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str,
             report, detector_test_report, role=None
         )
         report["seed"] = int(seed)
-        report["operational_gate"] = _operational_gate(calibration, report)
+        report["operational_gate"] = _test_operational_gate(calibration, report)
         _write_json(test_run_dir / "report.json", report)
         seed_reports.append(report)
         del model

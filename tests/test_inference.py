@@ -123,6 +123,7 @@ def test_detector_reports_separate_low_score_candidate():
 
     assert len(result.detections) == 1
     assert result.uncertain_candidate_count == 1
+    assert result.uncertain_candidate_scores == pytest.approx((0.5,))
 
 
 @pytest.mark.parametrize(
@@ -170,3 +171,4 @@ def test_detector_ignores_unqualified_uncertainty_candidates(
 
     assert len(result.detections) == 1
     assert result.uncertain_candidate_count == 0
+    assert result.uncertain_candidate_scores == ()

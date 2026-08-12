@@ -2,24 +2,64 @@ from __future__ import annotations
 
 import argparse
 import json
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 
+from ..contracts import ItemStatus, Status
 from ..inference import build_onnx_adapters
 from ..imaging import decode_image
 from ..package import load_model_package
-from ..pipeline import _softmax, quality_reasons
+from ..pipeline import DecisionPipeline
 from .calibration import binomial_rate_upper_bound
 from .data import read_manifest
 from .evaluate import wilson_interval
 from .evaluate_detector import _iou, _xywh_to_xyxy
 
 
+@dataclass
+class RecordingDetector:
+    detector: Any
+    last_result: Any = None
+
+    @property
+    def version(self) -> str:
+        return self.detector.version
+
+    def detect(self, image: Any):
+        self.last_result = self.detector.detect(image)
+        return self.last_result
+
+
+@dataclass
+class RecordingClassifier:
+    classifier: Any
+    last_logits: np.ndarray | None = None
+
+    @property
+    def version(self) -> str:
+        return self.classifier.version
+
+    def classify(self, image: Any, detections: Any) -> np.ndarray:
+        self.last_logits = self.classifier.classify(image, detections)
+        return self.last_logits
+
+
 def evaluate(args: argparse.Namespace) -> None:
     package = load_model_package(args.package_dir)
     detector, classifier, provider = build_onnx_adapters(
         package, args.provider, cuda_dll_dir=args.cuda_dll_dir
+    )
+    recording_detector = RecordingDetector(detector)
+    recording_classifier = RecordingClassifier(classifier)
+    pipeline = DecisionPipeline(
+        recording_detector,
+        recording_classifier,
+        package.metadata.classifier,
+        package.metadata.quality,
+        package.metadata.count_verifier,
     )
     records = [
         record
@@ -42,9 +82,12 @@ def evaluate(args: argparse.Namespace) -> None:
     approved_count = 0
     approved_correct = 0
     approved_unmatched = 0
+    classified_detection_count = 0
+    classified_matched_count = 0
     matched_top1_correct = 0
     matched_top3_correct = 0
     unknown_count = 0
+    unknown_matched_count = 0
     unknown_top3_correct = 0
     image_approved_count = 0
     image_approved_correct = 0
@@ -56,10 +99,16 @@ def evaluate(args: argparse.Namespace) -> None:
             max_pixels=50_000_000,
             jpeg_draft_size=package.metadata.input.jpeg_draft_size,
         )
-        detection_result = detector.detect(image)
-        detections = detection_result.detections
-        reasons = quality_reasons(image, detection_result, package.metadata.quality)
-        recapture_count += int(bool(reasons))
+        recording_classifier.last_logits = None
+        response = pipeline.scan(image, request_id=f"evaluation-{record['image_id']}")
+        detection_result = recording_detector.last_result
+        if detection_result is None:
+            raise RuntimeError("detector result was not recorded")
+        detections = sorted(
+            detection_result.detections, key=lambda value: (value.y1, value.x1)
+        )
+        is_recapture = response.status is Status.RECAPTURE
+        recapture_count += int(is_recapture)
         capacity_saturated_count += int(detection_result.capacity_saturated)
         gt_boxes = [_xywh_to_xyxy(item["bbox_xywh"]) for item in record["annotations"]]
         remaining_gt = set(range(len(gt_boxes)))
@@ -81,23 +130,29 @@ def evaluate(args: argparse.Namespace) -> None:
         detection_count += len(detections)
         matched_count += len(detection_to_gt)
         count_correct += int(len(detections) == len(gt_boxes))
-        if not detections:
+        if is_recapture or not detections:
             continue
-        logits = classifier.classify(image, detections)
-        probabilities = _softmax(logits, package.metadata.classifier.temperature)
-        ranks = np.argsort(-probabilities, axis=1)
-        confidence = probabilities.max(axis=1)
-        approved = confidence >= package.metadata.classifier.approval_threshold
+        if len(response.items) != len(detections):
+            raise RuntimeError("Worker item count does not match detector output")
+        if recording_classifier.last_logits is None:
+            raise RuntimeError("classifier was not recorded on a non-recapture path")
+        ranks = np.argsort(
+            -recording_classifier.last_logits, axis=1, kind="stable"
+        )
+        classified_detection_count += len(detections)
         image_correct = len(detections) == len(gt_boxes)
-        for detection_index, indices in enumerate(ranks):
-            is_approved = bool(approved[detection_index])
+        for detection_index, item in enumerate(response.items):
+            is_approved = item.status is ItemStatus.APPROVED
             approved_count += int(is_approved)
+            unknown_count += int(not is_approved)
             gt_index = detection_to_gt.get(detection_index)
             if gt_index is None:
                 approved_unmatched += int(is_approved)
                 image_correct = False
                 continue
+            classified_matched_count += 1
             target = int(record["annotations"][gt_index]["category_id"]) - 1
+            indices = ranks[detection_index]
             top1_correct = int(indices[0]) == target
             top3_correct = target in {int(value) for value in indices[:3]}
             matched_top1_correct += int(top1_correct)
@@ -106,9 +161,9 @@ def evaluate(args: argparse.Namespace) -> None:
                 approved_correct += int(top1_correct)
                 image_correct = image_correct and top1_correct
             else:
-                unknown_count += 1
+                unknown_matched_count += 1
                 unknown_top3_correct += int(top3_correct)
-        if not reasons and bool(approved.all()):
+        if response.status is Status.APPROVED:
             image_approved_count += 1
             image_approved_correct += int(image_correct)
 
@@ -116,7 +171,8 @@ def evaluate(args: argparse.Namespace) -> None:
     detection_precision = matched_count / detection_count if detection_count else 0.0
     approved_precision = approved_correct / approved_count if approved_count else 1.0
     unknown_top3_gate_satisfied = (
-        unknown_count > 0 and unknown_top3_correct / unknown_count >= 0.95
+        unknown_matched_count > 0
+        and unknown_top3_correct / unknown_matched_count >= 0.95
     )
     unknown_top3_waived = bool(
         package.metadata.promotion
@@ -150,13 +206,30 @@ def evaluate(args: argparse.Namespace) -> None:
             "recall_gate_satisfied": detection_recall >= 0.99,
         },
         "classifier_on_detector_crops": {
-            "matched_sample_count": matched_count,
-            "overall_top1_accuracy": matched_top1_correct / matched_count if matched_count else 0.0,
-            "overall_top3_accuracy": matched_top3_correct / matched_count if matched_count else 0.0,
+            "matched_sample_count": classified_matched_count,
+            "detector_matched_sample_count": matched_count,
+            "recapture_skipped_matched_sample_count": (
+                matched_count - classified_matched_count
+            ),
+            "overall_top1_accuracy": (
+                matched_top1_correct / classified_matched_count
+                if classified_matched_count
+                else 0.0
+            ),
+            "overall_top3_accuracy": (
+                matched_top3_correct / classified_matched_count
+                if classified_matched_count
+                else 0.0
+            ),
             "approved_count": approved_count,
             "approved_correct": approved_correct,
             "approved_unmatched": approved_unmatched,
             "approval_coverage_of_detections": approved_count / detection_count if detection_count else 0.0,
+            "approval_coverage_of_classified_detections": (
+                approved_count / classified_detection_count
+                if classified_detection_count
+                else 0.0
+            ),
             "approved_precision": approved_precision,
             "approved_precision_95ci": list(wilson_interval(approved_correct, approved_count)),
             "approved_false_rate_upper_95": binomial_rate_upper_bound(
@@ -164,8 +237,11 @@ def evaluate(args: argparse.Namespace) -> None:
             ),
             "approved_precision_gate_satisfied": approved_precision >= 0.995,
             "unknown_count": unknown_count,
+            "unknown_matched_count": unknown_matched_count,
             "unknown_top3_accuracy": (
-                unknown_top3_correct / unknown_count if unknown_count else None
+                unknown_top3_correct / unknown_matched_count
+                if unknown_matched_count
+                else None
             ),
             "unknown_top3_gate_satisfied": unknown_top3_gate_satisfied,
             "unknown_top3_promotion_disposition": (
