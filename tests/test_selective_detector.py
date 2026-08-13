@@ -7,6 +7,8 @@ import pytest
 from bixolon_scanner.training.calibration import binomial_rate_upper_bound
 from bixolon_scanner.training.selective_detector import (
     DetectorPolicy,
+    PolicyEvaluationCache,
+    _auc,
     apply_policy,
     assert_no_split_leakage,
     curve_metrics,
@@ -16,6 +18,14 @@ from bixolon_scanner.training.selective_detector import (
     policy_grid,
     select_candidate,
 )
+
+
+def test_failure_auc_matches_pairwise_wins_and_half_credit_for_ties():
+    labels = [True, True, False, False]
+    scores = [0.9, 0.5, 0.5, 0.1]
+
+    assert _auc(labels, scores) == pytest.approx(0.875)
+    assert _auc([True, True], [0.1, 0.2]) is None
 
 
 def _record(image_id: int = 1, *, split: str = "development"):
@@ -63,6 +73,55 @@ def _policy(**updates):
     }
     values.update(updates)
     return DetectorPolicy(**values)
+
+
+@pytest.mark.parametrize(
+    "policy",
+    [
+        _policy(),
+        _policy(nms_iou_threshold=0.5),
+        _policy(score_threshold=0.8, uncertainty_score_threshold=None),
+        _policy(
+            score_threshold=0.8,
+            uncertainty_score_threshold=0.2,
+            uncertainty_min_area_ratio=0.02,
+        ),
+    ],
+)
+def test_policy_evaluation_cache_is_exactly_equivalent(policy):
+    records = [_record(1), _record(2)]
+    predictions = [
+        _prediction(),
+        {
+            "boxes_xyxy": [[10.0, 10.0, 50.0, 50.0], [60.0, 60.0, 90.0, 90.0]],
+            "scores": [0.9, 0.3],
+            "classifications": {
+                "0": {
+                    "top1_class_id": "bread_01",
+                    "top3_class_ids": ["bread_01", "bread_02", "bread_03"],
+                    "confidence": 0.99,
+                    "recapture": False,
+                },
+                "1": {
+                    "top1_class_id": "bread_02",
+                    "top3_class_ids": ["bread_02", "bread_01", "bread_03"],
+                    "confidence": 0.8,
+                    "recapture": False,
+                },
+            },
+        },
+    ]
+
+    expected = evaluate_policy(records, predictions, policy, approval_threshold=0.95)
+    actual = evaluate_policy(
+        records,
+        predictions,
+        policy,
+        approval_threshold=0.95,
+        cache=PolicyEvaluationCache(predictions),
+    )
+
+    assert actual == expected
 
 
 def test_exact_image_assignment_and_iou_sensitivity():
@@ -158,6 +217,33 @@ def test_gate_table_and_e2e_safe_auto_pass_are_image_level():
     assert report["approved_count"] == 2
     assert report["approved_error_count"] == 1
     assert report["safe_auto_pass_count"] == 1
+    assert report["object_diagnostics"]["error_types"]["border_related"] == 0
+    assert report["object_diagnostics"]["error_types"]["size_related"] == 0
+    group = report["groups"]["difficulty=E"]
+    assert group["detector_pass_count"] == 2
+    assert group["detector_pass_risk_upper_95"] == pytest.approx(
+        binomial_rate_upper_bound(0, 2)
+    )
+    assert group["approved_count"] == 2
+    assert group["approved_error_count"] == 1
+    assert group["e2e_approved_risk_upper_95"] == pytest.approx(
+        binomial_rate_upper_bound(1, 2)
+    )
+
+
+def test_object_diagnostics_record_border_and_size_related_failures():
+    record = _record()
+    record["groups"].update({"border_contact": True, "small_object": True})
+
+    metrics = evaluate_policy(
+        [record],
+        [_prediction(box=[60.0, 60.0, 90.0, 90.0])],
+        _policy(),
+        approval_threshold=0.95,
+    )["metrics"]
+
+    assert metrics["object_diagnostics"]["error_types"]["border_related"] == 1
+    assert metrics["object_diagnostics"]["error_types"]["size_related"] == 1
 
 
 def test_exact_one_sided_binomial_zero_error_sample_sizes():

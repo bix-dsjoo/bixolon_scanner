@@ -22,6 +22,7 @@ from .selective_detector import (
     TARGET_MODE_VERSION,
     DetectorPolicy,
     IndexedDetection,
+    PolicyEvaluationCache,
     _indexed_nms,
     assert_no_split_leakage,
     curve_metrics,
@@ -576,18 +577,22 @@ def _candidate_summaries(
         hard_predictions = read_manifest(
             args.output_dir / "cache" / model_id / "hard-development.jsonl"
         )
+        natural_evaluation_cache = PolicyEvaluationCache(natural_predictions)
+        hard_evaluation_cache = PolicyEvaluationCache(hard_predictions)
         for policy in policies:
             natural = evaluate_policy(
                 natural_records,
                 natural_predictions,
                 policy,
                 approval_threshold=approval_threshold,
+                cache=natural_evaluation_cache,
             )
             hard = evaluate_policy(
                 hard_records,
                 hard_predictions,
                 policy,
                 approval_threshold=approval_threshold,
+                cache=hard_evaluation_cache,
             )
             natural.pop("rows")
             hard.pop("rows")
@@ -922,8 +927,38 @@ def parity(args: argparse.Namespace, config: dict[str, Any]) -> None:
         "top3_set_and_order_equal",
         "final_state_equal",
     )
-    if len(reports) == 1 and isinstance(reports[0].get("checks"), dict):
+    strict_reports = [
+        report for report in reports if isinstance(report.get("checks"), dict)
+    ]
+    provider_reports = [
+        report for report in reports if str(report.get("provider", "")).lower()
+    ]
+    if len(reports) == 1 and strict_reports:
         checks = {name: bool(reports[0]["checks"].get(name)) for name in required}
+    elif len(strict_reports) == 1 and len(provider_reports) == 2:
+        strict = strict_reports[0]
+        by_provider = {
+            str(report["provider"]).lower(): report for report in provider_reports
+        }
+        if set(by_provider) != {"cpu", "cuda"}:
+            raise ValueError("detector parity evidence requires CPU and CUDA reports")
+        cpu = by_provider["cpu"]
+        cuda = by_provider["cuda"]
+        package_metadata_hashes = {
+            report.get("package_artifact_sha256", {}).get("metadata.json")
+            for report in reports
+        }
+        same_package = len(package_metadata_hashes) == 1 and None not in package_metadata_hashes
+        detector_passes = bool(cpu.get("detector", {}).get("passes")) and bool(
+            cuda.get("detector", {}).get("passes")
+        )
+        checks = {
+            name: bool(strict["checks"].get(name)) for name in required
+        }
+        checks["pytorch_cpu_tolerance"] &= bool(cpu.get("passes"))
+        checks["pytorch_cuda_tolerance"] &= bool(cuda.get("passes"))
+        checks["cpu_cuda_tolerance"] &= same_package and detector_passes
+        checks["final_state_equal"] &= same_package and detector_passes
     else:
         by_provider = {str(report.get("provider", "")).lower(): report for report in reports}
         if not {"cpu", "cuda"} <= set(by_provider):

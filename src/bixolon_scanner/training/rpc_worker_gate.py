@@ -723,6 +723,13 @@ def train_oof_detectors(
         _mark_checkpoint_complete(output, optimizer_recipe=recipe)
 
 
+def _prediction_fold(record: dict[str, Any]) -> int:
+    value = record.get("prediction_fold")
+    if value is None:
+        value = record.get("fold")
+    return -1 if value is None else int(value)
+
+
 def predict_records(
     checkpoint: Path,
     records: list[dict[str, Any]],
@@ -764,7 +771,7 @@ def predict_records(
                 {
                     "sample_key": f"{record['source']}:{record['image_id']}",
                     "image_id": int(record["image_id"]),
-                    "fold_model": int(record.get("prediction_fold", record.get("fold", -1))),
+                    "fold_model": _prediction_fold(record),
                     "boxes_xyxy": result["boxes"].float().cpu().numpy().tolist(),
                     "scores": result["scores"].float().cpu().numpy().tolist(),
                 }

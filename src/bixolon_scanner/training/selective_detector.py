@@ -110,11 +110,8 @@ def _indexed_nms(
     return selected
 
 
-def apply_policy(
-    record: dict[str, Any], prediction: dict[str, Any], policy: DetectorPolicy
-) -> dict[str, Any]:
-    policy.validate()
-    raw = [
+def _raw_detections(prediction: dict[str, Any]) -> list[IndexedDetection]:
+    return [
         IndexedDetection(
             index=index,
             detection=Detection(
@@ -125,10 +122,19 @@ def apply_policy(
             zip(prediction["boxes_xyxy"], prediction["scores"])
         )
     ]
+
+
+def _apply_policy_to_raw(
+    record: dict[str, Any],
+    prediction: dict[str, Any],
+    policy: DetectorPolicy,
+    raw: list[IndexedDetection],
+    nms_for_score: Any,
+) -> dict[str, Any]:
     accepted_raw = [
         item for item in raw if item.detection.score >= policy.score_threshold
     ]
-    detections = _indexed_nms(accepted_raw, policy.nms_iou_threshold)
+    detections = nms_for_score(policy.score_threshold, policy.nms_iou_threshold)
     reasons = list(prediction.get("fixed_hard_reason_codes", ()))
     if len(accepted_raw) >= policy.max_queries:
         reasons.append("DETECTOR_CAPACITY_EXCEEDED")
@@ -145,13 +151,8 @@ def apply_policy(
         reasons.append("DETECTOR_OBJECT_TOO_SMALL")
     uncertain_indices: list[int] = []
     if policy.uncertainty_score_threshold is not None:
-        shadow = _indexed_nms(
-            [
-                item
-                for item in raw
-                if item.detection.score >= policy.uncertainty_score_threshold
-            ],
-            policy.nms_iou_threshold,
+        shadow = nms_for_score(
+            policy.uncertainty_score_threshold, policy.nms_iou_threshold
         )
         for candidate in shadow:
             if candidate.detection.score >= policy.score_threshold:
@@ -180,6 +181,81 @@ def apply_policy(
         "reason_codes": list(dict.fromkeys(reasons)),
         "uncertain_indices": uncertain_indices,
     }
+
+
+class PolicyEvaluationCache:
+    """Reuse model/image post-processing that is invariant across policy families."""
+
+    def __init__(self, predictions: Sequence[dict[str, Any]]) -> None:
+        self._raw = [_raw_detections(prediction) for prediction in predictions]
+        self._nms: dict[tuple[int, float, float], list[IndexedDetection]] = {}
+        self._diagnostics: dict[tuple[int, tuple[int, ...]], dict[str, Any]] = {}
+
+    def __len__(self) -> int:
+        return len(self._raw)
+
+    def _nms_for_score(
+        self, image_index: int, score: float, nms_iou: float
+    ) -> list[IndexedDetection]:
+        key = (image_index, float(score), float(nms_iou))
+        cached = self._nms.get(key)
+        if cached is None:
+            cached = _indexed_nms(
+                [
+                    item
+                    for item in self._raw[image_index]
+                    if item.detection.score >= score
+                ],
+                nms_iou,
+            )
+            self._nms[key] = cached
+        return cached
+
+    def apply(
+        self,
+        image_index: int,
+        record: dict[str, Any],
+        prediction: dict[str, Any],
+        policy: DetectorPolicy,
+    ) -> dict[str, Any]:
+        return _apply_policy_to_raw(
+            record,
+            prediction,
+            policy,
+            self._raw[image_index],
+            lambda score, nms_iou: self._nms_for_score(
+                image_index, score, nms_iou
+            ),
+        )
+
+    def diagnostics(
+        self,
+        image_index: int,
+        detections: Sequence[IndexedDetection],
+        annotations: Sequence[dict[str, Any]],
+    ) -> dict[str, Any]:
+        key = (image_index, tuple(item.index for item in detections))
+        cached = self._diagnostics.get(key)
+        if cached is None:
+            cached = detector_image_diagnostics(detections, annotations)
+            self._diagnostics[key] = cached
+        return cached
+
+
+def apply_policy(
+    record: dict[str, Any], prediction: dict[str, Any], policy: DetectorPolicy
+) -> dict[str, Any]:
+    policy.validate()
+    raw = _raw_detections(prediction)
+    return _apply_policy_to_raw(
+        record,
+        prediction,
+        policy,
+        raw,
+        lambda score, nms_iou: _indexed_nms(
+            [item for item in raw if item.detection.score >= score], nms_iou
+        ),
+    )
 
 
 def _annotation_box(annotation: dict[str, Any]) -> np.ndarray:
@@ -311,12 +387,27 @@ def evaluate_image(
     policy: DetectorPolicy,
     *,
     approval_threshold: float,
+    applied: dict[str, Any] | None = None,
+    diagnostics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    applied = apply_policy(record, prediction, policy)
-    diagnostics = detector_image_diagnostics(
+    applied = applied or apply_policy(record, prediction, policy)
+    diagnostics = diagnostics or detector_image_diagnostics(
         applied["detections"], record["annotations"]
     )
     detector_correct = bool(diagnostics["exact_iou_50"])
+    error_types = dict(diagnostics["error_types"])
+    groups = record.get("groups", {})
+    error_types["border_related"] = int(
+        not detector_correct and bool(groups.get("border_contact", False))
+    )
+    error_types["size_related"] = int(
+        not detector_correct
+        and (
+            bool(groups.get("small_object", False))
+            or "DETECTOR_OBJECT_TOO_SMALL" in applied["reason_codes"]
+        )
+    )
+    diagnostics = {**diagnostics, "error_types": error_types}
     detector_pass = bool(applied["pass"])
     approved = False
     e2e_correct = False
@@ -411,15 +502,29 @@ def _gate_counts(rows: Sequence[dict[str, Any]]) -> dict[str, int]:
 
 
 def _auc(labels: Sequence[bool], scores: Sequence[float]) -> float | None:
-    positive = [score for label, score in zip(labels, scores) if label]
-    negative = [score for label, score in zip(labels, scores) if not label]
-    if not positive or not negative:
+    pairs = sorted(
+        (float(score), bool(label)) for label, score in zip(labels, scores)
+    )
+    positive_count = sum(label for _, label in pairs)
+    negative_count = len(pairs) - positive_count
+    if not positive_count or not negative_count:
         return None
+    # Mann-Whitney U, accumulated by equal-score blocks. This is exactly the
+    # pairwise definition below (win=1, tie=0.5) without its O(P*N) loop.
     wins = 0.0
-    for left in positive:
-        for right in negative:
-            wins += float(left > right) + 0.5 * float(left == right)
-    return wins / (len(positive) * len(negative))
+    negatives_before = 0
+    start = 0
+    while start < len(pairs):
+        end = start + 1
+        while end < len(pairs) and pairs[end][0] == pairs[start][0]:
+            end += 1
+        block_positive = sum(label for _, label in pairs[start:end])
+        block_negative = end - start - block_positive
+        wins += block_positive * negatives_before
+        wins += 0.5 * block_positive * block_negative
+        negatives_before += block_negative
+        start = end
+    return wins / (positive_count * negative_count)
 
 
 def summarize_rows(
@@ -439,6 +544,11 @@ def summarize_rows(
     gt = sum(int(value["ground_truth_count"]) for value in diagnostics)
     predictions = sum(int(value["prediction_count"]) for value in diagnostics)
     tp = sum(int(value["true_positive"]) for value in diagnostics)
+    error_types = dict(
+        sum((Counter(value["error_types"]) for value in diagnostics), Counter())
+    )
+    error_types.setdefault("border_related", 0)
+    error_types.setdefault("size_related", 0)
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
         for name, value in row["group_values"].items():
@@ -446,14 +556,31 @@ def summarize_rows(
     group_reports = {}
     for name, values in sorted(groups.items()):
         group_counts = _gate_counts(values)
+        group_detector_pass = (
+            group_counts["silent_failure"] + group_counts["safe_pass"]
+        )
         group_approved = sum(bool(value["approved"]) for value in values)
         group_safe = sum(bool(value["e2e_correct"]) for value in values)
+        group_approved_errors = group_approved - group_safe
         group_reports[name] = {
             "sample_count": len(values),
             "gate_table": group_counts,
+            "detector_pass_count": group_detector_pass,
+            "detector_pass_risk_upper_95": binomial_rate_upper_bound(
+                group_counts["silent_failure"],
+                group_detector_pass,
+                confidence_level,
+            ),
             "detector_coverage": _safe_rate(
-                group_counts["silent_failure"] + group_counts["safe_pass"],
+                group_detector_pass,
                 len(values),
+            ),
+            "approved_count": group_approved,
+            "approved_error_count": group_approved_errors,
+            "e2e_approved_risk_upper_95": binomial_rate_upper_bound(
+                group_approved_errors,
+                group_approved,
+                confidence_level,
             ),
             "approval_coverage": _safe_rate(group_approved, len(values)),
             "safe_auto_pass_rate": _safe_rate(group_safe, len(values)),
@@ -522,9 +649,7 @@ def summarize_rows(
                 if tp + (predictions - tp) + (gt - tp)
                 else 0.0
             ),
-            "error_types": dict(
-                sum((Counter(value["error_types"]) for value in diagnostics), Counter())
-            ),
+            "error_types": error_types,
         },
         "failure_auroc": _auc(
             [not bool(row["detector_correct"]) for row in rows],
@@ -584,15 +709,36 @@ def evaluate_policy(
     policy: DetectorPolicy,
     *,
     approval_threshold: float,
+    cache: PolicyEvaluationCache | None = None,
 ) -> dict[str, Any]:
     if len(records) != len(predictions):
         raise ValueError("records and predictions must have equal length")
-    rows = [
-        evaluate_image(
-            record, prediction, policy, approval_threshold=approval_threshold
+    if cache is not None and len(cache) != len(records):
+        raise ValueError("policy evaluation cache length does not match records")
+    rows = []
+    for image_index, (record, prediction) in enumerate(zip(records, predictions)):
+        applied = (
+            cache.apply(image_index, record, prediction, policy)
+            if cache is not None
+            else None
         )
-        for record, prediction in zip(records, predictions)
-    ]
+        diagnostics = (
+            cache.diagnostics(
+                image_index, applied["detections"], record["annotations"]
+            )
+            if cache is not None
+            else None
+        )
+        rows.append(
+            evaluate_image(
+                record,
+                prediction,
+                policy,
+                approval_threshold=approval_threshold,
+                applied=applied,
+                diagnostics=diagnostics,
+            )
+        )
     summary = summarize_rows(rows)
     return {
         "schema_version": "1.0",

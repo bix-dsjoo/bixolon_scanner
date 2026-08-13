@@ -5,6 +5,13 @@ from argparse import Namespace
 from pathlib import Path
 
 from bixolon_scanner.training import detector_target
+from bixolon_scanner.training.rpc_worker_gate import _prediction_fold
+
+
+def test_held_out_prediction_fold_normalizes_null_to_sentinel():
+    assert _prediction_fold({"fold": None}) == -1
+    assert _prediction_fold({"fold": 2}) == 2
+    assert _prediction_fold({"prediction_fold": 1, "fold": None}) == 1
 
 
 def _write(path: Path, value):
@@ -156,6 +163,55 @@ def test_classifier_cache_keeps_union_of_every_locked_nms_policy():
     assert detector_target._classification_candidate_indices(
         prediction, [0.5, 0.8]
     ) == [0, 1, 2]
+
+
+def test_parity_combines_strict_classifier_and_detector_provider_evidence(
+    monkeypatch, tmp_path
+):
+    output = tmp_path / "output"
+    reports = output / "reports"
+    package_hash = "a" * 64
+    required = (
+        "pytorch_cpu_tolerance",
+        "pytorch_cuda_tolerance",
+        "cpu_cuda_tolerance",
+        "top1_equal",
+        "top3_set_and_order_equal",
+        "final_state_equal",
+    )
+    classifier = tmp_path / "classifier.json"
+    cpu = tmp_path / "cpu.json"
+    cuda = tmp_path / "cuda.json"
+    _write(
+        classifier,
+        {
+            "checks": {name: True for name in required},
+            "package_artifact_sha256": {"metadata.json": package_hash},
+        },
+    )
+    for path, provider in ((cpu, "cpu"), (cuda, "cuda")):
+        _write(
+            path,
+            {
+                "provider": provider,
+                "passes": True,
+                "detector": {"passes": True},
+                "package_artifact_sha256": {"metadata.json": package_hash},
+            },
+        )
+    monkeypatch.setattr(detector_target, "verify_lock", lambda args: {})
+
+    detector_target.parity(
+        Namespace(
+            output_dir=output,
+            parity_report=[classifier, cpu, cuda],
+        ),
+        {},
+    )
+
+    report = json.loads((reports / "parity-gate.json").read_text(encoding="utf-8"))
+    assert report["passed"] is True
+    assert report["checks"] == {name: True for name in required}
 
 
 def test_finalize_never_uses_manual_waiver(monkeypatch, tmp_path):

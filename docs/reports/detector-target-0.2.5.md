@@ -2,7 +2,7 @@
 
 ## 상태
 
-`0.2.5` detector 목표 모드는 구현된 실험 경로이며 현재 승격 상태는 `experiment_only`다. 저장소에는 독립 natural prevalence, hard challenge, shift test와 실행된 ONNX parity·RTX 5080 benchmark 증거가 모두 존재하지 않으므로 운영 기본 package를 변경하지 않는다.
+`0.2.5` detector 목표 모드는 전체 단계를 실행한 실험 경로이며 최종 승격 상태는 `experiment_only`다. ONNX parity와 RTX 5080 benchmark는 통과했지만 독립성·risk·hard recall·UNKNOWN Top-3 gate를 통과하지 못했으므로 운영 기본 package를 변경하지 않는다.
 
 ## 선택 계약
 
@@ -32,6 +32,40 @@
 
 각 model/policy family는 risk–coverage, AUGRC, 호환용 AURC와 failure AUROC를 기록한다. 운영점에서는 Useful Reject, Wasted Reject, Silent Failure, Safe Pass, risk U95, detector/approval coverage와 Safe Auto-Pass를 보고한다. 객체 진단에는 TP/FP/FN, exact-count, exact-image IoU 0.5/0.75, fixed-point LRP, localization/duplicate/background FP/missed GT/count mismatch를 포함한다.
 
+## 실행 결과 (`2026-08-13`)
+
+고정 grid의 4개 모델(baseline과 세 seed) × 3,724개 정책, 총 14,896개 후보를 모두 평가했다. development 적격 후보는 0개였고 fallback 진단 후보로 baseline, score `0.68`, NMS IoU `0.5`, uncertainty disabled가 선택됐다. 선택 보고서에 기록된 sweep hash와 682,719,482-byte sweep 파일의 실제 SHA-256은 `7e72170706ae4a8d6c0673a3021716b2e45089e20c4e883d08354a41cb86df7d`로 일치한다.
+
+| development set | 이미지 | Useful / Wasted / Silent / Safe | Detector risk U95 | APPROVED 오류/수 | E2E risk U95 | Safe Auto-Pass | Error Catch Recall |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Natural | 247 | 0 / 7 / 0 / 240 | 1.2405% | 0/149 | 1.9905% | 149 (60.32%) | 분모 없음 |
+| Hard | 232 | 6 / 0 / 218 / 8 | 98.2266% | 2/2 | 100% | 0 (0%) | 2.68% |
+
+Natural development는 관측 Silent Failure와 승인 오류가 모두 0건이어도 PASS 240장과 APPROVED 149장뿐이므로 0.5% U95를 인증할 수 없다. zero-error 인증에는 각각 최소 598개 독립 표본이 필요하다.
+
+pre-test lock `7ed44ee7b28fa214ae49e7f2436698e0509b15a639c5e14b17dd01421e3a6dab` 이후 threshold나 정책은 변경하지 않았다. locked test 결과는 다음과 같다.
+
+| test set | 이미지 | Useful / Wasted / Silent / Safe | Detector risk (U95) | APPROVED 오류/수 (U95) | Safe Auto-Pass | Error Catch Recall | UNKNOWN Top-3 |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| Natural | 94 | 0 / 0 / 3 / 91 | 3.19% (8.04%) | 0/38 (7.58%) | 38 (40.43%) | 0% | 83/88 (94.32%) |
+| Hard | 77 | 0 / 0 / 68 / 9 | 88.31% (93.77%) | 0/0 (100%) | 0 | 0% | 1/474 (0.21%) |
+| Shift | 80 | 4 / 0 / 74 / 2 | 97.37% (99.53%) | 0/0 (100%) | 0 | 5.13% | 2/374 (0.53%) |
+
+Natural 객체 진단은 precision `99.8031%`, recall `99.2172%`, exact-image IoU 0.5 `96.8085%`, IoU 0.75 `94.6809%`다. Hard/Shift는 현재 regression 진단 manifest이며 독립 promotion evidence가 아니다. 모든 set의 E/M/H, 객체 수, small/border, capture session, camera/store/light, blur/exposure, novel/overlap 그룹별 표본 수·gate 네 칸·두 risk U95·coverage·Safe Auto-Pass는 `reports/locked-test.json`의 `sets.*.metrics.groups`에 기록했다. Hard는 Natural coverage 분모에 포함하지 않았다.
+
+데이터 감사에서 Natural 341장은 `perceptual_group_id`가 없고 299장은 `physical_target_group_id`가 없다. Hard 309장과 Shift 303장도 `perceptual_group_id`가 없어 세 set의 `promotion_evidence_ready`가 모두 `false`다.
+
+## ONNX parity와 성능
+
+- detector ONNX SHA-256: `b4f22a766c995239d927ae20b79490a7ddd2179ff9918a34ef3316ba4bd1bf6b`
+- 동결 classifier ONNX SHA-256: `f0af021c271721f702061cb8d7042f39bf35b2050e6acace9e7dc386b133cbee`
+- detector matched minimum IoU: CPU `0.9999996`, CUDA `0.9975026`; count·좌표·score parity 통과
+- classifier 886개 tensor: PyTorch/CPU ONNX/CUDA ONNX tolerance, Top-1, 정렬 Top-3, 최종 상태 parity 모두 통과; mismatch 0건
+- RTX 5080, CUDA 13.1, ORT 1.28.0, warm-up 30회, full-path 1,000회: p50 `69.51ms`, p95 `96.10ms`, p99 `104.62ms`
+- stage p95: decode `47.11ms`, detector `34.83ms`, classifier `20.74ms`, decision overhead `0.31ms`
+
+지연 gate `p95 ≤ 100ms`와 parity gate는 통과했다.
+
 ## 최종 승격 gate
 
 - locked natural test의 detector/e2e risk U95 각각 0.5% 이하
@@ -43,6 +77,8 @@
 - natural/hard/shift manifest의 독립성 필드와 split 누수 검사 통과
 
 수동 waiver는 없다. 모든 gate가 통과한 보고서가 생성되기 전에는 package metadata를 production으로 바꾸거나 앱의 기본 package를 전환하지 않는다.
+
+실제 최종 실패 항목은 `independent_data_ready`, `detector_pass_risk_u95`, `e2e_approved_risk_u95`, `detector_silent_failure_zero`, `hard_error_catch_recall`, `unknown_top3_accuracy`다. `e2e_approved_error_zero`, `parity`, `full_path_latency`는 통과했다.
 
 ## 버전과 provenance
 

@@ -8,7 +8,7 @@ from typing import Any
 import numpy as np
 
 from ..inference import OrtRunner
-from ..package import load_model_package
+from ..package import load_model_package, sha256_file
 from .fewshot_adapter import (
     adapter_spec_from_dict,
     build_ten_shot_classifier,
@@ -216,6 +216,13 @@ def run_locked_parity(args: argparse.Namespace) -> dict[str, Any]:
             "pytorch_device": str(device),
             "onnx_providers": ["CPUExecutionProvider", "CUDAExecutionProvider"],
             "classifier_version": package.metadata.classifier.version,
+            "classifier_checkpoint_sha256": sha256_file(args.checkpoint),
+            "package_artifact_sha256": {
+                "metadata.json": sha256_file(args.package_dir / "metadata.json"),
+                package.metadata.classifier.filename: sha256_file(
+                    package.classifier_path
+                ),
+            },
             "inference_center_crop_scale": crop_scale,
             "pretest_lock": str(args.pretest_lock),
         }

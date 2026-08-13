@@ -6,6 +6,8 @@
 
 전체 추론 패키지는 단일 버전으로 관리합니다. `0.2.5` package의 `detector.version`, `classifier.version`, 응답의 실행된 component version은 모두 `0.2.5`입니다. classifier ONNX와 calibration은 `0.2.4`에서 byte-for-byte 계승하고 원본 버전과 SHA-256, Natural/Hard/Shift 평가 데이터 버전을 `bundle_provenance`에 보존합니다. detector hard gate가 classifier 호출 전에 종료되면 기존 계약대로 `model_versions.classifier=null`입니다.
 
+`2026-08-13` 전체 실행에서는 14,896개 후보 중 적격 후보가 없어 baseline(score `0.68`, NMS `0.5`, uncertainty disabled)이 진단 후보로 선택됐습니다. locked Natural test 94장의 detector PASS risk는 `3.19%`(U95 `8.04%`), E2E 승인 오류는 0/38(U95 `7.58%`), Safe Auto-Pass는 `40.43%`, UNKNOWN Top-3는 `94.32%`였습니다. Hard Error Catch Recall은 `0%`였습니다. 반면 CPU/CUDA parity는 통과했고 RTX 5080 full-path 1,000회는 p50 `69.51ms`, p95 `96.10ms`, p99 `104.62ms`로 지연 gate를 통과했습니다. 최종 상태는 waiver 없는 `experiment_only`이며 운영 기본 package는 변경하지 않았습니다.
+
 단계형 CLI는 다음 순서로 사용합니다. manifest는 natural/hard/shift를 분리하고 각 레코드에 `development` 또는 `test` split을 기록해야 합니다. `capture_session_id`, `physical_target_group_id`, SHA-256이 split을 넘나들면 `prepare`가 실패합니다.
 
 ```powershell
@@ -24,7 +26,7 @@ bixolon-detector-target `
   --phase prepare
 ```
 
-후속 phase는 `train`, `cache`, `select`, `lock`, `test`, `export-package`, `parity`, `benchmark`, `finalize`입니다. `test` 이후 단계는 config·세 manifest·선택 결과·최종 detector·동결 classifier hash가 pre-test lock과 다르면 실행을 거부합니다. parity에는 기존 도구가 만든 CPU/CUDA 보고서를 `--parity-report`로 각각 전달하고, RTX 5080 보고서는 `--benchmark-report`로 전달합니다. 전체 평가 계약과 아직 확보되지 않은 증거는 [0.2.5 detector 보고서](docs/reports/detector-target-0.2.5.md)에 기록합니다.
+후속 phase는 `train`, `cache`, `select`, `lock`, `test`, `export-package`, `parity`, `benchmark`, `finalize`입니다. `test` 이후 단계는 config·세 manifest·선택 결과·최종 detector·동결 classifier hash가 pre-test lock과 다르면 실행을 거부합니다. parity에는 기존 도구가 만든 CPU/CUDA 보고서를 `--parity-report`로 각각 전달하고, RTX 5080 보고서는 `--benchmark-report`로 전달합니다. 전체 평가 계약과 실제 gate 결과는 [0.2.5 detector 보고서](docs/reports/detector-target-0.2.5.md), 다음 재실행 절차와 장애 대응은 [0.2.5 재실행 가이드](docs/references/detector-target-0.2.5-runbook.md)에 기록합니다.
 
 ## `0.2.0` strict 10-shot classifier
 

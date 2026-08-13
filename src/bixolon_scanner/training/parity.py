@@ -165,6 +165,49 @@ def parity(args: argparse.Namespace) -> None:
     if not detection_result.detections:
         raise RuntimeError("parity image produced no detections")
 
+    detector_logits_error = float(np.max(np.abs(reference_logits - onnx_logits)))
+    detector_boxes_error = float(np.max(np.abs(reference_boxes - onnx_boxes)))
+    detector_report = {
+        "raw_query_logits_max_abs_error_diagnostic": detector_logits_error,
+        "raw_query_boxes_max_abs_error_diagnostic": detector_boxes_error,
+        "reference_count": len(reference_detections),
+        "onnx_count": len(onnx_detections),
+        "matched_min_iou": minimum_iou,
+        "normalized_coordinate_max_abs_error": box_error,
+        "score_max_abs_error": score_error,
+        "minimum_iou_tolerance": args.detector_min_iou,
+        "coordinate_tolerance": args.detector_coordinate_tolerance,
+        "score_tolerance": args.detector_score_tolerance,
+        "passes": len(reference_detections) == len(onnx_detections)
+        and minimum_iou >= args.detector_min_iou
+        and box_error <= args.detector_coordinate_tolerance
+        and score_error <= args.detector_score_tolerance,
+    }
+    if args.detector_only:
+        report = {
+            "package_version": metadata.package_version,
+            "dataset_version": metadata.dataset_version,
+            "detector_version": metadata.detector.version,
+            "detector_checkpoint_sha256": _detector_checkpoint_sha256(
+                args.detector_checkpoint
+            ),
+            "package_artifact_sha256": {
+                "metadata.json": sha256_file(args.package_dir / "metadata.json"),
+                metadata.detector.filename: sha256_file(package.detector_path),
+            },
+            "provider": provider,
+            "image": args.image.name,
+            "item_count": len(detection_result.detections),
+            "detector": detector_report,
+            "passes": detector_report["passes"],
+        }
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        args.output.write_text(json.dumps(report, indent=2) + "\n", encoding="utf-8")
+        print(json.dumps(report, indent=2))
+        if not report["passes"]:
+            raise SystemExit(1)
+        return
+
     checkpoint = torch.load(args.classifier_checkpoint, map_location="cpu", weights_only=False)
     classifier_reference = build_dino_classifier(
         checkpoint["backbone_kind"],
@@ -202,8 +245,6 @@ def parity(args: argparse.Namespace) -> None:
     )
     onnx_status = onnx_probabilities.max(axis=1) >= metadata.classifier.approval_threshold
 
-    detector_logits_error = float(np.max(np.abs(reference_logits - onnx_logits)))
-    detector_boxes_error = float(np.max(np.abs(reference_boxes - onnx_boxes)))
     classifier_logits_error = float(
         np.max(np.abs(classifier_reference_logits - classifier_onnx_logits))
     )
@@ -224,22 +265,7 @@ def parity(args: argparse.Namespace) -> None:
         "provider": provider,
         "image": args.image.name,
         "item_count": len(detection_result.detections),
-        "detector": {
-            "raw_query_logits_max_abs_error_diagnostic": detector_logits_error,
-            "raw_query_boxes_max_abs_error_diagnostic": detector_boxes_error,
-            "reference_count": len(reference_detections),
-            "onnx_count": len(onnx_detections),
-            "matched_min_iou": minimum_iou,
-            "normalized_coordinate_max_abs_error": box_error,
-            "score_max_abs_error": score_error,
-            "minimum_iou_tolerance": args.detector_min_iou,
-            "coordinate_tolerance": args.detector_coordinate_tolerance,
-            "score_tolerance": args.detector_score_tolerance,
-            "passes": len(reference_detections) == len(onnx_detections)
-            and minimum_iou >= args.detector_min_iou
-            and box_error <= args.detector_coordinate_tolerance
-            and score_error <= args.detector_score_tolerance,
-        },
+        "detector": detector_report,
         "classifier": {
             "logits_max_abs_error": classifier_logits_error,
             "tolerance": args.classifier_tolerance,
@@ -271,6 +297,7 @@ def main() -> None:
     parser.add_argument("--detector-score-tolerance", type=float, default=0.02)
     parser.add_argument("--classifier-tolerance", type=float, default=0.01)
     parser.add_argument("--cpu", action="store_true")
+    parser.add_argument("--detector-only", action="store_true")
     parity(parser.parse_args())
 
 
