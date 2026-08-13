@@ -16,7 +16,11 @@ from ..inference import build_onnx_adapters
 from ..package import load_model_package
 from ..pipeline import DecisionPipeline
 from .rpc_context_rejector import runtime_context_features
-from .rpc_class_aware_nms import _keep_indices
+from .rpc_class_aware_nms import (
+    _duplicate_ambiguity_features,
+    _duplicate_ambiguity_mask,
+    _keep_indices,
+)
 from .rpc_data_scale import LEVELS
 
 
@@ -75,7 +79,19 @@ def main() -> None:
     parser.add_argument("--warmup", type=int, default=30)
     parser.add_argument("--images-per-level", type=int, default=200)
     parser.add_argument("--class-aware-nms-threshold", type=float)
+    parser.add_argument("--duplicate-overlap-threshold", type=float)
+    parser.add_argument("--duplicate-overlap-max-score", type=float)
+    parser.add_argument("--duplicate-low-quality-multiplier", type=float)
+    parser.add_argument("--duplicate-min-rank", type=float, default=0.0)
+    parser.add_argument("--context-threshold", type=float)
+    parser.add_argument("--levels", nargs="+", choices=LEVELS, default=list(LEVELS))
     args = parser.parse_args()
+    if (
+        args.duplicate_low_quality_multiplier is not None
+        and args.context_threshold is None
+    ):
+        parser.error("--context-threshold is required with low-quality gating")
+    levels = tuple(args.levels)
 
     package = load_model_package(args.package_dir)
     detector_adapter, classifier_adapter, provider = build_onnx_adapters(
@@ -98,7 +114,7 @@ def main() -> None:
     )
     records = [row for row in _read_jsonl(args.manifest) if row["role"] == "selection"]
     selected: dict[str, list[dict[str, Any]]] = {}
-    for level in LEVELS:
+    for level in levels:
         candidates = sorted(
             (row for row in records if row["level"] == level), key=_order_key
         )
@@ -155,11 +171,35 @@ def main() -> None:
                 int(record["height"]),
                 float(package.metadata.classifier.temperature),
             )
-            context.run(["quality_score"], {"features": features})
+            quality = context.run(
+                ["quality_score"], {"features": features}
+            )[0].reshape(-1)
+            if args.duplicate_overlap_threshold is not None:
+                rows = [
+                    {
+                        "bbox_xyxy": [item.x1, item.y1, item.x2, item.y2],
+                        "score": item.score,
+                    }
+                    for item in detections
+                ]
+                classes = logits.argmax(axis=1).astype(int).tolist()
+                containment, repeated = _duplicate_ambiguity_features(rows, classes)
+                _duplicate_ambiguity_mask(
+                    containment,
+                    repeated,
+                    [index / max(len(rows) - 1, 1) for index in range(len(rows))],
+                    [float(row["score"]) for row in rows],
+                    quality,
+                    context_threshold=float(args.context_threshold),
+                    overlap_threshold=args.duplicate_overlap_threshold,
+                    overlap_max_score=args.duplicate_overlap_max_score,
+                    low_quality_multiplier=args.duplicate_low_quality_multiplier,
+                    minimum_rank=float(args.duplicate_min_rank),
+                )
         elapsed = (time.perf_counter_ns() - started) / 1_000_000.0
         return elapsed, full_path
 
-    warmup_records = [row for level in LEVELS for row in selected[level]][
+    warmup_records = [row for level in levels for row in selected[level]][
         : int(args.warmup)
     ]
     for record in warmup_records:
@@ -173,9 +213,14 @@ def main() -> None:
         "python_version": platform.python_version(),
         "platform": platform.platform(),
         "class_aware_nms_threshold": args.class_aware_nms_threshold,
+        "duplicate_overlap_threshold": args.duplicate_overlap_threshold,
+        "duplicate_overlap_max_score": args.duplicate_overlap_max_score,
+        "duplicate_low_quality_multiplier": args.duplicate_low_quality_multiplier,
+        "duplicate_min_rank": args.duplicate_min_rank,
+        "context_threshold": args.context_threshold,
         "difficulty": {},
     }
-    for level in LEVELS:
+    for level in levels:
         all_times: list[float] = []
         full_path_times: list[float] = []
         for record in selected[level]:
