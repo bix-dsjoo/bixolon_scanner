@@ -42,7 +42,6 @@ from .small_data import (
 )
 from .train_classifier import train as train_classifier
 
-
 SCHEMA_VERSION = "1.0"
 PHASES = ("prepare", "train", "calibrate", "export", "evaluate", "benchmark", "report")
 
@@ -53,18 +52,13 @@ def _canonical_json(value: Any) -> str:
 
 def _write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _write_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        "".join(
-            json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n"
-            for row in records
-        ),
+        "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in records),
         encoding="utf-8",
     )
 
@@ -77,9 +71,7 @@ def _load_config(path: Path) -> dict[str, Any]:
     experiment = config["experiment"]
     sizes = [int(value) for value in experiment.get("sample_sizes", [])]
     if sizes != [5, 10, 15, 20]:
-        raise ValueError(
-            "bread data-scale sample_sizes must be exactly [5, 10, 15, 20]"
-        )
+        raise ValueError("bread data-scale sample_sizes must be exactly [5, 10, 15, 20]")
     if int(experiment.get("seed", -1)) != 20260810:
         raise ValueError("bread data-scale experiment requires seed 20260810")
     if int(experiment.get("fold_count", 0)) != 3:
@@ -96,9 +88,7 @@ def _load_config(path: Path) -> dict[str, Any]:
         raise ValueError(f"unsupported bread training strategy: {strategy}")
     if strategy in {"frozen_frofa_logistic", "frozen_frofa_linear_svm"}:
         if not bool(training.get("feature_l2_normalize")):
-            raise ValueError(
-                "frozen FroFA linear training requires feature L2 normalization"
-            )
+            raise ValueError("frozen FroFA linear training requires feature L2 normalization")
         if int(training.get("frofa_views", -1)) < 1:
             raise ValueError("frozen FroFA linear training requires at least one view")
         magnitude = float(training.get("frofa_brightness_magnitude", -1.0))
@@ -121,26 +111,17 @@ def _load_config(path: Path) -> dict[str, Any]:
 
 def _records_and_counts(
     manifest_path: Path, metadata_path: Path, expected_classes: int, expected_aux: int
-) -> tuple[
-    list[dict[str, Any]], list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]
-]:
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:
     records = read_manifest(manifest_path)
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     aux = [row for row in records if row["record_type"] == "classification"]
     detection = [row for row in records if row["record_type"] == "detection"]
     labels = sorted(metadata["labels"], key=lambda row: int(row["category_id"]))
-    if [int(row["category_id"]) for row in labels] != list(
-        range(1, expected_classes + 1)
-    ):
+    if [int(row["category_id"]) for row in labels] != list(range(1, expected_classes + 1)):
         raise ValueError("bread labels must be contiguous and one-based")
     aux_counts = Counter(int(row["category_id"]) for row in aux)
-    if any(
-        aux_counts[category] != expected_aux
-        for category in range(1, expected_classes + 1)
-    ):
-        raise ValueError(
-            f"expected {expected_aux} auxiliary images per class: {dict(aux_counts)}"
-        )
+    if any(aux_counts[category] != expected_aux for category in range(1, expected_classes + 1)):
+        raise ValueError(f"expected {expected_aux} auxiliary images per class: {dict(aux_counts)}")
     development = [row for row in detection if row["split"] == "development"]
     test = [row for row in detection if row["split"] == "test"]
     if {int(row["fold"]) for row in development} != {0, 1, 2}:
@@ -149,9 +130,7 @@ def _records_and_counts(
     evaluation_hashes = {str(row["image_sha256"]) for row in development + test}
     overlap = aux_hashes & evaluation_hashes
     if overlap:
-        raise ValueError(
-            f"auxiliary/evaluation image SHA overlap: {sorted(overlap)[:3]}"
-        )
+        raise ValueError(f"auxiliary/evaluation image SHA overlap: {sorted(overlap)[:3]}")
     roi_counts: Counter[int] = Counter()
     for row in development:
         roi_counts.update(int(item["category_id"]) for item in row["annotations"])
@@ -165,8 +144,7 @@ def _records_and_counts(
                 "class_name": label["class_name"],
                 "auxiliary_images": aux_counts[category],
                 "development_rois": roi_counts[category],
-                "current_final_train_total": aux_counts[category]
-                + roi_counts[category],
+                "current_final_train_total": aux_counts[category] + roi_counts[category],
             }
         )
     return aux, development, metadata, current_counts
@@ -180,9 +158,7 @@ def _phash_bits(path: Path, hash_size: int) -> np.ndarray:
     side = hash_size * 4
     variants = []
     for rotation in (0, 90, 180, 270):
-        rotated = image.rotate(rotation, expand=True).resize(
-            (side, side), Image.Resampling.LANCZOS
-        )
+        rotated = image.rotate(rotation, expand=True).resize((side, side), Image.Resampling.LANCZOS)
         coefficients = dctn(np.asarray(rotated, dtype=np.float32), type=2, norm="ortho")
         low = coefficients[:hash_size, :hash_size].copy()
         flat = low.reshape(-1)
@@ -230,9 +206,7 @@ def _perceptual_groups(
 
 
 class _ImageDataset:
-    def __init__(
-        self, records: list[dict[str, Any]], dataset_root: Path, image_size: int
-    ):
+    def __init__(self, records: list[dict[str, Any]], dataset_root: Path, image_size: int):
         import torchvision.transforms as transforms
 
         self.records = records
@@ -249,9 +223,7 @@ class _ImageDataset:
         return len(self.records)
 
     def __getitem__(self, index: int):
-        with Image.open(
-            self.dataset_root / self.records[index]["image_path"]
-        ) as source:
+        with Image.open(self.dataset_root / self.records[index]["image_path"]) as source:
             image = ImageOps.exif_transpose(source).convert("RGB")
         return self.transform(image)
 
@@ -269,9 +241,7 @@ def _extract_embeddings(
         weights_path=args.weights,
         hub_repository=str(training["hub_repository"]),
     )
-    device = torch.device(
-        "cuda" if torch.cuda.is_available() and not args.cpu else "cpu"
-    )
+    device = torch.device("cuda" if torch.cuda.is_available() and not args.cpu else "cpu")
     backbone = model.backbone.to(device).eval()
     dataset = _ImageDataset(records, args.dataset_root, int(training["image_size"]))
     loader = DataLoader(
@@ -284,9 +254,7 @@ def _extract_embeddings(
     result: list[np.ndarray] = []
     with torch.inference_mode():
         for images in loader:
-            values = (
-                backbone(images.to(device, non_blocking=True)).float().cpu().numpy()
-            )
+            values = backbone(images.to(device, non_blocking=True)).float().cpu().numpy()
             result.append(values)
     embeddings = np.concatenate(result).astype(np.float32)
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
@@ -335,8 +303,7 @@ def diverse_order(
                 representative_pool,
                 key=lambda index: (
                     -min(
-                        1.0 - float(embeddings[index] @ embeddings[chosen])
-                        for chosen in selected
+                        1.0 - float(embeddings[index] @ embeddings[chosen]) for chosen in selected
                     ),
                     records[index]["image_path"],
                 ),
@@ -350,8 +317,7 @@ def diverse_order(
                 remaining,
                 key=lambda index: (
                     -min(
-                        1.0 - float(embeddings[index] @ embeddings[chosen])
-                        for chosen in selected
+                        1.0 - float(embeddings[index] @ embeddings[chosen]) for chosen in selected
                     ),
                     records[index]["image_path"],
                 ),
@@ -382,16 +348,12 @@ def validate_nested_orders(
     maximum = max(sample_sizes)
     for category, order in orders.items():
         if len(order) != maximum or len(set(order)) != maximum:
-            raise ValueError(
-                f"category {category} does not contain {maximum} unique selections"
-            )
+            raise ValueError(f"category {category} does not contain {maximum} unique selections")
         previous: set[str] = set()
         for sample_size in sample_sizes:
             current = set(order[:sample_size])
             if len(current) != sample_size or not previous <= current:
-                raise ValueError(
-                    f"category {category} selection is not nested at n={sample_size}"
-                )
+                raise ValueError(f"category {category} selection is not nested at n={sample_size}")
             previous = current
 
 
@@ -405,9 +367,7 @@ def _contact_sheet(
     columns = 5
     rows = math.ceil(len(records) / columns)
     label_height = 38
-    canvas = Image.new(
-        "RGB", (columns * thumb, rows * (thumb + label_height) + 34), "white"
-    )
+    canvas = Image.new("RGB", (columns * thumb, rows * (thumb + label_height) + 34), "white")
     draw = ImageDraw.Draw(canvas)
     draw.text((8, 8), title, fill="black")
     for index, record in enumerate(records):
@@ -429,9 +389,7 @@ def _contact_sheet(
 def _manifest_metadata(
     base: dict[str, Any], records: list[dict[str, Any]], sample_size: int
 ) -> dict[str, Any]:
-    body = "".join(
-        json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in records
-    )
+    body = "".join(json.dumps(row, ensure_ascii=False, sort_keys=True) + "\n" for row in records)
     digest = hashlib.sha256(body.encode("utf-8")).hexdigest()
     return {
         "schema_version": SCHEMA_VERSION,
@@ -469,9 +427,7 @@ def _match_detections(
     for detection_index, detection in sorted(
         enumerate(detections), key=lambda item: item[1].score, reverse=True
     ):
-        box = np.asarray(
-            [detection.x1, detection.y1, detection.x2, detection.y2], dtype=np.float32
-        )
+        box = np.asarray([detection.x1, detection.y1, detection.x2, detection.y2], dtype=np.float32)
         candidates = [(index, _iou(box, boxes[index])) for index in remaining]
         if not candidates:
             continue
@@ -525,21 +481,14 @@ def _prepare_evaluation(
         _canonical_json(
             {
                 "development": [row["image_sha256"] for row in development],
-                "package_metadata": sha256_file(
-                    args.production_package / "metadata.json"
-                ),
+                "package_metadata": sha256_file(args.production_package / "metadata.json"),
                 "detector": sha256_file(args.production_package / "detector.onnx"),
                 "match_iou_threshold": config["evaluation"]["match_iou_threshold"],
             }
         ).encode()
     ).hexdigest()
     marker = prepared / "evaluation_complete.json"
-    if (
-        args.resume
-        and marker.is_file()
-        and records_path.is_file()
-        and tensors_path.is_file()
-    ):
+    if args.resume and marker.is_file() and records_path.is_file() and tensors_path.is_file():
         previous = json.loads(marker.read_text(encoding="utf-8"))
         if previous.get("fingerprint") == fingerprint:
             return json.loads(report_path.read_text(encoding="utf-8"))
@@ -591,9 +540,7 @@ def _prepare_evaluation(
             margin = package.metadata.quality.border_margin_ratio
             for detection_index, detection in enumerate(detections):
                 match = matches.get(detection_index)
-                annotation = (
-                    record["annotations"][match[0]] if match is not None else None
-                )
+                annotation = record["annotations"][match[0]] if match is not None else None
                 rows.append(
                     {
                         "tensor_index": len(tensors),
@@ -601,9 +548,7 @@ def _prepare_evaluation(
                         "fold": int(record["fold"]),
                         "group_id": str(record["capture_session_id"]),
                         "detection_index": detection_index,
-                        "target": -1
-                        if annotation is None
-                        else int(annotation["category_id"]) - 1,
+                        "target": -1 if annotation is None else int(annotation["category_id"]) - 1,
                         "match_iou": None if match is None else match[1],
                         "touches_border": bool(
                             detection.x1 <= original_width * margin
@@ -613,9 +558,7 @@ def _prepare_evaluation(
                         ),
                     }
                 )
-                tensors.append(
-                    _runtime_crop_tensor(image, detection, package.metadata.classifier)
-                )
+                tensors.append(_runtime_crop_tensor(image, detection, package.metadata.classifier))
         if number % 25 == 0:
             print(
                 json.dumps({"evaluation_images": number, "total": len(development)}),
@@ -636,9 +579,7 @@ def _prepare_evaluation(
         "recall": matched_count / ground_truth_count,
         "precision": matched_count / prediction_count if prediction_count else 0.0,
         "count_accuracy": count_correct / len(development),
-        "recapture_image_count": sum(
-            bool(row["recapture_reasons"]) for row in outcomes
-        ),
+        "recapture_image_count": sum(bool(row["recapture_reasons"]) for row in outcomes),
         "recapture_reasons": dict(sorted(reason_counts.items())),
         "outcomes": outcomes,
     }
@@ -711,9 +652,7 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
         indices = by_category[category]
         category_records = [aux[index] for index in indices]
         exact = Counter(str(row["image_sha256"]) for row in category_records)
-        exact_duplicates = sorted(
-            digest for digest, count in exact.items() if count > 1
-        )
+        exact_duplicates = sorted(digest for digest, count in exact.items() if count > 1)
         if exact_duplicates:
             raise ValueError(
                 f"class {category} contains exact SHA duplicates: {exact_duplicates[:3]}"
@@ -732,13 +671,9 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
         for record, group in zip(category_records, groups):
             family_members[group].append(str(record["image_path"]))
         known_families = {
-            group: sorted(paths)
-            for group, paths in family_members.items()
-            if len(paths) > 1
+            group: sorted(paths) for group, paths in family_members.items() if len(paths) > 1
         }
-        local_order = diverse_order(
-            category_records, embeddings[indices], groups, maximum
-        )
+        local_order = diverse_order(category_records, embeddings[indices], groups, maximum)
         selected_records = [category_records[index] for index in local_order]
         orders[str(category)] = [str(row["image_path"]) for row in selected_records]
         duplicate_audit[str(category)] = {
@@ -795,13 +730,9 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
             "identity_destroying_crop",
             "rotation_or_encoding_only_duplicate_in_first_five",
         ],
-        "approved_at": datetime.now(UTC).isoformat()
-        if args.approve_selection
-        else None,
+        "approved_at": datetime.now(UTC).isoformat() if args.approve_selection else None,
         "orders": orders,
-        "image_hashes": {
-            str(row["image_path"]): str(row["image_sha256"]) for row in aux
-        },
+        "image_hashes": {str(row["image_path"]): str(row["image_sha256"]) for row in aux},
         "weights_sha256": sha256_file(args.weights),
         "manifest_sha256": sha256_file(args.manifest),
         "perceptual_duplicate_candidates": duplicate_audit,
@@ -816,13 +747,10 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
         "development_image_count": len(development),
         "sample_sizes": experiment["sample_sizes"],
         "selection_status": review["status"],
-        "current_training_total": sum(
-            row["current_final_train_total"] for row in current_counts
-        ),
+        "current_training_total": sum(row["current_final_train_total"] for row in current_counts),
         "current_counts": current_counts,
         "detector": {
-            key: detector_report[key]
-            for key in ("recall", "precision", "count_accuracy")
+            key: detector_report[key] for key in ("recall", "precision", "count_accuracy")
         },
         "test_accessed": False,
     }
@@ -836,11 +764,7 @@ def _training_namespace(
     training = config["training"]
     cache_dir = args.classifier_cache_dir
     return argparse.Namespace(
-        manifest=args.output_dir
-        / "prepared"
-        / "manifests"
-        / f"n{sample_size}"
-        / "manifest.jsonl",
+        manifest=args.output_dir / "prepared" / "manifests" / f"n{sample_size}" / "manifest.jsonl",
         dataset_root=args.dataset_root,
         output_dir=args.output_dir / "runs" / f"n{sample_size}",
         fold=0,
@@ -894,9 +818,7 @@ def _extract_support_patch_cache(
         weights_path=args.weights,
         hub_repository=str(training["hub_repository"]),
     )
-    device = torch.device(
-        "cuda" if torch.cuda.is_available() and not args.cpu else "cpu"
-    )
+    device = torch.device("cuda" if torch.cuda.is_available() and not args.cpu else "cpu")
     backbone = model.backbone.to(device).eval()
     dataset = _ImageDataset(records, args.dataset_root, int(training["image_size"]))
     loader = DataLoader(
@@ -945,9 +867,7 @@ def _train_frofa_linear_head(
     subset_manifest = prepared / "manifests" / f"n{sample_size}" / "manifest.jsonl"
     subset_records = read_manifest(subset_manifest)
     subset_paths = {str(row["image_path"]) for row in subset_records}
-    selected = np.asarray(
-        [path in subset_paths for path in cache["image_paths"]], dtype=bool
-    )
+    selected = np.asarray([path in subset_paths for path in cache["image_paths"]], dtype=bool)
     expected_count = int(training["num_classes"]) * sample_size
     if int(selected.sum()) != expected_count:
         raise ValueError(
@@ -1062,9 +982,7 @@ def _train_cosine_prototype_head(
     subset_manifest = prepared / "manifests" / f"n{sample_size}" / "manifest.jsonl"
     subset_records = read_manifest(subset_manifest)
     subset_paths = {str(row["image_path"]) for row in subset_records}
-    selected = np.asarray(
-        [path in subset_paths for path in cache["image_paths"]], dtype=bool
-    )
+    selected = np.asarray([path in subset_paths for path in cache["image_paths"]], dtype=bool)
     expected_count = int(training["num_classes"]) * sample_size
     if int(selected.sum()) != expected_count:
         raise ValueError(
@@ -1102,9 +1020,7 @@ def _train_cosine_prototype_head(
 
     output_dir = args.output_dir / "runs" / f"n{sample_size}"
     output_dir.mkdir(parents=True, exist_ok=True)
-    prototype_sha256 = hashlib.sha256(
-        np.ascontiguousarray(head.weights).tobytes()
-    ).hexdigest()
+    prototype_sha256 = hashlib.sha256(np.ascontiguousarray(head.weights).tobytes()).hexdigest()
     recipe = {
         "schema_version": SCHEMA_VERSION,
         "strategy": "frozen_cosine_prototype",
@@ -1157,9 +1073,7 @@ def _train_prototype_knn_hybrid_head(
     subset_manifest = prepared / "manifests" / f"n{sample_size}" / "manifest.jsonl"
     subset_records = read_manifest(subset_manifest)
     subset_paths = {str(row["image_path"]) for row in subset_records}
-    selected = np.asarray(
-        [path in subset_paths for path in cache["image_paths"]], dtype=bool
-    )
+    selected = np.asarray([path in subset_paths for path in cache["image_paths"]], dtype=bool)
     expected_count = int(training["num_classes"]) * sample_size
     if int(selected.sum()) != expected_count:
         raise ValueError(
@@ -1224,9 +1138,7 @@ def _train_prototype_knn_hybrid_head(
         "prototype_sha256": hashlib.sha256(
             np.ascontiguousarray(prototype_head.weights).tobytes()
         ).hexdigest(),
-        "exemplar_sha256": hashlib.sha256(
-            np.ascontiguousarray(exemplars).tobytes()
-        ).hexdigest(),
+        "exemplar_sha256": hashlib.sha256(np.ascontiguousarray(exemplars).tobytes()).hexdigest(),
         "seed": int(config["experiment"]["seed"]),
         "manifest_sha256": sha256_file(subset_manifest),
         "support_patch_features_sha256": cache["patches_sha256"],
@@ -1267,9 +1179,7 @@ def train_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
     review = json.loads(review_path.read_text(encoding="utf-8"))
     if review["status"] != "approved":
         if not args.approve_selection:
-            raise RuntimeError(
-                "contact sheets require visual approval; pass --approve-selection"
-            )
+            raise RuntimeError("contact sheets require visual approval; pass --approve-selection")
         review["status"] = "approved"
         review["approved_at"] = datetime.now(UTC).isoformat()
         _write_json(review_path, review)
@@ -1277,13 +1187,7 @@ def train_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
     for sample_size in config["experiment"]["sample_sizes"]:
         sample_size = int(sample_size)
         output_dir = args.output_dir / "runs" / f"n{sample_size}"
-        manifest = (
-            args.output_dir
-            / "prepared"
-            / "manifests"
-            / f"n{sample_size}"
-            / "manifest.jsonl"
-        )
+        manifest = args.output_dir / "prepared" / "manifests" / f"n{sample_size}" / "manifest.jsonl"
         complete = output_dir / "complete.json"
         if args.resume and complete.is_file() and (output_dir / "best.pt").is_file():
             continue
@@ -1339,9 +1243,9 @@ def _infer_checkpoint(
     outputs: list[np.ndarray] = []
     with torch.inference_mode():
         for start in range(0, len(tensors), batch_size):
-            batch = torch.from_numpy(
-                np.array(tensors[start : start + batch_size], copy=True)
-            ).to(device)
+            batch = torch.from_numpy(np.array(tensors[start : start + batch_size], copy=True)).to(
+                device
+            )
             outputs.append(model(batch).float().cpu().numpy())
     return np.concatenate(outputs).astype(np.float32)
 
@@ -1378,9 +1282,7 @@ def cross_fold_calibrations(
     result: dict[int, dict[str, Any]] = {}
     for held_out in range(int(config["experiment"]["fold_count"])):
         calibration_mask = folds != held_out
-        calibration = _fit_calibration(
-            logits[calibration_mask], targets[calibration_mask], config
-        )
+        calibration = _fit_calibration(logits[calibration_mask], targets[calibration_mask], config)
         calibration["held_out_fold"] = held_out
         calibration["calibration_folds"] = sorted(set(folds[calibration_mask].tolist()))
         result[held_out] = calibration
@@ -1427,9 +1329,7 @@ def _evaluate_crossfit(
     matched = targets >= 0
     correct = matched & (predicted == targets)
     top3_correct = matched & np.any(top3 == targets[:, None], axis=1)
-    border_recapture_ids = set(
-        image_ids[touches_border & (confidence < thresholds)].tolist()
-    )
+    border_recapture_ids = set(image_ids[touches_border & (confidence < thresholds)].tolist())
     active = np.asarray([int(value) not in border_recapture_ids for value in image_ids])
     approved = active & (confidence >= thresholds)
     unknown = active & ~approved
@@ -1441,9 +1341,7 @@ def _evaluate_crossfit(
     status_counts: Counter[str] = Counter()
     reason_counts = Counter(detector_report["recapture_reasons"])
     approved_images = approved_images_correct = 0
-    normal_outcomes = [
-        row for row in detector_report["outcomes"] if not row["recapture_reasons"]
-    ]
+    normal_outcomes = [row for row in detector_report["outcomes"] if not row["recapture_reasons"]]
     row_indices_by_image: dict[int, list[int]] = defaultdict(list)
     for index, image_id in enumerate(image_ids):
         row_indices_by_image[int(image_id)].append(index)
@@ -1512,16 +1410,12 @@ def _evaluate_crossfit(
         "approved_point_precision_gate_satisfied": (
             approved_precision >= 1.0 - max_false_approval_rate
         ),
-        "approved_precision_gate_satisfied": (
-            false_approval_rate_upper <= max_false_approval_rate
-        ),
+        "approved_precision_gate_satisfied": (false_approval_rate_upper <= max_false_approval_rate),
         "unknown_count": int(unknown.sum()),
         "unknown_matched_count": int(matched_unknown.sum()),
         "unknown_top3_correct": int((top3_correct & matched_unknown).sum()),
         "unknown_top3_accuracy": (
-            float(top3_correct[matched_unknown].mean())
-            if matched_unknown.any()
-            else None
+            float(top3_correct[matched_unknown].mean()) if matched_unknown.any() else None
         ),
         "unknown_top3_gate_satisfied": bool(
             matched_unknown.any() and top3_correct[matched_unknown].mean() >= 0.95
@@ -1562,9 +1456,7 @@ def calibrate_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
     if not records_path.is_file() or not tensors_path.is_file():
         raise FileNotFoundError("prepare phase has not completed")
     rows = [
-        json.loads(line)
-        for line in records_path.read_text(encoding="utf-8").splitlines()
-        if line
+        json.loads(line) for line in records_path.read_text(encoding="utf-8").splitlines() if line
     ]
     detector_report = json.loads(detector_path.read_text(encoding="utf-8"))
     targets = np.asarray([int(row["target"]) for row in rows], dtype=np.int64)
@@ -1605,9 +1497,7 @@ def calibrate_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
             "test_accessed": False,
         }
         _write_json(calibration_path, report)
-        evaluation = _evaluate_crossfit(
-            logits, rows, detector_report, fold_calibrations, config
-        )
+        evaluation = _evaluate_crossfit(logits, rows, detector_report, fold_calibrations, config)
         evaluation["sample_size_per_class"] = int(sample_size)
         _write_json(evaluation_path, evaluation)
 
@@ -1616,9 +1506,7 @@ def _export_classifier(
     checkpoint_path: Path, output: Path, config: dict[str, Any]
 ) -> dict[str, Any]:
     torch = require_torch()
-    model, checkpoint = _load_checkpoint_model(
-        checkpoint_path, config, torch.device("cpu")
-    )
+    model, checkpoint = _load_checkpoint_model(checkpoint_path, config, torch.device("cpu"))
     size = int(checkpoint["image_size"])
     dummy = torch.zeros(1, 3, size, size, dtype=torch.float32)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -1648,9 +1536,7 @@ def export_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
         checkpoint_path = run_dir / "best.pt"
         calibration_path = run_dir / "calibration.json"
         if not checkpoint_path.is_file() or not calibration_path.is_file():
-            raise FileNotFoundError(
-                f"calibration has not completed for n={sample_size}"
-            )
+            raise FileNotFoundError(f"calibration has not completed for n={sample_size}")
         package_dir = args.output_dir / "packages" / f"n{sample_size}"
         marker = package_dir / "complete.json"
         if args.resume and marker.is_file():
@@ -1668,11 +1554,7 @@ def export_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
         calibration = json.loads(calibration_path.read_text(encoding="utf-8"))["final"]
         subset_metadata = json.loads(
             (
-                args.output_dir
-                / "prepared"
-                / "manifests"
-                / f"n{sample_size}"
-                / "metadata.json"
+                args.output_dir / "prepared" / "manifests" / f"n{sample_size}" / "metadata.json"
             ).read_text(encoding="utf-8")
         )
         metadata = json.loads(json.dumps(source_metadata))
@@ -1771,9 +1653,7 @@ def _classifier_signature(
         "prediction": prediction.tolist(),
         "top3": np.argsort(-probabilities, axis=1)[:, :3].tolist(),
         "item_status": item_status,
-        "classifier_border_recapture_image_ids": sorted(
-            int(value) for value in recapture
-        ),
+        "classifier_border_recapture_image_ids": sorted(int(value) for value in recapture),
     }
 
 
@@ -1781,14 +1661,10 @@ def evaluate_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
     records_path = args.output_dir / "prepared" / "evaluation_records.jsonl"
     tensors_path = args.output_dir / "prepared" / "evaluation_tensors.npy"
     detector_report = json.loads(
-        (args.output_dir / "prepared" / "detector_report.json").read_text(
-            encoding="utf-8"
-        )
+        (args.output_dir / "prepared" / "detector_report.json").read_text(encoding="utf-8")
     )
     rows = [
-        json.loads(line)
-        for line in records_path.read_text(encoding="utf-8").splitlines()
-        if line
+        json.loads(line) for line in records_path.read_text(encoding="utf-8").splitlines() if line
     ]
     for sample_size in config["experiment"]["sample_sizes"]:
         run_dir = args.output_dir / "runs" / f"n{sample_size}"
@@ -1798,12 +1674,8 @@ def evaluate_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
             if existing.get("checkpoint_sha256") == sha256_file(run_dir / "best.pt"):
                 continue
         package_dir = args.output_dir / "packages" / f"n{sample_size}"
-        calibration_report = json.loads(
-            (run_dir / "calibration.json").read_text(encoding="utf-8")
-        )
-        fold_calibrations = {
-            int(key): value for key, value in calibration_report["folds"].items()
-        }
+        calibration_report = json.loads((run_dir / "calibration.json").read_text(encoding="utf-8"))
+        fold_calibrations = {int(key): value for key, value in calibration_report["folds"].items()}
         cuda_reference = np.load(run_dir / "development_logits.npz")["logits"]
         provider_reports: dict[str, Any] = {}
         provider_logits: dict[str, np.ndarray] = {}
@@ -1830,17 +1702,14 @@ def evaluate_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
             )
             reference_top3 = np.asarray(reference_signature["top3"])
             candidate_top3 = np.asarray(candidate_signature["top3"])
-            top1_mismatch = int(
-                np.count_nonzero(reference_top3[:, 0] != candidate_top3[:, 0])
-            )
+            top1_mismatch = int(np.count_nonzero(reference_top3[:, 0] != candidate_top3[:, 0]))
             top3_order_mismatch = int(
                 np.count_nonzero(np.any(reference_top3 != candidate_top3, axis=1))
             )
             top3_set_mismatch = int(
                 np.count_nonzero(
                     np.any(
-                        np.sort(reference_top3, axis=1)
-                        != np.sort(candidate_top3, axis=1),
+                        np.sort(reference_top3, axis=1) != np.sort(candidate_top3, axis=1),
                         axis=1,
                     )
                 )
@@ -1852,8 +1721,7 @@ def evaluate_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
                 "max_relative_error": float((difference / denominator).max()),
                 "tolerance": float(config["evaluation"]["classifier_tolerance"]),
                 "within_tolerance": bool(
-                    difference.max()
-                    <= float(config["evaluation"]["classifier_tolerance"])
+                    difference.max() <= float(config["evaluation"]["classifier_tolerance"])
                 ),
                 "top1_mismatch_count": top1_mismatch,
                 "top3_order_mismatch_count": top3_order_mismatch,
@@ -1865,9 +1733,7 @@ def evaluate_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
                 == candidate_signature["classifier_border_recapture_image_ids"],
             }
             parity["passes"] = bool(
-                parity["within_tolerance"]
-                and parity["top3_equal"]
-                and parity["state_equal"]
+                parity["within_tolerance"] and parity["top3_equal"] and parity["state_equal"]
             )
             evaluation = _evaluate_crossfit(
                 candidate, rows, detector_report, fold_calibrations, config
@@ -1884,9 +1750,7 @@ def evaluate_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
         cpu_top3 = np.asarray(cpu_signature["top3"])
         cuda_top3 = np.asarray(cuda_signature["top3"])
         cross_top1_mismatch = int(np.count_nonzero(cpu_top3[:, 0] != cuda_top3[:, 0]))
-        cross_top3_order_mismatch = int(
-            np.count_nonzero(np.any(cpu_top3 != cuda_top3, axis=1))
-        )
+        cross_top3_order_mismatch = int(np.count_nonzero(np.any(cpu_top3 != cuda_top3, axis=1)))
         cross_top3_set_mismatch = int(
             np.count_nonzero(
                 np.any(np.sort(cpu_top3, axis=1) != np.sort(cuda_top3, axis=1), axis=1)
@@ -1896,8 +1760,7 @@ def evaluate_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
             "max_absolute_error": float(cross_difference.max()),
             "tolerance": float(config["evaluation"]["cross_provider_tolerance"]),
             "within_tolerance": bool(
-                cross_difference.max()
-                <= float(config["evaluation"]["cross_provider_tolerance"])
+                cross_difference.max() <= float(config["evaluation"]["cross_provider_tolerance"])
             ),
             "top1_mismatch_count": cross_top1_mismatch,
             "top3_order_mismatch_count": cross_top3_order_mismatch,
@@ -1927,9 +1790,7 @@ def evaluate_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
 
 def benchmark_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
     if args.benchmark_images is None or not args.benchmark_images.is_dir():
-        raise FileNotFoundError(
-            "--benchmark-images is required for the benchmark phase"
-        )
+        raise FileNotFoundError("--benchmark-images is required for the benchmark phase")
     targets = [("current", args.production_package)] + [
         (f"n{size}", args.output_dir / "packages" / f"n{size}")
         for size in config["experiment"]["sample_sizes"]
@@ -1995,9 +1856,7 @@ def _parity_columns(report: dict[str, Any] | None) -> dict[str, Any]:
         "cuda_parity_pass": cuda.get("passes"),
         "cross_provider_parity_pass": cross.get("passes"),
         "cuda_top3_order_mismatch_count": cuda.get("top3_order_mismatch_count"),
-        "cross_provider_top3_order_mismatch_count": cross.get(
-            "top3_order_mismatch_count"
-        ),
+        "cross_provider_top3_order_mismatch_count": cross.get("top3_order_mismatch_count"),
     }
 
 
@@ -2010,9 +1869,7 @@ def report_all(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, An
     current_test = _optional_json(args.current_test_report)
     current_benchmark = _optional_json(args.current_benchmark_report)
     current_detector = prepared["detector"]
-    fresh_current_benchmark = _optional_json(
-        args.output_dir / "benchmarks" / "current-cuda.json"
-    )
+    fresh_current_benchmark = _optional_json(args.output_dir / "benchmarks" / "current-cuda.json")
     if fresh_current_benchmark is not None:
         current_benchmark = fresh_current_benchmark
 
@@ -2036,12 +1893,8 @@ def report_all(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, An
                 "approved_precision_ci_high": current_oof.get(
                     "approved_precision_95ci", [None, None]
                 )[1],
-                "approved_false_rate_upper_95": current_oof.get(
-                    "approved_false_rate_upper_95"
-                ),
-                "approval_risk_control_satisfied": current_oof.get(
-                    "risk_control_satisfied"
-                ),
+                "approved_false_rate_upper_95": current_oof.get("approved_false_rate_upper_95"),
+                "approval_risk_control_satisfied": current_oof.get("risk_control_satisfied"),
                 "approval_coverage": current_oof.get("approval_coverage"),
                 "unknown_count": current_oof.get("unknown_count"),
                 "unknown_top3_accuracy": current_oof.get("unknown_top3_accuracy"),
@@ -2055,25 +1908,18 @@ def report_all(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, An
         )
     for sample_size in config["experiment"]["sample_sizes"]:
         evaluation = json.loads(
-            (
-                args.output_dir
-                / "runs"
-                / f"n{sample_size}"
-                / "crossfit_evaluation.json"
-            ).read_text(encoding="utf-8")
+            (args.output_dir / "runs" / f"n{sample_size}" / "crossfit_evaluation.json").read_text(
+                encoding="utf-8"
+            )
         )
-        benchmark = _optional_json(
-            args.output_dir / "benchmarks" / f"n{sample_size}-cuda.json"
-        )
+        benchmark = _optional_json(args.output_dir / "benchmarks" / f"n{sample_size}-cuda.json")
         parity = _optional_json(
             args.output_dir / "runs" / f"n{sample_size}" / "onnx_evaluation.json"
         )
         comparison.append(
             {
                 "condition": f"n{sample_size}",
-                "training_strategy": str(
-                    config["training"].get("strategy", "partial_finetune")
-                ),
+                "training_strategy": str(config["training"].get("strategy", "partial_finetune")),
                 "sample_size_per_class": int(sample_size),
                 "total_train_samples": int(sample_size)
                 * int(config["experiment"]["expected_num_classes"]),
@@ -2083,18 +1929,12 @@ def report_all(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, An
                 "approved_precision": evaluation["approved_precision"],
                 "approved_precision_ci_low": evaluation["approved_precision_95ci"][0],
                 "approved_precision_ci_high": evaluation["approved_precision_95ci"][1],
-                "approved_false_rate_upper_95": evaluation[
-                    "approved_false_rate_upper_95"
-                ],
-                "approval_risk_control_satisfied": evaluation[
-                    "approved_precision_gate_satisfied"
-                ],
+                "approved_false_rate_upper_95": evaluation["approved_false_rate_upper_95"],
+                "approval_risk_control_satisfied": evaluation["approved_precision_gate_satisfied"],
                 "approval_coverage": evaluation["approval_coverage_of_detections"],
                 "unknown_count": evaluation["unknown_count"],
                 "unknown_top3_accuracy": evaluation["unknown_top3_accuracy"],
-                "approved_image_precision": evaluation["frame_policy"][
-                    "approved_image_precision"
-                ],
+                "approved_image_precision": evaluation["frame_policy"]["approved_image_precision"],
                 "detector_recall": evaluation["detector"]["recall"],
                 "detector_precision": evaluation["detector"]["precision"],
                 "detector_count_accuracy": evaluation["detector"]["count_accuracy"],
@@ -2108,9 +1948,7 @@ def report_all(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, An
     difficulty_comparison = _optional_json(
         reports_dir / "bread_project_2" / "comparison-bread-project-2-emh.json"
     )
-    with (reports_dir / "comparison.csv").open(
-        "w", encoding="utf-8-sig", newline=""
-    ) as handle:
+    with (reports_dir / "comparison.csv").open("w", encoding="utf-8-sig", newline="") as handle:
         writer = csv.DictWriter(handle, fieldnames=list(comparison[0]))
         writer.writeheader()
         writer.writerows(comparison)
@@ -2131,9 +1969,7 @@ def report_all(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, An
         "production_package_metadata_sha256": sha256_file(
             args.production_package / "metadata.json"
         ),
-        "production_detector_sha256": sha256_file(
-            args.production_package / "detector.onnx"
-        ),
+        "production_detector_sha256": sha256_file(args.production_package / "detector.onnx"),
     }
     summary = {
         "schema_version": SCHEMA_VERSION,
@@ -2142,17 +1978,11 @@ def report_all(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, An
         "sample_sizes": config["experiment"]["sample_sizes"],
         "seed": config["experiment"]["seed"],
         "training_pool": "classification_aux_only",
-        "training_strategy": str(
-            config["training"].get("strategy", "partial_finetune")
-        ),
+        "training_strategy": str(config["training"].get("strategy", "partial_finetune")),
         "training_config": config["training"],
         "current_training": {
-            "auxiliary_total": sum(
-                int(row["auxiliary_images"]) for row in current_counts
-            ),
-            "development_roi_total": sum(
-                int(row["development_rois"]) for row in current_counts
-            ),
+            "auxiliary_total": sum(int(row["auxiliary_images"]) for row in current_counts),
+            "development_roi_total": sum(int(row["development_rois"]) for row in current_counts),
             "final_train_total": sum(
                 int(row["current_final_train_total"]) for row in current_counts
             ),
@@ -2217,10 +2047,7 @@ def report_all(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, An
         precision_ci = (
             "N/A"
             if row["approved_precision_ci_low"] is None
-            else (
-                f"{row['approved_precision_ci_low']:.2%}–"
-                f"{row['approved_precision_ci_high']:.2%}"
-            )
+            else (f"{row['approved_precision_ci_low']:.2%}–{row['approved_precision_ci_high']:.2%}")
         )
         lines.append(
             f"| {row['condition']} | {row['total_train_samples']} | "
@@ -2296,9 +2123,7 @@ def _verify_outputs(args: argparse.Namespace, config: dict[str, Any]) -> None:
         if missing:
             raise FileNotFoundError(f"n={sample_size} missing artifacts: {missing}")
     review = json.loads(
-        (args.output_dir / "prepared" / "selection_review.json").read_text(
-            encoding="utf-8"
-        )
+        (args.output_dir / "prepared" / "selection_review.json").read_text(encoding="utf-8")
     )
     if review["status"] != "approved" or review["test_accessed"]:
         raise RuntimeError("selection is not approved or test was accessed")

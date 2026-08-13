@@ -135,9 +135,7 @@ def test_detector_reports_separate_low_score_candidate():
     ],
     ids=("below-score", "below-area", "overlaps-accepted"),
 )
-def test_detector_ignores_unqualified_uncertainty_candidates(
-    candidate_logit, candidate_box
-):
+def test_detector_ignores_unqualified_uncertainty_candidates(candidate_logit, candidate_box):
     metadata = SimpleNamespace(
         input_size=(32, 32),
         mean=(0.0, 0.0, 0.0),
@@ -158,9 +156,7 @@ def test_detector_ignores_unqualified_uncertainty_candidates(
         def run(self, output_names, input_name, tensor):
             del output_names, input_name, tensor
             logits = np.asarray([[[3.0], [candidate_logit]]], dtype=np.float32)
-            boxes = np.asarray(
-                [[[0.25, 0.25, 0.2, 0.2], candidate_box]], dtype=np.float32
-            )
+            boxes = np.asarray([[[0.25, 0.25, 0.2, 0.2], candidate_box]], dtype=np.float32)
             return [logits, boxes]
 
     adapter = inference.OnnxDetector.__new__(inference.OnnxDetector)

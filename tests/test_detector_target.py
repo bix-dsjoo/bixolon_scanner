@@ -73,9 +73,7 @@ def test_prepare_records_missing_independence_as_non_promotion_evidence(tmp_path
 
     detector_target.prepare(args, {})
 
-    audit = json.loads(
-        (args.output_dir / "prepared" / "audit.json").read_text(encoding="utf-8")
-    )
+    audit = json.loads((args.output_dir / "prepared" / "audit.json").read_text(encoding="utf-8"))
     assert audit["test_accessed"] is False
     assert audit["sets"]["natural"]["promotion_evidence_ready"] is False
 
@@ -160,14 +158,10 @@ def test_classifier_cache_keeps_union_of_every_locked_nms_policy():
         0,
         1,
     ]
-    assert detector_target._classification_candidate_indices(
-        prediction, [0.5, 0.8]
-    ) == [0, 1, 2]
+    assert detector_target._classification_candidate_indices(prediction, [0.5, 0.8]) == [0, 1, 2]
 
 
-def test_parity_combines_strict_classifier_and_detector_provider_evidence(
-    monkeypatch, tmp_path
-):
+def test_parity_combines_strict_classifier_and_detector_provider_evidence(monkeypatch, tmp_path):
     output = tmp_path / "output"
     reports = output / "reports"
     package_hash = "a" * 64
@@ -242,9 +236,7 @@ def test_finalize_never_uses_manual_waiver(monkeypatch, tmp_path):
         {"promotion": {"maximum_full_path_p95_ms": 100.0}},
     )
 
-    report = json.loads(
-        (reports / "final-promotion.json").read_text(encoding="utf-8")
-    )
+    report = json.loads((reports / "final-promotion.json").read_text(encoding="utf-8"))
     assert report["promotion_status"] == "experiment_only"
     assert report["manual_waiver_allowed"] is False
     assert report["failures"] == ["detector_pass_risk_u95"]

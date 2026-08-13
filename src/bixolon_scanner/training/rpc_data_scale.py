@@ -35,11 +35,8 @@ from .rpc_worker_gate import (
     train_final_detector,
 )
 
-
 SCHEMA_VERSION = "2.0"
-CLASSIFIER_STAGE_SELECTION_POLICY = (
-    "calibration_risk_then_coverage_else_top3_top1_v2"
-)
+CLASSIFIER_STAGE_SELECTION_POLICY = "calibration_risk_then_coverage_else_top3_top1_v2"
 LEVELS = ("easy", "medium", "hard")
 TRAIN_NAME = re.compile(r"^(?P<barcode>.+)_camera(?P<camera>\d+)-")
 CHECKOUT_GROUP = re.compile(r"-(?P<group>\d+)\.[^.]+$")
@@ -81,13 +78,9 @@ def _write_json_durable(path: Path, value: Any) -> None:
         temporary.unlink(missing_ok=True)
 
 
-def _write_experiment_metadata(
-    path: Path, value: dict[str, Any], *, durable: bool = False
-) -> None:
+def _write_experiment_metadata(path: Path, value: dict[str, Any], *, durable: bool = False) -> None:
     """Persist experiment metadata without allowing a test seal downgrade."""
-    previous = (
-        json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
-    )
+    previous = json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
     if previous.get("test_accessed") is True:
         if value.get("test_accessed") is not True:
             raise ValueError("test-access seal cannot be downgraded or removed")
@@ -228,9 +221,15 @@ def _load_coco(
     if len(images) != len(payload["images"]):
         raise ValueError(f"{split} contains duplicate image ids")
     if verify_files:
-        missing = [row["file_name"] for row in images.values() if not (image_dir / row["file_name"]).is_file()]
+        missing = [
+            row["file_name"]
+            for row in images.values()
+            if not (image_dir / row["file_name"]).is_file()
+        ]
         if missing:
-            raise FileNotFoundError(f"{split} is missing {len(missing)} image files; first={missing[0]}")
+            raise FileNotFoundError(
+                f"{split} is missing {len(missing)} image files; first={missing[0]}"
+            )
 
     records: list[dict[str, Any]] = []
     annotation_ids: set[int] = set()
@@ -261,7 +260,9 @@ def _load_coco(
         if split == "train":
             match = TRAIN_NAME.match(image["file_name"])
             if match is None:
-                raise ValueError(f"train filename does not encode barcode/camera: {image['file_name']}")
+                raise ValueError(
+                    f"train filename does not encode barcode/camera: {image['file_name']}"
+                )
             record["barcode"] = match.group("barcode")
             record["camera"] = int(match.group("camera"))
         else:
@@ -508,12 +509,16 @@ def _extract_visual_embeddings(
             transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
         ]
     )
-    model = build_dino_classifier(
-        str(training["backbone_kind"]),
-        1,
-        weights_path=args.weights,
-        hub_repository=str(training["hub_repository"]),
-    ).backbone.to("cuda").eval()
+    model = (
+        build_dino_classifier(
+            str(training["backbone_kind"]),
+            1,
+            weights_path=args.weights,
+            hub_repository=str(training["hub_repository"]),
+        )
+        .backbone.to("cuda")
+        .eval()
+    )
     arrays: list[np.ndarray] = []
     roi_hashes: list[str] = []
     batch: list[Any] = []
@@ -553,7 +558,10 @@ def _render_sampling_audit(
     embeddings: np.ndarray,
     first_n: int,
 ) -> None:
-    by_id = {str(record["sample_id"]): (record, embeddings[index]) for index, record in enumerate(records)}
+    by_id = {
+        str(record["sample_id"]): (record, embeddings[index])
+        for index, record in enumerate(records)
+    }
     rows: list[dict[str, Any]] = []
     sheets_dir = output_dir / "prepared" / "sampling_contact_sheets"
     sheets_dir.mkdir(parents=True, exist_ok=True)
@@ -572,7 +580,9 @@ def _render_sampling_audit(
                     "category_id": int(category_id),
                     "sample_count": len(selected),
                     "min_pairwise_cosine_distance": float(triangle.min()) if len(triangle) else 0.0,
-                    "mean_pairwise_cosine_distance": float(triangle.mean()) if len(triangle) else 0.0,
+                    "mean_pairwise_cosine_distance": float(triangle.mean())
+                    if len(triangle)
+                    else 0.0,
                     "camera_count": len({int(value[0]["camera"]) for value in selected}),
                     "surface_count": len({str(value[0]["surface"]) for value in selected}),
                     "barcode_count": len({str(value[0]["barcode"]) for value in selected}),
@@ -587,7 +597,9 @@ def _render_sampling_audit(
                     original = source.convert("RGB")
                 x, y, width, height = [float(value) for value in record["bbox_xywh"]]
                 overlay = original.copy()
-                ImageDraw.Draw(overlay).rectangle((x, y, x + width, y + height), outline="red", width=8)
+                ImageDraw.Draw(overlay).rectangle(
+                    (x, y, x + width, y + height), outline="red", width=8
+                )
                 overlay.thumbnail((430, 220))
                 crop = _crop(original, list(record["bbox_xywh"]), 0.05)
                 crop.thumbnail((300, 220))
@@ -631,8 +643,10 @@ def _validation_partition(
         totals += vector
     target = totals / 2.0
     normalizer = np.maximum(target, 1.0)
+
     def digest(value: str) -> str:
         return hashlib.sha256(f"{seed}:{value}".encode()).hexdigest()
+
     order = sorted(grouped, key=lambda key: (-len(grouped[key]), digest(key)))
     allocations = {"calibration": np.zeros_like(totals), "selection": np.zeros_like(totals)}
     counts = {"calibration": 0, "selection": 0}
@@ -670,7 +684,9 @@ def _crop(image: Image.Image, bbox: list[float], margin: float) -> Image.Image:
     )
 
 
-def _cache_fingerprint(metadata: dict[str, Any], records: list[dict[str, Any]], options: dict[str, Any]) -> str:
+def _cache_fingerprint(
+    metadata: dict[str, Any], records: list[dict[str, Any]], options: dict[str, Any]
+) -> str:
     value = {
         "metadata": {
             "schema_version": metadata["schema_version"],
@@ -724,6 +740,7 @@ def _build_cache(
         cached["cache_row"] = row
         cached_records.append(cached)
         by_path[str(record["image_path"])].append((row, record))
+
     def process_image(item: tuple[str, list[tuple[int, dict[str, Any]]]]):
         image_path, entries = item
         with Image.open(dataset_root / image_path) as source:
@@ -793,9 +810,7 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
     detector_complete = args.output_dir / "detector" / "complete.json"
     if not detector_complete.is_file():
         raise FileNotFoundError("detector phase has not completed")
-    if not _detector_phase_complete(
-        args.output_dir / "detector", args.dataset_root, config
-    ):
+    if not _detector_phase_complete(args.output_dir / "detector", args.dataset_root, config):
         raise ValueError("detector complete marker or artifact checksum is invalid")
     _, categories = _load_coco(args.dataset_root, "train")
     expected_count = int(experiment_options["expected_num_classes"])
@@ -873,14 +888,10 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
         hard_negative_duplicates: dict[str, list[str]] = defaultdict(list)
         for record, digest in zip(hard_negative_records, hard_negative_hashes):
             if digest in positive_hashes:
-                hard_negative_duplicates["conflicts_with_positive"].append(
-                    str(record["sample_id"])
-                )
+                hard_negative_duplicates["conflicts_with_positive"].append(str(record["sample_id"]))
                 continue
             if digest in seen_hard_hashes:
-                hard_negative_duplicates["duplicate_hard_negative"].append(
-                    str(record["sample_id"])
-                )
+                hard_negative_duplicates["duplicate_hard_negative"].append(str(record["sample_id"]))
                 continue
             seen_hard_hashes.add(digest)
             selected_hard_negatives.append(record)
@@ -966,10 +977,7 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
         selected_train = [
             dict(train_by_id[sample_id], role="train") for sample_id in sorted(selected_ids)
         ]
-    partition = {
-        str(record["group_id"]): str(record["role"])
-        for record in val_records
-    }
+    partition = {str(record["group_id"]): str(record["role"]) for record in val_records}
     cache_records = selected_train + sorted(val_records, key=lambda row: row["sample_id"])
     source_hashes = {
         "instances_train2019.json": sha256_file(args.dataset_root / "instances_train2019.json"),
@@ -1000,9 +1008,7 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
         "positive_train_count": len(selected_train) - len(selected_hard_negatives)
         if full_dataset
         else len(selected_train),
-        "hard_negative_train_count": len(selected_hard_negatives)
-        if full_dataset
-        else 0,
+        "hard_negative_train_count": len(selected_hard_negatives) if full_dataset else 0,
         "validation_annotation_count": len(val_records),
         "validation_groups": partition,
         "orders": orders,
@@ -1063,15 +1069,19 @@ class RpcCachedDataset:
             raise ValueError("training crop scale minimum must be in (0, 1]")
         if not 0.0 < crop_ratio_min <= crop_ratio_max:
             raise ValueError("training crop ratio range is invalid")
-        augmentation = [
-            transforms.RandomRotation(180, fill=(255, 255, 255)),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15, hue=0.03),
-            transforms.RandomResizedCrop(
-                image_size,
-                scale=(crop_scale_min, 1.0),
-                ratio=(crop_ratio_min, crop_ratio_max),
-            ),
-        ] if training else [transforms.Resize((image_size, image_size))]
+        augmentation = (
+            [
+                transforms.RandomRotation(180, fill=(255, 255, 255)),
+                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15, hue=0.03),
+                transforms.RandomResizedCrop(
+                    image_size,
+                    scale=(crop_scale_min, 1.0),
+                    ratio=(crop_ratio_min, crop_ratio_max),
+                ),
+            ]
+            if training
+            else [transforms.Resize((image_size, image_size))]
+        )
         self.transform = transforms.Compose(
             augmentation
             + [
@@ -1204,7 +1214,9 @@ def evaluate_logits(
     levels = predictions["levels"].astype(str)
     groups = predictions["groups"].astype(str)
     image_ids = predictions.get("image_ids", np.arange(len(targets))).astype(np.int64)
-    touches_border = predictions.get("touches_border", np.zeros(len(targets), dtype=bool)).astype(bool)
+    touches_border = predictions.get("touches_border", np.zeros(len(targets), dtype=bool)).astype(
+        bool
+    )
     probabilities = softmax(logits, float(calibration["temperature"]))
     predicted = probabilities.argmax(axis=1)
     matched = targets >= 0
@@ -1244,13 +1256,9 @@ def evaluate_logits(
         mask = metric & (levels == level)
         level_unknown_matched = unknown & matched & (levels == level)
         if level_unknown_matched.any():
-            level_unknown_top = np.argsort(
-                -probabilities[level_unknown_matched], axis=1
-            )[:, :3]
+            level_unknown_top = np.argsort(-probabilities[level_unknown_matched], axis=1)[:, :3]
             candidate_in_count = int(
-                np.any(
-                    level_unknown_top == targets[level_unknown_matched, None], axis=1
-                ).sum()
+                np.any(level_unknown_top == targets[level_unknown_matched, None], axis=1).sum()
             )
         else:
             candidate_in_count = 0
@@ -1260,7 +1268,9 @@ def evaluate_logits(
         difficulty[level] = {
             "sample_count": int(mask.sum()),
             "top1_accuracy": float(correct[mask].mean()) if mask.any() else None,
-            "top3_accuracy": topk_accuracy(probabilities[mask], targets[mask]) if mask.any() else None,
+            "top3_accuracy": topk_accuracy(probabilities[mask], targets[mask])
+            if mask.any()
+            else None,
             "recognition_rate": float(correct[mask].mean()) if mask.any() else None,
             "candidate_sample_count": int(level_unknown_matched.sum()),
             "candidate_in_count": candidate_in_count,
@@ -1269,8 +1279,7 @@ def evaluate_logits(
                 if level_unknown_matched.any()
                 else None
             ),
-            "candidate_out_count": int(level_unknown_matched.sum())
-            - candidate_in_count,
+            "candidate_out_count": int(level_unknown_matched.sum()) - candidate_in_count,
             "candidate_out_rate": (
                 1.0 - candidate_in_count / int(level_unknown_matched.sum())
                 if level_unknown_matched.any()
@@ -1279,9 +1288,7 @@ def evaluate_logits(
             "approved_count": level_approved_count,
             "misrecognition_count": level_misrecognized,
             "misrecognition_rate": (
-                level_misrecognized / level_approved_count
-                if level_approved_count
-                else 0.0
+                level_misrecognized / level_approved_count if level_approved_count else 0.0
             ),
             "processing_speed_p95_ms": None,
         }
@@ -1303,7 +1310,9 @@ def evaluate_logits(
         "matched_sample_count": int(metric.sum()),
         "unmatched_detector_count": int((normal & ~matched).sum()),
         "classifier_border_recapture_images": len(recapture_image_ids),
-        "classifier_border_recapture_image_ids": sorted(int(value) for value in recapture_image_ids),
+        "classifier_border_recapture_image_ids": sorted(
+            int(value) for value in recapture_image_ids
+        ),
         "overall_top1_accuracy": float(correct[metric].mean()),
         "overall_top3_accuracy": topk_accuracy(probabilities[metric], targets[metric]),
         "macro_top1_accuracy": float(np.mean(class_top1)),
@@ -1340,17 +1349,25 @@ def evaluate_logits(
 def _ground_truth_worker_outcomes(
     classifier_report: dict[str, Any], detector_report: dict[str, Any], *, role: str | None
 ) -> dict[str, Any]:
-    outcomes = detector_report["validation_image_outcomes"] if role is not None else detector_report["outcomes"]
+    outcomes = (
+        detector_report["validation_image_outcomes"]
+        if role is not None
+        else detector_report["outcomes"]
+    )
     if role is not None:
         outcomes = [row for row in outcomes if row["role"] == role]
-    border_ids = {int(value) for value in classifier_report["classifier_border_recapture_image_ids"]}
+    border_ids = {
+        int(value) for value in classifier_report["classifier_border_recapture_image_ids"]
+    }
     static_recapture = [row for row in outcomes if row["recapture_reasons"]]
     border_recapture = [
-        row for row in outcomes
+        row
+        for row in outcomes
         if not row["recapture_reasons"] and int(row["image_id"]) in border_ids
     ]
     unblocked = [
-        row for row in outcomes
+        row
+        for row in outcomes
         if not row["recapture_reasons"] and int(row["image_id"]) not in border_ids
     ]
     counts = {
@@ -1390,17 +1407,11 @@ def _difficulty_worker_metrics(
     role: str,
 ) -> dict[str, dict[str, Any]]:
     """Join classifier KPIs with detector misses using fixed difficulty denominators."""
-    outcomes = [
-        row
-        for row in detector_report["validation_image_outcomes"]
-        if row["role"] == role
-    ]
+    outcomes = [row for row in detector_report["validation_image_outcomes"] if row["role"] == role]
     result: dict[str, dict[str, Any]] = {}
     for level in LEVELS:
         level_outcomes = [row for row in outcomes if row["level"] == level]
-        ground_truth_count = sum(
-            int(row["ground_truth_count"]) for row in level_outcomes
-        )
+        ground_truth_count = sum(int(row["ground_truth_count"]) for row in level_outcomes)
         missed_count = sum(int(row["missed_count"]) for row in level_outcomes)
         metrics = dict(classifier_report["difficulty"][level])
         metrics.update(
@@ -1430,16 +1441,14 @@ def evaluate_worker_taxonomy(
     logits = predictions["logits"]
     targets = predictions["targets"].astype(np.int64)
     image_ids = predictions["image_ids"].astype(np.int64)
-    touches_border = predictions.get(
-        "touches_border", np.zeros(len(targets), dtype=bool)
-    ).astype(bool)
+    touches_border = predictions.get("touches_border", np.zeros(len(targets), dtype=bool)).astype(
+        bool
+    )
     probabilities = softmax(logits, float(calibration["temperature"]))
     predicted = probabilities.argmax(axis=1)
     confidence = probabilities.max(axis=1)
     if (segment_quality_scores is None) != (segment_quality_threshold is None):
-        raise ValueError(
-            "segment quality scores and threshold must be provided together"
-        )
+        raise ValueError("segment quality scores and threshold must be provided together")
     if segment_quality_scores is None:
         quality_recapture = np.zeros(len(targets), dtype=bool)
     else:
@@ -1455,23 +1464,15 @@ def evaluate_worker_taxonomy(
             raise ValueError("force unknown mask must align with predictions")
     approval_enabled = bool(calibration["risk_control_satisfied"])
     threshold = float(calibration["approval_threshold"])
-    outcomes = [
-        row
-        for row in detector_report["validation_image_outcomes"]
-        if row["role"] == role
-    ]
+    outcomes = [row for row in detector_report["validation_image_outcomes"] if row["role"] == role]
     result: dict[str, dict[str, Any]] = {}
     for level in LEVELS:
         level_outcomes = [row for row in outcomes if row["level"] == level]
         level_image_ids = {int(row["image_id"]) for row in level_outcomes}
         image_recapture_ids = {
-            int(row["image_id"])
-            for row in level_outcomes
-            if row["recapture_reasons"]
+            int(row["image_id"]) for row in level_outcomes if row["recapture_reasons"]
         }
-        level_detection = np.asarray(
-            [int(image_id) in level_image_ids for image_id in image_ids]
-        )
+        level_detection = np.asarray([int(image_id) in level_image_ids for image_id in image_ids])
         image_normal = np.asarray(
             [int(image_id) not in image_recapture_ids for image_id in image_ids]
         )
@@ -1480,9 +1481,7 @@ def evaluate_worker_taxonomy(
             & image_normal
             & ((touches_border & (confidence < threshold)) | quality_recapture)
         )
-        recognition_target = (
-            level_detection & image_normal & ~segment_recapture & (targets >= 0)
-        )
+        recognition_target = level_detection & image_normal & ~segment_recapture & (targets >= 0)
         approved = (
             level_detection
             & image_normal
@@ -1498,40 +1497,25 @@ def evaluate_worker_taxonomy(
         unknown = recognition_target & ~approved
         if unknown.any():
             unknown_top3 = np.argsort(-probabilities[unknown], axis=1)[:, :3]
-            top3_in_count = int(
-                np.any(unknown_top3 == targets[unknown, None], axis=1).sum()
-            )
+            top3_in_count = int(np.any(unknown_top3 == targets[unknown, None], axis=1).sum())
         else:
             top3_in_count = 0
-        non_image_recapture = [
-            row for row in level_outcomes if not row["recapture_reasons"]
-        ]
-        ground_truth_count = sum(
-            int(row["ground_truth_count"]) for row in level_outcomes
-        )
+        non_image_recapture = [row for row in level_outcomes if not row["recapture_reasons"]]
+        ground_truth_count = sum(int(row["ground_truth_count"]) for row in level_outcomes)
         recognition_count = int(recognition_target.sum())
         approved_count = int(approved.sum())
-        detected_non_image_recapture = int(
-            (level_detection & image_normal).sum()
-        )
+        detected_non_image_recapture = int((level_detection & image_normal).sum())
         missed_count = sum(int(row["missed_count"]) for row in non_image_recapture)
-        non_recapture_gt_count = sum(
-            int(row["ground_truth_count"]) for row in non_image_recapture
-        )
-        unmatched_count = int(
-            (level_detection & image_normal & (targets < 0)).sum()
-        )
+        non_recapture_gt_count = sum(int(row["ground_truth_count"]) for row in non_image_recapture)
+        unmatched_count = int((level_detection & image_normal & (targets < 0)).sum())
         segment_recapture_image_ids = set(
             int(value) for value in image_ids[segment_recapture].tolist()
         )
         approved_unmatched_image_ids = set(
-            int(value)
-            for value in image_ids[approved & (targets < 0)].tolist()
+            int(value) for value in image_ids[approved & (targets < 0)].tolist()
         )
         segmentation_failure_image_ids = (
-            image_recapture_ids
-            | segment_recapture_image_ids
-            | approved_unmatched_image_ids
+            image_recapture_ids | segment_recapture_image_ids | approved_unmatched_image_ids
         )
         result[level] = {
             "image_count": len(level_outcomes),
@@ -1539,9 +1523,7 @@ def evaluate_worker_taxonomy(
             "recognition_target_count": recognition_count,
             "correct_approved_count": int(correct_approved.sum()),
             "recognition_rate": (
-                int(correct_approved.sum()) / recognition_count
-                if recognition_count
-                else None
+                int(correct_approved.sum()) / recognition_count if recognition_count else None
             ),
             "approved_count": approved_count,
             "wrong_approved_count": int(wrong_approved.sum()),
@@ -1550,14 +1532,10 @@ def evaluate_worker_taxonomy(
             ),
             "unknown_count": int(unknown.sum()),
             "unknown_top3_in_count": top3_in_count,
-            "unknown_top3_in_rate": (
-                top3_in_count / int(unknown.sum()) if unknown.any() else None
-            ),
+            "unknown_top3_in_rate": (top3_in_count / int(unknown.sum()) if unknown.any() else None),
             "image_recapture_count": len(image_recapture_ids),
             "image_recapture_rate": (
-                len(image_recapture_ids) / len(level_outcomes)
-                if level_outcomes
-                else None
+                len(image_recapture_ids) / len(level_outcomes) if level_outcomes else None
             ),
             "segment_recapture_count": int(segment_recapture.sum()),
             "segment_recapture_image_count": len(segment_recapture_image_ids),
@@ -1568,9 +1546,7 @@ def evaluate_worker_taxonomy(
             ),
             "segmentation_missed_count": missed_count,
             "segmentation_missed_rate": (
-                missed_count / non_recapture_gt_count
-                if non_recapture_gt_count
-                else None
+                missed_count / non_recapture_gt_count if non_recapture_gt_count else None
             ),
             "segmentation_false_positive_count": unmatched_count,
             "segmentation_false_positive_rate": (
@@ -1578,21 +1554,15 @@ def evaluate_worker_taxonomy(
                 if detected_non_image_recapture
                 else None
             ),
-            "approved_unmatched_image_count": len(
-                approved_unmatched_image_ids
-            ),
-            "segmentation_failure_image_count": len(
-                segmentation_failure_image_ids
-            ),
+            "approved_unmatched_image_count": len(approved_unmatched_image_ids),
+            "segmentation_failure_image_count": len(segmentation_failure_image_ids),
             "segmentation_failure_image_rate": (
                 len(segmentation_failure_image_ids) / len(level_outcomes)
                 if level_outcomes
                 else None
             ),
             "end_to_end_success_rate": (
-                int(correct_approved.sum()) / ground_truth_count
-                if ground_truth_count
-                else None
+                int(correct_approved.sum()) / ground_truth_count if ground_truth_count else None
             ),
             "processing_time_mean_ms": None,
             "processing_time_p95_ms": None,
@@ -1623,9 +1593,7 @@ def _checkpoint(
             "source_weight_sha256": sha256_file(weights),
             "num_classes": category_count,
             "image_size": int(training["image_size"]),
-            "classifier_head_kind": str(
-                training.get("classifier_head_kind", "linear")
-            ),
+            "classifier_head_kind": str(training.get("classifier_head_kind", "linear")),
             "cosine_scale": float(training.get("cosine_scale", 16.0)),
             "stage": stage,
             "metrics": metrics,
@@ -1699,9 +1667,7 @@ def _load_stage_progress(
         and int(payload.get("total_epochs", -1)) == total_epochs
         and payload.get("sample_size") == sample_size
         and int(payload.get("seed", -1)) == seed
-        and (
-            run_fingerprint is None or payload.get("run_fingerprint") == run_fingerprint
-        )
+        and (run_fingerprint is None or payload.get("run_fingerprint") == run_fingerprint)
     )
     if not identity:
         raise ValueError(f"stage progress identity mismatch: {path}")
@@ -1739,7 +1705,10 @@ def _run_complete(
         completion = json.loads((run_dir / "complete.json").read_text(encoding="utf-8"))
         if completion.get("complete") is not True:
             return False
-        if expected_fingerprint is not None and completion.get("run_fingerprint") != expected_fingerprint:
+        if (
+            expected_fingerprint is not None
+            and completion.get("run_fingerprint") != expected_fingerprint
+        ):
             return False
         for filename, expected_hash in completion.get("artifact_sha256", {}).items():
             artifact = run_dir / str(filename)
@@ -1793,9 +1762,7 @@ def _classifier_training_loss(
         )
         components.append(positive_loss)
     if negative.any():
-        negative_loss = -torch.nn.functional.log_softmax(
-            logits[negative], dim=1
-        ).mean()
+        negative_loss = -torch.nn.functional.log_softmax(logits[negative], dim=1).mean()
         components.append(hard_negative_loss_weight * negative_loss)
     if not components:
         raise RuntimeError("classifier batch has no trainable samples")
@@ -1825,18 +1792,14 @@ def _classifier_domain_split(
         dict(
             record,
             role=(
-                "checkout_adaptation"
-                if int(record["target"]) >= 0
-                else "checkout_hard_negative"
+                "checkout_adaptation" if int(record["target"]) >= 0 else "checkout_hard_negative"
             ),
         )
         for record in calibration_records
         if str(record["group_id"]) in adaptation_groups
     ]
     risk_calibration = [
-        record
-        for record in calibration_records
-        if str(record["group_id"]) not in adaptation_groups
+        record for record in calibration_records if str(record["group_id"]) not in adaptation_groups
     ]
     return adaptation, risk_calibration
 
@@ -1863,9 +1826,7 @@ def _train_one(
         if full_dataset
         else args.output_dir / "runs" / f"n{sample_size}" / f"seed{seed}"
     )
-    original_calibration_records = [
-        record for record in records if record["role"] == "calibration"
-    ]
+    original_calibration_records = [record for record in records if record["role"] == "calibration"]
     checkout_adaptation, calibration_records = _classifier_domain_split(
         original_calibration_records,
         fraction=float(training.get("checkout_adaptation_group_fraction", 0.0)),
@@ -1874,13 +1835,9 @@ def _train_one(
     selection_records = [record for record in records if record["role"] == "selection"]
     if full_dataset:
         train_records = [
-            record
-            for record in records
-            if record["role"] in {"train", "hard_negative"}
+            record for record in records if record["role"] in {"train", "hard_negative"}
         ] + checkout_adaptation
-        expected_train = int(metadata["train_union_count"]) + len(
-            checkout_adaptation
-        )
+        expected_train = int(metadata["train_union_count"]) + len(checkout_adaptation)
     else:
         orders = metadata["orders"][str(seed)]
         train_ids = {
@@ -1907,9 +1864,7 @@ def _train_one(
                 ],
                 "risk_calibration_sample_ids": [
                     str(record["sample_id"])
-                    for record in sorted(
-                        calibration_records, key=lambda row: str(row["sample_id"])
-                    )
+                    for record in sorted(calibration_records, key=lambda row: str(row["sample_id"]))
                 ],
                 "source_hashes": metadata["source_hashes"],
                 "training": training,
@@ -1924,10 +1879,7 @@ def _train_one(
     ).hexdigest()
     if args.resume and _run_complete(run_dir, len(selection_records), run_fingerprint):
         completed_run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-        if (
-            completed_run.get("stage_selection_policy")
-            == CLASSIFIER_STAGE_SELECTION_POLICY
-        ):
+        if completed_run.get("stage_selection_policy") == CLASSIFIER_STAGE_SELECTION_POLICY:
             print(json.dumps({"skipped_complete_run": str(run_dir)}), flush=True)
             return
         print(
@@ -1990,33 +1942,26 @@ def _train_one(
         checkout_positive = [
             record
             for record in train_records
-            if record["role"] == "checkout_adaptation"
-            and int(record["target"]) >= 0
+            if record["role"] == "checkout_adaptation" and int(record["target"]) >= 0
         ]
         source_positive = [
             record
             for record in train_records
             if record["role"] == "train" and int(record["target"]) >= 0
         ]
-        checkout_counts = Counter(
-            int(record["target"]) for record in checkout_positive
-        )
+        checkout_counts = Counter(int(record["target"]) for record in checkout_positive)
         source_counts = Counter(int(record["target"]) for record in source_positive)
         negative_count = sum(int(record["target"]) < 0 for record in train_records)
         negative_fraction = float(training.get("hard_negative_batch_fraction", 0.25))
         if negative_count and not 0.0 < negative_fraction < 1.0:
             raise ValueError("hard-negative batch fraction must be between zero and one")
-        checkout_fraction = float(
-            training.get("checkout_adaptation_batch_fraction", 0.0)
-        )
+        checkout_fraction = float(training.get("checkout_adaptation_batch_fraction", 0.0))
         if checkout_positive and not 0.0 < checkout_fraction < 1.0 - negative_fraction:
             raise ValueError("checkout adaptation batch fraction is invalid")
         source_fraction = 1.0 - negative_fraction - checkout_fraction
         if source_fraction <= 0.0 or not source_counts:
             raise ValueError("source-positive batch fraction is invalid")
-        checkout_class_mass = (
-            checkout_fraction / len(checkout_counts) if checkout_counts else 0.0
-        )
+        checkout_class_mass = checkout_fraction / len(checkout_counts) if checkout_counts else 0.0
         source_class_mass = source_fraction / len(source_counts)
         negative_mass = negative_fraction / negative_count if negative_count else 0.0
         sample_weights = torch.as_tensor(
@@ -2122,7 +2067,11 @@ def _train_one(
             progress_path.unlink(missing_ok=True)
             print(
                 json.dumps(
-                    {"run": "full" if full_dataset else f"n{sample_size}", "seed": seed, "resumed_complete_stage": name}
+                    {
+                        "run": "full" if full_dataset else f"n{sample_size}",
+                        "seed": seed,
+                        "resumed_complete_stage": name,
+                    }
                 ),
                 flush=True,
             )
@@ -2186,9 +2135,7 @@ def _train_one(
                         hard_negative_loss_weight=float(
                             training.get("hard_negative_loss_weight", 0.5)
                         ),
-                        label_smoothing=float(
-                            training.get("label_smoothing", 0.05)
-                        ),
+                        label_smoothing=float(training.get("label_smoothing", 0.05)),
                     )
                     if positive_loss is not None:
                         positive_losses.append(float(positive_loss.detach().cpu()))
@@ -2203,9 +2150,7 @@ def _train_one(
                 "stage": name,
                 "epoch": epoch + 1,
                 "training_loss": float(np.mean(losses)),
-                "positive_loss": (
-                    float(np.mean(positive_losses)) if positive_losses else None
-                ),
+                "positive_loss": (float(np.mean(positive_losses)) if positive_losses else None),
                 "hard_negative_loss": (
                     float(np.mean(negative_losses)) if negative_losses else None
                 ),
@@ -2274,9 +2219,7 @@ def _train_one(
     )
     frozen_metrics = stage_results["frozen"]
     partial_metrics = stage_results["partial"]
-    use_partial = _classifier_stage_rank(partial_metrics) > _classifier_stage_rank(
-        frozen_metrics
-    )
+    use_partial = _classifier_stage_rank(partial_metrics) > _classifier_stage_rank(frozen_metrics)
     selected_stage = "partial" if use_partial else "frozen"
     selected_path = partial_path if use_partial else frozen_path
     if not use_partial:
@@ -2316,9 +2259,7 @@ def _train_one(
         "sample_size_per_class": sample_size,
         "seed": seed,
         "train_sample_count": len(train_records),
-        "positive_train_sample_count": sum(
-            int(record["target"]) >= 0 for record in train_records
-        ),
+        "positive_train_sample_count": sum(int(record["target"]) >= 0 for record in train_records),
         "hard_negative_train_sample_count": sum(
             int(record["target"]) < 0 for record in train_records
         ),
@@ -2470,23 +2411,14 @@ def _post_test_locked_full_summary(
     final_complete_path = args.output_dir / "detector" / "final" / "complete.json"
     expected_detector_lock = {
         "rpc_config_sha256": final_complete["config_sha256"],
-        "active_detector_complete_sha256": final_complete[
-            "active_detector_complete_sha256"
-        ],
-        "active_detector_threshold_sha256": final_complete[
-            "active_threshold_sha256"
-        ],
-        "detector_train_gate_complete_sha256": final_complete[
-            "train_gate_complete_sha256"
-        ],
+        "active_detector_complete_sha256": final_complete["active_detector_complete_sha256"],
+        "active_detector_threshold_sha256": final_complete["active_threshold_sha256"],
+        "detector_train_gate_complete_sha256": final_complete["train_gate_complete_sha256"],
         "final_detector_complete_sha256": sha256_file(final_complete_path),
-        "final_detector_checkpoint_sha256": final_complete[
-            "stage_a_checkpoint_sha256"
-        ],
+        "final_detector_checkpoint_sha256": final_complete["stage_a_checkpoint_sha256"],
         "operational_detector_role": "checkout_baseline_val_all_operational",
         "train_gate_role": "offline_roi_train_gate_only",
     }
-
 
     if (
         any(lock.get(key) != value for key, value in expected_detector_lock.items())
@@ -2602,18 +2534,14 @@ def _summarize_full_dataset(args: argparse.Namespace, config: dict[str, Any]) ->
         summary["final_detector"] = {
             "contract": final_detector_complete["contract"],
             "base_epochs": final_detector_complete["base_epochs"],
-            "checkpoint_sha256": final_detector_complete[
-                "stage_a_checkpoint_sha256"
-            ],
+            "checkpoint_sha256": final_detector_complete["stage_a_checkpoint_sha256"],
             "complete_sha256": sha256_file(final_detector_complete_path),
         }
     reports_dir = args.output_dir / "reports"
     summary_path = reports_dir / "selection_summary.json"
     _write_json(summary_path, summary)
     reports_dir.mkdir(parents=True, exist_ok=True)
-    with (reports_dir / "selection_runs.csv").open(
-        "w", encoding="utf-8-sig", newline=""
-    ) as handle:
+    with (reports_dir / "selection_runs.csv").open("w", encoding="utf-8-sig", newline="") as handle:
         row = {
             "mode": "full_dataset",
             "seed": seed,
@@ -2641,9 +2569,7 @@ def _summarize_full_dataset(args: argparse.Namespace, config: dict[str, Any]) ->
         f"- calibration risk-control: `{calibration['risk_control_satisfied']}`",
         f"- UNKNOWN Top-3: `{unknown_display}`",
     ]
-    (reports_dir / "selection_summary.md").write_text(
-        "\n".join(lines) + "\n", encoding="utf-8"
-    )
+    (reports_dir / "selection_summary.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
     lock = {
         "schema_version": SCHEMA_VERSION,
         "mode": "full_dataset",
@@ -2670,9 +2596,7 @@ def _summarize_full_dataset(args: argparse.Namespace, config: dict[str, Any]) ->
                 "detector_train_gate_complete_sha256": final_detector_complete[
                     "train_gate_complete_sha256"
                 ],
-                "final_detector_complete_sha256": sha256_file(
-                    final_detector_complete_path
-                ),
+                "final_detector_complete_sha256": sha256_file(final_detector_complete_path),
                 "final_detector_checkpoint_sha256": final_detector_complete[
                     "stage_a_checkpoint_sha256"
                 ],
@@ -2883,11 +2807,9 @@ def _post_test_locked_final_result(
     _post_test_locked_full_summary(args, config, metadata)
     final_path = args.output_dir / "reports" / "final_test.json"
     detector_report_path = args.output_dir / "test" / "detector_report.json"
-    if (
-        metadata.get("final_test_report_sha256") != sha256_file(final_path)
-        or metadata.get("final_test_detector_report_sha256")
-        != sha256_file(detector_report_path)
-    ):
+    if metadata.get("final_test_report_sha256") != sha256_file(final_path) or metadata.get(
+        "final_test_detector_report_sha256"
+    ) != sha256_file(detector_report_path):
         raise ValueError("post-test result seal is missing or invalid")
     final = json.loads(final_path.read_text(encoding="utf-8"))
     detector_report = json.loads(detector_report_path.read_text(encoding="utf-8"))
@@ -2902,16 +2824,11 @@ def _post_test_locked_final_result(
     expected_detector = {
         "model_lock_sha256": sha256_file(lock_path),
         "detector_checkpoint_sha256": lock["final_detector_checkpoint_sha256"],
-        "final_detector_complete_sha256": lock[
-            "final_detector_complete_sha256"
-        ],
-        "active_detector_threshold_sha256": lock[
-            "active_detector_threshold_sha256"
-        ],
+        "final_detector_complete_sha256": lock["final_detector_complete_sha256"],
+        "active_detector_threshold_sha256": lock["active_detector_threshold_sha256"],
     }
     if any(final.get(key) != value for key, value in expected_final.items()) or any(
-        detector_report.get(key) != value
-        for key, value in expected_detector.items()
+        detector_report.get(key) != value for key, value in expected_detector.items()
     ):
         raise ValueError("post-test result is not bound to the immutable model lock")
     return final
@@ -2947,9 +2864,8 @@ def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str,
             if sha256_file(locked_run_dir / filename) != lock[key]:
                 raise ValueError(f"model lock checksum mismatch: {filename}")
         summary_path = args.output_dir / "reports" / "selection_summary.json"
-        if (
-            not summary_path.is_file()
-            or sha256_file(summary_path) != lock.get("selection_summary_sha256")
+        if not summary_path.is_file() or sha256_file(summary_path) != lock.get(
+            "selection_summary_sha256"
         ):
             raise ValueError("model lock checksum mismatch: selection_summary.json")
         summary = json.loads(summary_path.read_text(encoding="utf-8"))
@@ -2961,9 +2877,7 @@ def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str,
     metadata_path = args.output_dir / "prepared" / "experiment.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     if metadata.get("test_accessed") is True:
-        return _post_test_locked_final_result(
-            args, config, metadata, lock_path
-        )
+        return _post_test_locked_final_result(args, config, metadata, lock_path)
 
     def seal_test_access() -> None:
         if not metadata.get("test_accessed", False):
@@ -3093,12 +3007,8 @@ def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str,
     else:
         final["selected_n"] = int(selected_n)
     final["model_lock_sha256"] = sha256_file(lock_path)
-    final["detector_report_sha256"] = sha256_file(
-        args.output_dir / "test" / "detector_report.json"
-    )
-    final["detector_checkpoint_sha256"] = detector_test_report[
-        "detector_checkpoint_sha256"
-    ]
+    final["detector_report_sha256"] = sha256_file(args.output_dir / "test" / "detector_report.json")
+    final["detector_checkpoint_sha256"] = detector_test_report["detector_checkpoint_sha256"]
     reports_dir = args.output_dir / "reports"
     _write_json(reports_dir / "final_test.json", final)
     lines = ["# RPC Classifier 최종 test 평가", ""]
@@ -3117,9 +3027,7 @@ def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str,
         ]
     )
     (reports_dir / "final_test.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
-    metadata["final_test_report_sha256"] = sha256_file(
-        reports_dir / "final_test.json"
-    )
+    metadata["final_test_report_sha256"] = sha256_file(reports_dir / "final_test.json")
     metadata["final_test_detector_report_sha256"] = sha256_file(
         args.output_dir / "test" / "detector_report.json"
     )
@@ -3128,7 +3036,9 @@ def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str,
 
 
 def _parse_args() -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Run the isolated RPC classifier data-scale experiment")
+    parser = argparse.ArgumentParser(
+        description="Run the isolated RPC classifier data-scale experiment"
+    )
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--weights", type=Path, required=True)

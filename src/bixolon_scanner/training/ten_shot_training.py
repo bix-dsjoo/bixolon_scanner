@@ -102,9 +102,17 @@ def validate_feature_cache(
     if spec.use_local_features:
         patches = np.asarray(patch_features)
         support_patches = np.asarray(support_patch_features)
-        if patches.ndim != 3 or patches.shape[0] != len(values) or patches.shape[2] != spec.hidden_size:
+        if (
+            patches.ndim != 3
+            or patches.shape[0] != len(values)
+            or patches.shape[2] != spec.hidden_size
+        ):
             raise ValueError("training patch features have the wrong shape")
-        if support_patches.ndim != 3 or support_patches.shape[0] != len(support) or support_patches.shape[2] != spec.hidden_size:
+        if (
+            support_patches.ndim != 3
+            or support_patches.shape[0] != len(support)
+            or support_patches.shape[2] != spec.hidden_size
+        ):
             raise ValueError("support patch features have the wrong shape")
     if support_proxy_ids is not None:
         proxy_ids = np.asarray(support_proxy_ids)
@@ -144,17 +152,13 @@ def train_adapter_head(
     torch = require_torch()
     _seed_everything(config.seed)
     head = build_residual_cosine_head(spec).to(device)
-    head.initialize_class_weights_from_support(
-        support_features, support_labels, support_proxy_ids
-    )
+    head.initialize_class_weights_from_support(support_features, support_labels, support_proxy_ids)
     values = torch.as_tensor(features, dtype=torch.float32)
     targets = torch.as_tensor(labels, dtype=torch.long)
     sources = torch.as_tensor(source_indices, dtype=torch.long)
     patches = None
     if spec.use_local_features:
-        patches = torch.from_numpy(
-            np.array(patch_features, dtype=np.float32, copy=True)
-        )
+        patches = torch.from_numpy(np.array(patch_features, dtype=np.float32, copy=True))
         dataset = torch.utils.data.TensorDataset(values, targets, sources, patches)
     else:
         dataset = torch.utils.data.TensorDataset(values, targets, sources)
@@ -185,12 +189,8 @@ def train_adapter_head(
             batch_labels = batch_labels.to(device)
             batch_sources = batch_sources.to(device)
             optimizer.zero_grad(set_to_none=True)
-            logits, adapted = head.training_logits(
-                batch_features, batch_labels, batch_patches
-            )
-            per_sample = torch.nn.functional.cross_entropy(
-                logits, batch_labels, reduction="none"
-            )
+            logits, adapted = head.training_logits(batch_features, batch_labels, batch_patches)
+            per_sample = torch.nn.functional.cross_entropy(logits, batch_labels, reduction="none")
             # Each original SHA receives equal total weight even when a future
             # cache contains a different number of accepted synthetic views.
             unique_sources, inverse, counts = torch.unique(

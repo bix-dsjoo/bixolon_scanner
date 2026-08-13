@@ -12,7 +12,6 @@ from ..package import load_model_package
 from .evaluate_difficulty import _load_records
 from .render_detection_overlays import _contact_sheet, _font, _label, _xywh
 
-
 GT_COLOR = (40, 220, 80)
 PRED_COLOR = (0, 180, 255)
 CLIPPED_COLOR = (255, 0, 200)
@@ -29,9 +28,7 @@ def render(args: argparse.Namespace) -> list[Path]:
         and "DETECTOR_BORDER_CLIPPED" in row["reason_codes"].split("|")
     }
     package = load_model_package(args.package_dir)
-    detector, _, _ = build_onnx_adapters(
-        package, args.provider, cuda_dll_dir=args.cuda_dll_dir
-    )
+    detector, _, _ = build_onnx_adapters(package, args.provider, cuda_dll_dir=args.cuda_dll_dir)
     records = {
         record["image_path"].resolve(): record for record in _load_records(args.dataset_root)
     }
@@ -64,7 +61,9 @@ def render(args: argparse.Namespace) -> list[Path]:
             box = _xywh([float(value) for value in annotation["bbox"]])
             draw.rectangle(box, outline=GT_COLOR, width=line_width)
             class_id = f"bread_{int(annotation['category_id']):02d}"
-            _label(draw, (box[0] + line_width, box[1] + line_width), f"GT {class_id}", GT_COLOR, font)
+            _label(
+                draw, (box[0] + line_width, box[1] + line_width), f"GT {class_id}", GT_COLOR, font
+            )
 
         clipped_count = 0
         for detection in result.detections:
@@ -95,13 +94,18 @@ def render(args: argparse.Namespace) -> list[Path]:
         legend_font = _font(max(20, round(min(width, height) / 95)))
         legend = [
             (CLIPPED_COLOR, "MAGENTA: bbox that triggered RECAPTURE"),
-            (SAFE_BORDER_COLOR, f"YELLOW: safe boundary ({package.metadata.quality.border_margin_ratio:.3%})"),
+            (
+                SAFE_BORDER_COLOR,
+                f"YELLOW: safe boundary ({package.metadata.quality.border_margin_ratio:.3%})",
+            ),
             (GT_COLOR, "GREEN: ground-truth bbox"),
             (PRED_COLOR, "BLUE: other predicted bbox"),
         ]
         padding = line_width * 2
         legend_height = (legend_font.size + padding) * len(legend) + padding
-        legend_width = max(draw.textlength(text, font=legend_font) for _, text in legend) + padding * 3
+        legend_width = (
+            max(draw.textlength(text, font=legend_font) for _, text in legend) + padding * 3
+        )
         draw.rectangle((0, 0, legend_width, legend_height), fill=(0, 0, 0))
         for row_index, (color, text) in enumerate(legend):
             y = padding + row_index * (legend_font.size + padding)

@@ -81,7 +81,9 @@ def aggregate(args: argparse.Namespace) -> None:
         "match_iou_threshold": args.match_iou_threshold,
         "nms_iou_threshold": args.nms_threshold,
         "target_recall": args.target_recall,
-        "threshold_policy": "fixed" if fixed_threshold is not None else "selected_on_oof-development",
+        "threshold_policy": "fixed"
+        if fixed_threshold is not None
+        else "selected_on_oof-development",
         "selected_score_threshold": selected["score_threshold"],
         "target_recall_satisfied": selected["recall"] >= args.target_recall,
         "metrics": selected,
@@ -92,7 +94,9 @@ def aggregate(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Select one detector threshold from three OOF folds")
+    parser = argparse.ArgumentParser(
+        description="Select one detector threshold from three OOF folds"
+    )
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--model-version", default="0.1.0")
     parser.add_argument("--predictions", type=Path, nargs="+", required=True)

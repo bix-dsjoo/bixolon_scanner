@@ -98,12 +98,8 @@ def test_diverse_order_is_deterministic_and_uses_one_per_perceptual_group():
 
 def test_brightness_c2_frofa_is_seeded_and_channel_bounded():
     patches = np.asarray([[[0.0, 10.0], [1.0, 12.0], [2.0, 14.0]]], dtype=np.float32)
-    first = brightness_c2_frofa(
-        patches, magnitude=1.0, rng=np.random.default_rng(20260810)
-    )
-    second = brightness_c2_frofa(
-        patches, magnitude=1.0, rng=np.random.default_rng(20260810)
-    )
+    first = brightness_c2_frofa(patches, magnitude=1.0, rng=np.random.default_rng(20260810))
+    second = brightness_c2_frofa(patches, magnitude=1.0, rng=np.random.default_rng(20260810))
     assert np.array_equal(first, second)
     assert np.all(first >= patches.min(axis=1, keepdims=True))
     assert np.all(first <= patches.max(axis=1, keepdims=True))
@@ -202,8 +198,7 @@ def test_cosine_prototype_head_rejects_missing_class():
 
 def test_nested_order_validation_rejects_missing_or_duplicate_entries():
     orders = {
-        str(category): [f"{category}-{index}" for index in range(20)]
-        for category in range(1, 21)
+        str(category): [f"{category}-{index}" for index in range(20)] for category in range(1, 21)
     }
     validate_nested_orders(orders, category_count=20, sample_sizes=[5, 10, 15, 20])
     orders["3"][-1] = orders["3"][0]
@@ -229,10 +224,7 @@ def test_bread19_rotation_family_is_prioritized_before_reusing_source():
         for source in range(1, 7)
         for angle in (0, 90)
     ]
-    groups = [
-        _known_source_family(record, f"p{index}")
-        for index, record in enumerate(records)
-    ]
+    groups = [_known_source_family(record, f"p{index}") for index, record in enumerate(records)]
     embeddings = np.eye(len(records), dtype=np.float32)
     order = diverse_order(records, embeddings, groups, 10)
     assert len({groups[index] for index in order[:5]}) == 5
@@ -274,9 +266,7 @@ def _write_manifest_fixture(tmp_path: Path, *, overlap: bool = False):
         }
     )
     manifest = tmp_path / "manifest.jsonl"
-    manifest.write_text(
-        "".join(json.dumps(row) + "\n" for row in records), encoding="utf-8"
-    )
+    manifest.write_text("".join(json.dumps(row) + "\n" for row in records), encoding="utf-8")
     metadata = tmp_path / "metadata.json"
     metadata.write_text(
         json.dumps(

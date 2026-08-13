@@ -6,7 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 DIFFICULTIES = ("E", "M", "H", "ALL")
 
 
@@ -22,11 +21,7 @@ def _read_report(path: Path) -> dict[str, Any]:
 def flatten_report(condition: str, report: dict[str, Any]) -> list[dict[str, Any]]:
     rows: list[dict[str, Any]] = []
     for difficulty in DIFFICULTIES:
-        values = (
-            report["overall"]
-            if difficulty == "ALL"
-            else report["by_difficulty"][difficulty]
-        )
+        values = report["overall"] if difficulty == "ALL" else report["by_difficulty"][difficulty]
         statuses = values["response_status"]
         classified = int(values["classified_matched_boxes"])
         ground_truth = int(values["ground_truth_boxes"])
@@ -47,9 +42,7 @@ def flatten_report(condition: str, report: dict[str, Any]) -> list[dict[str, Any
                     "classifier_top1_accuracy_excluding_recapture",
                     values["rates"].get("top1_recognition_accuracy"),
                 ),
-                "unknown_top3_accuracy": values["rates"].get(
-                    "unknown_top3_accuracy"
-                ),
+                "unknown_top3_accuracy": values["rates"].get("unknown_top3_accuracy"),
                 "recognized_approved_correct": int(values["approved_correct"]),
                 "top3_candidate": int(values["unknown_top3_correct"]),
                 "candidate_out": int(values["unknown_top3_missing"]),

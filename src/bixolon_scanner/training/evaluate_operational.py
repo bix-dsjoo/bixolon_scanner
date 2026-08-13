@@ -52,7 +52,9 @@ def _run_package(
                 "actual_status": response.status.value,
                 "actual_reason_codes": response.reason_codes,
                 "classifier_executed": classifier_executed,
-                "decision_correct": continued if expected_continue else response.status.value == "RECAPTURE",
+                "decision_correct": continued
+                if expected_continue
+                else response.status.value == "RECAPTURE",
                 "expected_reason_matched": (
                     not record["expected_reason_codes"]
                     or bool(set(record["expected_reason_codes"]) & set(response.reason_codes))
@@ -144,8 +146,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
                 and candidate["normal_continue_rate"] >= required_continue_rate
             ),
             "recapture_recall_gate_satisfied": (
-                candidate["recapture_recall"] is not None
-                and candidate["recapture_recall"] >= 0.99
+                candidate["recapture_recall"] is not None and candidate["recapture_recall"] >= 0.99
             ),
             "strict_false_recapture_reduction": strict_reduction,
             "decision_gate_satisfied": decision_gate,
@@ -154,13 +155,17 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         },
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
-    args.output.write_text(json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+    args.output.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
     print(json.dumps(report, ensure_ascii=False, indent=2))
     return report
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate operational false-RECAPTURE fit or test data")
+    parser = argparse.ArgumentParser(
+        description="Evaluate operational false-RECAPTURE fit or test data"
+    )
     parser.add_argument("--package-dir", type=Path, required=True)
     parser.add_argument("--baseline-package-dir", type=Path)
     parser.add_argument("--manifest", type=Path, required=True)

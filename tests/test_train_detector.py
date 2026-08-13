@@ -59,9 +59,7 @@ def _tiny_detector(torch):
         def __init__(self):
             super().__init__()
             self.model = Core()
-            self.class_embed = torch.nn.ModuleList(
-                [torch.nn.Linear(4, 1), torch.nn.Linear(4, 1)]
-            )
+            self.class_embed = torch.nn.ModuleList([torch.nn.Linear(4, 1), torch.nn.Linear(4, 1)])
             self.bbox_embed = torch.nn.Linear(4, 4)
 
     return Detector()
@@ -170,16 +168,15 @@ def test_skip_epoch_validation_keeps_fold_excluding_train_dataset_plan(tmp_path)
         + "\n",
         encoding="utf-8",
     )
-    training_dataset = DetectionDataset(
-        manifest, tmp_path, mode=training_mode, fold=0
-    )
+    training_dataset = DetectionDataset(manifest, tmp_path, mode=training_mode, fold=0)
 
     assert training_mode == "train"
     assert validation_mode is None
     assert [record["image_id"] for record in training_dataset.records] == [2]
-    assert detector_dataset_plan(
-        Namespace(final_training=False, skip_epoch_validation=False)
-    ) == ("train", "validation")
+    assert detector_dataset_plan(Namespace(final_training=False, skip_epoch_validation=False)) == (
+        "train",
+        "validation",
+    )
 
 
 def test_adaptation_source_replay_never_enters_heldout_validation(tmp_path):
@@ -221,9 +218,7 @@ def test_adaptation_source_replay_never_enters_heldout_validation(tmp_path):
 def test_classification_heads_only_freezes_base_and_keeps_frozen_bn_in_eval():
     torch = pytest.importorskip("torch")
     model = _tiny_detector(torch)
-    model.model.backbone = torch.nn.Sequential(
-        torch.nn.Linear(3, 4), torch.nn.BatchNorm1d(4)
-    )
+    model.model.backbone = torch.nn.Sequential(torch.nn.Linear(3, 4), torch.nn.BatchNorm1d(4))
     recipe = detector_optimizer_recipe(
         _args(freeze_mode="classification_heads_only", frozen_modules_eval=True)
     )
@@ -251,9 +246,7 @@ def test_classification_heads_only_freezes_base_and_keeps_frozen_bn_in_eval():
     loss.backward()
     optimizer.step()
 
-    assert [group["group_name"] for group in groups] == [
-        "randomly_reinitialized_modules"
-    ]
+    assert [group["group_name"] for group in groups] == ["randomly_reinitialized_modules"]
     assert not model.model.backbone.training
     assert model.model.enc_score_head.training
     assert all(not parameter.requires_grad for parameter in model.model.backbone.parameters())
@@ -282,9 +275,7 @@ def test_classification_heads_only_freezes_base_and_keeps_frozen_bn_in_eval():
 def test_visual_backbone_only_freezes_backbone_and_trains_hybrid_and_heads():
     torch = pytest.importorskip("torch")
     model = _tiny_detector(torch)
-    model.model.backbone = torch.nn.Sequential(
-        torch.nn.Linear(3, 4), torch.nn.BatchNorm1d(4)
-    )
+    model.model.backbone = torch.nn.Sequential(torch.nn.Linear(3, 4), torch.nn.BatchNorm1d(4))
     recipe = detector_optimizer_recipe(
         _args(freeze_mode="visual_backbone_only", frozen_modules_eval=True)
     )
@@ -298,9 +289,7 @@ def test_visual_backbone_only_freezes_backbone_and_trains_hybrid_and_heads():
         "base",
         "randomly_reinitialized_modules",
     ]
-    assert all(
-        not parameter.requires_grad for parameter in model.model.backbone.parameters()
-    )
+    assert all(not parameter.requires_grad for parameter in model.model.backbone.parameters())
     assert all(parameter.requires_grad for parameter in model.model.encoder.parameters())
     assert all(parameter.requires_grad for parameter in model.bbox_embed.parameters())
     assert all(parameter.requires_grad for parameter in model.class_embed.parameters())
@@ -311,9 +300,7 @@ def test_visual_backbone_only_freezes_backbone_and_trains_hybrid_and_heads():
     running_mean = model.model.backbone[1].running_mean.detach().clone()
     model.model.backbone(torch.randn(4, 3))
     assert torch.equal(model.model.backbone[1].running_mean, running_mean)
-    grouped_ids = {
-        id(parameter) for group in groups for parameter in group["params"]
-    }
+    grouped_ids = {id(parameter) for group in groups for parameter in group["params"]}
     assert grouped_ids == {
         id(parameter) for parameter in model.parameters() if parameter.requires_grad
     }

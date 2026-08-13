@@ -9,15 +9,14 @@ import pytest
 from PIL import Image
 
 from bixolon_scanner.inference import Detection, DetectionResult
-from bixolon_scanner.package import sha256_file
-from bixolon_scanner.package import ClassifierMetadata, QualityMetadata
+from bixolon_scanner.package import ClassifierMetadata, QualityMetadata, sha256_file
 from bixolon_scanner.training.rpc_operational import (
+    _expected_hard_gate_reasons,
     _image_ids_sha256,
+    _match_items,
     _rows_chain,
     _source_set_sha256,
     _validate_benchmark_manifest_evidence,
-    _expected_hard_gate_reasons,
-    _match_items,
     aggregate_worker_rows,
     build_benchmark_manifest,
     integrate,
@@ -108,9 +107,7 @@ def _locked_training_root(tmp_path: Path) -> tuple[Path, Path]:
             "artifact_root": ".",
         },
     )
-    adaptation_manifest = (
-        detector_dir / "domain-adaptation" / "manifest" / "manifest.jsonl"
-    )
+    adaptation_manifest = detector_dir / "domain-adaptation" / "manifest" / "manifest.jsonl"
     adaptation_manifest.parent.mkdir(parents=True, exist_ok=True)
     adaptation_manifest.write_text('{"sample":1}\n', encoding="utf-8")
     _write_json(adaptation_manifest.parent / "metadata.json", {"complete": True})
@@ -134,13 +131,7 @@ def _locked_training_root(tmp_path: Path) -> tuple[Path, Path]:
             },
         },
     )
-    final_checkpoint = (
-        detector_dir
-        / "final"
-        / "stage-a-base"
-        / "best"
-        / "model.safetensors"
-    )
+    final_checkpoint = detector_dir / "final" / "stage-a-base" / "best" / "model.safetensors"
     final_checkpoint.parent.mkdir(parents=True, exist_ok=True)
     final_checkpoint.write_bytes(b"final-detector")
     _write_json(
@@ -187,28 +178,22 @@ def _locked_training_root(tmp_path: Path) -> tuple[Path, Path]:
     )
     _write_json(run_dir / "selection_report.json", {"ok": True})
     lock = {
-            "status": "validation_passed",
-            "operational_gate": True,
-            "mode": "full_dataset",
-            "model_run": "runs/full/seed20260810",
-            "checkpoint_sha256": sha256_file(run_dir / "best.pt"),
-            "calibration_sha256": sha256_file(run_dir / "calibration.json"),
-            "selection_report_sha256": sha256_file(run_dir / "selection_report.json"),
-            "rpc_config_sha256": sha256_file(config_path),
-            "active_detector_complete_sha256": sha256_file(
-                detector_dir / "baseline" / "complete.json"
-            ),
-            "active_detector_threshold_sha256": sha256_file(active_threshold),
-            "detector_train_gate_complete_sha256": sha256_file(
-                train_gate_complete
-            ),
-            "final_detector_complete_sha256": sha256_file(
-                detector_dir / "final" / "complete.json"
-            ),
-            "final_detector_checkpoint_sha256": sha256_file(final_checkpoint),
-            "operational_detector_role": "checkout_baseline_val_all_operational",
-            "train_gate_role": "offline_roi_train_gate_only",
-        }
+        "status": "validation_passed",
+        "operational_gate": True,
+        "mode": "full_dataset",
+        "model_run": "runs/full/seed20260810",
+        "checkpoint_sha256": sha256_file(run_dir / "best.pt"),
+        "calibration_sha256": sha256_file(run_dir / "calibration.json"),
+        "selection_report_sha256": sha256_file(run_dir / "selection_report.json"),
+        "rpc_config_sha256": sha256_file(config_path),
+        "active_detector_complete_sha256": sha256_file(detector_dir / "baseline" / "complete.json"),
+        "active_detector_threshold_sha256": sha256_file(active_threshold),
+        "detector_train_gate_complete_sha256": sha256_file(train_gate_complete),
+        "final_detector_complete_sha256": sha256_file(detector_dir / "final" / "complete.json"),
+        "final_detector_checkpoint_sha256": sha256_file(final_checkpoint),
+        "operational_detector_role": "checkout_baseline_val_all_operational",
+        "train_gate_role": "offline_roi_train_gate_only",
+    }
     _write_json(root / "model_lock.json", lock)
     return root, config_path
 
@@ -243,9 +228,10 @@ def test_package_inputs_preserves_rpc_logit_order_and_checksums(tmp_path: Path):
     assert first["inputs"]["detector_threshold"] == sha256_file(
         root / "detector" / "threshold.json"
     )
-    assert first["inputs"]["final_detector_checkpoint"] == json.loads(
-        (root / "model_lock.json").read_text()
-    )["final_detector_checkpoint_sha256"]
+    assert (
+        first["inputs"]["final_detector_checkpoint"]
+        == json.loads((root / "model_lock.json").read_text())["final_detector_checkpoint_sha256"]
+    )
     assert "detector_train_gate_complete" in first["inputs"]
     assert first == package_inputs(root, config, resume=True)
 
@@ -467,17 +453,13 @@ def test_match_items_maximizes_cardinality_deterministically(monkeypatch):
 
 def test_expected_hard_gate_includes_always_recapture_border_policy():
     metadata = SimpleNamespace(
-        quality=QualityMetadata(
-            border_policy="always_recapture", border_margin_ratio=0.01
-        ),
+        quality=QualityMetadata(border_policy="always_recapture", border_margin_ratio=0.01),
         count_verifier=None,
     )
-    result = DetectionResult(
-        detections=[Detection(0.0, 2.0, 8.0, 8.0, 0.99)]
-    )
-    assert _expected_hard_gate_reasons(
-        np.zeros((10, 10, 3), dtype=np.uint8), result, metadata
-    ) == ["DETECTOR_BORDER_CLIPPED"]
+    result = DetectionResult(detections=[Detection(0.0, 2.0, 8.0, 8.0, 0.99)])
+    assert _expected_hard_gate_reasons(np.zeros((10, 10, 3), dtype=np.uint8), result, metadata) == [
+        "DETECTOR_BORDER_CLIPPED"
+    ]
 
 
 def test_worker_eval_captures_detector_kpi_on_hard_gate_and_guards_resume(
@@ -603,9 +585,7 @@ def test_worker_eval_captures_detector_kpi_on_hard_gate_and_guards_resume(
     assert non_hard_row["classifier_call_count_violation"] is False
     assert non_hard_row["classifier_version_reported"] == "1.0.0"
     assert report["pipeline_contract"]["pipeline_contract_violations"] == 0
-    state = json.loads(
-        rows_path.with_suffix(".jsonl.state.json").read_text(encoding="utf-8")
-    )
+    state = json.loads(rows_path.with_suffix(".jsonl.state.json").read_text(encoding="utf-8"))
     assert state["completed_count"] == 2
     assert state["rows_checksum_scheme"] == "sha256-chain-v1"
 
@@ -644,9 +624,7 @@ def test_worker_eval_captures_detector_kpi_on_hard_gate_and_guards_resume(
             resume=True,
         )
     rows_path.write_bytes(original_rows)
-    rows_path.with_suffix(".jsonl.state.json").write_text(
-        original_state, encoding="utf-8"
-    )
+    rows_path.with_suffix(".jsonl.state.json").write_text(original_state, encoding="utf-8")
     Image.new("RGB", (20, 20), "black").save(image_path)
     with pytest.raises(ValueError, match="source image checksum changed"):
         worker_eval(
@@ -692,8 +670,7 @@ def _package(package_dir: Path, labels: list[dict[str, object]], dataset_version
                 "crop_margin_ratio": 0.05,
                 "resize_reducing_gap": 1.0,
                 "labels": [
-                    {"class_id": row["class_id"], "class_name": row["class_name"]}
-                    for row in labels
+                    {"class_id": row["class_id"], "class_name": row["class_name"]} for row in labels
                 ],
             },
             "quality": {
@@ -771,9 +748,7 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
     root, config_path = _locked_training_root(tmp_path)
     package_inputs(root, config_path)
     package_dir = tmp_path / "package"
-    manifest_metadata = json.loads(
-        (root / "package-inputs" / "manifest-metadata.json").read_text()
-    )
+    manifest_metadata = json.loads((root / "package-inputs" / "manifest-metadata.json").read_text())
     labels = manifest_metadata["labels"]
     dataset_version = manifest_metadata["dataset_version"]
     _package(package_dir, labels, dataset_version)
@@ -794,9 +769,7 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
                     "level": "easy",
                 }
             ],
-            "annotations": [
-                {"id": 1, "image_id": 1, "category_id": 1, "bbox": [2, 2, 10, 10]}
-            ],
+            "annotations": [{"id": 1, "image_id": 1, "category_id": 1, "bbox": [2, 2, 10, 10]}],
             "categories": _categories(),
         },
     )
@@ -804,21 +777,13 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
         root / "test" / "detector_report.json",
         {
             "detector_checkpoint_sha256": detector_checkpoint_sha256,
-            "final_detector_complete_sha256": model_lock[
-                "final_detector_complete_sha256"
-            ],
+            "final_detector_complete_sha256": model_lock["final_detector_complete_sha256"],
             "model_lock_sha256": sha256_file(root / "model_lock.json"),
-            "active_detector_threshold_sha256": model_lock[
-                "active_detector_threshold_sha256"
-            ],
-            "train_gate_complete_sha256": model_lock[
-                "detector_train_gate_complete_sha256"
-            ],
+            "active_detector_threshold_sha256": model_lock["active_detector_threshold_sha256"],
+            "train_gate_complete_sha256": model_lock["detector_train_gate_complete_sha256"],
             "operational_detector_role": "checkout_baseline_val_all_operational",
             "train_gate_role": "offline_roi_train_gate_only",
-            "test_annotation_sha256": sha256_file(
-                rpc_root / "instances_test2019.json"
-            ),
+            "test_annotation_sha256": sha256_file(rpc_root / "instances_test2019.json"),
             "outcomes": [
                 {
                     "image_id": 1,
@@ -860,17 +825,17 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
         _write_json(
             parity,
             {
-            **identity,
-            "detector_checkpoint_sha256": detector_checkpoint_sha256,
-            "classifier_checkpoint_sha256": model_lock["checkpoint_sha256"],
-            "provider": provider,
-            "detector": {
-                "minimum_iou_tolerance": 0.99,
-                "coordinate_tolerance": 0.01,
-                "score_tolerance": 0.02,
-            },
-            "classifier": {"tolerance": 0.01},
-            "passes": True,
+                **identity,
+                "detector_checkpoint_sha256": detector_checkpoint_sha256,
+                "classifier_checkpoint_sha256": model_lock["checkpoint_sha256"],
+                "provider": provider,
+                "detector": {
+                    "minimum_iou_tolerance": 0.99,
+                    "coordinate_tolerance": 0.01,
+                    "score_tolerance": 0.02,
+                },
+                "classifier": {"tolerance": 0.01},
+                "passes": True,
             },
         )
         parities.append(parity)
@@ -942,12 +907,10 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
                     "p95_ms": 101,
                     "p99_ms": 110,
                 }
-            }
+            },
         },
     )
-    report = integrate(
-        root, package_dir, config_path=config_path, parity_report_paths=parities
-    )
+    report = integrate(root, package_dir, config_path=config_path, parity_report_paths=parities)
     assert report["metrics"]["recapture_recall"] == "not_evaluable"
     assert report["certification"]["status"] == "not_certified"
     assert report["certification"]["production_certified"] is False
@@ -1004,9 +967,7 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
     partial_payload["test_manifest"]["manifest_row_count"] = 0
     _write_json(worker_path, partial_payload)
     with pytest.raises(ValueError, match="complete sealed test manifest"):
-        integrate(
-            root, package_dir, config_path=config_path, parity_report_paths=parities
-        )
+        integrate(root, package_dir, config_path=config_path, parity_report_paths=parities)
     _write_json(worker_path, worker_payload)
     cpu_parity_payload = json.loads(parities[0].read_text())
     altered_parity = json.loads(json.dumps(cpu_parity_payload))
@@ -1021,15 +982,11 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
     benchmark_image_bytes = benchmark_image.read_bytes()
     benchmark_image.write_bytes(b"tampered")
     with pytest.raises(ValueError, match="benchmark image checksum"):
-        integrate(
-            root, package_dir, config_path=config_path, parity_report_paths=parities
-        )
+        integrate(root, package_dir, config_path=config_path, parity_report_paths=parities)
     benchmark_image.write_bytes(benchmark_image_bytes)
     config_path.write_text(config_path.read_text() + "\n", encoding="utf-8")
     with pytest.raises(ValueError, match="rpc_config_sha256"):
-        integrate(
-            root, package_dir, config_path=config_path, parity_report_paths=parities
-        )
+        integrate(root, package_dir, config_path=config_path, parity_report_paths=parities)
 
 
 def test_integrate_fails_when_required_evidence_is_absent(tmp_path: Path):
@@ -1055,9 +1012,7 @@ def test_operation_plan_reports_ready_stages_without_running_gpu(tmp_path: Path)
     assert by_id["package_inputs"]["status"] == "ready"
     assert by_id["detector_classifier_package"]["status"] == "blocked"
     assert report["next_steps"] == ["package_inputs", "benchmark_manifest"]
-    assert report["certification_constraint"]["production_certification"] == (
-        "not_certified"
-    )
+    assert report["certification_constraint"]["production_certification"] == ("not_certified")
 
 
 def test_operation_plan_blocks_final_test_until_model_lock_exists(tmp_path: Path):

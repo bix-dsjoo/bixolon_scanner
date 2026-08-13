@@ -70,9 +70,7 @@ def select_approval_threshold(
     cumulative_errors = np.cumsum(sorted_errors)
     # A threshold includes every sample tied at that confidence, so only the
     # final row of each equal-confidence group is a valid candidate.
-    endpoints = np.flatnonzero(
-        np.r_[sorted_confidence[1:] != sorted_confidence[:-1], True]
-    )
+    endpoints = np.flatnonzero(np.r_[sorted_confidence[1:] != sorted_confidence[:-1], True])
     counts = endpoints + 1
     errors = cumulative_errors[endpoints]
     precision = (counts - errors) / counts

@@ -9,11 +9,11 @@ from typing import Any
 import joblib
 import numpy as np
 from sklearn.ensemble import ExtraTreesClassifier, HistGradientBoostingClassifier
+from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import average_precision_score, roc_auc_score
 from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
-from sklearn.linear_model import LogisticRegression
 
 from .calibration import softmax
 from .rpc_data_scale import LEVELS, evaluate_worker_taxonomy
@@ -64,9 +64,7 @@ def _geometry_features(
         if other_index == index:
             continue
         other_box = [float(value) for value in other_detection["bbox_xyxy"]]
-        other_area = max(
-            (other_box[2] - other_box[0]) * (other_box[3] - other_box[1]), 1e-6
-        )
+        other_area = max((other_box[2] - other_box[0]) * (other_box[3] - other_box[1]), 1e-6)
         intersection = _intersection(box, other_box)
         other_features.append(
             (
@@ -77,9 +75,7 @@ def _geometry_features(
                 float(other_detection["score"]),
             )
         )
-    nearest = max(
-        other_features, key=lambda value: value[0], default=(0, 0, 0, 0, 0)
-    )
+    nearest = max(other_features, key=lambda value: value[0], default=(0, 0, 0, 0, 0))
     scores = sorted((float(item["score"]) for item in detections), reverse=True)
     score = float(detection["score"])
     rank = scores.index(score) / max(len(scores) - 1, 1)
@@ -174,9 +170,7 @@ def _models(seed: int) -> dict[str, Any]:
     return {
         "logistic": make_pipeline(
             StandardScaler(),
-            LogisticRegression(
-                max_iter=2000, class_weight="balanced", random_state=seed
-            ),
+            LogisticRegression(max_iter=2000, class_weight="balanced", random_state=seed),
         ),
         "hist_gradient_boosting": HistGradientBoostingClassifier(
             learning_rate=0.05,
@@ -205,9 +199,7 @@ def _fit_predict_oof(
     groups: np.ndarray,
 ) -> np.ndarray:
     result = np.zeros(len(labels), dtype=np.float64)
-    for train_index, validation_index in GroupKFold(n_splits=5).split(
-        features, labels, groups
-    ):
+    for train_index, validation_index in GroupKFold(n_splits=5).split(features, labels, groups):
         model.fit(features[train_index], labels[train_index])
         result[validation_index] = model.predict_proba(features[validation_index])[:, 1]
     return result
@@ -223,24 +215,17 @@ def _static_masks(
     outcomes = [
         row
         for row in detector_report["validation_image_outcomes"]
-        if row["role"] == role
-        and int(row["image_id"]) in available_image_ids
+        if row["role"] == role and int(row["image_id"]) in available_image_ids
     ]
     result: dict[str, dict[str, Any]] = {}
     for level in LEVELS:
         level_outcomes = [row for row in outcomes if row["level"] == level]
         level_ids = {int(row["image_id"]) for row in level_outcomes}
-        recapture_ids = {
-            int(row["image_id"])
-            for row in level_outcomes
-            if row["recapture_reasons"]
-        }
+        recapture_ids = {int(row["image_id"]) for row in level_outcomes if row["recapture_reasons"]}
         result[level] = {
             "level": np.asarray([int(value) in level_ids for value in image_ids]),
             "normal": np.asarray([int(value) not in recapture_ids for value in image_ids]),
-            "ground_truth_count": sum(
-                int(row["ground_truth_count"]) for row in level_outcomes
-            ),
+            "ground_truth_count": sum(int(row["ground_truth_count"]) for row in level_outcomes),
         }
     return result
 
@@ -286,9 +271,9 @@ def _onnx_parity(
     import onnxruntime as ort
 
     session = ort.InferenceSession(str(path), providers=["CPUExecutionProvider"])
-    observed = session.run(
-        ["quality_score"], {"features": features.astype(np.float32)}
-    )[0].reshape(-1)
+    observed = session.run(["quality_score"], {"features": features.astype(np.float32)})[0].reshape(
+        -1
+    )
     return {
         "max_abs_error": float(np.max(np.abs(observed - expected))),
         "decision_mismatch_count": int(
@@ -315,17 +300,13 @@ def _policy_metrics(
     for level in LEVELS:
         level_mask = masks[level]["level"]
         normal = masks[level]["normal"]
-        recapture = level_mask & normal & (
-            (border & (confidence < classifier_threshold))
-            | (quality < quality_threshold)
-        )
-        recognition_target = level_mask & normal & ~recapture & matched
-        approved = (
+        recapture = (
             level_mask
             & normal
-            & ~recapture
-            & (confidence >= classifier_threshold)
+            & ((border & (confidence < classifier_threshold)) | (quality < quality_threshold))
         )
+        recognition_target = level_mask & normal & ~recapture & matched
+        approved = level_mask & normal & ~recapture & (confidence >= classifier_threshold)
         correct_approved = approved & correct
         approved_count = int(approved.sum())
         target_count = int(recognition_target.sum())
@@ -334,9 +315,7 @@ def _policy_metrics(
                 int(correct_approved.sum()) / target_count if target_count else 0.0
             ),
             "misrecognition_rate": (
-                int((approved & ~correct).sum()) / approved_count
-                if approved_count
-                else 0.0
+                int((approved & ~correct).sum()) / approved_count if approved_count else 0.0
             ),
             "end_to_end_success_rate": int(correct_approved.sum())
             / int(masks[level]["ground_truth_count"]),
@@ -353,15 +332,11 @@ def _select_policy(
 ) -> dict[str, Any] | None:
     confidence = probabilities.max(axis=1)
     classifier_candidates = np.unique(
-        np.concatenate(
-            [np.quantile(confidence, np.linspace(0, 1, 81)), [0.0, 0.9, 0.99, 0.999]]
-        )
+        np.concatenate([np.quantile(confidence, np.linspace(0, 1, 81)), [0.0, 0.9, 0.99, 0.999]])
     )
     negative_quality = quality[archive["targets"] < 0]
     quality_candidates = np.unique(
-        np.concatenate(
-            [[0.0], np.quantile(negative_quality, np.linspace(0, 1, 41))]
-        )
+        np.concatenate([[0.0], np.quantile(negative_quality, np.linspace(0, 1, 41))])
     )
     feasible: list[dict[str, Any]] = []
     for quality_threshold in quality_candidates:
@@ -389,14 +364,8 @@ def _select_policy(
     return max(
         feasible,
         key=lambda row: (
-            min(
-                row["difficulty"][level]["end_to_end_success_rate"]
-                for level in LEVELS
-            ),
-            -sum(
-                row["difficulty"][level]["segment_recapture_count"]
-                for level in LEVELS
-            ),
+            min(row["difficulty"][level]["end_to_end_success_rate"] for level in LEVELS),
+            -sum(row["difficulty"][level]["segment_recapture_count"] for level in LEVELS),
         ),
         default=None,
     )
@@ -425,9 +394,9 @@ def main() -> None:
         str(row["sample_key"]): row
         for row in _read_jsonl(detector_dir / "predictions" / "val_oof.jsonl")
     }
-    threshold = json.loads(
-        (detector_dir / "threshold.json").read_text(encoding="utf-8")
-    )["selected_score_threshold"]
+    threshold = json.loads((detector_dir / "threshold.json").read_text(encoding="utf-8"))[
+        "selected_score_threshold"
+    ]
     detector_options = dict(config["detector"], score_threshold=threshold)
     detector_features = _detector_features(records, raw_predictions, detector_options)
     features = {
@@ -437,23 +406,15 @@ def main() -> None:
     calibration_labels = (archives["calibration"]["targets"] >= 0).astype(np.int64)
     groups = archives["calibration"]["groups"].astype(str)
     detector_report = json.loads(
-        (args.output_dir / "prepared" / "worker_gate_report.json").read_text(
-            encoding="utf-8"
-        )
+        (args.output_dir / "prepared" / "worker_gate_report.json").read_text(encoding="utf-8")
     )
-    calibration_probabilities = softmax(
-        archives["calibration"]["logits"], temperature
-    )
-    calibration_masks = _static_masks(
-        archives["calibration"], detector_report, "calibration"
-    )
+    calibration_probabilities = softmax(archives["calibration"]["logits"], temperature)
+    calibration_masks = _static_masks(archives["calibration"], detector_report, "calibration")
     output_dir = run_dir / "context-rejector"
     output_dir.mkdir(parents=True, exist_ok=True)
     reports: dict[str, Any] = {}
     for name, model in _models(args.seed).items():
-        quality_oof = _fit_predict_oof(
-            model, features["calibration"], calibration_labels, groups
-        )
+        quality_oof = _fit_predict_oof(model, features["calibration"], calibration_labels, groups)
         policy = _select_policy(
             archives["calibration"],
             calibration_probabilities,
@@ -464,9 +425,7 @@ def main() -> None:
         selection_quality = model.predict_proba(features["selection"])[:, 1]
         model_report: dict[str, Any] = {
             "oof_roc_auc": roc_auc_score(calibration_labels, quality_oof),
-            "oof_average_precision": average_precision_score(
-                calibration_labels, quality_oof
-            ),
+            "oof_average_precision": average_precision_score(calibration_labels, quality_oof),
             "policy": policy,
         }
         if policy is not None:
@@ -500,28 +459,20 @@ def main() -> None:
                 float(policy["quality_threshold"]),
             )
     result = {"feature_count": int(features["calibration"].shape[1]), "models": reports}
-    (output_dir / "report.json").write_text(
-        json.dumps(result, indent=2), encoding="utf-8"
-    )
+    (output_dir / "report.json").write_text(json.dumps(result, indent=2), encoding="utf-8")
     logistic_policy = reports["logistic"]["policy"]
     if logistic_policy is None:
         raise RuntimeError("logistic context validator has no feasible calibration policy")
     candidate_inputs = output_dir / "validation-candidate-inputs"
     candidate_inputs.mkdir(parents=True, exist_ok=True)
-    detector_threshold = json.loads(
-        (detector_dir / "threshold.json").read_text(encoding="utf-8")
-    )
+    detector_threshold = json.loads((detector_dir / "threshold.json").read_text(encoding="utf-8"))
     (candidate_inputs / "detector-evaluation.json").write_text(
         json.dumps(
             {
-                "selected_score_threshold": detector_threshold[
-                    "selected_score_threshold"
-                ],
+                "selected_score_threshold": detector_threshold["selected_score_threshold"],
                 "nms_iou_threshold": detector_options["nms_iou_threshold"],
                 "target_recall": detector_threshold["target_recall"],
-                "target_recall_satisfied": detector_threshold[
-                    "target_recall_satisfied"
-                ],
+                "target_recall_satisfied": detector_threshold["target_recall_satisfied"],
                 "metrics": detector_threshold["calibration_metrics"],
             },
             indent=2,
@@ -539,9 +490,7 @@ def main() -> None:
         json.dumps(candidate_calibration, indent=2), encoding="utf-8"
     )
     experiment = json.loads(
-        (args.output_dir / "prepared" / "experiment.json").read_text(
-            encoding="utf-8"
-        )
+        (args.output_dir / "prepared" / "experiment.json").read_text(encoding="utf-8")
     )
     labels = [
         {"class_id": str(row["id"]), "class_name": str(row["name"])}

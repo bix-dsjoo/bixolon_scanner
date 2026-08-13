@@ -5,9 +5,7 @@ import json
 from pathlib import Path
 
 
-def parse_args_with_config(
-    parser: argparse.ArgumentParser, *, section: str
-) -> argparse.Namespace:
+def parse_args_with_config(parser: argparse.ArgumentParser, *, section: str) -> argparse.Namespace:
     parser.add_argument("--config", type=Path, help="Version-controlled JSON defaults")
     preliminary = argparse.ArgumentParser(add_help=False)
     preliminary.add_argument("--config", type=Path)

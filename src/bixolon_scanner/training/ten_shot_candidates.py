@@ -11,7 +11,6 @@ import numpy as np
 from ..package import sha256_file
 from .models import require_torch
 
-
 LOCK_SCHEMA_VERSION = "1.0"
 
 
@@ -101,9 +100,7 @@ def create_uniform_parameter_soup(
     seeds = tuple(int(seed) for seed in member_seeds)
     if len(paths) < 2 or len(paths) != len(seeds):
         raise ValueError("parameter soup requires at least two aligned checkpoints")
-    checkpoints = [
-        torch.load(path, map_location="cpu", weights_only=False) for path in paths
-    ]
+    checkpoints = [torch.load(path, map_location="cpu", weights_only=False) for path in paths]
     required_equal = (
         "architecture",
         "adapter_spec",
@@ -130,8 +127,7 @@ def create_uniform_parameter_soup(
     for key in sorted(keys):
         values = [state[key] for state in states]
         if any(
-            value.shape != values[0].shape or value.dtype != values[0].dtype
-            for value in values[1:]
+            value.shape != values[0].shape or value.dtype != values[0].dtype for value in values[1:]
         ):
             raise ValueError(f"parameter soup tensor contract differs: {key}")
         if values[0].is_floating_point():

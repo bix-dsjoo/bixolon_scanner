@@ -126,9 +126,7 @@ def test_policy_evaluation_cache_is_exactly_equivalent(policy):
 
 def test_exact_image_assignment_and_iou_sensitivity():
     applied = apply_policy(_record(), _prediction(), _policy())
-    diagnostics = detector_image_diagnostics(
-        applied["detections"], _record()["annotations"]
-    )
+    diagnostics = detector_image_diagnostics(applied["detections"], _record()["annotations"])
 
     assert diagnostics["exact_iou_50"] is True
     assert diagnostics["exact_iou_75"] is True
@@ -186,9 +184,7 @@ def test_uncertainty_current_relaxed_and_disabled_policies_match_worker_rules():
         prediction,
         _policy(uncertainty_score_threshold=0.3),
     )
-    disabled = apply_policy(
-        _record(), prediction, _policy(uncertainty_score_threshold=None)
-    )
+    disabled = apply_policy(_record(), prediction, _policy(uncertainty_score_threshold=None))
 
     assert current["reason_codes"] == ["DETECTOR_UNCERTAIN_OBJECT"]
     assert relaxed["pass"] is True
@@ -204,9 +200,7 @@ def test_gate_table_and_e2e_safe_auto_pass_are_image_level():
         {"boxes_xyxy": [], "scores": [], "classifications": {}},
     ]
     predictions[2]["fixed_hard_reason_codes"] = ["DETECTOR_BLUR"]
-    report = evaluate_policy(
-        records, predictions, _policy(), approval_threshold=0.95
-    )["metrics"]
+    report = evaluate_policy(records, predictions, _policy(), approval_threshold=0.95)["metrics"]
 
     assert report["gate_table"] == {
         "useful_reject": 1,
@@ -221,14 +215,10 @@ def test_gate_table_and_e2e_safe_auto_pass_are_image_level():
     assert report["object_diagnostics"]["error_types"]["size_related"] == 0
     group = report["groups"]["difficulty=E"]
     assert group["detector_pass_count"] == 2
-    assert group["detector_pass_risk_upper_95"] == pytest.approx(
-        binomial_rate_upper_bound(0, 2)
-    )
+    assert group["detector_pass_risk_upper_95"] == pytest.approx(binomial_rate_upper_bound(0, 2))
     assert group["approved_count"] == 2
     assert group["approved_error_count"] == 1
-    assert group["e2e_approved_risk_upper_95"] == pytest.approx(
-        binomial_rate_upper_bound(1, 2)
-    )
+    assert group["e2e_approved_risk_upper_95"] == pytest.approx(binomial_rate_upper_bound(1, 2))
 
 
 def test_object_diagnostics_record_border_and_size_related_failures():
@@ -294,16 +284,24 @@ def asdict_for_test(policy: DetectorPolicy):
 
 
 def test_candidate_selection_rejects_unsafe_high_coverage_then_uses_ties():
-    unsafe = _candidate(
-        "unsafe", silent=1, detector_u95=0.006, e2e_u95=0.004, safe_rate=0.99
-    )
+    unsafe = _candidate("unsafe", silent=1, detector_u95=0.006, e2e_u95=0.004, safe_rate=0.99)
     lower_worst_group = _candidate(
-        "lower-group", silent=0, detector_u95=0.004, e2e_u95=0.004, safe_rate=0.9,
-        group_coverage=0.7, augrc=0.001,
+        "lower-group",
+        silent=0,
+        detector_u95=0.004,
+        e2e_u95=0.004,
+        safe_rate=0.9,
+        group_coverage=0.7,
+        augrc=0.001,
     )
     selected = _candidate(
-        "selected", silent=0, detector_u95=0.004, e2e_u95=0.004, safe_rate=0.9,
-        group_coverage=0.8, augrc=0.02,
+        "selected",
+        silent=0,
+        detector_u95=0.004,
+        e2e_u95=0.004,
+        safe_rate=0.9,
+        group_coverage=0.8,
+        augrc=0.02,
     )
 
     decision = select_candidate([unsafe, lower_worst_group, selected])

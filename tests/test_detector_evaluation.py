@@ -1,6 +1,7 @@
-import numpy as np
 import json
 from argparse import Namespace
+
+import numpy as np
 
 import bixolon_scanner.training.evaluate_detector as detector_evaluation
 from bixolon_scanner.training.aggregate_detector import aggregate
@@ -83,9 +84,7 @@ def test_metric_grid_cached_nms_matches_brute_force_for_overlaps_ties_and_edges(
     ]
     thresholds = [0.5, 0.0, 1.0, 0.5, 0.25, 0.5000000001]
     for nms_threshold in (0.0, 0.5, 1.0):
-        _assert_grid_matches_brute_force(
-            records, predictions, thresholds, nms_threshold
-        )
+        _assert_grid_matches_brute_force(records, predictions, thresholds, nms_threshold)
 
 
 def test_metric_grid_cached_nms_matches_brute_force_on_randomized_boxes():
@@ -100,8 +99,7 @@ def test_metric_grid_cached_nms_matches_brute_force_on_randomized_boxes():
             records.append(
                 {
                     "annotations": [
-                        {"bbox_xywh": [*xy.tolist(), *wh.tolist()]}
-                        for xy, wh in zip(gt_xy, gt_wh)
+                        {"bbox_xywh": [*xy.tolist(), *wh.tolist()]} for xy, wh in zip(gt_xy, gt_wh)
                     ]
                 }
             )
@@ -110,15 +108,11 @@ def test_metric_grid_cached_nms_matches_brute_force_on_randomized_boxes():
             boxes = np.concatenate([anchors, anchors + sizes], axis=1).tolist()
             # Add exact duplicates and tied scores to exercise stable ordering.
             boxes.extend([boxes[0], boxes[0], boxes[1]])
-            scores = rng.choice(
-                np.asarray([0.05, 0.2, 0.5, 0.9, 0.95]), size=20
-            ).tolist()
+            scores = rng.choice(np.asarray([0.05, 0.2, 0.5, 0.9, 0.95]), size=20).tolist()
             scores.extend([0.5, 0.5, 0.2])
             predictions.append({"boxes_xyxy": boxes, "scores": scores})
         for nms_threshold in (0.3, 0.7):
-            _assert_grid_matches_brute_force(
-                records, predictions, thresholds, nms_threshold
-            )
+            _assert_grid_matches_brute_force(records, predictions, thresholds, nms_threshold)
 
 
 def test_metric_grid_runs_nms_once_per_image_not_once_per_threshold(monkeypatch):

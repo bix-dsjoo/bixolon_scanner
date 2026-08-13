@@ -28,9 +28,7 @@ def _support() -> Image.Image:
 
 
 def test_white_background_alpha_removes_white_and_keeps_object():
-    masked = white_background_alpha(
-        _support(), transparent_threshold=8, opaque_threshold=45
-    )
+    masked = white_background_alpha(_support(), transparent_threshold=8, opaque_threshold=45)
     alpha = np.asarray(masked.getchannel("A"))
     assert alpha[0, 0] == 0
     assert alpha[50, 30] == 255
@@ -43,9 +41,7 @@ def test_border_connected_mask_preserves_enclosed_pale_foreground():
         for x in range(2, 7):
             pixels[x, y] = (210, 205, 190)
     pixels[4, 4] = (252, 252, 248)
-    masked = border_connected_background_alpha(
-        image, color_distance=20, feather_radius=0
-    )
+    masked = border_connected_background_alpha(image, color_distance=20, feather_radius=0)
     assert masked.getpixel((0, 0))[3] == 0
     assert masked.getpixel((4, 4))[3] == 255
 

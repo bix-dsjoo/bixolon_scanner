@@ -129,8 +129,7 @@ def _merge_archive(
         dtype=bool,
     )
     merged = {
-        key: np.concatenate([existing[key], additions[key][addition_mask]])
-        for key in existing
+        key: np.concatenate([existing[key], additions[key][addition_mask]]) for key in existing
     }
     order = np.argsort(merged["sample_ids"].astype(str), kind="stable")
     return {key: value[order] for key, value in merged.items()}
@@ -148,7 +147,9 @@ def _infer_missing(
     torch = require_torch()
     if not missing:
         return {
-            "logits": np.empty((0, int(config["experiment"]["expected_num_classes"])), dtype=np.float32),
+            "logits": np.empty(
+                (0, int(config["experiment"]["expected_num_classes"])), dtype=np.float32
+            ),
             "targets": np.empty(0, dtype=np.int64),
             "levels": np.empty(0, dtype="<U6"),
             "groups": np.empty(0, dtype="<U16"),
@@ -188,9 +189,7 @@ def _infer_missing(
     return result
 
 
-def _build_validation_package(
-    root: Path, min_object_area_ratio: float
-) -> Path:
+def _build_validation_package(root: Path, min_object_area_ratio: float) -> Path:
     source = root / "validation-candidate-package"
     destination = root / "validation-candidate-package-small-object-v5"
     shutil.copytree(source, destination, dirs_exist_ok=True)
@@ -227,9 +226,9 @@ def main() -> None:
         str(row["sample_key"]): row
         for row in _read_jsonl(detector_dir / "predictions" / "val_oof.jsonl")
     }
-    threshold = json.loads(
-        (detector_dir / "threshold.json").read_text(encoding="utf-8")
-    )["selected_score_threshold"]
+    threshold = json.loads((detector_dir / "threshold.json").read_text(encoding="utf-8"))[
+        "selected_score_threshold"
+    ]
     options = dict(
         config["detector"],
         score_threshold=float(threshold),
@@ -249,16 +248,13 @@ def main() -> None:
         "selection": [row for row in all_rows if row["role"] == "selection"],
     }
     existing_ids = {
-        name: set(archive["sample_ids"].astype(str).tolist())
-        for name, archive in existing.items()
+        name: set(archive["sample_ids"].astype(str).tolist()) for name, archive in existing.items()
     }
     missing = {
         name: [row for row in rows if row["sample_id"] not in existing_ids[name]]
         for name, rows in desired.items()
     }
-    experiment = json.loads(
-        (root / "prepared" / "experiment.json").read_text(encoding="utf-8")
-    )
+    experiment = json.loads((root / "prepared" / "experiment.json").read_text(encoding="utf-8"))
     checkpoint = run_dir / "partial.pt"
     merged: dict[str, dict[str, np.ndarray]] = {}
     for name in ("calibration", "selection"):
@@ -276,9 +272,7 @@ def main() -> None:
             [str(value) in desired_ids for value in merged[name]["sample_ids"]],
             dtype=bool,
         )
-        merged[name] = {
-            key: value[desired_mask] for key, value in merged[name].items()
-        }
+        merged[name] = {key: value[desired_mask] for key, value in merged[name].items()}
         np.savez_compressed(output_dir / f"{name}_predictions.npz", **merged[name])
 
     baseline_context = json.loads(
@@ -287,9 +281,7 @@ def main() -> None:
     calibration = json.loads((run_dir / "calibration.json").read_text(encoding="utf-8"))
     temperature = float(calibration["temperature"])
     detector_features = _detector_features(records, raw_predictions, options)
-    selection_features = _feature_matrix(
-        merged["selection"], detector_features, temperature
-    )
+    selection_features = _feature_matrix(merged["selection"], detector_features, temperature)
     model = joblib.load(run_dir / "context-rejector" / "logistic.joblib")
     selection_quality = model.predict_proba(selection_features)[:, 1]
     policy = baseline_context["models"]["logistic"]["policy"]
@@ -329,12 +321,8 @@ def main() -> None:
         "onnx_cpu_parity": parity,
         "detector_report": detector_report,
     }
-    (output_dir / "report.json").write_text(
-        json.dumps(report, indent=2), encoding="utf-8"
-    )
-    package_dir = _build_validation_package(
-        root, float(args.min_object_area_ratio)
-    )
+    (output_dir / "report.json").write_text(json.dumps(report, indent=2), encoding="utf-8")
+    package_dir = _build_validation_package(root, float(args.min_object_area_ratio))
     print(
         json.dumps(
             {

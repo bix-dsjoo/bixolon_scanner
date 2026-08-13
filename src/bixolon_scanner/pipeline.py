@@ -17,10 +17,9 @@ from .contracts import (
     ScanResponse,
     Status,
 )
-from .inference import Detection, DetectionResult
 from .imaging import image_original_size
+from .inference import Detection, DetectionResult
 from .package import ClassifierMetadata, CountVerifierMetadata, QualityMetadata
-
 
 LOGGER = logging.getLogger(__name__)
 
@@ -89,24 +88,16 @@ def quality_reasons(
             break
     if metadata.min_mean_luminance is not None or metadata.max_mean_luminance is not None:
         mean_luminance = float(_as_array(image).astype(np.float32).mean())
-        if (
-            metadata.min_mean_luminance is not None
-            and mean_luminance < metadata.min_mean_luminance
-        ):
+        if metadata.min_mean_luminance is not None and mean_luminance < metadata.min_mean_luminance:
             reasons.append("DETECTOR_UNDEREXPOSED")
-        if (
-            metadata.max_mean_luminance is not None
-            and mean_luminance > metadata.max_mean_luminance
-        ):
+        if metadata.max_mean_luminance is not None and mean_luminance > metadata.max_mean_luminance:
             reasons.append("DETECTOR_OVEREXPOSED")
     if metadata.min_sharpness is not None and _sharpness(image) < metadata.min_sharpness:
         reasons.append("DETECTOR_BLUR")
     return list(dict.fromkeys(reasons))
 
 
-def _touches_border(
-    detection: Detection, width: int, height: int, margin_ratio: float
-) -> bool:
+def _touches_border(detection: Detection, width: int, height: int, margin_ratio: float) -> bool:
     border_x = width * margin_ratio
     border_y = height * margin_ratio
     return (
@@ -161,10 +152,7 @@ class DecisionPipeline:
         if detection_result.uncertain_candidate_count:
             reasons.append("DETECTOR_UNCERTAIN_OBJECT")
         if self.count_verifier_metadata is not None:
-            if (
-                detection_result.verified_count is None
-                or detection_result.count_confidence is None
-            ):
+            if detection_result.verified_count is None or detection_result.count_confidence is None:
                 raise ValueError("count verifier result is missing")
             if (
                 detection_result.count_confidence
@@ -186,7 +174,9 @@ class DecisionPipeline:
             self._log(response, detector_ms=detector_ms, classifier_ms=0.0)
             return response
 
-        ordered = sorted(detection_result.detections, key=lambda detection: (detection.y1, detection.x1))
+        ordered = sorted(
+            detection_result.detections, key=lambda detection: (detection.y1, detection.x1)
+        )
         classifier_started = time.perf_counter()
         logits = self.classifier.classify(image, ordered)
         classifier_ms = (time.perf_counter() - classifier_started) * 1000.0
@@ -211,9 +201,7 @@ class DecisionPipeline:
             return response
 
         if self.quality_metadata.border_policy == "classifier_confidence":
-            border_indices = _border_detection_indices(
-                image, ordered, self.quality_metadata
-            )
+            border_indices = _border_detection_indices(image, ordered, self.quality_metadata)
             low_confidence_border = any(
                 float(probabilities[index, int(top_indices[index][0])])
                 < self.classifier_metadata.approval_threshold
@@ -232,7 +220,9 @@ class DecisionPipeline:
                 return response
 
         items: list[ScanItem] = []
-        for ordinal, (detection, indices, scores) in enumerate(zip(ordered, top_indices, probabilities), start=1):
+        for ordinal, (detection, indices, scores) in enumerate(
+            zip(ordered, top_indices, probabilities), start=1
+        ):
             top1_index = int(indices[0])
             top1_score = float(scores[top1_index])
             label = self.classifier_metadata.labels[top1_index]

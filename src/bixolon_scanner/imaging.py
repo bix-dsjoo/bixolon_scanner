@@ -6,7 +6,6 @@ from PIL import Image, ImageOps, UnidentifiedImageError
 
 from .errors import CorruptImageError, ImageTooLargeError, UnsupportedImageFormatError
 
-
 ALLOWED_FORMATS = {"JPEG", "MPO", "PNG"}
 ORIGINAL_SIZE_INFO_KEY = "bixolon_original_size"
 

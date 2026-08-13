@@ -12,7 +12,6 @@ from ..inference import Detection, build_onnx_adapters
 from ..package import load_model_package
 from .evaluate_difficulty import _load_records, _match_detections
 
-
 GT_MATCHED = (40, 220, 80)
 GT_MISSED = (255, 45, 45)
 PRED_MATCHED = (0, 180, 255)
@@ -143,9 +142,7 @@ def render(args: argparse.Namespace) -> list[Path]:
         if row["error_type"] in {"DETECTOR_MISSED_GT", "DETECTOR_FALSE_POSITIVE"}
     }
     package = load_model_package(args.package_dir)
-    detector, _, _ = build_onnx_adapters(
-        package, args.provider, cuda_dll_dir=args.cuda_dll_dir
-    )
+    detector, _, _ = build_onnx_adapters(package, args.provider, cuda_dll_dir=args.cuda_dll_dir)
     records = {
         record["image_path"].resolve(): record for record in _load_records(args.dataset_root)
     }

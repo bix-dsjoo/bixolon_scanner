@@ -61,4 +61,3 @@ def test_unsupported_format_is_415(classifier_metadata, quality_metadata):
         response = client.post("/v1/scan", files={"image": ("file.gif", b"GIF89a", "image/gif")})
     assert response.status_code in {415, 422}
     assert response.json()["status"] == "ERROR"
-

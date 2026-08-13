@@ -66,7 +66,10 @@ def build_residual_cosine_head(spec: AdapterSpec):
                 return features
             if patch_features is None or patch_features.ndim != 3:
                 raise ValueError("local head requires [batch, patches, hidden] features")
-            if patch_features.shape[0] != features.shape[0] or patch_features.shape[2] != spec.hidden_size:
+            if (
+                patch_features.shape[0] != features.shape[0]
+                or patch_features.shape[2] != spec.hidden_size
+            ):
                 raise ValueError("global and local feature shapes are not aligned")
             attention = torch.softmax(
                 patch_features @ self.local_query / (spec.hidden_size**0.5), dim=1
@@ -77,20 +80,17 @@ def build_residual_cosine_head(spec: AdapterSpec):
         def adapt(self, features, patch_features=None):
             features = self.fuse(features, patch_features)
             residual = self.adapter_up(self.activation(self.adapter_down(features)))
-            return torch.nn.functional.normalize(
-                features + residual, p=2.0, dim=-1, eps=1e-12
-            )
+            return torch.nn.functional.normalize(features + residual, p=2.0, dim=-1, eps=1e-12)
 
         def _class_scores(self, adapted):
-            weights = torch.nn.functional.normalize(
-                self.class_weights, p=2.0, dim=-1, eps=1e-12
-            )
+            weights = torch.nn.functional.normalize(self.class_weights, p=2.0, dim=-1, eps=1e-12)
             proxy_scores = torch.einsum("bh,ckh->bck", adapted, weights)
             if spec.proxies_per_class == 1:
                 return proxy_scores[..., 0]
-            return torch.logsumexp(
-                proxy_scores * spec.proxy_temperature, dim=-1
-            ) / spec.proxy_temperature
+            return (
+                torch.logsumexp(proxy_scores * spec.proxy_temperature, dim=-1)
+                / spec.proxy_temperature
+            )
 
         def forward(self, features, patch_features=None):
             adapted = self.adapt(features, patch_features)
@@ -117,7 +117,11 @@ def build_residual_cosine_head(spec: AdapterSpec):
             )
             if values.ndim != 2 or values.shape[1] != spec.hidden_size:
                 raise ValueError("support features have the wrong shape")
-            if proxies.shape != targets.shape or bool((proxies < 0).any()) or bool((proxies >= spec.proxies_per_class).any()):
+            if (
+                proxies.shape != targets.shape
+                or bool((proxies < 0).any())
+                or bool((proxies >= spec.proxies_per_class).any())
+            ):
                 raise ValueError("support proxy ids are invalid")
             prototypes = []
             for class_index in range(spec.num_classes):
@@ -126,20 +130,14 @@ def build_residual_cosine_head(spec: AdapterSpec):
                     raise ValueError(f"class {class_index} has no support features")
                 class_prototypes = []
                 for proxy_index in range(spec.proxies_per_class):
-                    proxy_values = values[
-                        (targets == class_index) & (proxies == proxy_index)
-                    ]
+                    proxy_values = values[(targets == class_index) & (proxies == proxy_index)]
                     class_prototypes.append(
-                        proxy_values.mean(dim=0)
-                        if proxy_values.shape[0]
-                        else selected.mean(dim=0)
+                        proxy_values.mean(dim=0) if proxy_values.shape[0] else selected.mean(dim=0)
                     )
                 prototypes.append(torch.stack(class_prototypes))
             with torch.no_grad():
                 self.class_weights.copy_(
-                    torch.nn.functional.normalize(
-                        torch.stack(prototypes), p=2.0, dim=-1, eps=1e-12
-                    )
+                    torch.nn.functional.normalize(torch.stack(prototypes), p=2.0, dim=-1, eps=1e-12)
                 )
 
     return ResidualCosineHead()
@@ -163,13 +161,10 @@ def supervised_contrastive_loss(features, labels, *, temperature: float = 0.1):
         return values.sum() * 0.0
     logits = logits - logits.max(dim=1, keepdim=True).values.detach()
     exp_logits = torch.exp(logits) * (~identity)
-    log_probability = logits - torch.log(
-        exp_logits.sum(dim=1, keepdim=True).clamp_min(1e-12)
-    )
-    mean_positive_log_probability = (
-        (log_probability * positives).sum(dim=1)
-        / positives.sum(dim=1).clamp_min(1)
-    )
+    log_probability = logits - torch.log(exp_logits.sum(dim=1, keepdim=True).clamp_min(1e-12))
+    mean_positive_log_probability = (log_probability * positives).sum(dim=1) / positives.sum(
+        dim=1
+    ).clamp_min(1)
     return -mean_positive_log_probability[valid].mean()
 
 
@@ -216,9 +211,7 @@ def wrap_inference_classifier(
     if identity:
         return classifier
     torch = require_torch()
-    crop_size = (
-        input_size if crop_scale is None else max(1, round(input_size * crop_scale))
-    )
+    crop_size = input_size if crop_scale is None else max(1, round(input_size * crop_scale))
     offset = (input_size - crop_size) // 2
 
     class InferenceClassifier(torch.nn.Module):
@@ -249,8 +242,7 @@ def wrap_inference_classifier(
             logits = self.classifier(classifier_input)
             if logit_quantum is not None:
                 logits = (
-                    torch.round((logits + logit_phase) / logit_quantum)
-                    * logit_quantum
+                    torch.round((logits + logit_phase) / logit_quantum) * logit_quantum
                     - logit_phase
                 )
             if tie_break_bias_span:

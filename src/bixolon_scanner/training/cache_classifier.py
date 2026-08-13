@@ -68,7 +68,9 @@ def build_cache(args: argparse.Namespace) -> None:
                     roi = _crop(image, annotation["bbox_xywh"], margin)
                     store(key, roi)
         if number % 100 == 0:
-            print(json.dumps({"records_processed": number, "cache_entries": len(index)}), flush=True)
+            print(
+                json.dumps({"records_processed": number, "cache_entries": len(index)}), flush=True
+            )
     images.flush()
     metadata = {
         "schema_version": "1.0",
@@ -86,7 +88,9 @@ def build_cache(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Build an ignored NumPy cache for classifier crops")
+    parser = argparse.ArgumentParser(
+        description="Build an ignored NumPy cache for classifier crops"
+    )
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)

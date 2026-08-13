@@ -12,8 +12,8 @@ from pathlib import Path
 
 import numpy as np
 
-from .inference import build_onnx_adapters
 from .imaging import decode_image
+from .inference import build_onnx_adapters
 from .package import load_model_package, sha256_file
 from .pipeline import DecisionPipeline
 
@@ -64,9 +64,7 @@ def _resolve_gpu_selection(
         token = visible.split(",", 1)[0].strip()
         if token.casefold().startswith("gpu-"):
             matches = [
-                row
-                for row in rows
-                if str(row["uuid"]).casefold().startswith(token.casefold())
+                row for row in rows if str(row["uuid"]).casefold().startswith(token.casefold())
             ]
             if len(matches) == 1:
                 return matches[0], "CUDA_VISIBLE_DEVICES_UUID"
@@ -223,23 +221,18 @@ def _manifest_evidence(
         except ValueError as exc:
             raise ValueError("benchmark manifest image escapes its root") from exc
         expected_paths.append(path)
-        expected_hashes[relative.replace("\\", "/")] = str(
-            record["source_image_sha256"]
-        )
+        expected_hashes[relative.replace("\\", "/")] = str(record["source_image_sha256"])
     if len(expected_paths) != len(set(expected_paths)):
         raise ValueError("benchmark manifest contains duplicate image paths")
     if set(expected_paths) != set(image_paths):
         raise ValueError("benchmark image directory does not match the manifest")
     manifest_image_hashes = {
-        path.relative_to(root).as_posix(): image_hashes[path.name]
-        for path in image_paths
+        path.relative_to(root).as_posix(): image_hashes[path.name] for path in image_paths
     }
     if manifest_image_hashes != expected_hashes:
         raise ValueError("benchmark image checksum does not match the manifest")
     ledger = json.loads(checksums_path.read_text(encoding="utf-8"))
-    if ledger.get("phase") != "benchmark-manifest" or not isinstance(
-        ledger.get("outputs"), dict
-    ):
+    if ledger.get("phase") != "benchmark-manifest" or not isinstance(ledger.get("outputs"), dict):
         raise ValueError("benchmark manifest checksum ledger is invalid")
     for relative, expected in ledger["outputs"].items():
         artifact = (root / str(relative)).resolve()
@@ -287,7 +280,9 @@ def main() -> None:
         package.metadata.quality,
         package.metadata.count_verifier,
     )
-    paths = sorted(path for path in args.images.rglob("*") if path.suffix.lower() in {".jpg", ".jpeg", ".png"})
+    paths = sorted(
+        path for path in args.images.rglob("*") if path.suffix.lower() in {".jpg", ".jpeg", ".png"}
+    )
     if not paths:
         raise RuntimeError("no benchmark images found")
     manifest_evidence = _manifest_evidence(
@@ -340,10 +335,7 @@ def main() -> None:
             stage_latencies["decision_overhead"].append(
                 max(
                     0.0,
-                    latency
-                    - decode_ms
-                    - timed_detector.last_ms
-                    - timed_classifier.last_ms,
+                    latency - decode_ms - timed_detector.last_ms - timed_classifier.last_ms,
                 )
             )
             by_item_count.setdefault(len(response.items), []).append(latency)
@@ -371,17 +363,13 @@ def main() -> None:
         "warmup_count": args.warmup,
         "image_files": [path.name for path in paths],
         **_latency_summary(latencies),
-        "by_path": {
-            name: _latency_summary(values) for name, values in by_path.items() if values
-        },
+        "by_path": {name: _latency_summary(values) for name, values in by_path.items() if values},
         "full_path_by_item_count": {
             str(count): _latency_summary(values) for count, values in sorted(by_item_count.items())
         },
         "statuses": statuses,
         "stage_latency_ms": {
-            name: _latency_summary(values)
-            for name, values in stage_latencies.items()
-            if values
+            name: _latency_summary(values) for name, values in stage_latencies.items() if values
         },
         "platform": platform.platform(),
         "python_version": platform.python_version(),

@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import json
 import hashlib
+import json
 import platform
 import sys
 from argparse import Namespace
@@ -10,16 +10,19 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import Any
 
-
 RECORDED_PACKAGES = ("torch", "torchvision", "transformers", "onnx", "onnxruntime-gpu")
 
 
 def _sha256_path(path: Path, *, suffix: str | None = None) -> str:
     digest = hashlib.sha256()
-    paths = [path] if path.is_file() else sorted(
-        candidate
-        for candidate in path.rglob("*")
-        if candidate.is_file() and (suffix is None or candidate.suffix == suffix)
+    paths = (
+        [path]
+        if path.is_file()
+        else sorted(
+            candidate
+            for candidate in path.rglob("*")
+            if candidate.is_file() and (suffix is None or candidate.suffix == suffix)
+        )
     )
     for candidate in paths:
         relative = candidate.name if path.is_file() else candidate.relative_to(path).as_posix()

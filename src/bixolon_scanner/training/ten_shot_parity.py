@@ -48,36 +48,27 @@ def strict_classifier_parity(
     if not all(np.isfinite(value).all() for value in arrays):
         raise ValueError("parity logits contain non-finite values")
     ranks = [_rank(value) for value in arrays]
-    states = [
-        _confidence(value, temperature) >= approval_threshold for value in arrays
-    ]
+    states = [_confidence(value, temperature) >= approval_threshold for value in arrays]
     checks = {
-        "pytorch_cpu_tolerance": float(np.max(np.abs(arrays[0] - arrays[1]))) <= pytorch_onnx_tolerance,
-        "pytorch_cuda_tolerance": float(np.max(np.abs(arrays[0] - arrays[2]))) <= pytorch_onnx_tolerance,
-        "cpu_cuda_tolerance": float(np.max(np.abs(arrays[1] - arrays[2]))) <= cross_provider_tolerance,
+        "pytorch_cpu_tolerance": float(np.max(np.abs(arrays[0] - arrays[1])))
+        <= pytorch_onnx_tolerance,
+        "pytorch_cuda_tolerance": float(np.max(np.abs(arrays[0] - arrays[2])))
+        <= pytorch_onnx_tolerance,
+        "cpu_cuda_tolerance": float(np.max(np.abs(arrays[1] - arrays[2])))
+        <= cross_provider_tolerance,
         "top1_equal": all(np.array_equal(ranks[0][:, :1], value[:, :1]) for value in ranks[1:]),
         "top3_set_and_order_equal": all(np.array_equal(ranks[0], value) for value in ranks[1:]),
         "final_state_equal": all(np.array_equal(states[0], value) for value in states[1:]),
     }
     mismatch_counts = {
         "top1": int(
-            sum(
-                np.any(ranks[0][:, :1] != value[:, :1], axis=1).sum()
-                for value in ranks[1:]
-            )
+            sum(np.any(ranks[0][:, :1] != value[:, :1], axis=1).sum() for value in ranks[1:])
         ),
         "top3_set_or_order": int(
-            sum(
-                np.any(ranks[0] != value, axis=1).sum()
-                for value in ranks[1:]
-            )
+            sum(np.any(ranks[0] != value, axis=1).sum() for value in ranks[1:])
         ),
-        "final_state": int(
-            sum(np.count_nonzero(states[0] != value) for value in states[1:])
-        ),
-        "cpu_cuda_top3_set_or_order": int(
-            np.any(ranks[1] != ranks[2], axis=1).sum()
-        ),
+        "final_state": int(sum(np.count_nonzero(states[0] != value) for value in states[1:])),
+        "cpu_cuda_top3_set_or_order": int(np.any(ranks[1] != ranks[2], axis=1).sum()),
         "cpu_cuda_final_state": int(np.count_nonzero(states[1] != states[2])),
     }
     return {
@@ -121,9 +112,7 @@ def _onnx_logits(
     runner = OrtRunner(model_path, provider, cuda_dll_dir)
     parts = []
     for start in range(0, len(tensors), batch_size):
-        batch = np.array(
-            tensors[start : start + batch_size], dtype=np.float32, copy=True
-        )
+        batch = np.array(tensors[start : start + batch_size], dtype=np.float32, copy=True)
         parts.append(runner.run(["logits"], "pixel_values", batch)[0])
     return np.concatenate(parts).astype(np.float32)
 
@@ -154,13 +143,9 @@ def run_locked_parity(args: argparse.Namespace) -> dict[str, Any]:
         spec=spec,
     )
     if checkpoint["architecture"] == "ten_shot_residual_cosine_challenger":
-        model.load_state_dict(
-            compatible_proxy_state_dict(checkpoint["model_state_dict"])
-        )
+        model.load_state_dict(compatible_proxy_state_dict(checkpoint["model_state_dict"]))
     elif checkpoint["architecture"] == "ten_shot_residual_cosine":
-        model.classifier.load_state_dict(
-            compatible_proxy_state_dict(checkpoint["head_state_dict"])
-        )
+        model.classifier.load_state_dict(compatible_proxy_state_dict(checkpoint["head_state_dict"]))
     else:
         raise ValueError("unsupported ten-shot checkpoint architecture")
     crop_value = config.get("inference", {}).get("center_crop_scale")
@@ -172,9 +157,7 @@ def run_locked_parity(args: argparse.Namespace) -> dict[str, Any]:
         crop_scale=crop_scale,
         num_classes=int(checkpoint["num_classes"]),
         logit_quantum=(
-            None
-            if inference.get("logit_quantum") is None
-            else float(inference["logit_quantum"])
+            None if inference.get("logit_quantum") is None else float(inference["logit_quantum"])
         ),
         logit_phase=float(inference.get("logit_phase", 0.0)),
         tie_break_bias_span=float(inference.get("tie_break_bias_span", 0.0)),
@@ -183,9 +166,7 @@ def run_locked_parity(args: argparse.Namespace) -> dict[str, Any]:
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device).eval()
     tensors = np.load(args.evaluation_tensors, mmap_mode="r")
-    pytorch = _pytorch_logits(
-        model, tensors, device=device, batch_size=args.batch_size
-    )
+    pytorch = _pytorch_logits(model, tensors, device=device, batch_size=args.batch_size)
     cpu = _onnx_logits(
         package.classifier_path,
         tensors,
@@ -207,9 +188,7 @@ def run_locked_parity(args: argparse.Namespace) -> dict[str, Any]:
         temperature=float(calibration["temperature"]),
         approval_threshold=float(calibration["approval_threshold"]),
         pytorch_onnx_tolerance=float(config["evaluation"]["classifier_tolerance"]),
-        cross_provider_tolerance=float(
-            config["evaluation"]["cross_provider_tolerance"]
-        ),
+        cross_provider_tolerance=float(config["evaluation"]["cross_provider_tolerance"]),
     )
     report.update(
         {
@@ -219,9 +198,7 @@ def run_locked_parity(args: argparse.Namespace) -> dict[str, Any]:
             "classifier_checkpoint_sha256": sha256_file(args.checkpoint),
             "package_artifact_sha256": {
                 "metadata.json": sha256_file(args.package_dir / "metadata.json"),
-                package.metadata.classifier.filename: sha256_file(
-                    package.classifier_path
-                ),
+                package.metadata.classifier.filename: sha256_file(package.classifier_path),
             },
             "inference_center_crop_scale": crop_scale,
             "pretest_lock": str(args.pretest_lock),

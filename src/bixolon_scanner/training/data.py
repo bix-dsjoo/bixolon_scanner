@@ -5,12 +5,14 @@ import random
 from pathlib import Path
 from typing import Any, Literal
 
-from PIL import Image, ImageEnhance
 import numpy as np
+from PIL import Image, ImageEnhance
 
 
 def read_manifest(path: Path) -> list[dict[str, Any]]:
-    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+    return [
+        json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()
+    ]
 
 
 class ClassifierDataset:
@@ -41,10 +43,16 @@ class ClassifierDataset:
                     )
                 continue
             include = (
-                mode == "test" and record["split"] == "test"
-                or mode == "validation" and record["split"] == "development" and record["fold"] == fold
-                or mode == "train" and record["split"] == "development" and record["fold"] != fold
-                or mode == "final_train" and record["split"] == "development"
+                mode == "test"
+                and record["split"] == "test"
+                or mode == "validation"
+                and record["split"] == "development"
+                and record["fold"] == fold
+                or mode == "train"
+                and record["split"] == "development"
+                and record["fold"] != fold
+                or mode == "final_train"
+                and record["split"] == "development"
             )
             if include:
                 for annotation in record["annotations"]:
@@ -56,13 +64,19 @@ class ClassifierDataset:
                             f"roi-{'train' if mode in ('train', 'final_train') else 'exact'}:{record['image_id']}:{annotation['annotation_id']}",
                         )
                     )
-        augmentation = [
-            transforms.RandomRotation(180, fill=(255, 255, 255)),
-            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15, hue=0.03),
-        ] if mode in ("train", "final_train") else []
-        cached_crop = [
-            transforms.RandomResizedCrop(image_size, scale=(0.78, 1.0), ratio=(0.9, 1.1))
-        ] if mode in ("train", "final_train") and cache_dir is not None else []
+        augmentation = (
+            [
+                transforms.RandomRotation(180, fill=(255, 255, 255)),
+                transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15, hue=0.03),
+            ]
+            if mode in ("train", "final_train")
+            else []
+        )
+        cached_crop = (
+            [transforms.RandomResizedCrop(image_size, scale=(0.78, 1.0), ratio=(0.9, 1.1))]
+            if mode in ("train", "final_train") and cache_dir is not None
+            else []
+        )
         self.transform = transforms.Compose(
             augmentation
             + cached_crop
@@ -141,10 +155,16 @@ class DetectionDataset:
             ):
                 continue
             include = (
-                mode == "test" and record["split"] == "test"
-                or mode == "validation" and record["split"] == "development" and record["fold"] == fold
-                or mode == "train" and record["split"] == "development" and record["fold"] != fold
-                or mode == "final_train" and record["split"] == "development"
+                mode == "test"
+                and record["split"] == "test"
+                or mode == "validation"
+                and record["split"] == "development"
+                and record["fold"] == fold
+                or mode == "train"
+                and record["split"] == "development"
+                and record["fold"] != fold
+                or mode == "final_train"
+                and record["split"] == "development"
             )
             if include:
                 self.records.append(record)

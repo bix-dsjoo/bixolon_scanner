@@ -13,34 +13,37 @@ from PIL import Image
 
 from bixolon_scanner.package import sha256_file
 from bixolon_scanner.training.models import require_torch, set_frozen_backbone
-from bixolon_scanner.training.train_detector import detector_optimizer_recipe
 from bixolon_scanner.training.rpc_data_scale import (
     _balanced_training_order,
-    _classifier_stage_rank,
     _classifier_domain_split,
+    _classifier_stage_rank,
     _classifier_training_loss,
     _crop,
-    _ground_truth_worker_outcomes,
     _difficulty_worker_metrics,
-    _visual_farthest_order,
+    _ground_truth_worker_outcomes,
     _load_stage_progress,
     _operational_gate,
     _run_complete,
     _save_stage_progress,
     _test_operational_gate,
     _validation_partition,
+    _visual_farthest_order,
     _write_experiment_metadata,
     evaluate_logits,
     evaluate_worker_taxonomy,
-    main as rpc_main,
     prepare,
     summarize,
-    test_selected as run_final_test,
     train_all,
 )
+from bixolon_scanner.training.rpc_data_scale import (
+    main as rpc_main,
+)
+from bixolon_scanner.training.rpc_data_scale import (
+    test_selected as run_final_test,
+)
 from bixolon_scanner.training.rpc_worker_gate import (
-    _baseline_detector_complete,
     _adaptation_progressive_fold_gate,
+    _baseline_detector_complete,
     _best_detector_epoch,
     _canonical_json,
     _checkpoint_complete,
@@ -49,16 +52,16 @@ from bixolon_scanner.training.rpc_worker_gate import (
     _domain_adaptation_namespace,
     _domain_adaptation_source_replay,
     _domain_adaptation_train_subset,
-    _train_records,
+    _hard_negative_rows,
     _prediction_artifact_valid,
     _prediction_identity,
-    _target_oof_gate_report,
-    _hard_negative_rows,
     _select_hard_negative_rows,
-    _train_product_row,
+    _target_oof_gate_report,
     _train_gate_complete,
-    _write_prediction_artifact,
+    _train_product_row,
+    _train_records,
     _update_unique_reason_counts,
+    _write_prediction_artifact,
     assign_oof_folds,
     evaluate_frozen_detector_threshold_selection,
     postprocess_worker_gate,
@@ -67,9 +70,12 @@ from bixolon_scanner.training.rpc_worker_gate import (
     prepare_final_test_records,
     train_final_detector,
 )
+from bixolon_scanner.training.train_detector import detector_optimizer_recipe
 
 
-def _write_coco(root: Path, split: str, categories: list[dict], images: list[dict], annotations: list[dict]):
+def _write_coco(
+    root: Path, split: str, categories: list[dict], images: list[dict], annotations: list[dict]
+):
     (root / f"{split}2019").mkdir(parents=True, exist_ok=True)
     (root / f"instances_{split}2019.json").write_text(
         json.dumps({"categories": categories, "images": images, "annotations": annotations}),
@@ -89,8 +95,7 @@ def _write_detector_phase_completion(output_dir: Path) -> None:
         "val_predictions_sha256": predictions_dir / "val_oof.jsonl",
         "val_predictions_metadata_sha256": predictions_dir / "val_oof.jsonl.metadata.json",
         "train_predictions_sha256": predictions_dir / "train_assigned.jsonl",
-        "train_predictions_metadata_sha256": predictions_dir
-        / "train_assigned.jsonl.metadata.json",
+        "train_predictions_metadata_sha256": predictions_dir / "train_assigned.jsonl.metadata.json",
     }
     for path in artifacts.values():
         path.write_text("{}\n", encoding="utf-8")
@@ -167,12 +172,8 @@ def test_classifier_domain_split_is_group_safe_reproducible_and_keeps_negatives(
         for target in (0, 1, -1)
     ]
 
-    first_train, first_risk = _classifier_domain_split(
-        records, fraction=2 / 3, seed=7
-    )
-    second_train, second_risk = _classifier_domain_split(
-        records, fraction=2 / 3, seed=7
-    )
+    first_train, first_risk = _classifier_domain_split(records, fraction=2 / 3, seed=7)
+    second_train, second_risk = _classifier_domain_split(records, fraction=2 / 3, seed=7)
 
     assert first_train == second_train
     assert first_risk == second_risk
@@ -182,8 +183,7 @@ def test_classifier_domain_split_is_group_safe_reproducible_and_keeps_negatives(
     assert {row["target"] for row in first_train} == {-1, 0, 1}
     assert {row["target"] for row in first_risk} == {-1, 0, 1}
     assert all(
-        row["role"]
-        == ("checkout_hard_negative" if row["target"] < 0 else "checkout_adaptation")
+        row["role"] == ("checkout_hard_negative" if row["target"] < 0 else "checkout_adaptation")
         for row in first_train
     )
 
@@ -227,9 +227,7 @@ def test_train_hard_negatives_require_low_gt_overlap_and_are_view_diverse():
         row["view_id"] = view_id
         row["detector_score"] = score
         candidates.append(row)
-    selected = _select_hard_negative_rows(
-        candidates, positive_count=10, training=training
-    )
+    selected = _select_hard_negative_rows(candidates, positive_count=10, training=training)
 
     assert {row["view_id"] for row in selected} == {2, 10}
 
@@ -341,9 +339,7 @@ def test_backbone_unfreeze_policies_are_mutually_exclusive():
             self.classifier = torch.nn.Linear(2, 2)
 
     with pytest.raises(ValueError, match="choose one backbone unfreezing policy"):
-        set_frozen_backbone(
-            FakeClassifier(), unfreeze_all=True, unfreeze_last_blocks=2
-        )
+        set_frozen_backbone(FakeClassifier(), unfreeze_all=True, unfreeze_last_blocks=2)
 
 
 def test_oof_detector_uses_identical_initialization_seed_for_all_folds(tmp_path):
@@ -406,9 +402,7 @@ def test_detector_completion_rejects_a_different_initialization_seed(tmp_path):
     (checkpoint / "history.json").write_text(json.dumps(history), encoding="utf-8")
     recipe = {"optimizer": "AdamW", "head_lr_multiplier": 10.0}
     (checkpoint / "run.json").write_text(
-        json.dumps(
-            {"arguments": {"seed": 20260810}, "optimizer_recipe": recipe}
-        ),
+        json.dumps({"arguments": {"seed": 20260810}, "optimizer_recipe": recipe}),
         encoding="utf-8",
     )
     (checkpoint / "complete.json").write_text(
@@ -436,9 +430,7 @@ def test_detector_prediction_resume_requires_inputs_weights_config_and_checksum(
     checkpoint = tmp_path / "fold0" / "best"
     checkpoint.mkdir(parents=True)
     (checkpoint / "model.safetensors").write_bytes(b"weights-v1")
-    records = [
-        {"source": "rpc_val2019", "image_id": 1, "image_path": "val2019/a.jpg"}
-    ]
+    records = [{"source": "rpc_val2019", "image_id": 1, "image_path": "val2019/a.jpg"}]
     predictions_path = tmp_path / "predictions" / "val_oof.jsonl"
     identity = _prediction_identity(
         records,
@@ -498,8 +490,7 @@ def test_detector_complete_marker_validates_every_internal_artifact_hash(tmp_pat
         "val_predictions_sha256": predictions_dir / "val_oof.jsonl",
         "val_predictions_metadata_sha256": predictions_dir / "val_oof.jsonl.metadata.json",
         "train_predictions_sha256": predictions_dir / "train_assigned.jsonl",
-        "train_predictions_metadata_sha256": predictions_dir
-        / "train_assigned.jsonl.metadata.json",
+        "train_predictions_metadata_sha256": predictions_dir / "train_assigned.jsonl.metadata.json",
     }
     for path in artifacts.values():
         path.write_text("{}\n", encoding="utf-8")
@@ -511,9 +502,7 @@ def test_detector_complete_marker_validates_every_internal_artifact_hash(tmp_pat
     assert not _detector_phase_complete(detector_dir)
 
 
-def test_prepare_rejects_a_tampered_detector_completion_before_loading_data(
-    tmp_path, monkeypatch
-):
+def test_prepare_rejects_a_tampered_detector_completion_before_loading_data(tmp_path, monkeypatch):
     _write_detector_phase_completion(tmp_path)
     (tmp_path / "detector" / "threshold.json").write_text("tampered\n", encoding="utf-8")
     monkeypatch.setattr(
@@ -553,9 +542,7 @@ def test_final_detector_epoch_policy_uses_metric_quality_not_lowest_loss(tmp_pat
     assert _best_detector_epoch(detector_dir, 3) == 3
 
 
-def test_final_detector_is_baseline_val_all_and_ignores_adaptation_epochs(
-    tmp_path, monkeypatch
-):
+def test_final_detector_is_baseline_val_all_and_ignores_adaptation_epochs(tmp_path, monkeypatch):
     detector_dir = tmp_path / "output" / "detector"
     dataset_root = tmp_path / "dataset"
     dataset_root.mkdir()
@@ -594,7 +581,7 @@ def test_final_detector_is_baseline_val_all_and_ignores_adaptation_epochs(
                 "skip_epoch_validation": True,
                 "seed": 7,
             },
-        }
+        },
     }
     config_path.write_text(json.dumps(config), encoding="utf-8")
     baseline_manifest = detector_dir / "manifest" / "manifest.jsonl"
@@ -653,9 +640,7 @@ def test_final_detector_is_baseline_val_all_and_ignores_adaptation_epochs(
         best = namespace.output_dir / "best"
         best.mkdir(parents=True, exist_ok=True)
         (best / "config.json").write_text("{}", encoding="utf-8")
-        (best / "model.safetensors").write_bytes(
-            f"stage-{len(calls)}".encode()
-        )
+        (best / "model.safetensors").write_bytes(f"stage-{len(calls)}".encode())
         (namespace.output_dir / "run.json").write_text(
             json.dumps(
                 {
@@ -667,10 +652,7 @@ def test_final_detector_is_baseline_val_all_and_ignores_adaptation_epochs(
         )
         (namespace.output_dir / "history.json").write_text(
             json.dumps(
-                [
-                    {"epoch": epoch, "train_loss": 1.0}
-                    for epoch in range(1, namespace.epochs + 1)
-                ]
+                [{"epoch": epoch, "train_loss": 1.0} for epoch in range(1, namespace.epochs + 1)]
             ),
             encoding="utf-8",
         )
@@ -687,9 +669,7 @@ def test_final_detector_is_baseline_val_all_and_ignores_adaptation_epochs(
         "bixolon_scanner.training.rpc_worker_gate._train_gate_complete",
         lambda *_args, **_kwargs: (True, {"role": "train_gate_only"}),
     )
-    monkeypatch.setattr(
-        "bixolon_scanner.training.rpc_worker_gate.train_detector", fake_train
-    )
+    monkeypatch.setattr("bixolon_scanner.training.rpc_worker_gate.train_detector", fake_train)
     args = Namespace(
         output_dir=tmp_path / "output",
         dataset_root=dataset_root,
@@ -699,17 +679,14 @@ def test_final_detector_is_baseline_val_all_and_ignores_adaptation_epochs(
 
     assert checkpoint == detector_dir / "final" / "stage-a-base" / "best"
     assert [call.epochs for call in calls] == [57]
-    complete = json.loads(
-        (detector_dir / "final" / "complete.json").read_text(encoding="utf-8")
-    )
+    complete = json.loads((detector_dir / "final" / "complete.json").read_text(encoding="utf-8"))
     assert complete["contract"] == "rpc-final-detector-baseline-val-all-v1"
     assert complete["target_adaptation_stage"] == "disabled_train_gate_only"
-    assert complete["stage_a_checkpoint_sha256"] == sha256_file(
-        checkpoint / "model.safetensors"
-    )
+    assert complete["stage_a_checkpoint_sha256"] == sha256_file(checkpoint / "model.safetensors")
     assert complete["active_detector_complete_sha256"] == sha256_file(
         detector_dir / "baseline" / "complete.json"
     )
+
 
 def test_training_order_is_nested_balanced_and_reproducible():
     records = []
@@ -811,9 +788,7 @@ def test_worker_gate_separates_recapture_and_exact_alignment():
     record = {
         "width": 100,
         "height": 100,
-        "annotations": [
-            {"bbox_xywh": [20, 20, 40, 40], "category_id": 1, "annotation_id": 1}
-        ],
+        "annotations": [{"bbox_xywh": [20, 20, 40, 40], "category_id": 1, "annotation_id": 1}],
     }
     options = {
         "score_threshold": 0.5,
@@ -857,9 +832,7 @@ def test_adapted_detector_selection_uses_calibration_threshold_without_tuning(
         calls.append((selected_records, selected_predictions, kwargs))
         return {"recall": 0.995, "precision": 0.9, "count_accuracy": 0.8}
 
-    monkeypatch.setattr(
-        "bixolon_scanner.training.rpc_worker_gate._metrics", fake_metrics
-    )
+    monkeypatch.setattr("bixolon_scanner.training.rpc_worker_gate._metrics", fake_metrics)
     report = evaluate_frozen_detector_threshold_selection(
         records,
         predictions,
@@ -929,9 +902,7 @@ def test_domain_adaptation_subset_is_balanced_diverse_and_group_oof(tmp_path):
                 "RGB",
                 (8, 8),
                 (category_id * 30, index * 30, (category_id + index) * 15),
-            ).save(
-                tmp_path / image_path
-            )
+            ).save(tmp_path / image_path)
             records.append(
                 {
                     "source": "rpc_train2019",
@@ -1021,9 +992,7 @@ def test_domain_adaptation_namespace_uses_its_local_optimizer_and_freeze_recipe(
     recipe = detector_optimizer_recipe(namespace)
 
     assert namespace.fixed_epoch_checkpoint is True
-    assert namespace.initial_checkpoint_sha256 == sha256_file(
-        checkpoint / "model.safetensors"
-    )
+    assert namespace.initial_checkpoint_sha256 == sha256_file(checkpoint / "model.safetensors")
     assert recipe["total_epochs"] == 1
     assert recipe["base_learning_rate"] == 2.5e-7
     assert recipe["head_lr_multiplier"] == 2.0
@@ -1103,9 +1072,7 @@ def test_progressive_fold_gate_reuses_exact_predictions_without_policy_rebinding
             for record in records
         ]
 
-    monkeypatch.setattr(
-        "bixolon_scanner.training.rpc_worker_gate.predict_records", fake_predict
-    )
+    monkeypatch.setattr("bixolon_scanner.training.rpc_worker_gate.predict_records", fake_predict)
     options = {
         "inference_batch_size": 2,
         "min_score_threshold": 0.05,
@@ -1150,9 +1117,7 @@ def test_progressive_fold_gate_reuses_exact_predictions_without_policy_rebinding
 
     assert first["passes"] is True
     assert first["score_threshold"] == 0.42
-    assert first["policy"] == (
-        "baseline_calibration_frozen_threshold_progressive_fold_gate"
-    )
+    assert first["policy"] == ("baseline_calibration_frozen_threshold_progressive_fold_gate")
     assert first["target_gate"]["class_coverage"] == 1.0
     assert second["passes"] is True
     assert second["train_gate_policy_sha256"] != first["train_gate_policy_sha256"]
@@ -1199,9 +1164,7 @@ def test_domain_adaptation_farthest_first_is_nested_and_hash_deduplicated(tmp_pa
     assert len({row["source_image_sha256"] for row in prefixes[-1]}) == 6
 
 
-def test_baseline_marker_migration_never_infers_from_adapted_active_marker(
-    tmp_path, monkeypatch
-):
+def test_baseline_marker_migration_never_infers_from_adapted_active_marker(tmp_path, monkeypatch):
     detector_dir = tmp_path / "detector"
     detector_dir.mkdir()
     active = detector_dir / "complete.json"
@@ -1215,9 +1178,7 @@ def test_baseline_marker_migration_never_infers_from_adapted_active_marker(
 
     active.write_text(json.dumps({"checkpoint_set": "baseline"}), encoding="utf-8")
     assert _baseline_detector_complete(detector_dir, tmp_path, {})
-    migrated = json.loads(
-        (detector_dir / "baseline" / "complete.json").read_text(encoding="utf-8")
-    )
+    migrated = json.loads((detector_dir / "baseline" / "complete.json").read_text(encoding="utf-8"))
     assert migrated["contract"] == "rpc-detector-baseline-complete-v1"
     assert migrated["checkpoint_set"] == "baseline"
 
@@ -1336,9 +1297,7 @@ def test_train_gate_legacy_completion_migrates_only_after_exact_lineage_validati
         "adaptation_config_sha256": hashlib.sha256(
             _canonical_json(adaptation).encode()
         ).hexdigest(),
-        "train_gate_policy_sha256": hashlib.sha256(
-            _canonical_json(policy).encode()
-        ).hexdigest(),
+        "train_gate_policy_sha256": hashlib.sha256(_canonical_json(policy).encode()).hexdigest(),
         "baseline_complete_sha256": sha256_file(baseline_path),
         "baseline_threshold_sha256": sha256_file(threshold_path),
         "target_oof_gate": {"passes": True},
@@ -1353,21 +1312,15 @@ def test_train_gate_legacy_completion_migrates_only_after_exact_lineage_validati
     assert _train_gate_complete(detector_dir, config) == (False, None)
     assert not (attempt / "baseline_frozen_selection_gate.json").exists()
 
-    marker["train_predictions_sha256"] = sha256_file(
-        artifact_paths["train_predictions_sha256"]
-    )
+    marker["train_predictions_sha256"] = sha256_file(artifact_paths["train_predictions_sha256"])
     marker_path.write_text(json.dumps(marker), encoding="utf-8")
     valid, migrated = _train_gate_complete(detector_dir, config)
 
     assert valid is True
     assert migrated is not None
     selection_path = attempt / "baseline_frozen_selection_gate.json"
-    assert migrated["baseline_frozen_selection_gate_sha256"] == sha256_file(
-        selection_path
-    )
-    assert migrated["baseline_frozen_selection_gate"][
-        "frozen_threshold_selection_gate"
-    ] is True
+    assert migrated["baseline_frozen_selection_gate_sha256"] == sha256_file(selection_path)
+    assert migrated["baseline_frozen_selection_gate"]["frozen_threshold_selection_gate"] is True
 
 
 def test_active_adaptation_same_recipe_is_immutable_on_retry(tmp_path, monkeypatch):
@@ -1480,14 +1433,10 @@ def test_train_detector_physical_group_fold_keeps_front_and_back_together(tmp_pa
         )
     _write_coco(tmp_path, "train", [{"id": 1}, {"id": 2}], images, annotations)
 
-    records = _train_records(
-        tmp_path, fold_count=3, fold_assignment="physical_group"
-    )
+    records = _train_records(tmp_path, fold_count=3, fold_assignment="physical_group")
     by_group: dict[str, set[int]] = {}
     for record in records:
-        by_group.setdefault(record["physical_group"], set()).add(
-            record["prediction_fold"]
-        )
+        by_group.setdefault(record["physical_group"], set()).add(record["prediction_fold"])
 
     assert set(by_group) == {"111", "222"}
     assert all(len(folds) == 1 for folds in by_group.values())
@@ -1579,9 +1528,7 @@ def test_ground_truth_worker_outcomes_partition_every_box():
             },
         ]
     }
-    outcomes = _ground_truth_worker_outcomes(
-        classifier_report, detector_report, role="selection"
-    )
+    outcomes = _ground_truth_worker_outcomes(classifier_report, detector_report, role="selection")
     assert outcomes["denominator"] == 11
     assert sum(outcomes["counts"].values()) == 11
     assert outcomes["counts"]["detector_recapture"] == 2
@@ -1624,9 +1571,7 @@ def test_difficulty_worker_metrics_adds_fixed_level_segmentation_denominators():
         ]
     }
 
-    metrics = _difficulty_worker_metrics(
-        classifier_report, detector_report, role="selection"
-    )
+    metrics = _difficulty_worker_metrics(classifier_report, detector_report, role="selection")
 
     assert metrics["easy"]["segmentation_failure_rate"] == 0.01
     assert metrics["medium"]["segmentation_failure_rate"] == 0.025
@@ -1678,9 +1623,9 @@ def test_worker_taxonomy_separates_image_and_segment_recapture_without_double_co
         ]
     }
 
-    report = evaluate_worker_taxonomy(
-        predictions, calibration, detector_report, role="selection"
-    )["easy"]
+    report = evaluate_worker_taxonomy(predictions, calibration, detector_report, role="selection")[
+        "easy"
+    ]
 
     assert report["image_recapture_count"] == 1
     assert report["segment_recapture_count"] == 1
@@ -1800,7 +1745,12 @@ def test_prepare_builds_cache_without_reading_test_and_resume_reuses_it(tmp_path
                 }
             )
             train_annotations.append(
-                {"id": image_id, "image_id": image_id, "category_id": category, "bbox": [2, 2, 10, 10]}
+                {
+                    "id": image_id,
+                    "image_id": image_id,
+                    "category_id": category,
+                    "bbox": [2, 2, 10, 10],
+                }
             )
     val_images = []
     val_annotations = []
@@ -1818,7 +1768,12 @@ def test_prepare_builds_cache_without_reading_test_and_resume_reuses_it(tmp_path
         )
         for category in (1, 2):
             val_annotations.append(
-                {"id": annotation_id, "image_id": image_id, "category_id": category, "bbox": [2, 2, 10, 10]}
+                {
+                    "id": annotation_id,
+                    "image_id": image_id,
+                    "category_id": category,
+                    "bbox": [2, 2, 10, 10],
+                }
             )
             annotation_id += 1
     _write_coco(root, "train", categories, train_images, train_annotations)
@@ -1901,7 +1856,10 @@ def test_prepare_builds_cache_without_reading_test_and_resume_reuses_it(tmp_path
     )
     monkeypatch.setattr(
         "bixolon_scanner.training.rpc_data_scale._extract_visual_embeddings",
-        lambda records, *_: (np.eye(len(records), dtype=np.float32), [str(index) for index in range(len(records))]),
+        lambda records, *_: (
+            np.eye(len(records), dtype=np.float32),
+            [str(index) for index in range(len(records))],
+        ),
     )
     monkeypatch.setattr(
         "bixolon_scanner.training.rpc_data_scale._render_sampling_audit",
@@ -1955,9 +1913,7 @@ def test_prepare_builds_cache_without_reading_test_and_resume_reuses_it(tmp_path
         assert prepared_again[field] == sealed_metadata[field]
 
     with pytest.raises(ValueError, match="cannot be downgraded"):
-        _write_experiment_metadata(
-            metadata_path, {**prepared_again, "test_accessed": False}
-        )
+        _write_experiment_metadata(metadata_path, {**prepared_again, "test_accessed": False})
     assert json.loads(metadata_path.read_text(encoding="utf-8"))["test_accessed"] is True
 
     full_output = tmp_path / "full_output"
@@ -2112,12 +2068,8 @@ def test_main_blocks_every_mutation_phase_before_dispatch_on_sealed_output(
         phase=phase,
         resume=False,
     )
-    monkeypatch.setattr(
-        "bixolon_scanner.training.rpc_data_scale._parse_args", lambda: args
-    )
-    monkeypatch.setattr(
-        "bixolon_scanner.training.rpc_data_scale._load_config", lambda _path: {}
-    )
+    monkeypatch.setattr("bixolon_scanner.training.rpc_data_scale._parse_args", lambda: args)
+    monkeypatch.setattr("bixolon_scanner.training.rpc_data_scale._load_config", lambda _path: {})
     for name in (
         "prepare_detector_phase",
         "prepare_detector_domain_adaptation",
@@ -2129,18 +2081,14 @@ def test_main_blocks_every_mutation_phase_before_dispatch_on_sealed_output(
     ):
         monkeypatch.setattr(
             f"bixolon_scanner.training.rpc_data_scale.{name}",
-            lambda *_args, _name=name, **_kwargs: pytest.fail(
-                f"sealed main dispatched {_name}"
-            ),
+            lambda *_args, _name=name, **_kwargs: pytest.fail(f"sealed main dispatched {_name}"),
         )
 
     with pytest.raises(RuntimeError, match="fresh output directory"):
         rpc_main()
 
 
-def test_main_allows_only_read_only_test_dispatch_on_sealed_output(
-    tmp_path, monkeypatch
-):
+def test_main_allows_only_read_only_test_dispatch_on_sealed_output(tmp_path, monkeypatch):
     output = tmp_path / "output"
     metadata_path = output / "prepared" / "experiment.json"
     metadata_path.parent.mkdir(parents=True)
@@ -2154,9 +2102,7 @@ def test_main_allows_only_read_only_test_dispatch_on_sealed_output(
         resume=False,
     )
     calls = []
-    monkeypatch.setattr(
-        "bixolon_scanner.training.rpc_data_scale._parse_args", lambda: args
-    )
+    monkeypatch.setattr("bixolon_scanner.training.rpc_data_scale._parse_args", lambda: args)
     monkeypatch.setattr(
         "bixolon_scanner.training.rpc_data_scale._load_config",
         lambda _path: {"experiment": {"mode": "full_dataset"}},
@@ -2179,9 +2125,7 @@ def test_main_allows_only_read_only_test_dispatch_on_sealed_output(
     "entrypoint",
     (prepare, train_all, prepare_detector_phase, prepare_detector_domain_adaptation),
 )
-def test_direct_mutation_entrypoints_reject_sealed_output_before_work(
-    tmp_path, entrypoint
-):
+def test_direct_mutation_entrypoints_reject_sealed_output_before_work(tmp_path, entrypoint):
     output = tmp_path / "output"
     metadata_path = output / "prepared" / "experiment.json"
     metadata_path.parent.mkdir(parents=True)
@@ -2207,9 +2151,7 @@ def test_direct_final_test_record_entrypoint_cannot_reaccess_sealed_test(tmp_pat
         )
 
 
-def test_full_dataset_summary_locks_the_single_model_without_selected_n(
-    tmp_path, monkeypatch
-):
+def test_full_dataset_summary_locks_the_single_model_without_selected_n(tmp_path, monkeypatch):
     prepared = tmp_path / "prepared"
     prepared.mkdir()
     worker_gate = {
@@ -2223,9 +2165,7 @@ def test_full_dataset_summary_locks_the_single_model_without_selected_n(
         "validation_missed_boxes": 0,
         "validation_unmatched_boxes": 0,
     }
-    (prepared / "worker_gate_report.json").write_text(
-        json.dumps(worker_gate), encoding="utf-8"
-    )
+    (prepared / "worker_gate_report.json").write_text(json.dumps(worker_gate), encoding="utf-8")
     (prepared / "experiment.json").write_text(
         json.dumps(
             {
@@ -2282,17 +2222,13 @@ def test_full_dataset_summary_locks_the_single_model_without_selected_n(
         },
     }
     (run_dir / "selection_report.json").write_text(json.dumps(report), encoding="utf-8")
-    (run_dir / "run.json").write_text(
-        json.dumps({"train_sample_count": 7}), encoding="utf-8"
-    )
+    (run_dir / "run.json").write_text(json.dumps({"train_sample_count": 7}), encoding="utf-8")
     np.savez(
         run_dir / "selection_predictions.npz",
         logits=np.asarray([[4.0, 0.0], [0.0, 4.0]]),
         targets=np.asarray([0, 1]),
     )
-    (run_dir / "complete.json").write_text(
-        json.dumps({"complete": True}), encoding="utf-8"
-    )
+    (run_dir / "complete.json").write_text(json.dumps({"complete": True}), encoding="utf-8")
     final_complete_path = tmp_path / "detector" / "final" / "complete.json"
     final_complete = {
         "contract": "rpc-final-detector-baseline-val-all-v1",
@@ -2334,10 +2270,7 @@ def test_full_dataset_summary_locks_the_single_model_without_selected_n(
     assert lock["model_run"] == "runs/full/seed20260810"
     assert lock["final_detector_checkpoint_sha256"] == "6" * 64
     assert lock["active_detector_threshold_sha256"] == "3" * 64
-    assert (
-        lock["operational_detector_role"]
-        == "checkout_baseline_val_all_operational"
-    )
+    assert lock["operational_detector_role"] == "checkout_baseline_val_all_operational"
     assert lock["train_gate_role"] == "offline_roi_train_gate_only"
     assert "selected_n" not in lock
     assert not (tmp_path / "selected_n.json").exists()
@@ -2352,9 +2285,7 @@ def test_final_test_gate_rejects_zero_approved_or_unknown_evaluable_samples():
         "unknown_matched_count": 1,
     }
     assert _test_operational_gate(calibration, passing_metrics)
-    assert not _test_operational_gate(
-        calibration, {**passing_metrics, "approved_count": 0}
-    )
+    assert not _test_operational_gate(calibration, {**passing_metrics, "approved_count": 0})
     assert not _test_operational_gate(
         calibration,
         {
@@ -2425,9 +2356,7 @@ def test_failed_full_dataset_lock_blocks_before_test_access(tmp_path, monkeypatc
     )
     config = {"experiment": {"mode": "full_dataset"}}
     with pytest.raises(RuntimeError, match="validation/model lock gate"):
-        run_final_test(
-            Namespace(dataset_root=tmp_path, output_dir=tmp_path, resume=False), config
-        )
+        run_final_test(Namespace(dataset_root=tmp_path, output_dir=tmp_path, resume=False), config)
     assert json.loads(metadata_path.read_text(encoding="utf-8"))["test_accessed"] is False
 
 
@@ -2477,9 +2406,7 @@ def test_test_access_seal_is_persisted_before_a_test_read_crash(tmp_path, monkey
     )
     config = {"experiment": {"mode": "full_dataset"}}
     with pytest.raises(RuntimeError, match="simulated crash"):
-        run_final_test(
-            Namespace(dataset_root=tmp_path, output_dir=tmp_path, resume=False), config
-        )
+        run_final_test(Namespace(dataset_root=tmp_path, output_dir=tmp_path, resume=False), config)
     sealed = json.loads(metadata_path.read_text(encoding="utf-8"))
     assert sealed["test_accessed"] is True
     assert sealed["test_access_started_at"]
@@ -2564,9 +2491,7 @@ def test_full_dataset_final_test_uses_locked_model_without_n_logic(tmp_path, mon
         _kwargs["before_test_access"]()
         detector_report_path = tmp_path / "test" / "detector_report.json"
         detector_report_path.parent.mkdir(parents=True, exist_ok=True)
-        detector_report_path.write_text(
-            json.dumps(detector_report), encoding="utf-8"
-        )
+        detector_report_path.write_text(json.dumps(detector_report), encoding="utf-8")
         return ([{"sample_id": "test:1"}], detector_report)
 
     monkeypatch.setattr(

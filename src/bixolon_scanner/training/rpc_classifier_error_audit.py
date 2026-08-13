@@ -72,14 +72,14 @@ def main() -> None:
         str(row["sample_key"]): row
         for row in _read_jsonl(detector_dir / "predictions" / "val_oof.jsonl")
     }
-    threshold = json.loads(
-        (detector_dir / "threshold.json").read_text(encoding="utf-8")
-    )["selected_score_threshold"]
+    threshold = json.loads((detector_dir / "threshold.json").read_text(encoding="utf-8"))[
+        "selected_score_threshold"
+    ]
     options = dict(config["detector"], score_threshold=float(threshold))
     calibration = json.loads((run_dir / "calibration.json").read_text(encoding="utf-8"))
-    policy = json.loads(
-        (run_dir / "context-rejector" / "report.json").read_text(encoding="utf-8")
-    )["models"]["logistic"]["policy"]
+    policy = json.loads((run_dir / "context-rejector" / "report.json").read_text(encoding="utf-8"))[
+        "models"
+    ]["logistic"]["policy"]
     archive = np.load(
         run_dir
         / (
@@ -91,10 +91,7 @@ def main() -> None:
     probabilities = softmax(archive["logits"], float(calibration["temperature"]))
     quality_key = "calibration_oof" if args.role == "calibration" else "selection"
     quality = np.load(run_dir / "context-rejector" / "logistic_scores.npz")[quality_key]
-    sample_index = {
-        str(sample_id): index
-        for index, sample_id in enumerate(archive["sample_ids"])
-    }
+    sample_index = {str(sample_id): index for index, sample_id in enumerate(archive["sample_ids"])}
     errors: list[dict[str, Any]] = []
     ambiguity_rows: list[tuple[float, bool]] = []
     for image_id, record in records.items():
@@ -116,11 +113,9 @@ def main() -> None:
             archive_index = indices[detection_index]
             target = int(archive["targets"][archive_index])
             predicted = classes[detection_index]
-            approved = (
-                probabilities[archive_index].max()
-                >= float(policy["classifier_threshold"])
-                and quality[archive_index] >= float(policy["quality_threshold"])
-            )
+            approved = probabilities[archive_index].max() >= float(
+                policy["classifier_threshold"]
+            ) and quality[archive_index] >= float(policy["quality_threshold"])
             match = result["matches"].get(str(detection_index))
             if match is None:
                 continue

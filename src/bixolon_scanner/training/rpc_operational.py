@@ -17,7 +17,6 @@ from ..inference import build_onnx_adapters
 from ..package import load_model_package, sha256_file
 from ..pipeline import DecisionPipeline, quality_reasons
 
-
 SCHEMA_VERSION = "1.0"
 DEFAULT_SELECTION_SALT = "bixolon-rpc-full-path-v1"
 RPC_OPERATION_DAG_VERSION = "rpc-operational-dag-v1"
@@ -58,15 +57,9 @@ def _worker_policy_from_config(config: dict[str, Any]) -> dict[str, Any]:
             "mean": [0.0, 0.0, 0.0],
             "std": [1.0, 1.0, 1.0],
             "max_queries": int(detector["max_queries"]),
-            "uncertainty_score_threshold": float(
-                detector["uncertainty_score_threshold"]
-            ),
-            "uncertainty_min_area_ratio": float(
-                detector["uncertainty_min_area_ratio"]
-            ),
-            "uncertainty_match_iou_threshold": float(
-                detector["uncertainty_match_iou_threshold"]
-            ),
+            "uncertainty_score_threshold": float(detector["uncertainty_score_threshold"]),
+            "uncertainty_min_area_ratio": float(detector["uncertainty_min_area_ratio"]),
+            "uncertainty_match_iou_threshold": float(detector["uncertainty_match_iou_threshold"]),
             "resize_reducing_gap": resize_reducing_gap,
         },
         "classifier": {
@@ -97,12 +90,8 @@ def _export_bridge(config: dict[str, Any], config_path: Path) -> dict[str, Any]:
         # This section is consumed directly by training.export --config.
         "export": {
             "detector_size": policy["detector"]["input_size"][0],
-            "uncertainty_score_threshold": policy["detector"][
-                "uncertainty_score_threshold"
-            ],
-            "uncertainty_min_area_ratio": policy["detector"][
-                "uncertainty_min_area_ratio"
-            ],
+            "uncertainty_score_threshold": policy["detector"]["uncertainty_score_threshold"],
+            "uncertainty_min_area_ratio": policy["detector"]["uncertainty_min_area_ratio"],
             "uncertainty_match_iou_threshold": policy["detector"][
                 "uncertainty_match_iou_threshold"
             ],
@@ -144,9 +133,7 @@ def _validate_export_worker_policy(package: Any, bridge: dict[str, Any]) -> None
             else:
                 matches = actual == expected_value
             if not matches:
-                raise ValueError(
-                    f"package Worker policy mismatch: {section}.{field}"
-                )
+                raise ValueError(f"package Worker policy mismatch: {section}.{field}")
 
 
 class _CapturingDetector:
@@ -176,9 +163,9 @@ class _CapturingClassifier:
 
 
 def _canonical_bytes(value: Any) -> bytes:
-    return json.dumps(
-        value, ensure_ascii=False, sort_keys=True, separators=(",", ":")
-    ).encode("utf-8")
+    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode(
+        "utf-8"
+    )
 
 
 def _sha256_bytes(value: bytes) -> str:
@@ -211,9 +198,7 @@ def _read_json(path: Path) -> dict[str, Any]:
 
 def _write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _write_jsonl(path: Path, values: Iterable[dict[str, Any]]) -> None:
@@ -257,9 +242,7 @@ def _validate_package_evidence(
         raise ValueError(f"{evidence_name} has no package artifact checksums")
     for filename, expected in expected_hashes.items():
         if reported_hashes.get(filename) != expected:
-            raise ValueError(
-                f"{evidence_name} package artifact checksum mismatch: {filename}"
-            )
+            raise ValueError(f"{evidence_name} package artifact checksum mismatch: {filename}")
 
 
 def _validate_package_bridge_metadata(
@@ -268,17 +251,13 @@ def _validate_package_bridge_metadata(
     classifier_calibration: dict[str, Any],
 ) -> None:
     if (
-        detector_evaluation.get("detector_role")
-        != "checkout_baseline_operational"
+        detector_evaluation.get("detector_role") != "checkout_baseline_operational"
         or detector_evaluation.get("threshold_policy") != "calibration_oof_only"
-        or detector_evaluation.get("selection_threshold_policy")
-        != "frozen_calibration_threshold"
+        or detector_evaluation.get("selection_threshold_policy") != "frozen_calibration_threshold"
         or detector_evaluation.get("frozen_threshold_selection_gate") is not True
         or detector_evaluation.get("selection_target_recall_satisfied") is not True
         or not isinstance(detector_evaluation.get("selection_metrics"), dict)
-        or not isinstance(
-            detector_evaluation.get("train_gate_complete_sha256"), str
-        )
+        or not isinstance(detector_evaluation.get("train_gate_complete_sha256"), str)
     ):
         raise ValueError("package operational baseline detector evidence is invalid")
     comparisons = (
@@ -319,9 +298,7 @@ def _validate_package_bridge_metadata(
         "risk_control_satisfied",
     ):
         bridge_field = (
-            "approved_false_rate_upper_95"
-            if field == "false_approval_rate_upper_95"
-            else field
+            "approved_false_rate_upper_95" if field == "false_approval_rate_upper_95" else field
         )
         if getattr(calibration, field) != classifier_calibration.get(bridge_field):
             raise ValueError(f"package calibration metadata mismatch: {field}")
@@ -335,9 +312,7 @@ def _validate_package_bridge_metadata(
             abs_tol=1e-12,
         ):
             raise ValueError(f"package detector evaluation mismatch: {field}")
-    if evaluation.target_recall_satisfied != detector_evaluation.get(
-        "target_recall_satisfied"
-    ):
+    if evaluation.target_recall_satisfied != detector_evaluation.get("target_recall_satisfied"):
         raise ValueError("package detector target-recall disposition mismatch")
 
 
@@ -350,13 +325,9 @@ def _validate_benchmark_manifest_evidence(
     manifest_path = benchmark_dir / "manifest.json"
     jsonl_path = benchmark_dir / "manifest.jsonl"
     ledger_path = benchmark_dir / "checksums.json"
-    if benchmark_report.get("benchmark_manifest_sha256") != sha256_file(
-        manifest_path
-    ):
+    if benchmark_report.get("benchmark_manifest_sha256") != sha256_file(manifest_path):
         raise ValueError("benchmark report manifest checksum mismatch")
-    if benchmark_report.get("benchmark_manifest_checksums_sha256") != sha256_file(
-        ledger_path
-    ):
+    if benchmark_report.get("benchmark_manifest_checksums_sha256") != sha256_file(ledger_path):
         raise ValueError("benchmark report manifest ledger checksum mismatch")
     manifest = _read_json(manifest_path)
     records = manifest.get("records")
@@ -388,9 +359,11 @@ def _validate_benchmark_manifest_evidence(
     ledger = _read_json(ledger_path)
     inputs = ledger.get("inputs")
     outputs = ledger.get("outputs")
-    if ledger.get("phase") != "benchmark-manifest" or not isinstance(
-        inputs, dict
-    ) or not isinstance(outputs, dict):
+    if (
+        ledger.get("phase") != "benchmark-manifest"
+        or not isinstance(inputs, dict)
+        or not isinstance(outputs, dict)
+    ):
         raise ValueError("benchmark manifest checksum ledger is invalid")
     policy = manifest.get("selection_policy", {})
     if policy.get("instances_test2019_sha256") != test_annotation_sha256:
@@ -401,23 +374,16 @@ def _validate_benchmark_manifest_evidence(
         "detector_report": detector_report_sha256,
         "instances_test2019": test_annotation_sha256,
         **{
-            f"source_image/{int(record['image_id'])}": image_hashes[
-                str(record["image_path"])
-            ]
+            f"source_image/{int(record['image_id'])}": image_hashes[str(record["image_path"])]
             for record in records
         },
     }
-    if inputs != expected_inputs or policy.get(
-        "detector_report_sha256"
-    ) != detector_report_sha256:
+    if inputs != expected_inputs or policy.get("detector_report_sha256") != detector_report_sha256:
         raise ValueError("benchmark manifest input checksums are not bound to evidence")
     expected_output_paths = {
         "manifest.json": manifest_path,
         "manifest.jsonl": jsonl_path,
-        **{
-            relative: _safe_manifest_image(benchmark_dir, relative)
-            for relative in image_hashes
-        },
+        **{relative: _safe_manifest_image(benchmark_dir, relative) for relative in image_hashes},
     }
     if outputs != _logical_hashes(expected_output_paths):
         raise ValueError("benchmark manifest output checksums no longer match artifacts")
@@ -463,8 +429,7 @@ def _validate_full_dataset_inputs(
     selection_gate = train_gate_complete.get("baseline_frozen_selection_gate")
     if (
         not isinstance(selection_gate, dict)
-        or selection_gate.get("selection_threshold_policy")
-        != "frozen_calibration_threshold"
+        or selection_gate.get("selection_threshold_policy") != "frozen_calibration_threshold"
         or selection_gate.get("frozen_threshold_selection_gate") is not True
         or selection_gate.get("selection_target_recall_satisfied") is not True
     ):
@@ -472,10 +437,8 @@ def _validate_full_dataset_inputs(
     final_complete_path = detector_dir / "final" / "complete.json"
     final_complete = _read_json(final_complete_path)
     if (
-        final_complete.get("contract")
-        != "rpc-final-detector-baseline-val-all-v1"
-        or final_complete.get("target_adaptation_stage")
-        != "disabled_train_gate_only"
+        final_complete.get("contract") != "rpc-final-detector-baseline-val-all-v1"
+        or final_complete.get("target_adaptation_stage") != "disabled_train_gate_only"
         or final_complete.get("operational_detector_role")
         != "checkout_baseline_val_all_operational"
         or final_complete.get("train_gate_role") != "offline_roi_train_gate_only"
@@ -503,15 +466,15 @@ def _validate_full_dataset_inputs(
     expected_count = int(config["experiment"]["expected_num_classes"])
     if expected_count != 200:
         raise ValueError("RPC operational packaging requires exactly 200 classes")
-    if experiment.get("mode") != "full_dataset" or int(
-        experiment.get("category_count", -1)
-    ) != expected_count:
+    if (
+        experiment.get("mode") != "full_dataset"
+        or int(experiment.get("category_count", -1)) != expected_count
+    ):
         raise ValueError("prepared experiment is not the locked 200-class full dataset")
     if lock.get("mode") != "full_dataset" or not lock.get("model_run"):
         raise ValueError("model_lock.json does not identify a full-dataset model run")
     if (
-        lock.get("operational_detector_role")
-        != "checkout_baseline_val_all_operational"
+        lock.get("operational_detector_role") != "checkout_baseline_val_all_operational"
         or lock.get("train_gate_role") != "offline_roi_train_gate_only"
     ):
         raise ValueError("model lock detector role separation is invalid")
@@ -557,8 +520,7 @@ def _validate_full_dataset_inputs(
         if not path.is_file() or lock.get(field) != sha256_file(path):
             raise ValueError(f"model lock checksum mismatch: {field}")
     if (
-        final_complete.get("active_threshold_sha256")
-        != lock["active_detector_threshold_sha256"]
+        final_complete.get("active_threshold_sha256") != lock["active_detector_threshold_sha256"]
         or final_complete.get("stage_a_checkpoint_sha256")
         != lock["final_detector_checkpoint_sha256"]
         or final_complete.get("train_gate_complete_sha256")
@@ -630,19 +592,13 @@ def package_inputs(
         "target_recall": float(threshold["target_recall"]),
         "target_recall_satisfied": bool(threshold["target_recall_satisfied"]),
         "metrics": metrics,
-        "selection_threshold_policy": selection_gate[
-            "selection_threshold_policy"
-        ],
-        "selection_score_threshold": float(
-            selection_gate["selection_score_threshold"]
-        ),
+        "selection_threshold_policy": selection_gate["selection_threshold_policy"],
+        "selection_score_threshold": float(selection_gate["selection_score_threshold"]),
         "selection_metrics": selection_gate["selection_metrics"],
         "selection_target_recall_satisfied": True,
         "frozen_threshold_selection_gate": True,
         "detector_role": "checkout_baseline_operational",
-        "train_gate_complete_sha256": sha256_file(
-            input_paths["detector_train_gate_complete"]
-        ),
+        "train_gate_complete_sha256": sha256_file(input_paths["detector_train_gate_complete"]),
     }
 
     calibration = _read_json(run_dir / "calibration.json")
@@ -679,9 +635,7 @@ def package_inputs(
     }
     for name, value in outputs.items():
         _write_json(destination / name, value)
-    output_hashes = {
-        name: sha256_file(destination / name) for name in sorted(outputs)
-    }
+    output_hashes = {name: sha256_file(destination / name) for name in sorted(outputs)}
     ledger = {
         "schema_version": SCHEMA_VERSION,
         "phase": "package-inputs",
@@ -751,17 +705,13 @@ def build_benchmark_manifest(
     detector_report_path = (
         detector_report_path or output_root / "test" / "detector_report.json"
     ).resolve()
-    annotation_path = (
-        annotation_path or dataset_root / "instances_test2019.json"
-    ).resolve()
+    annotation_path = (annotation_path or dataset_root / "instances_test2019.json").resolve()
     destination = (destination or output_root / "benchmark").resolve()
     report = _read_json(detector_report_path)
     coco = _read_json(annotation_path)
     images = {int(row["id"]): row for row in coco.get("images", [])}
     annotations = _annotations_by_image(coco)
-    eligible = [
-        row for row in report.get("outcomes", []) if row.get("recapture_reasons") == []
-    ]
+    eligible = [row for row in report.get("outcomes", []) if row.get("recapture_reasons") == []]
     if not eligible:
         raise ValueError("detector report has no expected full-path test frames")
     missing_ids = sorted(
@@ -774,9 +724,7 @@ def build_benchmark_manifest(
     selected = sorted(
         eligible,
         key=lambda row: (
-            hashlib.sha256(
-                f"{salt}:{int(row['image_id'])}".encode("utf-8")
-            ).hexdigest(),
+            hashlib.sha256(f"{salt}:{int(row['image_id'])}".encode("utf-8")).hexdigest(),
             int(row["image_id"]),
         ),
     )[:max_images]
@@ -792,8 +740,7 @@ def build_benchmark_manifest(
         "detector_report": report_sha,
         "instances_test2019": annotation_sha,
         **{
-            f"source_image/{image_id}": digest
-            for image_id, digest in sorted(source_hashes.items())
+            f"source_image/{image_id}": digest for image_id, digest in sorted(source_hashes.items())
         },
     }
     ledger_path = destination / "checksums.json"
@@ -821,9 +768,7 @@ def build_benchmark_manifest(
             shutil.copy2(source_paths[image_id], target)
             materialization = "copy"
         image_annotations = annotations.get(image_id, [])
-        if int(outcome.get("ground_truth_count", len(image_annotations))) != len(
-            image_annotations
-        ):
+        if int(outcome.get("ground_truth_count", len(image_annotations))) != len(image_annotations):
             raise ValueError(f"ground-truth count mismatch for image {image_id}")
         records.append(
             {
@@ -867,9 +812,7 @@ def build_benchmark_manifest(
     output_paths = {
         "manifest.json": manifest_json,
         "manifest.jsonl": manifest_jsonl,
-        **{
-            record["image_path"]: destination / record["image_path"] for record in records
-        },
+        **{record["image_path"]: destination / record["image_path"] for record in records},
     }
     ledger = {
         "schema_version": SCHEMA_VERSION,
@@ -892,9 +835,7 @@ def _read_manifest(path: Path) -> list[dict[str, Any]]:
     records = payload.get("records")
     if isinstance(records, list):
         return records
-    if isinstance(payload.get("images"), list) and isinstance(
-        payload.get("annotations"), list
-    ):
+    if isinstance(payload.get("images"), list) and isinstance(payload.get("annotations"), list):
         annotations = _annotations_by_image(payload)
         return [
             {
@@ -918,9 +859,7 @@ def _manifest_kind(path: Path) -> str:
     if path.suffix.lower() == ".jsonl":
         return "jsonl"
     payload = _read_json(path)
-    if isinstance(payload.get("images"), list) and isinstance(
-        payload.get("annotations"), list
-    ):
+    if isinstance(payload.get("images"), list) and isinstance(payload.get("annotations"), list):
         return "rpc_coco_test"
     if isinstance(payload.get("records"), list):
         return "benchmark_records"
@@ -928,9 +867,7 @@ def _manifest_kind(path: Path) -> str:
 
 
 def _image_ids_sha256(image_ids: Iterable[int]) -> str:
-    return _sha256_bytes(
-        _canonical_bytes(sorted(int(image_id) for image_id in image_ids))
-    )
+    return _sha256_bytes(_canonical_bytes(sorted(int(image_id) for image_id in image_ids)))
 
 
 def _source_set_sha256(rows: Iterable[dict[str, Any]]) -> str:
@@ -960,9 +897,7 @@ def _worker_manifest_provenance(
         "manifest_format": kind,
         "sealed_full_test": kind == "rpc_coco_test",
         "manifest_sha256": sha256_file(manifest_path),
-        "test_annotation_sha256": (
-            sha256_file(manifest_path) if kind == "rpc_coco_test" else None
-        ),
+        "test_annotation_sha256": (sha256_file(manifest_path) if kind == "rpc_coco_test" else None),
         "manifest_row_count": len(records),
         "evaluated_row_count": len(completed),
         "manifest_image_ids_sha256": _image_ids_sha256(manifest_ids),
@@ -1025,12 +960,8 @@ def _validate_worker_test_manifest_evidence(
     if provenance.get("evaluated_image_ids_sha256") != expected_ids_sha256:
         raise ValueError("Worker accuracy rows are not the complete test manifest")
 
-    rows_path = _evidence_sibling(
-        worker_report_path, provenance.get("rows_filename"), "rows"
-    )
-    state_path = _evidence_sibling(
-        worker_report_path, provenance.get("state_filename"), "state"
-    )
+    rows_path = _evidence_sibling(worker_report_path, provenance.get("rows_filename"), "rows")
+    state_path = _evidence_sibling(worker_report_path, provenance.get("state_filename"), "state")
     if not rows_path.is_file() or not state_path.is_file():
         raise FileNotFoundError("Worker accuracy rows/state evidence is missing")
     if sha256_file(rows_path) != provenance.get("rows_file_sha256"):
@@ -1046,9 +977,10 @@ def _validate_worker_test_manifest_evidence(
     state = _read_json(state_path)
     if scanned_count != expected_count or len(rows) != expected_count:
         raise ValueError("Worker accuracy row artifact is incomplete")
-    if rows_chain_sha256 != provenance.get("rows_chain_sha256") or state.get(
-        "rows_sha256"
-    ) != rows_chain_sha256:
+    if (
+        rows_chain_sha256 != provenance.get("rows_chain_sha256")
+        or state.get("rows_sha256") != rows_chain_sha256
+    ):
         raise ValueError("Worker accuracy rows chain checksum mismatch")
     if state.get("input_fingerprint") != worker_report.get("input_fingerprint"):
         raise ValueError("Worker accuracy state input fingerprint mismatch")
@@ -1083,10 +1015,7 @@ def _match_items(
     gt_boxes = [_xywh_to_xyxy(row["bbox_xywh"]) for row in annotations]
     adjacency: dict[int, list[int]] = {}
     for item_index, item_box in enumerate(item_boxes):
-        eligible = [
-            (gt_index, _iou(item_box, gt_box))
-            for gt_index, gt_box in enumerate(gt_boxes)
-        ]
+        eligible = [(gt_index, _iou(item_box, gt_box)) for gt_index, gt_box in enumerate(gt_boxes)]
         adjacency[item_index] = [
             gt_index
             for gt_index, _overlap in sorted(
@@ -1121,10 +1050,7 @@ def _expected_hard_gate_reasons(
         reasons.append("DETECTOR_UNCERTAIN_OBJECT")
     count_metadata = package_metadata.count_verifier
     if count_metadata is not None:
-        if (
-            detection_result.verified_count is None
-            or detection_result.count_confidence is None
-        ):
+        if detection_result.verified_count is None or detection_result.count_confidence is None:
             raise ValueError("count verifier result is missing")
         if detection_result.count_confidence < count_metadata.confidence_threshold:
             reasons.append("DETECTOR_COUNT_UNCERTAIN")
@@ -1141,22 +1067,16 @@ def aggregate_worker_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
     matched = sum(int(row["detector_matched_count"]) for row in rows)
     count_correct = sum(bool(row["detector_count_correct"]) for row in rows)
     classifier_items = sum(int(row["classifier_item_count"]) for row in rows)
-    classifier_matched = sum(
-        int(row["classifier_item_matched_count"]) for row in rows
-    )
+    classifier_matched = sum(int(row["classifier_item_matched_count"]) for row in rows)
     approved = sum(int(row["approved_count"]) for row in rows)
     approved_correct = sum(int(row["approved_correct_count"]) for row in rows)
     unknown = sum(int(row["unknown_count"]) for row in rows)
     unknown_matched = sum(int(row["unknown_matched_count"]) for row in rows)
     unknown_unmatched = sum(int(row["unknown_unmatched_count"]) for row in rows)
-    unknown_top1_correct = sum(
-        int(row.get("unknown_top1_correct_count", 0)) for row in rows
-    )
+    unknown_top1_correct = sum(int(row.get("unknown_top1_correct_count", 0)) for row in rows)
     unknown_top3_correct = sum(int(row["unknown_top3_correct_count"]) for row in rows)
     full_path_ms = [
-        float(row["processing_time_ms"])
-        for row in rows
-        if bool(row["classifier_executed"])
+        float(row["processing_time_ms"]) for row in rows if bool(row["classifier_executed"])
     ]
 
     def ratio(numerator: int, denominator: int, *, empty: float | None = 0.0):
@@ -1190,14 +1110,10 @@ def aggregate_worker_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
             "unknown_unmatched_count": unknown_unmatched,
             "unknown_top1_correct_count": unknown_top1_correct,
             "unknown_top3_correct_count": unknown_top3_correct,
-            "unknown_top3_accuracy": ratio(
-                unknown_top3_correct, unknown_matched, empty=None
-            ),
+            "unknown_top3_accuracy": ratio(unknown_top3_correct, unknown_matched, empty=None),
         },
         "pipeline_contract": {
-            "expected_hard_gate_image_count": sum(
-                bool(row["expected_hard_gate"]) for row in rows
-            ),
+            "expected_hard_gate_image_count": sum(bool(row["expected_hard_gate"]) for row in rows),
             "hard_gate_classifier_called_violations": sum(
                 bool(row["hard_gate_classifier_called_violation"]) for row in rows
             ),
@@ -1214,8 +1130,7 @@ def aggregate_worker_rows(rows: list[dict[str, Any]]) -> dict[str, Any]:
                 bool(row["hard_gate_contract_violation"]) for row in rows
             ),
             "classifier_execution_version_mismatch_violations": sum(
-                bool(row["classifier_execution_version_mismatch"])
-                for row in rows
+                bool(row["classifier_execution_version_mismatch"]) for row in rows
             ),
             "classifier_call_count_violations": sum(
                 bool(row["classifier_call_count_violation"]) for row in rows
@@ -1292,9 +1207,8 @@ def worker_eval(
             for line in rows_path.read_text(encoding="utf-8").splitlines()
             if line.strip()
         ]
-        if (
-            int(state.get("completed_count", -1)) != len(completed)
-            or scanned_count != len(completed)
+        if int(state.get("completed_count", -1)) != len(completed) or scanned_count != len(
+            completed
         ):
             raise ValueError("Worker evaluation resume completed count mismatch")
     else:
@@ -1326,10 +1240,7 @@ def worker_eval(
         if row.get("source_image_sha256") != current_source_sha256:
             raise ValueError("Worker evaluation resume source image checksum changed")
         expected_source_sha256 = record.get("source_image_sha256")
-        if (
-            expected_source_sha256 is not None
-            and current_source_sha256 != expected_source_sha256
-        ):
+        if expected_source_sha256 is not None and current_source_sha256 != expected_source_sha256:
             raise ValueError("Worker evaluation resume row checksum does not match manifest")
 
     detector = _CapturingDetector(detector_adapter)
@@ -1346,15 +1257,10 @@ def worker_eval(
             image_id = int(record["image_id"])
             if image_id in completed_ids:
                 continue
-            encoded = _safe_manifest_image(
-                dataset_root, str(record["image_path"])
-            ).read_bytes()
+            encoded = _safe_manifest_image(dataset_root, str(record["image_path"])).read_bytes()
             source_image_sha256 = _sha256_bytes(encoded)
             expected_image_sha256 = record.get("source_image_sha256")
-            if (
-                expected_image_sha256 is not None
-                and source_image_sha256 != expected_image_sha256
-            ):
+            if expected_image_sha256 is not None and source_image_sha256 != expected_image_sha256:
                 raise ValueError(f"benchmark source checksum mismatch: image {image_id}")
             image = decode_image(
                 encoded,
@@ -1376,15 +1282,11 @@ def worker_eval(
             ]
             items = response.items
             item_boxes = [
-                _xywh_to_xyxy(
-                    [item.bbox.x, item.bbox.y, item.bbox.width, item.bbox.height]
-                )
+                _xywh_to_xyxy([item.bbox.x, item.bbox.y, item.bbox.width, item.bbox.height])
                 for item in items
             ]
             annotations = list(record["annotations"])
-            detector_matched = _match_items(
-                detector_boxes, annotations, match_iou_threshold
-            )
+            detector_matched = _match_items(detector_boxes, annotations, match_iou_threshold)
             item_matched = _match_items(item_boxes, annotations, match_iou_threshold)
             approved_count = 0
             approved_correct = 0
@@ -1414,12 +1316,10 @@ def worker_eval(
                     else:
                         unknown_matched += 1
                         unknown_top1_correct += int(
-                            bool(item.top3)
-                            and item.top3[0].class_id == target_class_id
+                            bool(item.top3) and item.top3[0].class_id == target_class_id
                         )
                         unknown_top3_correct += int(
-                            target_class_id
-                            in {candidate.class_id for candidate in item.top3}
+                            target_class_id in {candidate.class_id for candidate in item.top3}
                         )
             expected_hard_gate_reasons = _expected_hard_gate_reasons(
                 image, detector.last_result, package.metadata
@@ -1430,21 +1330,16 @@ def worker_eval(
             execution_version_mismatch = classifier_executed != (
                 classifier_version_reported is not None
             )
-            classifier_called_violation = (
-                expected_hard_gate and classifier_call_delta != 0
-            )
+            classifier_called_violation = expected_hard_gate and classifier_call_delta != 0
             classifier_call_count_violation = classifier_call_delta != (
                 0 if expected_hard_gate else 1
             )
-            response_status_violation = (
-                expected_hard_gate and response.status.value != "RECAPTURE"
-            )
+            response_status_violation = expected_hard_gate and response.status.value != "RECAPTURE"
             classifier_version_violation = (
                 expected_hard_gate and classifier_version_reported is not None
             )
             reason_mismatch_violation = (
-                expected_hard_gate
-                and response.reason_codes != expected_hard_gate_reasons
+                expected_hard_gate and response.reason_codes != expected_hard_gate_reasons
             )
             row = {
                 "schema_version": SCHEMA_VERSION,
@@ -1576,9 +1471,7 @@ def integrate(
         pytorch_report_path, output_root / "reports" / "final_test.json"
     )
     model_lock_path = _artifact_path(model_lock_path, output_root / "model_lock.json")
-    package_inputs_dir = _artifact_path(
-        package_inputs_dir, output_root / "package-inputs"
-    )
+    package_inputs_dir = _artifact_path(package_inputs_dir, output_root / "package-inputs")
     worker_report_path = _artifact_path(
         worker_report_path, output_root / "reports" / "worker-ort-accuracy.json"
     )
@@ -1602,20 +1495,14 @@ def integrate(
         "package_metadata": package_dir / "metadata.json",
         "package_input_checksums": package_inputs_dir / "checksums.json",
         "package_detector_evaluation": package_inputs_dir / "detector-evaluation.json",
-        "package_classifier_calibration": package_inputs_dir
-        / "classifier-calibration.json",
+        "package_classifier_calibration": package_inputs_dir / "classifier-calibration.json",
         "package_manifest_metadata": package_inputs_dir / "manifest-metadata.json",
         "package_export_config": package_inputs_dir / "export-config.json",
         "worker_ort_accuracy": worker_report_path,
         "benchmark": benchmark_report_path,
         "benchmark_manifest": output_root / "benchmark" / "manifest.json",
-        "benchmark_manifest_checksums": output_root
-        / "benchmark"
-        / "checksums.json",
-        **{
-            f"parity_{index + 1}": path
-            for index, path in enumerate(parity_report_paths)
-        },
+        "benchmark_manifest_checksums": output_root / "benchmark" / "checksums.json",
+        **{f"parity_{index + 1}": path for index, path in enumerate(parity_report_paths)},
     }
     artifact_hashes = _logical_hashes(evidence_paths)
     package = load_model_package(package_dir)
@@ -1652,19 +1539,11 @@ def integrate(
     if validated_lock != model_lock or validated_run_dir != locked_run_dir:
         raise ValueError("operational inputs differ from the selected model lock")
     detector_bindings = {
-        "detector_checkpoint_sha256": model_lock.get(
-            "final_detector_checkpoint_sha256"
-        ),
-        "final_detector_complete_sha256": model_lock.get(
-            "final_detector_complete_sha256"
-        ),
+        "detector_checkpoint_sha256": model_lock.get("final_detector_checkpoint_sha256"),
+        "final_detector_complete_sha256": model_lock.get("final_detector_complete_sha256"),
         "model_lock_sha256": sha256_file(model_lock_path),
-        "active_detector_threshold_sha256": model_lock.get(
-            "active_detector_threshold_sha256"
-        ),
-        "train_gate_complete_sha256": model_lock.get(
-            "detector_train_gate_complete_sha256"
-        ),
+        "active_detector_threshold_sha256": model_lock.get("active_detector_threshold_sha256"),
+        "train_gate_complete_sha256": model_lock.get("detector_train_gate_complete_sha256"),
         "operational_detector_role": "checkout_baseline_val_all_operational",
         "train_gate_role": "offline_roi_train_gate_only",
     }
@@ -1678,20 +1557,13 @@ def integrate(
     if package_bridge.get("inputs") != current_bridge_inputs:
         raise ValueError("package input ledger no longer matches its source artifacts")
     artifact_hashes.update(
-        {
-            f"package_source_{name}": digest
-            for name, digest in current_bridge_inputs.items()
-        }
+        {f"package_source_{name}": digest for name, digest in current_bridge_inputs.items()}
     )
     pytorch_bindings = {
         "classifier_checkpoint_sha256": model_lock.get("checkpoint_sha256"),
         "model_lock_sha256": sha256_file(model_lock_path),
-        "detector_report_sha256": sha256_file(
-            output_root / "test" / "detector_report.json"
-        ),
-        "detector_checkpoint_sha256": detector_test_report.get(
-            "detector_checkpoint_sha256"
-        ),
+        "detector_report_sha256": sha256_file(output_root / "test" / "detector_report.json"),
+        "detector_checkpoint_sha256": detector_test_report.get("detector_checkpoint_sha256"),
     }
     for field, expected in pytorch_bindings.items():
         if pytorch_report.get(field) != expected:
@@ -1704,24 +1576,17 @@ def integrate(
         if not bridged_path.is_file() or sha256_file(bridged_path) != expected:
             raise ValueError(f"package input checksum mismatch: {relative}")
     manifest_metadata = _read_json(package_inputs_dir / "manifest-metadata.json")
-    detector_evaluation = _read_json(
-        package_inputs_dir / "detector-evaluation.json"
-    )
-    classifier_calibration = _read_json(
-        package_inputs_dir / "classifier-calibration.json"
-    )
+    detector_evaluation = _read_json(package_inputs_dir / "detector-evaluation.json")
+    classifier_calibration = _read_json(package_inputs_dir / "classifier-calibration.json")
     export_bridge = _read_json(package_inputs_dir / "export-config.json")
-    _validate_package_bridge_metadata(
-        package, detector_evaluation, classifier_calibration
-    )
+    _validate_package_bridge_metadata(package, detector_evaluation, classifier_calibration)
     if export_bridge.get("source_config_sha256") != sha256_file(config_path):
         raise ValueError("export bridge is not bound to rpc_data_scale config")
     _validate_export_worker_policy(package, export_bridge)
     if manifest_metadata.get("dataset_version") != package.metadata.dataset_version:
         raise ValueError("package dataset version does not match RPC manifest metadata")
     expected_labels = [
-        (str(row["class_id"]), str(row["class_name"]))
-        for row in manifest_metadata["labels"]
+        (str(row["class_id"]), str(row["class_name"])) for row in manifest_metadata["labels"]
     ]
     actual_labels = [
         (label.class_id, label.class_name) for label in package.metadata.classifier.labels
@@ -1748,9 +1613,7 @@ def integrate(
     artifact_hashes["worker_ort_accuracy_state"] = str(
         worker_manifest_provenance["state_file_sha256"]
     )
-    _validate_package_evidence(
-        benchmark, "benchmark report", package, expected_package_hashes
-    )
+    _validate_package_evidence(benchmark, "benchmark report", package, expected_package_hashes)
     _validate_benchmark_manifest_evidence(
         output_root / "benchmark",
         benchmark,
@@ -1764,12 +1627,8 @@ def integrate(
             package,
             expected_package_hashes,
         )
-        if parity_report.get("classifier_checkpoint_sha256") != model_lock.get(
-            "checkpoint_sha256"
-        ):
-            raise ValueError(
-                f"parity report {index} classifier checkpoint is not the locked model"
-            )
+        if parity_report.get("classifier_checkpoint_sha256") != model_lock.get("checkpoint_sha256"):
+            raise ValueError(f"parity report {index} classifier checkpoint is not the locked model")
         if parity_report.get("detector_checkpoint_sha256") != detector_test_report.get(
             "detector_checkpoint_sha256"
         ):
@@ -1781,11 +1640,7 @@ def integrate(
     warmup_count = int(benchmark.get("warmup_count", 0))
     benchmark_gpu = benchmark.get("gpu")
     benchmark_system = benchmark.get("system")
-    gpu_name = (
-        str(benchmark_gpu.get("name", ""))
-        if isinstance(benchmark_gpu, dict)
-        else ""
-    )
+    gpu_name = str(benchmark_gpu.get("name", "")) if isinstance(benchmark_gpu, dict) else ""
     detector = worker_report.get("detector", {})
     classifier = worker_report.get("classifier", {})
     unknown_top3 = classifier.get("unknown_top3_accuracy")
@@ -1805,13 +1660,9 @@ def integrate(
             and classifier_policy.get("tolerance") == 0.01
         )
 
-    parity_tolerance_policy_exact = all(
-        parity_policy_exact(report) for report in parity_reports
-    )
+    parity_tolerance_policy_exact = all(parity_policy_exact(report) for report in parity_reports)
     pipeline_contract_violations = int(
-        worker_report.get("pipeline_contract", {}).get(
-            "pipeline_contract_violations", 0
-        )
+        worker_report.get("pipeline_contract", {}).get("pipeline_contract_violations", 0)
     )
     gpu_memory_mib = (
         float(benchmark_gpu.get("memory_total_mib", 0.0))
@@ -1820,55 +1671,34 @@ def integrate(
     )
     windows_build = (
         float(benchmark_system.get("windows_build", 0.0))
-        if isinstance(benchmark_system, dict)
-        and benchmark_system.get("windows_build") is not None
+        if isinstance(benchmark_system, dict) and benchmark_system.get("windows_build") is not None
         else 0.0
     )
-    cpu_name = (
-        str(benchmark_system.get("cpu", ""))
-        if isinstance(benchmark_system, dict)
-        else ""
-    )
+    cpu_name = str(benchmark_system.get("cpu", "")) if isinstance(benchmark_system, dict) else ""
     memory_total_gib = (
         float(benchmark_system.get("memory_total_gib", 0.0))
         if isinstance(benchmark_system, dict)
         and benchmark_system.get("memory_total_gib") is not None
         else 0.0
     )
-    gpu_uuid = (
-        str(benchmark_gpu.get("uuid", ""))
-        if isinstance(benchmark_gpu, dict)
-        else ""
-    )
+    gpu_uuid = str(benchmark_gpu.get("uuid", "")) if isinstance(benchmark_gpu, dict) else ""
     gpu_physical_index = (
-        int(benchmark_gpu.get("physical_index", -1))
-        if isinstance(benchmark_gpu, dict)
-        else -1
+        int(benchmark_gpu.get("physical_index", -1)) if isinstance(benchmark_gpu, dict) else -1
     )
     ort_cuda_device_id = (
-        int(benchmark_gpu.get("ort_cuda_device_id", -1))
-        if isinstance(benchmark_gpu, dict)
-        else -1
+        int(benchmark_gpu.get("ort_cuda_device_id", -1)) if isinstance(benchmark_gpu, dict) else -1
     )
     gpu_selection_source = (
-        str(benchmark_gpu.get("selection_source", ""))
-        if isinstance(benchmark_gpu, dict)
-        else ""
+        str(benchmark_gpu.get("selection_source", "")) if isinstance(benchmark_gpu, dict) else ""
     )
     physical_gpu_count = (
-        int(benchmark_gpu.get("physical_gpu_count", 0))
-        if isinstance(benchmark_gpu, dict)
-        else 0
+        int(benchmark_gpu.get("physical_gpu_count", 0)) if isinstance(benchmark_gpu, dict) else 0
     )
     cuda_visible_devices = (
-        benchmark_gpu.get("cuda_visible_devices")
-        if isinstance(benchmark_gpu, dict)
-        else None
+        benchmark_gpu.get("cuda_visible_devices") if isinstance(benchmark_gpu, dict) else None
     )
     cuda_version = (
-        str(benchmark_gpu.get("cuda_version", ""))
-        if isinstance(benchmark_gpu, dict)
-        else ""
+        str(benchmark_gpu.get("cuda_version", "")) if isinstance(benchmark_gpu, dict) else ""
     )
     onnxruntime_build_info = str(benchmark.get("onnxruntime_build_info", ""))
     gates = {
@@ -1876,29 +1706,22 @@ def integrate(
         "parity_passed": parity_passed,
         "parity_cpu_and_cuda_present": {"cpu", "cuda"} <= parity_providers,
         "parity_tolerance_policy_exact": parity_tolerance_policy_exact,
-        "detector_bbox_recall_at_least_0_99": float(detector.get("recall", 0.0))
-        >= 0.99,
+        "detector_bbox_recall_at_least_0_99": float(detector.get("recall", 0.0)) >= 0.99,
         "approved_truth_sample_present": approved_count > 0,
         "approved_precision_at_least_0_995": approved_precision is not None
         and float(approved_precision) >= 0.995,
         "unknown_truth_sample_present": unknown_matched_count > 0,
-        "unknown_top3_at_least_0_95": unknown_top3 is not None
-        and float(unknown_top3) >= 0.95,
-        "worker_match_iou_threshold_is_0_5": worker_report.get(
-            "match_iou_threshold"
-        )
-        == 0.5,
+        "unknown_top3_at_least_0_95": unknown_top3 is not None and float(unknown_top3) >= 0.95,
+        "worker_match_iou_threshold_is_0_5": worker_report.get("match_iou_threshold") == 0.5,
         "pipeline_contract_satisfied": pipeline_contract_violations == 0,
         "worker_ort_cuda_provider": worker_report.get("provider") == "cuda",
         "benchmark_cuda_provider": benchmark.get("provider") == "cuda",
-        "benchmark_gpu_is_desktop_rtx_5080": gpu_name.casefold()
-        == "nvidia geforce rtx 5080",
+        "benchmark_gpu_is_desktop_rtx_5080": gpu_name.casefold() == "nvidia geforce rtx 5080",
         "benchmark_gpu_vram_at_least_15000_mib": gpu_memory_mib >= 15_000,
         "benchmark_gpu_device_binding_evidenced": bool(gpu_uuid)
         and gpu_physical_index >= 0
         and ort_cuda_device_id == 0
-        and gpu_selection_source
-        in {"single_physical_gpu", "CUDA_VISIBLE_DEVICES_UUID"},
+        and gpu_selection_source in {"single_physical_gpu", "CUDA_VISIBLE_DEVICES_UUID"},
         "benchmark_gpu_selection_is_unambiguous": (
             gpu_selection_source == "single_physical_gpu" and physical_gpu_count == 1
         )
@@ -1909,16 +1732,13 @@ def integrate(
             and bool(str(cuda_visible_devices).strip())
         ),
         "benchmark_cuda_version_present": bool(cuda_version.strip()),
-        "benchmark_onnxruntime_build_info_present": bool(
-            onnxruntime_build_info.strip()
-        ),
+        "benchmark_onnxruntime_build_info_present": bool(onnxruntime_build_info.strip()),
         "benchmark_windows_11_build": windows_build >= 22_000,
         "benchmark_cpu_is_285k": "285k" in cpu_name.casefold(),
         "benchmark_memory_at_least_63_gib": memory_total_gib >= 63.0,
         "benchmark_run_count_at_least_1000": benchmark_sample_count >= 1000,
         "benchmark_warmup_count_at_least_30": warmup_count >= 30,
-        "all_benchmark_samples_are_full_path": latency["count"]
-        == benchmark_sample_count
+        "all_benchmark_samples_are_full_path": latency["count"] == benchmark_sample_count
         and benchmark_sample_count > 0,
         "full_path_p95_at_most_100_ms": latency["p95_ms"] <= 100.0,
     }
@@ -1932,15 +1752,11 @@ def integrate(
         "artifact_sha256": artifact_hashes,
         "dataset_evidence": {
             "test_annotation_sha256": test_annotation_sha256,
-            "worker_manifest_sha256": worker_manifest_provenance[
-                "manifest_sha256"
-            ],
+            "worker_manifest_sha256": worker_manifest_provenance["manifest_sha256"],
             "worker_test_source_image_set_sha256": worker_manifest_provenance[
                 "source_image_set_sha256"
             ],
-            "worker_test_row_count": worker_manifest_provenance[
-                "evaluated_row_count"
-            ],
+            "worker_test_row_count": worker_manifest_provenance["evaluated_row_count"],
         },
         "parity_evidence": {
             "providers": sorted(parity_providers),
@@ -1968,14 +1784,10 @@ def integrate(
             "gpu_selection_source": gpu_selection_source or None,
             "cuda_visible_devices": cuda_visible_devices,
             "cuda_device_order": (
-                benchmark_gpu.get("cuda_device_order")
-                if isinstance(benchmark_gpu, dict)
-                else None
+                benchmark_gpu.get("cuda_device_order") if isinstance(benchmark_gpu, dict) else None
             ),
             "driver_version": (
-                benchmark_gpu.get("driver_version")
-                if isinstance(benchmark_gpu, dict)
-                else None
+                benchmark_gpu.get("driver_version") if isinstance(benchmark_gpu, dict) else None
             ),
             "warmup_count": warmup_count,
             "run_count": benchmark_sample_count,
@@ -1993,9 +1805,7 @@ def integrate(
             "approved_count": approved_count,
             "approved_precision": approved_precision,
             "approval_coverage": classifier.get("approval_coverage"),
-            "worker_normal_matched_top1_accuracy": classifier.get(
-                "normal_matched_top1_accuracy"
-            ),
+            "worker_normal_matched_top1_accuracy": classifier.get("normal_matched_top1_accuracy"),
             "unknown_top3_accuracy": unknown_top3,
             "unknown_matched_count": unknown_matched_count,
             "recapture_recall": "not_evaluable",
@@ -2030,9 +1840,7 @@ def operation_plan(
     output_root = output_root.resolve()
     package_dir = package_dir.resolve()
     config_path = config_path.resolve()
-    output_path = _artifact_path(
-        output_path, output_root / "reports" / "rpc-operation-plan.json"
-    )
+    output_path = _artifact_path(output_path, output_root / "reports" / "rpc-operation-plan.json")
     stage_specs = [
         (
             "final_test",
@@ -2131,9 +1939,7 @@ def operation_plan(
     }
     # A failed validation lock must never become runnable merely because the
     # marker file exists (or because stale test artifacts happen to exist).
-    artifacts_complete["final_test"] = (
-        artifacts_complete["final_test"] and test_authorized
-    )
+    artifacts_complete["final_test"] = artifacts_complete["final_test"] and test_authorized
     completed: dict[str, bool] = {}
     for stage, dependencies, _required_inputs, _artifacts in stage_specs:
         completed[stage] = artifacts_complete[stage] and all(
@@ -2142,9 +1948,7 @@ def operation_plan(
     stages = []
     for stage, dependencies, required_inputs, artifacts in stage_specs:
         inputs_available = all(path.is_file() for path in required_inputs)
-        authorization_failures = (
-            test_authorization_failures if stage == "final_test" else []
-        )
+        authorization_failures = test_authorization_failures if stage == "final_test" else []
         if authorization_failures:
             status = "blocked"
         elif completed[stage]:

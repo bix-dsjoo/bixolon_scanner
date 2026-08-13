@@ -16,9 +16,7 @@ def _candidate_thresholds(confidence: np.ndarray) -> np.ndarray:
     # remains calibration-only and is performed separately after a recipe wins.
     quantiles = np.linspace(0.0, 1.0, 101)
     candidates = np.quantile(confidence, quantiles)
-    candidates = np.concatenate(
-        [candidates, np.asarray([0.0, 0.5, 0.9, 0.95, 0.99, 0.995, 0.999])]
-    )
+    candidates = np.concatenate([candidates, np.asarray([0.0, 0.5, 0.9, 0.95, 0.99, 0.995, 0.999])])
     return np.unique(np.clip(candidates, 0.0, 1.0))
 
 
@@ -44,13 +42,9 @@ def main() -> None:
     predictions = {key: predictions_archive[key] for key in predictions_archive.files}
     calibration = json.loads((run_dir / "calibration.json").read_text(encoding="utf-8"))
     detector_report = json.loads(
-        (args.output_dir / "prepared" / "worker_gate_report.json").read_text(
-            encoding="utf-8"
-        )
+        (args.output_dir / "prepared" / "worker_gate_report.json").read_text(encoding="utf-8")
     )
-    confidence = softmax(
-        predictions["logits"], float(calibration["temperature"])
-    ).max(axis=1)
+    confidence = softmax(predictions["logits"], float(calibration["temperature"])).max(axis=1)
     rows: list[dict[str, Any]] = []
     for threshold in _candidate_thresholds(confidence):
         candidate_calibration = dict(
@@ -67,12 +61,8 @@ def main() -> None:
         rows.append(
             {
                 "threshold": float(threshold),
-                "minimum_recognition_rate": _minimum_level_value(
-                    report, "recognition_rate"
-                ),
-                "maximum_misrecognition_rate": _maximum_level_value(
-                    report, "misrecognition_rate"
-                ),
+                "minimum_recognition_rate": _minimum_level_value(report, "recognition_rate"),
+                "maximum_misrecognition_rate": _maximum_level_value(report, "misrecognition_rate"),
                 "minimum_end_to_end_success_rate": _minimum_level_value(
                     report, "end_to_end_success_rate"
                 ),
@@ -82,8 +72,7 @@ def main() -> None:
     safe = [
         row
         for row in rows
-        if row["maximum_misrecognition_rate"]
-        <= float(args.max_misrecognition_rate)
+        if row["maximum_misrecognition_rate"] <= float(args.max_misrecognition_rate)
     ]
     feasible = [
         row

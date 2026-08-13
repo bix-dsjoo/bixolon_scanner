@@ -10,5 +10,6 @@ from .observability import configure_logging
 def serve() -> None:
     settings = WorkerSettings()
     configure_logging(settings.log_level)
-    uvicorn.run(create_app(settings=settings), host=settings.host, port=settings.port, log_config=None)
-
+    uvicorn.run(
+        create_app(settings=settings), host=settings.host, port=settings.port, log_config=None
+    )

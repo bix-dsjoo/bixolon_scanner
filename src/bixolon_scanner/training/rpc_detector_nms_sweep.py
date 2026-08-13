@@ -40,8 +40,7 @@ def main() -> None:
         for role in ("calibration", "selection"):
             role_records = [record for record in records if record["role"] == role]
             role_predictions = [
-                predictions[f"{record['source']}:{record['image_id']}"]
-                for record in role_records
+                predictions[f"{record['source']}:{record['image_id']}"] for record in role_records
             ]
             role_report: dict[str, Any] = {
                 "overall": _metrics(
@@ -57,8 +56,7 @@ def main() -> None:
             for level in LEVELS:
                 subset = [record for record in role_records if record["level"] == level]
                 subset_predictions = [
-                    predictions[f"{record['source']}:{record['image_id']}"]
-                    for record in subset
+                    predictions[f"{record['source']}:{record['image_id']}"] for record in subset
                 ]
                 role_report["difficulty"][level] = _metrics(
                     subset,

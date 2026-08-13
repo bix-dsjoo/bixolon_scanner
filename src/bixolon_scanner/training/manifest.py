@@ -47,8 +47,11 @@ def _assign_folds(records: list[dict[str, Any]], fold_count: int) -> None:
         group_stats.append((group_id, total, counts))
     group_to_fold: dict[str, int] = {}
     for group_id, total, counts in sorted(group_stats, key=lambda item: (-item[1], item[0])):
+
         def cost(fold: int) -> tuple[float, int]:
-            class_penalty = sum((fold_classes[fold][key] + value) ** 2 for key, value in counts.items())
+            class_penalty = sum(
+                (fold_classes[fold][key] + value) ** 2 for key, value in counts.items()
+            )
             return fold_sizes[fold] + total + 0.01 * class_penalty, fold
 
         selected = min(range(fold_count), key=cost)

@@ -115,9 +115,7 @@ def test_legacy_single_proxy_checkpoint_weights_are_upgraded_on_load():
     head.load_state_dict(compatible_proxy_state_dict(legacy))
     assert head.class_weights.shape == (2, 1, 4)
     model_state = {"classifier.class_weights": torch.ones(2, 4)}
-    assert compatible_proxy_state_dict(model_state)[
-        "classifier.class_weights"
-    ].shape == (2, 1, 4)
+    assert compatible_proxy_state_dict(model_state)["classifier.class_weights"].shape == (2, 1, 4)
 
 
 def test_center_crop_classifier_matches_selected_224_view_and_preserves_batch():
@@ -127,12 +125,8 @@ def test_center_crop_classifier_matches_selected_224_view_and_preserves_batch():
         def forward(self, values):
             return values
 
-    values = torch.arange(2 * 3 * 224 * 224, dtype=torch.float32).reshape(
-        2, 3, 224, 224
-    )
-    wrapped = wrap_inference_classifier(
-        Identity(), input_size=224, crop_scale=0.88, num_classes=3
-    )
+    values = torch.arange(2 * 3 * 224 * 224, dtype=torch.float32).reshape(2, 3, 224, 224)
+    wrapped = wrap_inference_classifier(Identity(), input_size=224, crop_scale=0.88, num_classes=3)
     observed = wrapped(values)
     cropped = values[..., 13:210, 13:210]
     expected = torch.nn.functional.interpolate(

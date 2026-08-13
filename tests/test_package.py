@@ -92,7 +92,7 @@ def test_production_package_requires_auditable_promotion_record(tmp_path):
                 "sample_count": 300,
                 "correct_count": 1,
                 "reason": "Only one evaluation image is independent.",
-            }
+            },
         ],
         "remaining_limitations": ["RECAPTURE recall is not certified."],
     }

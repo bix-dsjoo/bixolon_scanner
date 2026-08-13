@@ -62,14 +62,10 @@ def test_uniform_parameter_soup_averages_floating_state_and_records_members(
         paths.append(path)
 
     output = tmp_path / "soup.pt"
-    provenance = create_uniform_parameter_soup(
-        paths, output, member_seeds=(20260813, 20260814)
-    )
+    provenance = create_uniform_parameter_soup(paths, output, member_seeds=(20260813, 20260814))
     checkpoint = torch.load(output, map_location="cpu", weights_only=False)
 
-    assert torch.equal(
-        checkpoint["model_state_dict"]["weight"], torch.tensor([2.0, 3.0])
-    )
+    assert torch.equal(checkpoint["model_state_dict"]["weight"], torch.tensor([2.0, 3.0]))
     assert provenance["member_seeds"] == [20260813, 20260814]
     assert provenance["runtime_model_count"] == 1
 

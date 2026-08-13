@@ -5,14 +5,13 @@ from pathlib import Path
 
 import pytest
 
-
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 
 @pytest.fixture
 def classifier_metadata():
-    from bixolon_scanner.package import ClassLabel, ClassifierMetadata
+    from bixolon_scanner.package import ClassifierMetadata, ClassLabel
 
     return ClassifierMetadata(
         filename="classifier.onnx",
@@ -35,4 +34,3 @@ def quality_metadata():
     from bixolon_scanner.package import QualityMetadata
 
     return QualityMetadata(min_object_area_ratio=0.001, border_margin_ratio=0.0)
-

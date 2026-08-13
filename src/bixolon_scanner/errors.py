@@ -41,4 +41,3 @@ class ProviderInitializationError(ScannerError):
 
 class ModelExecutionError(ScannerError):
     reason_code = "MODEL_EXECUTION_FAILED"
-

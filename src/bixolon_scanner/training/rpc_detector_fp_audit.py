@@ -22,29 +22,27 @@ def main() -> None:
     run_dir = args.output_dir / "runs" / "full" / f"seed{config['experiment']['seeds'][0]}"
     calibration = json.loads((run_dir / "calibration.json").read_text(encoding="utf-8"))
     archive = np.load(run_dir / "selection_predictions.npz")
-    classifier_probabilities = softmax(
-        archive["logits"], float(calibration["temperature"])
-    )
+    classifier_probabilities = softmax(archive["logits"], float(calibration["temperature"]))
     context_report = json.loads(
         (run_dir / "context-rejector" / "report.json").read_text(encoding="utf-8")
     )["models"]["logistic"]["policy"]
-    context_scores = np.load(
-        run_dir / "context-rejector" / "logistic_scores.npz"
-    )["selection"]
+    context_scores = np.load(run_dir / "context-rejector" / "logistic_scores.npz")["selection"]
     approved_unmatched_ids = set(
-        archive["sample_ids"][(archive["targets"] < 0)
-        & (
-            classifier_probabilities.max(axis=1)
-            >= float(context_report["classifier_threshold"])
-        )
-        & (context_scores >= float(context_report["quality_threshold"]))]
+        archive["sample_ids"][
+            (archive["targets"] < 0)
+            & (
+                classifier_probabilities.max(axis=1)
+                >= float(context_report["classifier_threshold"])
+            )
+            & (context_scores >= float(context_report["quality_threshold"]))
+        ]
         .astype(str)
         .tolist()
     )
     detector_dir = args.output_dir / "detector"
-    threshold = json.loads(
-        (detector_dir / "threshold.json").read_text(encoding="utf-8")
-    )["selected_score_threshold"]
+    threshold = json.loads((detector_dir / "threshold.json").read_text(encoding="utf-8"))[
+        "selected_score_threshold"
+    ]
     options = dict(config["detector"], score_threshold=threshold)
     records = [
         json.loads(line)
@@ -94,10 +92,8 @@ def main() -> None:
                         [
                             float(annotation["bbox_xywh"][0]),
                             float(annotation["bbox_xywh"][1]),
-                            float(annotation["bbox_xywh"][0])
-                            + float(annotation["bbox_xywh"][2]),
-                            float(annotation["bbox_xywh"][1])
-                            + float(annotation["bbox_xywh"][3]),
+                            float(annotation["bbox_xywh"][0]) + float(annotation["bbox_xywh"][2]),
+                            float(annotation["bbox_xywh"][1]) + float(annotation["bbox_xywh"][3]),
                         ]
                         for annotation in record["annotations"]
                     ],
@@ -108,9 +104,7 @@ def main() -> None:
     report = {
         "count": len(rows),
         "score_quantiles": np.quantile(score, [0, 0.1, 0.5, 0.9, 1]).tolist(),
-        "overlap_quantiles": np.quantile(
-            overlap, [0, 0.1, 0.5, 0.9, 0.95, 0.99, 1]
-        ).tolist(),
+        "overlap_quantiles": np.quantile(overlap, [0, 0.1, 0.5, 0.9, 0.95, 0.99, 1]).tolist(),
         "overlap_threshold_counts": {
             str(value): int((overlap >= value).sum())
             for value in (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7)
@@ -154,9 +148,7 @@ def main() -> None:
             draw = ImageDraw.Draw(resized)
             for box in row["ground_truth_boxes"]:
                 draw.rectangle([value * scale for value in box], outline="lime", width=3)
-            draw.rectangle(
-                [value * scale for value in row["bbox_xyxy"]], outline="red", width=5
-            )
+            draw.rectangle([value * scale for value in row["bbox_xyxy"]], outline="red", width=5)
             cell = Image.new("RGB", (cell_width, cell_height), "white")
             cell.paste(resized, ((cell_width - resized.width) // 2, 0))
             label = ImageDraw.Draw(cell)

@@ -61,7 +61,9 @@ def predict(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Create classifier logits for validation or final test")
+    parser = argparse.ArgumentParser(
+        description="Create classifier logits for validation or final test"
+    )
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--dataset-root", type=Path, required=True)

@@ -27,9 +27,7 @@ def test_merge_archive_handles_empty_additions_and_deduplicates() -> None:
     assert merged["targets"].tolist() == [1, 2, 3]
 
 
-def test_validation_package_changes_only_experimental_policy(
-    tmp_path, monkeypatch
-) -> None:
+def test_validation_package_changes_only_experimental_policy(tmp_path, monkeypatch) -> None:
     source = tmp_path / "validation-candidate-package"
     source.mkdir()
     (source / "metadata.json").write_text(
@@ -47,9 +45,7 @@ def test_validation_package_changes_only_experimental_policy(
     monkeypatch.setattr(recovery, "load_model_package", validated.append)
 
     destination = recovery._build_validation_package(tmp_path, 0.002)
-    metadata = json.loads(
-        (destination / "metadata.json").read_text(encoding="utf-8")
-    )
+    metadata = json.loads((destination / "metadata.json").read_text(encoding="utf-8"))
 
     assert metadata["package_version"] == "0.0.0-rpc-small-object-v5"
     assert metadata["quality"]["min_object_area_ratio"] == 0.002

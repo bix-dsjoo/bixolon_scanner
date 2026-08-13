@@ -84,9 +84,7 @@ def test_ten_shot_metadata_changes_only_classifier_side_of_base_contract():
     assert metadata["input"] == base["input"]
     assert metadata["checksums"]["detector.onnx"] == "d"
     assert metadata["classifier"]["version"] == "0.2.0"
-    assert metadata["sources"]["classifier"]["architecture"] == (
-        "ten_shot_residual_cosine"
-    )
+    assert metadata["sources"]["classifier"]["architecture"] == ("ten_shot_residual_cosine")
     assert metadata["promotion_status"] == "development"
     assert "promotion" not in metadata
 
@@ -126,15 +124,26 @@ def test_ten_shot_metadata_rejects_checkpoint_manifest_mismatch():
 
 def test_manual_waiver_requires_explicit_human_approval_for_production_package():
     pending = build_ten_shot_metadata(
-        base_metadata=_base(), manifest_metadata=_manifest(), calibration=_calibration(),
-        classifier_sha256="new-c", classifier_version="0.2.0", package_version="0.2.0",
-        checkpoint=_checkpoint(), promotion_status="manual_waiver",
+        base_metadata=_base(),
+        manifest_metadata=_manifest(),
+        calibration=_calibration(),
+        classifier_sha256="new-c",
+        classifier_version="0.2.0",
+        package_version="0.2.0",
+        checkpoint=_checkpoint(),
+        promotion_status="manual_waiver",
     )
     assert pending["promotion_status"] == "development"
     approved = build_ten_shot_metadata(
-        base_metadata=_base(), manifest_metadata=_manifest(), calibration=_calibration(),
-        classifier_sha256="new-c", classifier_version="0.2.0", package_version="0.2.0",
-        checkpoint=_checkpoint(), promotion_status="manual_waiver", manual_waiver_approved=True,
+        base_metadata=_base(),
+        manifest_metadata=_manifest(),
+        calibration=_calibration(),
+        classifier_sha256="new-c",
+        classifier_version="0.2.0",
+        package_version="0.2.0",
+        checkpoint=_checkpoint(),
+        promotion_status="manual_waiver",
+        manual_waiver_approved=True,
     )
     assert approved["promotion_status"] == "production"
     assert approved["promotion"]["method"] == "manual_waiver"

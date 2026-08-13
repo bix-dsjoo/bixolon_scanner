@@ -91,7 +91,9 @@ def test_detection_dataset_keeps_empty_negative_and_excludes_quality_regression(
         },
     ]
     manifest = tmp_path / "manifest.jsonl"
-    manifest.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+    manifest.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8"
+    )
 
     dataset = DetectionDataset(manifest, tmp_path, mode="final_train")
 

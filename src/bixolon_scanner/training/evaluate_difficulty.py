@@ -19,7 +19,6 @@ from ..package import load_model_package
 from ..pipeline import DecisionPipeline
 from .evaluate_detector import _iou, _xywh_to_xyxy
 
-
 DIFFICULTY_PATTERN = re.compile(r"_(e|m|h)_", re.IGNORECASE)
 DIFFICULTIES = ("E", "M", "H")
 
@@ -57,7 +56,9 @@ def _load_records(dataset_root: Path) -> list[dict[str, Any]]:
             difficulty = (
                 directory_difficulty
                 if directory_difficulty in DIFFICULTIES
-                else filename_match.group(1).upper() if filename_match is not None else None
+                else filename_match.group(1).upper()
+                if filename_match is not None
+                else None
             )
             if difficulty is None:
                 raise ValueError(f"difficulty is missing from image path: {filename}")
@@ -72,7 +73,9 @@ def _load_records(dataset_root: Path) -> list[dict[str, Any]]:
                 raise ValueError(f"image has no annotations: {image_path}")
             records.append(
                 {
-                    "group": relative_path.parts[0] if len(relative_path.parts) > 1 else dataset_root.name,
+                    "group": relative_path.parts[0]
+                    if len(relative_path.parts) > 1
+                    else dataset_root.name,
                     "difficulty": difficulty,
                     "image_path": image_path,
                     "annotations": annotations,
@@ -127,9 +130,7 @@ def _match_detections(
     for detection_index, detection in sorted(
         enumerate(detections), key=lambda item: item[1].score, reverse=True
     ):
-        box = np.asarray(
-            [detection.x1, detection.y1, detection.x2, detection.y2], dtype=np.float32
-        )
+        box = np.asarray([detection.x1, detection.y1, detection.x2, detection.y2], dtype=np.float32)
         candidates = [(index, _iou(box, gt_boxes[index])) for index in remaining_gt]
         if not candidates:
             continue
@@ -179,9 +180,7 @@ def _safe_rate(numerator: int, denominator: int) -> float | None:
 
 def _finalize_counts(counts: dict[str, Any]) -> dict[str, Any]:
     result = dict(counts)
-    latency_samples = np.asarray(
-        counts["end_to_end_latency_ms_samples"], dtype=np.float64
-    )
+    latency_samples = np.asarray(counts["end_to_end_latency_ms_samples"], dtype=np.float64)
     result.pop("end_to_end_latency_ms_samples", None)
     ground_truth_outcome_counts = {
         "recognized_approved_correct": counts["approved_correct"],
@@ -214,12 +213,8 @@ def _finalize_counts(counts: dict[str, Any]) -> dict[str, Any]:
         "exact_detection_image_rate": _safe_rate(
             counts["exact_detection_images"], counts["images"]
         ),
-        "approved_wrong_rate": _safe_rate(
-            counts["approved_wrong"], counts["approved_boxes"]
-        ),
-        "approved_accuracy": _safe_rate(
-            counts["approved_correct"], counts["approved_boxes"]
-        ),
+        "approved_wrong_rate": _safe_rate(counts["approved_wrong"], counts["approved_boxes"]),
+        "approved_accuracy": _safe_rate(counts["approved_correct"], counts["approved_boxes"]),
         "unknown_top3_missing_rate": _safe_rate(
             counts["unknown_top3_missing"], counts["unknown_matched_boxes"]
         ),
@@ -448,7 +443,9 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
                             "error_type": "UNKNOWN_UNMATCHED",
                             "item_id": item.item_id,
                             "item_status": item.status.value,
-                            "top3_class_ids": "|".join(candidate.class_id for candidate in item.top3),
+                            "top3_class_ids": "|".join(
+                                candidate.class_id for candidate in item.top3
+                            ),
                         }
                     )
                     continue

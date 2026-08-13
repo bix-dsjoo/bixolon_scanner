@@ -2,20 +2,15 @@ from __future__ import annotations
 
 from pathlib import Path
 
-
 DINO_V3_CONVNEXT_TINY = "dinov3_convnext_tiny"
-DINO_V3_HUB_REPOSITORY = (
-    "facebookresearch/dinov3:6876159a11b4df116f30f667f8c9888617df0751"
-)
+DINO_V3_HUB_REPOSITORY = "facebookresearch/dinov3:6876159a11b4df116f30f667f8c9888617df0751"
 
 
 def require_torch():
     try:
         import torch
     except ImportError as exc:
-        raise RuntimeError(
-            "install the 'training' extra to use training commands"
-        ) from exc
+        raise RuntimeError("install the 'training' extra to use training commands") from exc
     return torch
 
 
@@ -77,12 +72,8 @@ def build_dino_classifier(
             self.scale = float(cosine_scale)
 
         def forward(self, features):
-            normalized_features = torch.nn.functional.normalize(
-                features, p=2.0, dim=-1, eps=1e-12
-            )
-            normalized_weight = torch.nn.functional.normalize(
-                self.weight, p=2.0, dim=-1, eps=1e-12
-            )
+            normalized_features = torch.nn.functional.normalize(features, p=2.0, dim=-1, eps=1e-12)
+            normalized_weight = torch.nn.functional.normalize(self.weight, p=2.0, dim=-1, eps=1e-12)
             return self.scale * normalized_features @ normalized_weight.transpose(0, 1)
 
     class DinoClassifier(torch.nn.Module):
@@ -102,15 +93,11 @@ def build_dino_classifier(
 
         def extract_features(self, pixel_values):
             if self.backbone_kind == "dinov2":
-                features = self.backbone(pixel_values=pixel_values).last_hidden_state[
-                    :, 0
-                ]
+                features = self.backbone(pixel_values=pixel_values).last_hidden_state[:, 0]
             else:
                 features = self.backbone(pixel_values)
             if self.feature_l2_normalize:
-                features = torch.nn.functional.normalize(
-                    features, p=2.0, dim=-1, eps=1e-12
-                )
+                features = torch.nn.functional.normalize(features, p=2.0, dim=-1, eps=1e-12)
             return features
 
         def forward(self, pixel_values):

@@ -40,4 +40,3 @@ def test_recapture_requires_empty_items():
         model_versions=ModelVersions(detector="1.0.0", classifier=None),
     )
     assert response.status is Status.RECAPTURE
-

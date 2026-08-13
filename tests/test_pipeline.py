@@ -49,20 +49,14 @@ def test_025_bundle_reports_one_version_and_preserves_early_exit_null(
     classifier = FakeClassifier([[10.0, 0.0, 0.0]])
     detector.version = "0.2.5"
     classifier.version = "0.2.5"
-    pipeline = DecisionPipeline(
-        detector, classifier, classifier_metadata, quality_metadata
-    )
+    pipeline = DecisionPipeline(detector, classifier, classifier_metadata, quality_metadata)
 
-    approved = pipeline.scan(
-        np.full((100, 100, 3), 128, dtype=np.uint8), "request-025-approved"
-    )
+    approved = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request-025-approved")
     assert approved.model_versions.detector == "0.2.5"
     assert approved.model_versions.classifier == "0.2.5"
 
     detector.result = DetectionResult([])
-    recapture = pipeline.scan(
-        np.full((100, 100, 3), 128, dtype=np.uint8), "request-025-recapture"
-    )
+    recapture = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request-025-recapture")
     assert recapture.model_versions.detector == "0.2.5"
     assert recapture.model_versions.classifier is None
 
@@ -102,16 +96,16 @@ def test_all_items_approved(classifier_metadata, quality_metadata):
 def test_capacity_saturation_recaptures(classifier_metadata, quality_metadata):
     classifier = FakeClassifier([])
     result = DetectionResult([Detection(10, 10, 40, 40, 0.9)], capacity_saturated=True)
-    pipeline = DecisionPipeline(FakeDetector(result), classifier, classifier_metadata, quality_metadata)
+    pipeline = DecisionPipeline(
+        FakeDetector(result), classifier, classifier_metadata, quality_metadata
+    )
     response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request04")
     assert response.status is Status.RECAPTURE
     assert response.reason_codes == ["DETECTOR_CAPACITY_EXCEEDED"]
     assert classifier.calls == 0
 
 
-def test_legacy_border_policy_recaptures_before_classifier(
-    classifier_metadata, quality_metadata
-):
+def test_legacy_border_policy_recaptures_before_classifier(classifier_metadata, quality_metadata):
     classifier = FakeClassifier([[10.0, 0.0, 0.0]])
     result = DetectionResult([Detection(0, 10, 40, 40, 0.95)])
     pipeline = DecisionPipeline(
@@ -141,9 +135,7 @@ def test_confident_border_item_is_approved(classifier_metadata, quality_metadata
     assert classifier.calls == 1
 
 
-def test_uncertain_border_item_recaptures_after_classifier(
-    classifier_metadata, quality_metadata
-):
+def test_uncertain_border_item_recaptures_after_classifier(classifier_metadata, quality_metadata):
     quality_metadata.border_policy = "classifier_confidence"
     classifier = FakeClassifier([[0.4, 0.3, 0.2]])
     result = DetectionResult([Detection(0, 10, 40, 40, 0.95)])
@@ -171,9 +163,7 @@ def _count_metadata(confidence_threshold=0.9):
     )
 
 
-def test_count_mismatch_recaptures_before_classifier(
-    classifier_metadata, quality_metadata
-):
+def test_count_mismatch_recaptures_before_classifier(classifier_metadata, quality_metadata):
     classifier = FakeClassifier([])
     result = DetectionResult(
         [Detection(10, 10, 40, 40, 0.95)],
@@ -196,9 +186,7 @@ def test_count_mismatch_recaptures_before_classifier(
     assert classifier.calls == 0
 
 
-def test_uncertain_count_recaptures_before_classifier(
-    classifier_metadata, quality_metadata
-):
+def test_uncertain_count_recaptures_before_classifier(classifier_metadata, quality_metadata):
     classifier = FakeClassifier([])
     result = DetectionResult(
         [Detection(10, 10, 40, 40, 0.95)],
@@ -220,9 +208,7 @@ def test_uncertain_count_recaptures_before_classifier(
     assert classifier.calls == 0
 
 
-def test_verified_count_allows_classifier(
-    classifier_metadata, quality_metadata
-):
+def test_verified_count_allows_classifier(classifier_metadata, quality_metadata):
     classifier = FakeClassifier([[10.0, 0.0, 0.0]])
     result = DetectionResult(
         [Detection(10, 10, 40, 40, 0.95)],
@@ -247,9 +233,7 @@ def test_uncertain_detector_candidate_recaptures_before_classifier(
     classifier_metadata, quality_metadata
 ):
     classifier = FakeClassifier([])
-    result = DetectionResult(
-        [Detection(10, 10, 40, 40, 0.95)], uncertain_candidate_count=1
-    )
+    result = DetectionResult([Detection(10, 10, 40, 40, 0.95)], uncertain_candidate_count=1)
     pipeline = DecisionPipeline(
         FakeDetector(result), classifier, classifier_metadata, quality_metadata
     )

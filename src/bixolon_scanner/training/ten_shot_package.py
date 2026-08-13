@@ -66,9 +66,7 @@ def build_ten_shot_metadata(
             "class_name": str(label["class_name"]),
             "recapture": False,
         }
-        for label in sorted(
-            manifest_metadata["labels"], key=lambda row: int(row["category_id"])
-        )
+        for label in sorted(manifest_metadata["labels"], key=lambda row: int(row["category_id"]))
     ]
     if len(labels) != int(checkpoint["num_classes"]):
         raise ValueError("classifier class count does not match manifest labels")
@@ -132,9 +130,7 @@ def build_ten_shot_metadata(
         "sample_count": int(calibration["sample_count"]),
         "approved_precision": float(calibration["approved_precision"]),
         "approval_coverage": float(calibration["approval_coverage"]),
-        "false_approval_rate_upper_95": float(
-            calibration["approved_false_rate_upper_95"]
-        ),
+        "false_approval_rate_upper_95": float(calibration["approved_false_rate_upper_95"]),
         "risk_control_satisfied": bool(calibration["risk_control_satisfied"]),
     }
     metadata.pop("promotion", None)
@@ -157,14 +153,16 @@ def build_ten_shot_metadata(
             "decision": "approved",
             "method": "manual_waiver",
             "decided_on": datetime.now(UTC).date().isoformat(),
-            "waivers": [{
-                "gate": "evaluation_set_independence",
-                "observed": 0.0,
-                "target": 1.0,
-                "sample_count": 1,
-                "correct_count": 0,
-                "reason": "test 및 bread_project_2가 독립 평가셋이 아님을 인지한 0.2.0 수동 승인",
-            }],
+            "waivers": [
+                {
+                    "gate": "evaluation_set_independence",
+                    "observed": 0.0,
+                    "target": 1.0,
+                    "sample_count": 1,
+                    "correct_count": 0,
+                    "reason": "test 및 bread_project_2가 독립 평가셋이 아님을 인지한 0.2.0 수동 승인",
+                }
+            ],
             "remaining_limitations": [
                 "Top-1 97% 목표 미달이나 95% 배포 하한과 안전 gate는 통과했다",
                 "test 및 bread_project_2는 독립 평가셋이 아니다",
@@ -209,18 +207,14 @@ def export_ten_shot_package(args: argparse.Namespace) -> None:
         spec=spec,
     )
     if checkpoint["architecture"] == "ten_shot_residual_cosine_challenger":
-        classifier.load_state_dict(
-            compatible_proxy_state_dict(checkpoint["model_state_dict"])
-        )
+        classifier.load_state_dict(compatible_proxy_state_dict(checkpoint["model_state_dict"]))
     else:
         classifier.classifier.load_state_dict(
             compatible_proxy_state_dict(checkpoint["head_state_dict"])
         )
     classifier.eval()
     experiment_config = json.loads(args.config.read_text(encoding="utf-8"))
-    crop_scale_value = experiment_config.get("inference", {}).get(
-        "center_crop_scale"
-    )
+    crop_scale_value = experiment_config.get("inference", {}).get("center_crop_scale")
     crop_scale = None if crop_scale_value is None else float(crop_scale_value)
     inference = experiment_config.get("inference", {})
     classifier = wrap_inference_classifier(
@@ -229,9 +223,7 @@ def export_ten_shot_package(args: argparse.Namespace) -> None:
         crop_scale=crop_scale,
         num_classes=int(checkpoint["num_classes"]),
         logit_quantum=(
-            None
-            if inference.get("logit_quantum") is None
-            else float(inference["logit_quantum"])
+            None if inference.get("logit_quantum") is None else float(inference["logit_quantum"])
         ),
         logit_phase=float(inference.get("logit_phase", 0.0)),
         tie_break_bias_span=float(inference.get("tie_break_bias_span", 0.0)),

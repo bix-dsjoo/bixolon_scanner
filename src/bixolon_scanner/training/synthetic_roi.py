@@ -161,9 +161,7 @@ def augment_direct_roi(
         canvas, tint = _procedural_roi_background(recipe.output_size, rng)
     else:
         neutral = int(rng.integers(185, 236))
-        tint = tuple(
-            int(np.clip(neutral + rng.integers(-10, 11), 0, 255)) for _ in range(3)
-        )
+        tint = tuple(int(np.clip(neutral + rng.integers(-10, 11), 0, 255)) for _ in range(3))
         canvas = Image.new("RGB", (recipe.output_size, recipe.output_size), tint)
     max_x, max_y = recipe.output_size - cutout.width, recipe.output_size - cutout.height
     left = int(rng.integers(0, max_x + 1))
@@ -175,9 +173,7 @@ def augment_direct_roi(
             (min(left + 2, recipe.output_size - 1), min(top + 3, recipe.output_size - 1)),
         )
         shadow = shadow.filter(ImageFilter.GaussianBlur(2.0))
-        shade = Image.new(
-            "RGB", canvas.size, tuple(max(0, value - 28) for value in tint)
-        )
+        shade = Image.new("RGB", canvas.size, tuple(max(0, value - 28) for value in tint))
         canvas.paste(shade, (0, 0), shadow.point(lambda value: round(value * 0.22)))
     canvas.paste(cutout.convert("RGB"), (left, top), cutout.getchannel("A"))
     blur_radius = 0.0
@@ -216,9 +212,7 @@ def augment_direct_roi(
     )
 
 
-def prepare_direct_roi_source(
-    support_image: Image.Image, recipe: DirectRoiRecipe
-) -> Image.Image:
+def prepare_direct_roi_source(support_image: Image.Image, recipe: DirectRoiRecipe) -> Image.Image:
     """Extract the deterministic foreground once for all views of a source."""
     recipe.validate()
     if recipe.crop_mode == "border_connected_composite":
@@ -354,9 +348,7 @@ def _prepare_background(
     size = (recipe.frame_width, recipe.frame_height)
     if background is None:
         base = int(rng.integers(180, 236))
-        tint = tuple(
-            int(np.clip(base + int(rng.integers(-12, 13)), 0, 255)) for _ in range(3)
-        )
+        tint = tuple(int(np.clip(base + int(rng.integers(-12, 13)), 0, 255)) for _ in range(3))
         return Image.new("RGB", size, tint), "procedural-neutral"
     normalized = ImageOps.exif_transpose(background).convert("RGB")
     fitted = ImageOps.fit(normalized, size, method=Image.Resampling.LANCZOS)
@@ -424,13 +416,9 @@ def compose_synthetic_frame(
     rgb = ImageEnhance.Color(rgb).enhance(saturation)
     cutout = rgb.convert("RGBA")
     cutout.putalpha(cutout_alpha)
-    cutout, perspective = _perspective_transform(
-        cutout, recipe.perspective_fraction, rng
-    )
+    cutout, perspective = _perspective_transform(cutout, recipe.perspective_fraction, rng)
     rotation = float(rng.uniform(-recipe.rotation_degrees, recipe.rotation_degrees))
-    cutout = cutout.rotate(
-        rotation, resample=Image.Resampling.BICUBIC, expand=True
-    )
+    cutout = cutout.rotate(rotation, resample=Image.Resampling.BICUBIC, expand=True)
     cutout = cutout.crop(_nonempty_alpha_bbox(cutout))
 
     scale = float(rng.uniform(recipe.object_scale_min, recipe.object_scale_max))
@@ -452,14 +440,10 @@ def compose_synthetic_frame(
     frame.paste(resized.convert("RGB"), (left, top), resized.getchannel("A"))
 
     blurred = bool(rng.random() < recipe.blur_probability)
-    blur_radius = (
-        float(rng.uniform(0.05, recipe.blur_radius_max)) if blurred else 0.0
-    )
+    blur_radius = float(rng.uniform(0.05, recipe.blur_radius_max)) if blurred else 0.0
     if blurred:
         frame = frame.filter(ImageFilter.GaussianBlur(blur_radius))
-    jpeg_quality = int(
-        rng.integers(recipe.jpeg_quality_min, recipe.jpeg_quality_max + 1)
-    )
+    jpeg_quality = int(rng.integers(recipe.jpeg_quality_min, recipe.jpeg_quality_max + 1))
     frame = _jpeg_roundtrip(frame, jpeg_quality)
     bbox = (left, top, left + resized.width, top + resized.height)
     provenance = {
@@ -513,16 +497,12 @@ def validate_single_detector_crop(
     if hard_reasons:
         raise ValueError(f"synthetic frame failed detector hard gate: {list(hard_reasons)}")
     if len(detections) != 1:
-        raise ValueError(
-            f"synthetic frame requires exactly one detection, got {len(detections)}"
-        )
+        raise ValueError(f"synthetic frame requires exactly one detection, got {len(detections)}")
     detection = detections[0]
     actual = (detection.x1, detection.y1, detection.x2, detection.y2)
     overlap = _iou(actual, expected_bbox_xyxy)
     if overlap < minimum_iou:
-        raise ValueError(
-            f"synthetic detector IoU {overlap:.6f} is below {minimum_iou:.6f}"
-        )
+        raise ValueError(f"synthetic detector IoU {overlap:.6f} is below {minimum_iou:.6f}")
     return detection
 
 

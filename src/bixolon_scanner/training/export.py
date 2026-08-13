@@ -6,8 +6,8 @@ import shutil
 from pathlib import Path
 
 from ..package import load_model_package, sha256_file
-from .models import build_dino_classifier, require_torch
 from .config_file import parse_args_with_config
+from .models import build_dino_classifier, require_torch
 
 
 def _copy_reused_classifier(package_dir: Path, classifier_path: Path) -> dict:
@@ -51,9 +51,7 @@ def export_models(args: argparse.Namespace) -> None:
                 if classifier_checkpoint.get("source_revision")
                 else "facebookresearch/dinov3"
             ),
-            classifier_head_kind=classifier_checkpoint.get(
-                "classifier_head_kind", "linear"
-            ),
+            classifier_head_kind=classifier_checkpoint.get("classifier_head_kind", "linear"),
             cosine_scale=float(classifier_checkpoint.get("cosine_scale", 16.0)),
         )
         classifier.load_state_dict(classifier_checkpoint["state_dict"])
@@ -128,7 +126,10 @@ def export_models(args: argparse.Namespace) -> None:
             "version": args.classifier_version,
             "input_name": "pixel_values",
             "logits_output": "logits",
-            "input_size": [classifier_checkpoint["image_size"], classifier_checkpoint["image_size"]],
+            "input_size": [
+                classifier_checkpoint["image_size"],
+                classifier_checkpoint["image_size"],
+            ],
             "color_order": "RGB",
             "mean": [0.485, 0.456, 0.406],
             "std": [0.229, 0.224, 0.225],
@@ -179,13 +180,17 @@ def export_models(args: argparse.Namespace) -> None:
         },
         "licenses": {
             "detector": "Apache-2.0: https://huggingface.co/PekingU/rtdetr_v2_r18vd",
-            "classifier": reused_metadata["licenses"]["classifier"] if reused_metadata else (
+            "classifier": reused_metadata["licenses"]["classifier"]
+            if reused_metadata
+            else (
                 "DINOv3 License (authorized by model recipient): https://github.com/facebookresearch/dinov3"
                 if classifier_checkpoint.get("backbone_kind") == "dinov3_convnext_tiny"
                 else "Apache-2.0: https://github.com/facebookresearch/dinov2"
             ),
         },
-        "sources": reused_metadata.get("sources", {}) if reused_metadata else {
+        "sources": reused_metadata.get("sources", {})
+        if reused_metadata
+        else {
             "classifier": {
                 "architecture": classifier_checkpoint.get("backbone_architecture"),
                 "revision": classifier_checkpoint.get("source_revision"),
@@ -193,7 +198,9 @@ def export_models(args: argparse.Namespace) -> None:
                 "weight_sha256": classifier_checkpoint.get("source_weight_sha256"),
             }
         },
-        "calibration": reused_metadata.get("calibration") if reused_metadata else {
+        "calibration": reused_metadata.get("calibration")
+        if reused_metadata
+        else {
             "sample_count": calibration["sample_count"],
             "approved_precision": calibration["approved_precision"],
             "approval_coverage": calibration["approval_coverage"],
@@ -216,12 +223,8 @@ def export_models(args: argparse.Namespace) -> None:
             "model_version": args.package_version,
             "classifier_source_version": reused_classifier_source_version,
             "classifier_source_sha256": reused_classifier_source_sha256,
-            "detector_selection_sha256": target_provenance[
-                "selection_report_sha256"
-            ],
-            "evaluation_dataset_versions": target_provenance[
-                "evaluation_dataset_versions"
-            ],
+            "detector_selection_sha256": target_provenance["selection_report_sha256"],
+            "evaluation_dataset_versions": target_provenance["evaluation_dataset_versions"],
         }
     (args.output_dir / "metadata.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
@@ -230,7 +233,9 @@ def export_models(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Export detector and classifier to a Worker model package")
+    parser = argparse.ArgumentParser(
+        description="Export detector and classifier to a Worker model package"
+    )
     parser.add_argument("--detector-checkpoint", type=Path, required=True)
     parser.add_argument("--classifier-checkpoint", type=Path)
     parser.add_argument("--calibration-report", type=Path)

@@ -82,6 +82,4 @@ def test_locked_regression_and_latency_failures_prevent_promotion():
     assert report["checks"]["full_path_latency"] is False
     assert report["checks"]["test_94:top1_floor"] is False
     assert report["checks"]["test_94:approval_risk_certification_feasible"] is False
-    assert report["evidence"]["regression_sets"]["test_94"][
-        "approval_coverage"
-    ] == 0.78
+    assert report["evidence"]["regression_sets"]["test_94"]["approval_coverage"] == 0.78

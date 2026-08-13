@@ -122,15 +122,11 @@ def _metrics_grid(
         gt_boxes = [_xywh_to_xyxy(annotation["bbox_xywh"]) for annotation in record["annotations"]]
         for threshold, total in zip(thresholds, totals):
             raw_count = sum(detection.score >= threshold for detection in raw)
-            selected = [
-                detection for detection in nms_survivors if detection.score >= threshold
-            ]
+            selected = [detection for detection in nms_survivors if detection.score >= threshold]
             unmatched = set(range(len(gt_boxes)))
             matched = 0
             for detection in selected:
-                box = np.asarray(
-                    [detection.x1, detection.y1, detection.x2, detection.y2]
-                )
+                box = np.asarray([detection.x1, detection.y1, detection.x2, detection.y2])
                 candidates = [(index, _iou(box, gt_boxes[index])) for index in unmatched]
                 if not candidates:
                     continue
@@ -156,9 +152,7 @@ def _metrics_grid(
                 "matched_count": matched_total,
                 "recall": matched_total / gt_total if gt_total else 0.0,
                 "precision": matched_total / predicted_total if predicted_total else 0.0,
-                "count_accuracy": (
-                    int(total["count_correct"]) / len(records) if records else 0.0
-                ),
+                "count_accuracy": (int(total["count_correct"]) / len(records) if records else 0.0),
                 "capacity_saturated_images": int(total["capacity_saturated_images"]),
                 "score_threshold": threshold,
             }
@@ -173,9 +167,7 @@ def evaluate(args: argparse.Namespace) -> None:
     device = torch.device("cuda" if torch.cuda.is_available() and not args.cpu else "cpu")
     processor = AutoImageProcessor.from_pretrained(args.checkpoint)
     model = RTDetrV2ForObjectDetection.from_pretrained(args.checkpoint).to(device).eval()
-    dataset = DetectionDataset(
-        args.manifest, args.dataset_root, mode=args.mode, fold=args.fold
-    )
+    dataset = DetectionDataset(args.manifest, args.dataset_root, mode=args.mode, fold=args.fold)
     predictions: list[dict] = []
     for start in range(0, len(dataset.records), args.batch_size):
         batch_records = dataset.records[start : start + args.batch_size]
@@ -187,8 +179,11 @@ def evaluate(args: argparse.Namespace) -> None:
             sizes.append([record["height"], record["width"]])
         inputs = processor(images=images, return_tensors="pt")
         inputs = {key: value.to(device) for key, value in inputs.items()}
-        with torch.inference_mode(), torch.autocast(
-            device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"
+        with (
+            torch.inference_mode(),
+            torch.autocast(
+                device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"
+            ),
         ):
             outputs = model(**inputs)
         processed = processor.post_process_object_detection(
@@ -240,7 +235,9 @@ def evaluate(args: argparse.Namespace) -> None:
         "match_iou_threshold": args.match_iou_threshold,
         "nms_iou_threshold": args.nms_threshold,
         "target_recall": args.target_recall,
-        "threshold_policy": "fixed" if args.score_threshold is not None else "selected_on_evaluation_set",
+        "threshold_policy": "fixed"
+        if args.score_threshold is not None
+        else "selected_on_evaluation_set",
         "selected_score_threshold": selected["score_threshold"],
         "target_recall_satisfied": selected["recall"] >= args.target_recall,
         "metrics": selected,

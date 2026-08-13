@@ -1,21 +1,21 @@
 from __future__ import annotations
 
 import argparse
-from functools import partial
 import json
 import math
 import random
+from functools import partial
 from pathlib import Path
 from typing import Any
 
 import numpy as np
 
+from .calibration import binomial_rate_upper_bound
+from .config_file import parse_args_with_config
 from .data import DetectionDataset
 from .evaluate_detector import _metrics_grid
 from .models import require_torch
 from .run_record import write_run_record
-from .config_file import parse_args_with_config
-from .calibration import binomial_rate_upper_bound
 from .selective_detector import (
     DetectorPolicy,
     apply_policy,
@@ -64,9 +64,7 @@ def detector_optimizer_recipe(args: argparse.Namespace) -> dict[str, Any]:
         "selective_image_risk",
     }:
         raise ValueError("unsupported detector checkpoint selection mode")
-    maximum_risk_upper_95 = float(
-        getattr(args, "maximum_risk_upper_95", 0.005)
-    )
+    maximum_risk_upper_95 = float(getattr(args, "maximum_risk_upper_95", 0.005))
     if base_lr <= 0:
         raise ValueError("detector learning_rate must be positive")
     if head_lr_multiplier <= 0:
@@ -107,18 +105,14 @@ def detector_optimizer_recipe(args: argparse.Namespace) -> dict[str, Any]:
                 "policy": "silent_failure_then_safe_pass_exact_image_loss",
                 "mode": checkpoint_selection_mode,
                 "maximum_risk_upper_95": maximum_risk_upper_95,
-                "uncertainty_score_threshold": getattr(
-                    args, "uncertainty_score_threshold", None
-                ),
+                "uncertainty_score_threshold": getattr(args, "uncertainty_score_threshold", None),
                 "uncertainty_min_area_ratio": float(
                     getattr(args, "uncertainty_min_area_ratio", 0.0)
                 ),
                 "uncertainty_match_iou_threshold": float(
                     getattr(args, "uncertainty_match_iou_threshold", 0.5)
                 ),
-                "min_object_area_ratio": float(
-                    getattr(args, "min_object_area_ratio", 0.005)
-                ),
+                "min_object_area_ratio": float(getattr(args, "min_object_area_ratio", 0.005)),
             }
         )
     recipe = {
@@ -134,9 +128,7 @@ def detector_optimizer_recipe(args: argparse.Namespace) -> dict[str, Any]:
         "workers": workers,
         "class_head_prior_probability": prior_probability,
         "class_head_bias": math.log(prior_probability / (1.0 - prior_probability)),
-        "scheduler": (
-            "cosine" if warmup_epochs == 0 else "linear_warmup_then_cosine"
-        ),
+        "scheduler": ("cosine" if warmup_epochs == 0 else "linear_warmup_then_cosine"),
         "warmup_epochs": warmup_epochs,
         "total_epochs": int(args.epochs),
         "randomly_reinitialized_modules": [
@@ -191,9 +183,7 @@ def initialize_detector_classification_head_biases(model, prior_probability: flo
 def detector_randomly_reinitialized_modules(model) -> list[tuple[str, Any]]:
     """Return every module replaced by the 1-class RT-DETRv2 load."""
     modules = detector_classification_heads(model)
-    denoising_embedding = getattr(
-        getattr(model, "model", None), "denoising_class_embed", None
-    )
+    denoising_embedding = getattr(getattr(model, "model", None), "denoising_class_embed", None)
     if denoising_embedding is None:
         raise ValueError("RT-DETRv2 denoising class embedding was not found")
     modules.append(("model.denoising_class_embed", denoising_embedding))
@@ -240,16 +230,20 @@ def detector_optimizer_parameter_groups(model, recipe: dict[str, Any]) -> list[d
         raise ValueError("detector optimizer requires a non-empty base group")
     groups = []
     if base_parameters:
-        groups.append({
-            "params": base_parameters,
-            "lr": float(recipe["base_learning_rate"]),
-            "group_name": "base",
-        })
-    groups.append({
+        groups.append(
+            {
+                "params": base_parameters,
+                "lr": float(recipe["base_learning_rate"]),
+                "group_name": "base",
+            }
+        )
+    groups.append(
+        {
             "params": head_parameters,
             "lr": float(recipe["randomly_reinitialized_learning_rate"]),
             "group_name": "randomly_reinitialized_modules",
-        })
+        }
+    )
     return groups
 
 
@@ -285,9 +279,7 @@ def enforce_frozen_modules_eval(model, recipe: dict[str, Any]) -> None:
             for descendant in module.modules()
         }
         frozen_modules = (
-            module
-            for module in model.modules()
-            if id(module) not in trainable_module_ids
+            module for module in model.modules() if id(module) not in trainable_module_ids
         )
     elif freeze_mode == "visual_backbone_only":
         frozen_modules = (
@@ -329,9 +321,7 @@ def build_detector_scheduler(torch, optimizer, recipe: dict[str, Any]):
     )
 
 
-def detector_metric_quality_key(
-    metrics: dict[str, Any], target_recall: float
-) -> tuple[float, ...]:
+def detector_metric_quality_key(metrics: dict[str, Any], target_recall: float) -> tuple[float, ...]:
     """Build the exact lexicographic checkpoint quality key."""
     if float(metrics["recall"]) >= float(target_recall):
         return (
@@ -396,12 +386,8 @@ def evaluate_detector_validation_predictions(
                     if options.get("uncertainty_score_threshold") is None
                     else float(options["uncertainty_score_threshold"])
                 ),
-                uncertainty_min_area_ratio=float(
-                    options["uncertainty_min_area_ratio"]
-                ),
-                uncertainty_match_iou_threshold=float(
-                    options["uncertainty_match_iou_threshold"]
-                ),
+                uncertainty_min_area_ratio=float(options["uncertainty_min_area_ratio"]),
+                uncertainty_match_iou_threshold=float(options["uncertainty_match_iou_threshold"]),
                 min_object_area_ratio=float(options["min_object_area_ratio"]),
                 max_queries=int(options["max_queries"]),
             )
@@ -415,9 +401,9 @@ def evaluate_detector_validation_predictions(
             exact_images = 0
             for record, prediction in zip(records, predictions):
                 applied = apply_policy(record, prediction, policy)
-                exact = detector_image_diagnostics(
-                    applied["detections"], record["annotations"]
-                )["exact_iou_50"]
+                exact = detector_image_diagnostics(applied["detections"], record["annotations"])[
+                    "exact_iou_50"
+                ]
                 exact_images += int(exact)
                 safe_pass += int(exact and applied["pass"])
                 silent_failure += int(not exact and applied["pass"])
@@ -430,8 +416,7 @@ def evaluate_detector_validation_predictions(
                     "silent_failure_images": silent_failure,
                     "exact_image_count": exact_images,
                     "pass_risk_upper_95": risk_upper,
-                    "risk_control_satisfied": risk_upper
-                    <= float(options["maximum_risk_upper_95"]),
+                    "risk_control_satisfied": risk_upper <= float(options["maximum_risk_upper_95"]),
                 }
             )
         if not selective_candidates:
@@ -462,8 +447,7 @@ def evaluate_detector_validation_predictions(
     return {
         "detector_metrics": selected,
         "selected_score_threshold": float(selected["score_threshold"]),
-        "target_recall_satisfied": float(selected["recall"])
-        >= float(options["target_recall"]),
+        "target_recall_satisfied": float(selected["recall"]) >= float(options["target_recall"]),
         "detector_quality_key": list(quality_key),
     }
 
@@ -512,11 +496,11 @@ def validate_detector_progress_identity(
         mismatch = mismatch or not isinstance(progress.get("best_detector_quality_key"), list)
         mismatch = mismatch or progress.get("last_detector_metrics") is None
         mismatch = mismatch or progress.get("last_selected_score_threshold") is None
-        mismatch = mismatch or not isinstance(
-            progress.get("last_target_recall_satisfied"), bool
-        )
-        mismatch = mismatch or not isinstance(history, list) or any(
-            not required <= set(record) for record in history
+        mismatch = mismatch or not isinstance(progress.get("last_target_recall_satisfied"), bool)
+        mismatch = (
+            mismatch
+            or not isinstance(history, list)
+            or any(not required <= set(record) for record in history)
         )
     if mismatch:
         raise ValueError("detector progress identity mismatch")
@@ -594,18 +578,42 @@ def train(args: argparse.Namespace) -> None:
     configure_detector_freeze(model, recipe)
     training_mode, validation_mode = detector_dataset_plan(args)
     train_dataset = DetectionDataset(
-        args.manifest, args.dataset_root, mode=training_mode, fold=args.fold, cache_dir=args.cache_dir
+        args.manifest,
+        args.dataset_root,
+        mode=training_mode,
+        fold=args.fold,
+        cache_dir=args.cache_dir,
     )
-    validation_dataset = None if validation_mode is None else DetectionDataset(
-        args.manifest, args.dataset_root, mode=validation_mode, fold=args.fold, cache_dir=args.cache_dir
+    validation_dataset = (
+        None
+        if validation_mode is None
+        else DetectionDataset(
+            args.manifest,
+            args.dataset_root,
+            mode=validation_mode,
+            fold=args.fold,
+            cache_dir=args.cache_dir,
+        )
     )
 
     collate = partial(collate_detection_batch, processor=processor)
     train_loader = DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, collate_fn=collate
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.workers,
+        collate_fn=collate,
     )
-    validation_loader = None if validation_dataset is None else DataLoader(
-        validation_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers, collate_fn=collate
+    validation_loader = (
+        None
+        if validation_dataset is None
+        else DataLoader(
+            validation_dataset,
+            batch_size=args.batch_size,
+            shuffle=False,
+            num_workers=args.workers,
+            collate_fn=collate,
+        )
     )
     optimizer = torch.optim.AdamW(
         detector_optimizer_parameter_groups(model, recipe),
@@ -619,6 +627,7 @@ def train(args: argparse.Namespace) -> None:
     stale_epochs = 0
     start_epoch = 0
     args.output_dir.mkdir(parents=True, exist_ok=True)
+
     def move_batch(batch):
         inputs = {key: value.to(device) for key, value in batch.items() if key != "labels"}
         inputs["labels"] = [
@@ -662,7 +671,9 @@ def train(args: argparse.Namespace) -> None:
         for batch in train_loader:
             inputs = move_batch(batch)
             optimizer.zero_grad(set_to_none=True)
-            with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
+            with torch.autocast(
+                device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"
+            ):
                 loss = model(**inputs).loss
             scaler.scale(loss).backward()
             scaler.step(optimizer)
@@ -766,7 +777,9 @@ def train(args: argparse.Namespace) -> None:
     if args.final_training or bool(getattr(args, "fixed_epoch_checkpoint", False)):
         model.save_pretrained(args.output_dir / "best")
         processor.save_pretrained(args.output_dir / "best")
-    (args.output_dir / "history.json").write_text(json.dumps(history, indent=2) + "\n", encoding="utf-8")
+    (args.output_dir / "history.json").write_text(
+        json.dumps(history, indent=2) + "\n", encoding="utf-8"
+    )
     progress_path.unlink(missing_ok=True)
 
 

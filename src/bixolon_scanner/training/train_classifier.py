@@ -8,9 +8,10 @@ from pathlib import Path
 
 import numpy as np
 
-from .calibration import fit_temperature, select_approval_threshold, softmax, topk_accuracy
-from .data import ClassifierDataset
 from ..package import sha256_file
+from .calibration import fit_temperature, select_approval_threshold, softmax, topk_accuracy
+from .config_file import parse_args_with_config
+from .data import ClassifierDataset
 from .models import (
     DINO_V3_HUB_REPOSITORY,
     build_dino_classifier,
@@ -18,7 +19,6 @@ from .models import (
     set_frozen_backbone,
 )
 from .run_record import write_run_record
-from .config_file import parse_args_with_config
 
 
 def _seed_everything(seed: int) -> None:
@@ -80,15 +80,31 @@ def train(args: argparse.Namespace) -> None:
         image_size=args.image_size,
         cache_dir=args.cache_dir,
     )
-    validation_dataset = None if args.final_training else ClassifierDataset(
-        args.manifest, args.dataset_root, mode="validation", fold=args.fold,
-        image_size=args.image_size, cache_dir=args.cache_dir,
+    validation_dataset = (
+        None
+        if args.final_training
+        else ClassifierDataset(
+            args.manifest,
+            args.dataset_root,
+            mode="validation",
+            fold=args.fold,
+            image_size=args.image_size,
+            cache_dir=args.cache_dir,
+        )
     )
     train_loader = DataLoader(
-        train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=args.workers, pin_memory=device.type == "cuda"
+        train_dataset,
+        batch_size=args.batch_size,
+        shuffle=True,
+        num_workers=args.workers,
+        pin_memory=device.type == "cuda",
     )
-    validation_loader = None if validation_dataset is None else DataLoader(
-        validation_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers
+    validation_loader = (
+        None
+        if validation_dataset is None
+        else DataLoader(
+            validation_dataset, batch_size=args.batch_size, shuffle=False, num_workers=args.workers
+        )
     )
     if args.backbone_kind == "dinov3_convnext_tiny" and args.weights is None:
         raise ValueError("--weights is required for the licensed DINOv3 checkpoint")
@@ -128,7 +144,9 @@ def train(args: argparse.Namespace) -> None:
                 images = images.to(device, non_blocking=True)
                 labels = labels.to(device, non_blocking=True)
                 optimizer.zero_grad(set_to_none=True)
-                with torch.autocast(device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"):
+                with torch.autocast(
+                    device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"
+                ):
                     logits = model(images)
                     loss = torch.nn.functional.cross_entropy(logits, labels, label_smoothing=0.05)
                 losses.append(float(loss.detach().cpu()))
@@ -156,7 +174,9 @@ def train(args: argparse.Namespace) -> None:
                 "backbone_kind": args.backbone_kind,
                 "pretrained_name": args.pretrained_name,
                 "backbone_architecture": (
-                    "dinov3_convnext_tiny" if args.backbone_kind == "dinov3_convnext_tiny" else args.pretrained_name
+                    "dinov3_convnext_tiny"
+                    if args.backbone_kind == "dinov3_convnext_tiny"
+                    else args.pretrained_name
                 ),
                 "source_revision": args.hub_repository.split(":", 1)[-1]
                 if args.backbone_kind == "dinov3_convnext_tiny"
@@ -191,7 +211,11 @@ def train(args: argparse.Namespace) -> None:
     if not use_fine:
         model.load_state_dict(frozen_state)
     selected = torch.load(selected_path, map_location="cpu", weights_only=False)
-    selected["selection"] = {"frozen": frozen_metrics, "partial": fine_metrics, "selected": selected["stage"]}
+    selected["selection"] = {
+        "frozen": frozen_metrics,
+        "partial": fine_metrics,
+        "selected": selected["stage"],
+    }
     torch.save(selected, args.output_dir / "best.pt")
     if not args.final_training:
         shutil.copyfile(

@@ -10,7 +10,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .errors import PackageValidationError
 
-
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$")
 
 
@@ -34,6 +33,7 @@ class DetectorMetadata(BaseModel):
     max_queries: int = Field(gt=0)
     box_format: Literal["normalized_cxcywh"] = "normalized_cxcywh"
     resize_reducing_gap: float | None = Field(default=None, ge=1.0)
+
     @field_validator("version")
     @classmethod
     def validate_version(cls, value: str) -> str:
@@ -218,13 +218,9 @@ class BundleProvenance(BaseModel):
 
     @field_validator("evaluation_dataset_versions")
     @classmethod
-    def validate_evaluation_dataset_versions(
-        cls, value: dict[str, str]
-    ) -> dict[str, str]:
+    def validate_evaluation_dataset_versions(cls, value: dict[str, str]) -> dict[str, str]:
         if set(value) != {"natural", "hard", "shift"}:
-            raise ValueError(
-                "bundle provenance requires natural/hard/shift dataset versions"
-            )
+            raise ValueError("bundle provenance requires natural/hard/shift dataset versions")
         if any(not version.strip() for version in value.values()):
             raise ValueError("evaluation dataset versions cannot be empty")
         return value

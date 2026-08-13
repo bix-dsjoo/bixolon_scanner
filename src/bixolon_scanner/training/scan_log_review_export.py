@@ -225,7 +225,9 @@ def _contact_sheets(review_paths: list[Path], output_dir: Path) -> None:
             x = margin + column * (cell_width + margin) + (cell_width - tile.width) // 2
             y = margin + row * (cell_height + margin) + (cell_height - tile.height) // 2
             sheet.paste(tile, (x, y))
-        sheet.save(output_dir / f"sheet_{start + 1:03d}_{start + len(selected):03d}.jpg", quality=92)
+        sheet.save(
+            output_dir / f"sheet_{start + 1:03d}_{start + len(selected):03d}.jpg", quality=92
+        )
 
 
 def export(args: argparse.Namespace) -> dict[str, Any]:
@@ -311,9 +313,7 @@ def export(args: argparse.Namespace) -> dict[str, Any]:
             "review_decision": (
                 "confirmed_recapture" if source.scan_id in confirmed_recapture else "pending"
             ),
-            "expected_status": (
-                "RECAPTURE" if source.scan_id in confirmed_recapture else None
-            ),
+            "expected_status": ("RECAPTURE" if source.scan_id in confirmed_recapture else None),
             "expected_reason_codes": (
                 confirmed_recapture[source.scan_id].get("reason_codes", [])
                 if source.scan_id in confirmed_recapture
@@ -369,9 +369,7 @@ def export(args: argparse.Namespace) -> dict[str, Any]:
                 "review_decision": (
                     "confirmed_recapture" if source.scan_id in confirmed_recapture else "pending"
                 ),
-                "expected_status": (
-                    "RECAPTURE" if source.scan_id in confirmed_recapture else None
-                ),
+                "expected_status": ("RECAPTURE" if source.scan_id in confirmed_recapture else None),
                 "expected_reason_codes": (
                     confirmed_recapture[source.scan_id].get("reason_codes", [])
                     if source.scan_id in confirmed_recapture
@@ -449,10 +447,13 @@ def export(args: argparse.Namespace) -> dict[str, Any]:
     coco_text = json.dumps(coco, ensure_ascii=False, indent=2) + "\n"
     coco_path.write_text(coco_text, encoding="utf-8")
     manifest_path = output / "manifest_draft.jsonl"
-    manifest_text = "\n".join(
-        json.dumps(row, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
-        for row in manifest_rows
-    ) + "\n"
+    manifest_text = (
+        "\n".join(
+            json.dumps(row, ensure_ascii=False, separators=(",", ":"), sort_keys=True)
+            for row in manifest_rows
+        )
+        + "\n"
+    )
     manifest_path.write_text(manifest_text, encoding="utf-8")
     with (review_dir / "review_index.csv").open("w", encoding="utf-8-sig", newline="") as stream:
         writer = csv.DictWriter(stream, fieldnames=list(review_index[0]))
@@ -506,7 +507,9 @@ def export(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Export recent Product Scanner logs for visual review")
+    parser = argparse.ArgumentParser(
+        description="Export recent Product Scanner logs for visual review"
+    )
     parser.add_argument("--log-dir", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--package-dir", type=Path, required=True)

@@ -12,7 +12,6 @@ from typing import Any
 import numpy as np
 from PIL import Image, ImageOps
 
-
 SCHEMA_VERSION = "1.0"
 DEFAULT_SHOTS_PER_CLASS = 10
 CLASS_DIRECTORY_PATTERN = re.compile(r"^Bread(?P<number>\d{2})_(?P<name>.+)$")
@@ -39,8 +38,10 @@ def _file_sha256(path: Path) -> str:
 
 def _average_hash(path: Path, hash_size: int = 8) -> str:
     with Image.open(path) as source:
-        image = ImageOps.exif_transpose(source).convert("L").resize(
-            (hash_size, hash_size), Image.Resampling.LANCZOS
+        image = (
+            ImageOps.exif_transpose(source)
+            .convert("L")
+            .resize((hash_size, hash_size), Image.Resampling.LANCZOS)
         )
     values = np.asarray(image, dtype=np.float32)
     bits = values >= float(values.mean())
@@ -301,9 +302,7 @@ def write_ten_shot_manifest(
     )
     output_dir.mkdir(parents=True, exist_ok=True)
     manifest_body = "".join(_canonical_json(row) + "\n" for row in records)
-    (output_dir / "manifest.jsonl").write_text(
-        manifest_body, encoding="utf-8", newline="\n"
-    )
+    (output_dir / "manifest.jsonl").write_text(manifest_body, encoding="utf-8", newline="\n")
     (output_dir / "metadata.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )

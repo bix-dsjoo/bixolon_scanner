@@ -47,8 +47,12 @@ from .ten_shot_candidates import (
     select_candidate,
     validate_seed_matrix,
 )
-from .ten_shot_training import HeadTrainingConfig, feature_cache_fingerprint, save_head_checkpoint, train_adapter_head
-
+from .ten_shot_training import (
+    HeadTrainingConfig,
+    feature_cache_fingerprint,
+    save_head_checkpoint,
+    train_adapter_head,
+)
 
 PHASES = ("prepare", "baseline", "train", "challenger", "soup", "calibrate", "lock")
 
@@ -91,26 +95,27 @@ def _load_config(path: Path) -> dict[str, Any]:
     training = config["training"]
     if training.get("runtime_support_cache") is not False:
         raise ValueError("runtime support/cache fusion is forbidden")
-    if training.get("distillation") is not False or training.get("legacy_classifier_initialization") is not False:
+    if (
+        training.get("distillation") is not False
+        or training.get("legacy_classifier_initialization") is not False
+    ):
         raise ValueError("legacy classifier weights, logits and distillation are forbidden")
     challenger = training.get("challenger", {})
-    if challenger.get("trainable_scope") != "backbone.stages[-1]" or challenger.get("full_backbone_finetune") is not False:
+    if (
+        challenger.get("trainable_scope") != "backbone.stages[-1]"
+        or challenger.get("full_backbone_finetune") is not False
+    ):
         raise ValueError("challenger may train only the final ConvNeXt stage")
     soup_config = training.get("parameter_soup", {})
     if soup_config.get("enabled", False):
-        member_seeds = tuple(
-            int(seed) for seed in soup_config.get("member_seeds", ())
-        )
+        member_seeds = tuple(int(seed) for seed in soup_config.get("member_seeds", ()))
         if len(member_seeds) < 2 or not set(member_seeds) <= set(
             validate_seed_matrix(config["experiment"]["seeds"])
         ):
             raise ValueError("parameter soup requires at least two configured seeds")
         if soup_config.get("average_scope") != "full_model":
             raise ValueError("parameter soup average_scope must be full_model")
-        if (
-            soup_config.get("selection_scope")
-            != "development_capture_session_3fold_only"
-        ):
+        if soup_config.get("selection_scope") != "development_capture_session_3fold_only":
             raise ValueError("parameter soup selection must be development-only")
     inference = config.get("inference", {})
     crop_scale = inference.get("center_crop_scale")
@@ -132,9 +137,7 @@ def _load_config(path: Path) -> dict[str, Any]:
         raise ValueError("tie_break_bias_span must be in [0, logit_quantum)")
     if divisor <= 0:
         raise ValueError("inference logit_divisor must be positive")
-    threshold_guard = float(
-        config["evaluation"].get("approval_threshold_provider_guard", 0.0)
-    )
+    threshold_guard = float(config["evaluation"].get("approval_threshold_provider_guard", 0.0))
     if not 0.0 <= threshold_guard <= 0.01:
         raise ValueError("approval threshold provider guard must be in [0, 0.01]")
     return config
@@ -145,9 +148,7 @@ def _inference_crop_scale(config: dict[str, Any]) -> float | None:
     return None if value is None else float(value)
 
 
-def _apply_inference_logit_policy(
-    logits: np.ndarray, config: dict[str, Any]
-) -> np.ndarray:
+def _apply_inference_logit_policy(logits: np.ndarray, config: dict[str, Any]) -> np.ndarray:
     inference = config.get("inference", {})
     quantum_value = inference.get("logit_quantum")
     values = np.asarray(logits, dtype=np.float32)
@@ -157,9 +158,7 @@ def _apply_inference_logit_policy(
         values = np.round((values + phase) / quantum) * quantum - phase
     bias_span = np.float32(inference.get("tie_break_bias_span", 0.0))
     if bias_span:
-        values = values + np.linspace(
-            0.0, -bias_span, values.shape[1], dtype=np.float32
-        )
+        values = values + np.linspace(0.0, -bias_span, values.shape[1], dtype=np.float32)
     divisor = np.float32(inference.get("logit_divisor", 1.0))
     return np.asarray(values / divisor, dtype=np.float32)
 
@@ -188,9 +187,7 @@ def _apply_approval_threshold_guard(
         "approval_threshold": threshold,
         "approval_threshold_provider_guard": guard,
         "approved_count": approved_count,
-        "approved_precision": (
-            1.0 - errors / approved_count if approved_count else 1.0
-        ),
+        "approved_precision": (1.0 - errors / approved_count if approved_count else 1.0),
         "approval_coverage": approved_count / len(targets),
         "approved_false_rate_upper_95": false_upper,
         "risk_control_satisfied": bool(
@@ -201,17 +198,20 @@ def _apply_approval_threshold_guard(
 
 def _direct_recipe(config: dict[str, Any]) -> DirectRoiRecipe:
     values = config["augmentation"]
-    recipe = DirectRoiRecipe(**{
-        key: values[key]
-        for key in DirectRoiRecipe.__dataclass_fields__
-        if key in values
-    })
+    recipe = DirectRoiRecipe(
+        **{key: values[key] for key in DirectRoiRecipe.__dataclass_fields__ if key in values}
+    )
     recipe.validate()
     return recipe
 
 
-def _load_support_records(manifest_path: Path, metadata_path: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
-    records = sorted(read_manifest(manifest_path), key=lambda row: (int(row["category_id"]), str(row["image_path"])))
+def _load_support_records(
+    manifest_path: Path, metadata_path: Path
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    records = sorted(
+        read_manifest(manifest_path),
+        key=lambda row: (int(row["category_id"]), str(row["image_path"])),
+    )
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     classes = int(metadata["class_count"])
     shots = int(metadata["shots_per_class"])
@@ -246,14 +246,14 @@ def _build_backbone(args: argparse.Namespace, config: dict[str, Any], classes: i
     return model.backbone.to(device).eval()
 
 
-def _extract_features(backbone, tensors: list[np.ndarray] | np.ndarray, *, device, batch_size: int) -> np.ndarray:
+def _extract_features(
+    backbone, tensors: list[np.ndarray] | np.ndarray, *, device, batch_size: int
+) -> np.ndarray:
     torch = require_torch()
     results = []
     with torch.inference_mode():
         for start in range(0, len(tensors), batch_size):
-            values = np.array(
-                tensors[start : start + batch_size], dtype=np.float32, copy=True
-            )
+            values = np.array(tensors[start : start + batch_size], dtype=np.float32, copy=True)
             results.append(backbone(torch.from_numpy(values).to(device)).float().cpu().numpy())
     return np.concatenate(results).astype(np.float32)
 
@@ -265,9 +265,7 @@ def _extract_feature_bundle(
     global_parts, patch_parts = [], []
     with torch.inference_mode():
         for start in range(0, len(tensors), batch_size):
-            values = np.array(
-                tensors[start : start + batch_size], dtype=np.float32, copy=True
-            )
+            values = np.array(tensors[start : start + batch_size], dtype=np.float32, copy=True)
             output = backbone.forward_features(torch.from_numpy(values).to(device))
             global_parts.append(output["x_norm_clstoken"].float().cpu().numpy())
             patch_parts.append(output["x_norm_patchtokens"].float().cpu().numpy())
@@ -310,9 +308,7 @@ def _extract_evaluation_features(
         batch = np.asarray(tensors[start : start + batch_size], dtype=np.float32)
         if crop_scale is not None:
             batch = _scaled_center_view(batch, crop_scale)
-        parts.append(
-            _extract_features(backbone, batch, device=device, batch_size=batch_size)
-        )
+        parts.append(_extract_features(backbone, batch, device=device, batch_size=batch_size))
     return np.concatenate(parts).astype(np.float32)
 
 
@@ -406,7 +402,9 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> None:
             if sample.provenance["source_sha256"] not in source_shas:
                 raise RuntimeError("augmentation provenance escaped the 200 source SHAs")
             source_tensors.append(_classifier_tensor(sample.image, package))
-            provenance.append({**sample.provenance, "source_index": source_index, "view_index": view})
+            provenance.append(
+                {**sample.provenance, "source_index": source_index, "view_index": view}
+            )
         if use_local_features:
             source_features, source_patches = _extract_feature_bundle(
                 backbone, source_tensors, device=device, batch_size=batch_size
@@ -422,16 +420,18 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> None:
                         source_patches.shape[2],
                     ),
                 )
-            local_patch_memmap[
-                local_patch_offset : local_patch_offset + len(source_patches)
-            ] = source_patches.astype(np.float16)
+            local_patch_memmap[local_patch_offset : local_patch_offset + len(source_patches)] = (
+                source_patches.astype(np.float16)
+            )
             local_patch_offset += len(source_patches)
         else:
             source_features = _extract_features(
                 backbone, source_tensors, device=device, batch_size=batch_size
             )
         feature_parts.append(source_features)
-        label_parts.append(np.full(len(source_features), int(record["category_id"]) - 1, dtype=np.int64))
+        label_parts.append(
+            np.full(len(source_features), int(record["category_id"]) - 1, dtype=np.int64)
+        )
         source_parts.append(np.full(len(source_features), source_index, dtype=np.int64))
     if use_local_features:
         support_features, support_local_patches = _extract_feature_bundle(
@@ -461,8 +461,12 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> None:
     patch_batches = []
     with torch.inference_mode():
         for start in range(0, len(support_tensors), batch_size):
-            tensor = torch.from_numpy(np.asarray(support_tensors[start : start + batch_size], dtype=np.float32)).to(device)
-            patch_batches.append(backbone.forward_features(tensor)["x_prenorm"].float().cpu().numpy())
+            tensor = torch.from_numpy(
+                np.asarray(support_tensors[start : start + batch_size], dtype=np.float32)
+            ).to(device)
+            patch_batches.append(
+                backbone.forward_features(tensor)["x_prenorm"].float().cpu().numpy()
+            )
     cache_path = prepared / "training_features.npz"
     np.savez_compressed(
         cache_path,
@@ -478,7 +482,9 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> None:
             prepared / "support_local_patch_features.npy",
             support_local_patches.astype(np.float16),
         )
-    np.save(prepared / "support_patch_features.npy", np.concatenate(patch_batches).astype(np.float32))
+    np.save(
+        prepared / "support_patch_features.npy", np.concatenate(patch_batches).astype(np.float32)
+    )
     np.savez(
         prepared / "support_patch_norm.npz",
         weight=backbone.norm.weight.detach().float().cpu().numpy(),
@@ -521,7 +527,11 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> None:
     if args.evaluation_manifest:
         if not args.evaluation_dataset_root:
             raise ValueError("evaluation dataset root is required")
-        development = [row for row in read_manifest(args.evaluation_manifest) if row.get("record_type") == "detection" and row.get("split") == "development"]
+        development = [
+            row
+            for row in read_manifest(args.evaluation_manifest)
+            if row.get("record_type") == "detection" and row.get("split") == "development"
+        ]
         namespace = argparse.Namespace(
             output_dir=args.output_dir,
             dataset_root=args.evaluation_dataset_root,
@@ -530,7 +540,17 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> None:
             cuda_dll_dir=args.cuda_dll_dir,
             resume=args.resume,
         )
-        _prepare_evaluation(development, namespace, {"evaluation": {"match_iou_threshold": float(config["evaluation"].get("match_iou_threshold", 0.5))}})
+        _prepare_evaluation(
+            development,
+            namespace,
+            {
+                "evaluation": {
+                    "match_iou_threshold": float(
+                        config["evaluation"].get("match_iou_threshold", 0.5)
+                    )
+                }
+            },
+        )
         tensors = np.load(prepared / "evaluation_tensors.npy", mmap_mode="r")
         crop_scale = _inference_crop_scale(config)
         if use_local_features:
@@ -574,9 +594,7 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> None:
                         float(tta.get("crop_scale", 0.93)),
                     )
                     tta_features.append(
-                        _extract_features(
-                            backbone, view, device=device, batch_size=batch_size
-                        )
+                        _extract_features(backbone, view, device=device, batch_size=batch_size)
                     )
                 np.save(
                     prepared / "evaluation_tta_features.npy",
@@ -588,7 +606,10 @@ def _development_fold_top1(logits: np.ndarray, prepared: Path) -> tuple[float, f
     rows = read_manifest(prepared / "evaluation_records.jsonl")
     targets = np.asarray([int(row["target"]) for row in rows], dtype=np.int64)
     folds = np.asarray([int(row["fold"]) for row in rows], dtype=np.int64)
-    return tuple(float((logits[folds == fold].argmax(1) == targets[folds == fold]).mean()) for fold in range(3))
+    return tuple(
+        float((logits[folds == fold].argmax(1) == targets[folds == fold]).mean())
+        for fold in range(3)
+    )
 
 
 def baseline(args: argparse.Namespace, config: dict[str, Any]) -> None:
@@ -601,26 +622,35 @@ def baseline(args: argparse.Namespace, config: dict[str, Any]) -> None:
     runs = []
     for seed in validate_seed_matrix(config["experiment"]["seeds"]):
         features, labels = build_frofa_training_set(
-            patches, cache["support_labels"],
-            layer_norm_weight=norm["weight"], layer_norm_bias=norm["bias"],
+            patches,
+            cache["support_labels"],
+            layer_norm_weight=norm["weight"],
+            layer_norm_bias=norm["bias"],
             layer_norm_epsilon=float(norm["epsilon"]),
             magnitude=float(settings["frofa_brightness_magnitude"]),
-            views=int(settings["frofa_views"]), seed=seed,
+            views=int(settings["frofa_views"]),
+            seed=seed,
         )
         head = fit_linear_svm_head(
-            features, labels, num_classes=len(np.unique(labels)),
+            features,
+            labels,
+            num_classes=len(np.unique(labels)),
             regularization_c=float(settings["linear_svm_regularization_c"]),
-            max_iterations=int(settings["linear_svm_max_iterations"]), seed=seed,
+            max_iterations=int(settings["linear_svm_max_iterations"]),
+            seed=seed,
         )
         logits = evaluation_features @ head.weights.T + head.bias
         runs.append({"seed": seed, "fold_top1": _development_fold_top1(logits, prepared)})
-    _write_json(args.output_dir / "reports" / "baseline.json", {
-        "schema_version": "1.0",
-        "recipe": "frozen_dinov3_c2frofa_linear_svm",
-        "training_source_count": len(cache["support_features"]),
-        "runs": runs,
-        "test_accessed": False,
-    })
+    _write_json(
+        args.output_dir / "reports" / "baseline.json",
+        {
+            "schema_version": "1.0",
+            "recipe": "frozen_dinov3_c2frofa_linear_svm",
+            "training_source_count": len(cache["support_features"]),
+            "runs": runs,
+            "test_accessed": False,
+        },
+    )
 
 
 def _head_logits(
@@ -644,9 +674,7 @@ def _head_logits(
             patches = None
             if patch_features is not None:
                 patches = torch.from_numpy(
-                    np.asarray(
-                        patch_features[start : start + batch_size], dtype=np.float32
-                    )
+                    np.asarray(patch_features[start : start + batch_size], dtype=np.float32)
                 ).to(device)
             values.append(head(batch, patches).float().cpu().numpy())
     return np.concatenate(values)
@@ -674,7 +702,9 @@ def fuse_tta_logits(
     epsilon = 1e-12
     js = 0.5 * (
         (first * np.log(np.clip(first / np.clip(mean, epsilon, None), epsilon, None))).sum(axis=1)
-        + (second * np.log(np.clip(second / np.clip(mean, epsilon, None), epsilon, None))).sum(axis=1)
+        + (second * np.log(np.clip(second / np.clip(mean, epsilon, None), epsilon, None))).sum(
+            axis=1
+        )
     )
     mismatch = primary.argmax(axis=1) != secondary.argmax(axis=1)
     disagreement = js + mismatch.astype(np.float64) * 0.25
@@ -755,9 +785,7 @@ def _model_development_logits(
                 np.asarray(tensors[start : start + batch_size], dtype=np.float32),
                 primary_crop_scale,
             )
-            primary_parts.append(
-                _model_logits(model, view, device=device, batch_size=batch_size)
-            )
+            primary_parts.append(_model_logits(model, view, device=device, batch_size=batch_size))
         primary = np.concatenate(primary_parts)
     if not bool(tta.get("enabled", False)):
         return primary, None
@@ -767,9 +795,7 @@ def _model_development_logits(
             np.asarray(tensors[start : start + batch_size], dtype=np.float32),
             float(tta.get("crop_scale", 0.93)),
         )
-        secondary_logits.append(
-            _model_logits(model, view, device=device, batch_size=batch_size)
-        )
+        secondary_logits.append(_model_logits(model, view, device=device, batch_size=batch_size))
     secondary = np.concatenate(secondary_logits)
     return fuse_tta_logits(
         primary,
@@ -811,31 +837,44 @@ def train(args: argparse.Namespace, config: dict[str, Any]) -> None:
     results = []
     for seed in validate_seed_matrix(config["experiment"]["seeds"]):
         training_config = HeadTrainingConfig(
-            epochs=int(training["epochs"]), batch_size=int(training["batch_size"]),
-            learning_rate=float(training["learning_rate"]), weight_decay=float(training["weight_decay"]),
+            epochs=int(training["epochs"]),
+            batch_size=int(training["batch_size"]),
+            learning_rate=float(training["learning_rate"]),
+            weight_decay=float(training["weight_decay"]),
             contrastive_weight=float(training["contrastive_weight"]),
-            contrastive_temperature=float(training["contrastive_temperature"]), seed=seed,
+            contrastive_temperature=float(training["contrastive_temperature"]),
+            seed=seed,
         )
         head, history = train_adapter_head(
-            cache["features"], cache["labels"], cache["source_indices"],
-            support_features=cache["support_features"], support_labels=cache["support_labels"],
+            cache["features"],
+            cache["labels"],
+            cache["source_indices"],
+            support_features=cache["support_features"],
+            support_labels=cache["support_labels"],
             patch_features=patch_features,
             support_patch_features=support_patch_features,
             support_proxy_ids=(
-                cache.get("support_proxy_ids")
-                if spec.proxies_per_class > 1
-                else None
+                cache.get("support_proxy_ids") if spec.proxies_per_class > 1 else None
             ),
-            spec=spec, config=training_config, device=str(device),
+            spec=spec,
+            config=training_config,
+            device=str(device),
         )
         run_dir = args.output_dir / "runs" / "main" / str(seed)
         checkpoint = run_dir / "best.pt"
         save_head_checkpoint(
-            checkpoint, head=head, spec=spec, training_config=training_config, history=history,
-            dataset_version=metadata["dataset_version"], manifest_sha256=metadata["manifest_sha256"],
-            feature_cache_sha256=report["feature_cache_sha256"], backbone_kind=training["backbone_kind"],
+            checkpoint,
+            head=head,
+            spec=spec,
+            training_config=training_config,
+            history=history,
+            dataset_version=metadata["dataset_version"],
+            manifest_sha256=metadata["manifest_sha256"],
+            feature_cache_sha256=report["feature_cache_sha256"],
+            backbone_kind=training["backbone_kind"],
             backbone_revision=str(training["hub_repository"]).split(":", 1)[-1],
-            backbone_weight_sha256=sha256_file(args.weights), backbone_weight_filename=args.weights.name,
+            backbone_weight_sha256=sha256_file(args.weights),
+            backbone_weight_filename=args.weights.name,
             image_size=int(training["image_size"]),
         )
         logits, disagreement = _head_development_logits(
@@ -855,14 +894,24 @@ def train(args: argparse.Namespace, config: dict[str, Any]) -> None:
             if spec.use_local_features
             else "frozen_adapter_cosface_supcon"
         )
-        results.append(CandidateResult(recipe_name, seed, str(checkpoint), sha256_file(checkpoint), _development_fold_top1(logits, prepared)))
+        results.append(
+            CandidateResult(
+                recipe_name,
+                seed,
+                str(checkpoint),
+                sha256_file(checkpoint),
+                _development_fold_top1(logits, prepared),
+            )
+        )
     selected = select_candidate(results)
     # Challenger is deliberately gated and never silently broadens to full fine-tuning.
     selection = {
         "schema_version": "1.0",
         "runs": [asdict(value) | {"mean_top1": value.mean_top1} for value in results],
         "selected": asdict(selected) | {"mean_top1": selected.mean_top1},
-        "challenger_required": challenger_required(results, float(training["challenger"]["run_only_if_main_top1_below"])),
+        "challenger_required": challenger_required(
+            results, float(training["challenger"]["run_only_if_main_top1_below"])
+        ),
         "challenger_scope": training["challenger"]["trainable_scope"],
         "test_accessed": False,
     }
@@ -907,7 +956,12 @@ def challenger(args: argparse.Namespace, config: dict[str, Any]) -> None:
                     image = ImageOps.exif_transpose(source).convert("RGB").copy()
                     self.images.append(image)
                     self.cutouts.append(prepare_direct_roi_source(image, recipe))
-            expected_shape = (len(records) * views, 3, int(training["image_size"]), int(training["image_size"]))
+            expected_shape = (
+                len(records) * views,
+                3,
+                int(training["image_size"]),
+                int(training["image_size"]),
+            )
             if cache_path.is_file():
                 cached = np.load(cache_path, mmap_mode="r")
                 if cached.shape != expected_shape or cached.dtype != np.float16:
@@ -921,18 +975,25 @@ def challenger(args: argparse.Namespace, config: dict[str, Any]) -> None:
                     for view in range(views):
                         index = source_index * views + view
                         sample = augment_direct_roi(
-                            self.images[source_index], source_sha256=str(record["image_sha256"]),
+                            self.images[source_index],
+                            source_sha256=str(record["image_sha256"]),
                             category_id=int(record["category_id"]),
-                            seed=seed + source_index * 1_000_003 + view, recipe=recipe,
+                            seed=seed + source_index * 1_000_003 + view,
+                            recipe=recipe,
                             prepared_cutout=self.cutouts[source_index],
                         )
                         cached[index] = _classifier_tensor(sample.image, package).astype(np.float16)
                     if (source_index + 1) % 20 == 0:
-                        print(json.dumps({
-                            "challenger_cache_seed": seed,
-                            "prepared_sources": source_index + 1,
-                            "total_sources": len(records),
-                        }), flush=True)
+                        print(
+                            json.dumps(
+                                {
+                                    "challenger_cache_seed": seed,
+                                    "prepared_sources": source_index + 1,
+                                    "total_sources": len(records),
+                                }
+                            ),
+                            flush=True,
+                        )
                 cached.flush()
                 del cached
             self.tensors = np.load(cache_path, mmap_mode="r")
@@ -947,16 +1008,21 @@ def challenger(args: argparse.Namespace, config: dict[str, Any]) -> None:
                 int(records[source_index]["category_id"]) - 1,
             )
 
-    evaluation_tensors = np.load(args.output_dir / "prepared" / "evaluation_tensors.npy", mmap_mode="r")
+    evaluation_tensors = np.load(
+        args.output_dir / "prepared" / "evaluation_tensors.npy", mmap_mode="r"
+    )
     results: list[CandidateResult] = []
     for seed in validate_seed_matrix(config["experiment"]["seeds"]):
         main_checkpoint = torch.load(
             args.output_dir / "runs" / "main" / str(seed) / "best.pt",
-            map_location="cpu", weights_only=False,
+            map_location="cpu",
+            weights_only=False,
         )
         model = build_ten_shot_classifier(
-            backbone_kind=training["backbone_kind"], weights_path=args.weights,
-            hub_repository=training["hub_repository"], spec=spec,
+            backbone_kind=training["backbone_kind"],
+            weights_path=args.weights,
+            hub_repository=training["hub_repository"],
+            spec=spec,
         )
         model.classifier.load_state_dict(
             compatible_proxy_state_dict(main_checkpoint["head_state_dict"])
@@ -972,8 +1038,11 @@ def challenger(args: argparse.Namespace, config: dict[str, Any]) -> None:
         run_dir = args.output_dir / "runs" / "challenger" / str(seed)
         loader = torch.utils.data.DataLoader(
             DirectDataset(seed, run_dir / "augmented_tensors.float16.npy"),
-            batch_size=int(training["batch_size"]), shuffle=True,
-            generator=generator, num_workers=0, drop_last=False,
+            batch_size=int(training["batch_size"]),
+            shuffle=True,
+            generator=generator,
+            num_workers=0,
+            drop_last=False,
         )
         history = []
         for epoch in range(1, int(settings.get("epochs", 10)) + 1):
@@ -994,7 +1063,11 @@ def challenger(args: argparse.Namespace, config: dict[str, Any]) -> None:
                     adapted, labels, temperature=float(training["contrastive_temperature"])
                 )
                 penalty = l2_sp_penalty(model, frozen["reference"])
-                loss = ce + float(training["contrastive_weight"]) * contrastive + float(settings["l2_sp_weight"]) * penalty
+                loss = (
+                    ce
+                    + float(training["contrastive_weight"]) * contrastive
+                    + float(settings["l2_sp_weight"]) * penalty
+                )
                 loss.backward()
                 optimizer.step()
                 total += float(loss.detach()) * len(labels)
@@ -1013,32 +1086,48 @@ def challenger(args: argparse.Namespace, config: dict[str, Any]) -> None:
         run_dir.mkdir(parents=True, exist_ok=True)
         checkpoint_path = run_dir / "best.pt"
         checkpoint = {
-            **{key: value for key, value in main_checkpoint.items() if key not in {"head_state_dict", "history", "architecture"}},
+            **{
+                key: value
+                for key, value in main_checkpoint.items()
+                if key not in {"head_state_dict", "history", "architecture"}
+            },
             "architecture": "ten_shot_residual_cosine_challenger",
             "adapter_spec": asdict(spec),
             "model_state_dict": model.state_dict(),
             "history": history,
             "challenger": {
-                "trainable_scope": "backbone.stages[-1]", "full_backbone_finetune": False,
-                "learning_rate": float(settings["learning_rate"]), "l2_sp_weight": float(settings["l2_sp_weight"]),
+                "trainable_scope": "backbone.stages[-1]",
+                "full_backbone_finetune": False,
+                "learning_rate": float(settings["learning_rate"]),
+                "l2_sp_weight": float(settings["l2_sp_weight"]),
             },
         }
         torch.save(checkpoint, checkpoint_path)
         np.save(run_dir / "development_logits.npy", logits)
         if disagreement is not None:
             np.save(run_dir / "development_tta_disagreement.npy", disagreement)
-        results.append(CandidateResult(
-            "last_stage_l2sp", seed, str(checkpoint_path), sha256_file(checkpoint_path),
-            _development_fold_top1(logits, args.output_dir / "prepared"),
-        ))
+        results.append(
+            CandidateResult(
+                "last_stage_l2sp",
+                seed,
+                str(checkpoint_path),
+                sha256_file(checkpoint_path),
+                _development_fold_top1(logits, args.output_dir / "prepared"),
+            )
+        )
     challenger_selected = select_candidate(results)
     current = CandidateResult(
-        recipe=selection["selected"]["recipe"], seed=int(selection["selected"]["seed"]),
-        checkpoint=selection["selected"]["checkpoint"], checkpoint_sha256=selection["selected"]["checkpoint_sha256"],
+        recipe=selection["selected"]["recipe"],
+        seed=int(selection["selected"]["seed"]),
+        checkpoint=selection["selected"]["checkpoint"],
+        checkpoint_sha256=selection["selected"]["checkpoint_sha256"],
         fold_top1=tuple(selection["selected"]["fold_top1"]),
     )
     final = select_candidate([current, challenger_selected])
-    selection["challenger"] = {"status": "evaluated_once", "runs": [asdict(value) | {"mean_top1": value.mean_top1} for value in results]}
+    selection["challenger"] = {
+        "status": "evaluated_once",
+        "runs": [asdict(value) | {"mean_top1": value.mean_top1} for value in results],
+    }
     selection["selected"] = asdict(final) | {"mean_top1": final.mean_top1}
     _write_json(selection_path, selection)
     shutil.copy2(final.checkpoint, args.output_dir / "classifier" / "best.pt")
@@ -1052,8 +1141,7 @@ def soup(args: argparse.Namespace, config: dict[str, Any]) -> None:
         return
     seeds = tuple(int(seed) for seed in settings["member_seeds"])
     checkpoint_paths = tuple(
-        args.output_dir / "runs" / "challenger" / str(seed) / "best.pt"
-        for seed in seeds
+        args.output_dir / "runs" / "challenger" / str(seed) / "best.pt" for seed in seeds
     )
     output_path = args.output_dir / "runs" / "soup" / "best.pt"
     provenance = create_uniform_parameter_soup(
@@ -1069,9 +1157,7 @@ def soup(args: argparse.Namespace, config: dict[str, Any]) -> None:
         hub_repository=config["training"]["hub_repository"],
         spec=spec,
     )
-    model.load_state_dict(
-        compatible_proxy_state_dict(checkpoint["model_state_dict"])
-    )
+    model.load_state_dict(compatible_proxy_state_dict(checkpoint["model_state_dict"]))
     device = _device(args.cpu)
     model = model.to(device).eval()
     logits, _ = _model_development_logits(
@@ -1140,12 +1226,12 @@ def calibrate(args: argparse.Namespace, config: dict[str, Any]) -> None:
         )
     elif checkpoint["architecture"] == "ten_shot_residual_cosine_challenger":
         model = build_ten_shot_classifier(
-            backbone_kind=checkpoint["backbone_kind"], weights_path=args.weights,
-            hub_repository=config["training"]["hub_repository"], spec=adapter_spec_from_dict(checkpoint["adapter_spec"]),
+            backbone_kind=checkpoint["backbone_kind"],
+            weights_path=args.weights,
+            hub_repository=config["training"]["hub_repository"],
+            spec=adapter_spec_from_dict(checkpoint["adapter_spec"]),
         )
-        model.load_state_dict(
-            compatible_proxy_state_dict(checkpoint["model_state_dict"])
-        )
+        model.load_state_dict(compatible_proxy_state_dict(checkpoint["model_state_dict"]))
         model = model.to(device).eval()
         tensors = np.load(prepared / "evaluation_tensors.npy", mmap_mode="r")
         logits, _ = _model_development_logits(
@@ -1162,17 +1248,23 @@ def calibrate(args: argparse.Namespace, config: dict[str, Any]) -> None:
     rows = read_manifest(prepared / "evaluation_records.jsonl")
     targets = np.asarray([int(row["target"]) for row in rows], dtype=np.int64)
     folds = np.asarray([int(row["fold"]) for row in rows], dtype=np.int64)
-    evaluation_config = {"experiment": {
-        "fold_count": 3,
-        "expected_num_classes": checkpoint["num_classes"],
-        "bootstrap_repetitions": 1000,
-        "seed": checkpoint["training_config"]["seed"],
-        "max_false_approval_rate": float(config["evaluation"]["maximum_false_approval_rate_upper_95"]),
-        "confidence_level": float(config["evaluation"]["confidence_level"]),
-    }}
+    evaluation_config = {
+        "experiment": {
+            "fold_count": 3,
+            "expected_num_classes": checkpoint["num_classes"],
+            "bootstrap_repetitions": 1000,
+            "seed": checkpoint["training_config"]["seed"],
+            "max_false_approval_rate": float(
+                config["evaluation"]["maximum_false_approval_rate_upper_95"]
+            ),
+            "confidence_level": float(config["evaluation"]["confidence_level"]),
+        }
+    }
     fold_calibrations = cross_fold_calibrations(logits, targets, folds, evaluation_config)
     detector_report = json.loads((prepared / "detector_report.json").read_text(encoding="utf-8"))
-    crossfit = _evaluate_crossfit(logits, rows, detector_report, fold_calibrations, evaluation_config)
+    crossfit = _evaluate_crossfit(
+        logits, rows, detector_report, fold_calibrations, evaluation_config
+    )
     calibration = _fit_calibration(logits, targets, evaluation_config)
     if int(calibration.get("approved_count", 0)) == 0:
         from .calibration import (
@@ -1192,32 +1284,37 @@ def calibrate(args: argparse.Namespace, config: dict[str, Any]) -> None:
         order = np.argsort(-confidence, kind="stable")
         errors = predictions[order] != matched_targets[order]
         first_error = int(np.flatnonzero(errors)[0]) if bool(errors.any()) else len(errors)
-        _write_json(args.output_dir / "reports" / "calibration_failure.json", {
-            "schema_version": "1.0",
-            "status": "failed",
-            "reason": "zero_approved_samples_at_risk_control_threshold",
-            "checkpoint_sha256": sha256_file(checkpoint_path),
-            "test_accessed": False,
-            "sample_count": len(matched_targets),
-            "temperature": temperature,
-            "top1_accuracy": float((predictions == matched_targets).mean()),
-            "overall_top3_accuracy": topk_accuracy(probabilities, matched_targets, 3),
-            "first_error_rank": first_error + 1 if first_error < len(errors) else None,
-            "maximum_zero_error_approval_count": first_error,
-            "maximum_zero_error_approval_coverage": first_error / len(errors),
-            "zero_error_false_approval_rate_upper_95": binomial_rate_upper_bound(0, first_error),
-            "required_false_approval_rate_upper_95": float(config["evaluation"]["maximum_false_approval_rate_upper_95"]),
-            "promotion_status": "experiment_only",
-        })
+        _write_json(
+            args.output_dir / "reports" / "calibration_failure.json",
+            {
+                "schema_version": "1.0",
+                "status": "failed",
+                "reason": "zero_approved_samples_at_risk_control_threshold",
+                "checkpoint_sha256": sha256_file(checkpoint_path),
+                "test_accessed": False,
+                "sample_count": len(matched_targets),
+                "temperature": temperature,
+                "top1_accuracy": float((predictions == matched_targets).mean()),
+                "overall_top3_accuracy": topk_accuracy(probabilities, matched_targets, 3),
+                "first_error_rank": first_error + 1 if first_error < len(errors) else None,
+                "maximum_zero_error_approval_count": first_error,
+                "maximum_zero_error_approval_coverage": first_error / len(errors),
+                "zero_error_false_approval_rate_upper_95": binomial_rate_upper_bound(
+                    0, first_error
+                ),
+                "required_false_approval_rate_upper_95": float(
+                    config["evaluation"]["maximum_false_approval_rate_upper_95"]
+                ),
+                "promotion_status": "experiment_only",
+            },
+        )
         raise RuntimeError("calibration failed: zero approved development samples")
     matched = targets >= 0
     calibration = _apply_approval_threshold_guard(
         calibration,
         logits[matched],
         targets[matched],
-        guard=float(
-            config["evaluation"].get("approval_threshold_provider_guard", 0.0)
-        ),
+        guard=float(config["evaluation"].get("approval_threshold_provider_guard", 0.0)),
         maximum_false_approval_rate=float(
             config["evaluation"]["maximum_false_approval_rate_upper_95"]
         ),
@@ -1253,25 +1350,27 @@ def calibrate(args: argparse.Namespace, config: dict[str, Any]) -> None:
             "observed_approved_precision": (
                 1.0 - error_count / approved_count if approved_count else 1.0
             ),
-            "false_approval_rate_upper_95": binomial_rate_upper_bound(
-                error_count, approved_count
-            ),
+            "false_approval_rate_upper_95": binomial_rate_upper_bound(error_count, approved_count),
         }
-    calibration.update({
-        "schema_version": "1.0", "checkpoint_sha256": sha256_file(checkpoint_path),
-        "development_only": True, "test_accessed": False,
-        "selection_rule": (
-            "maximum coverage with 95% false-approval upper bound <= 0.5%; "
-            "then fixed provider guard with risk recomputed"
-        ),
-        "inference_center_crop_scale": _inference_crop_scale(config),
-        "fold_calibrations": fold_calibrations,
-        "fold_calibrations_role": (
-            "diagnostic_only; each two-fold subset is too small for a zero-error "
-            "0.5% Clopper-Pearson upper bound"
-        ),
-        "global_threshold_fold_audit": fold_threshold_audit,
-    })
+    calibration.update(
+        {
+            "schema_version": "1.0",
+            "checkpoint_sha256": sha256_file(checkpoint_path),
+            "development_only": True,
+            "test_accessed": False,
+            "selection_rule": (
+                "maximum coverage with 95% false-approval upper bound <= 0.5%; "
+                "then fixed provider guard with risk recomputed"
+            ),
+            "inference_center_crop_scale": _inference_crop_scale(config),
+            "fold_calibrations": fold_calibrations,
+            "fold_calibrations_role": (
+                "diagnostic_only; each two-fold subset is too small for a zero-error "
+                "0.5% Clopper-Pearson upper bound"
+            ),
+            "global_threshold_fold_audit": fold_threshold_audit,
+        }
+    )
     _write_json(args.output_dir / "reports" / "crossfit_evaluation.json", crossfit)
     _write_json(args.output_dir / "reports" / "calibration.json", calibration)
     fold_top1 = _development_fold_top1(logits, prepared)
@@ -1324,16 +1423,13 @@ def calibrate(args: argparse.Namespace, config: dict[str, Any]) -> None:
             "approval_count": int(calibration["approved_count"]),
             "approval_coverage": float(calibration["approval_coverage"]),
             "approved_precision": float(calibration["approved_precision"]),
-            "false_approval_rate_upper_95": float(
-                calibration["approved_false_rate_upper_95"]
-            ),
+            "false_approval_rate_upper_95": float(calibration["approved_false_rate_upper_95"]),
             "first_error_rank": (
                 first_error_index + 1 if first_error_index < len(ordered_errors) else None
             ),
             "coverage_85_approved_count": coverage_85_count,
             "coverage_85_error_count": coverage_85_errors,
-            "coverage_85_precision": 1.0
-            - coverage_85_errors / coverage_85_count,
+            "coverage_85_precision": 1.0 - coverage_85_errors / coverage_85_count,
             "coverage_85_false_approval_rate_upper_95": binomial_rate_upper_bound(
                 coverage_85_errors, coverage_85_count
             ),
@@ -1343,23 +1439,35 @@ def calibrate(args: argparse.Namespace, config: dict[str, Any]) -> None:
 
 
 def lock(args: argparse.Namespace, config: dict[str, Any]) -> None:
-    selection = json.loads((args.output_dir / "classifier" / "selection.json").read_text(encoding="utf-8"))["selected"]
+    selection = json.loads(
+        (args.output_dir / "classifier" / "selection.json").read_text(encoding="utf-8")
+    )["selected"]
     selected = CandidateResult(
-        recipe=selection["recipe"], seed=int(selection["seed"]), checkpoint=selection["checkpoint"],
-        checkpoint_sha256=selection["checkpoint_sha256"], fold_top1=tuple(selection["fold_top1"]),
+        recipe=selection["recipe"],
+        seed=int(selection["seed"]),
+        checkpoint=selection["checkpoint"],
+        checkpoint_sha256=selection["checkpoint_sha256"],
+        fold_top1=tuple(selection["fold_top1"]),
     )
     create_experiment_lock(
         args.output_dir / "lock" / "pretest-lock.json",
-        config_path=args.config, manifest_path=args.manifest,
+        config_path=args.config,
+        manifest_path=args.manifest,
         manifest_metadata_path=args.manifest_metadata,
         checkpoint_path=args.output_dir / "classifier" / "best.pt",
         calibration_path=args.output_dir / "reports" / "calibration.json",
-        selected=replace(selected, checkpoint=str(args.output_dir / "classifier" / "best.pt"), checkpoint_sha256=sha256_file(args.output_dir / "classifier" / "best.pt")),
+        selected=replace(
+            selected,
+            checkpoint=str(args.output_dir / "classifier" / "best.pt"),
+            checkpoint_sha256=sha256_file(args.output_dir / "classifier" / "best.pt"),
+        ),
     )
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Run a strict versioned 10-shot classifier experiment")
+    parser = argparse.ArgumentParser(
+        description="Run a strict versioned 10-shot classifier experiment"
+    )
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--manifest-metadata", type=Path, required=True)

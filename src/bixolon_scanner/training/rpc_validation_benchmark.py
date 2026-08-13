@@ -15,13 +15,13 @@ from ..imaging import decode_image
 from ..inference import build_onnx_adapters
 from ..package import load_model_package
 from ..pipeline import DecisionPipeline
-from .rpc_context_rejector import runtime_context_features
 from .rpc_class_aware_nms import (
     _assignment_conflict_mask,
     _duplicate_ambiguity_features,
     _duplicate_ambiguity_mask,
     _keep_indices,
 )
+from .rpc_context_rejector import runtime_context_features
 from .rpc_data_scale import LEVELS
 
 
@@ -88,9 +88,7 @@ def main() -> None:
     parser.add_argument("--duplicate-low-quality-min-score", type=float)
     parser.add_argument("--duplicate-min-rank", type=float, default=0.0)
     parser.add_argument("--assignment-conflict-top-k", type=int)
-    parser.add_argument(
-        "--assignment-mutual-pair", action="append", default=[]
-    )
+    parser.add_argument("--assignment-mutual-pair", action="append", default=[])
     parser.add_argument("--context-threshold", type=float)
     parser.add_argument("--levels", nargs="+", choices=LEVELS, default=list(LEVELS))
     args = parser.parse_args()
@@ -102,8 +100,7 @@ def main() -> None:
         parser.error("--context-threshold is required with ambiguity gating")
     levels = tuple(args.levels)
     mutual_pairs = {
-        tuple(sorted(int(value) for value in raw.split(":")))
-        for raw in args.assignment_mutual_pair
+        tuple(sorted(int(value) for value in raw.split(":"))) for raw in args.assignment_mutual_pair
     }
 
     package = load_model_package(args.package_dir)
@@ -119,18 +116,12 @@ def main() -> None:
         package.metadata.quality,
         package.metadata.count_verifier,
     )
-    context = ort.InferenceSession(
-        str(args.context_onnx), providers=["CPUExecutionProvider"]
-    )
-    context.run(
-        ["quality_score"], {"features": np.zeros((1, 22), dtype=np.float32)}
-    )
+    context = ort.InferenceSession(str(args.context_onnx), providers=["CPUExecutionProvider"])
+    context.run(["quality_score"], {"features": np.zeros((1, 22), dtype=np.float32)})
     records = [row for row in _read_jsonl(args.manifest) if row["role"] == "selection"]
     selected: dict[str, list[dict[str, Any]]] = {}
     for level in levels:
-        candidates = sorted(
-            (row for row in records if row["level"] == level), key=_order_key
-        )
+        candidates = sorted((row for row in records if row["level"] == level), key=_order_key)
         selected[level] = candidates[: int(args.images_per_level)]
         if len(selected[level]) < int(args.images_per_level):
             raise ValueError(f"insufficient {level} validation benchmark images")
@@ -184,9 +175,7 @@ def main() -> None:
                 int(record["height"]),
                 float(package.metadata.classifier.temperature),
             )
-            quality = context.run(
-                ["quality_score"], {"features": features}
-            )[0].reshape(-1)
+            quality = context.run(["quality_score"], {"features": features})[0].reshape(-1)
             if args.duplicate_overlap_threshold is not None:
                 rows = [
                     {
@@ -213,9 +202,7 @@ def main() -> None:
                     minimum_rank=float(args.duplicate_min_rank),
                 )
             if args.assignment_conflict_top_k is not None:
-                scaled = logits.astype(np.float64) / float(
-                    package.metadata.classifier.temperature
-                )
+                scaled = logits.astype(np.float64) / float(package.metadata.classifier.temperature)
                 scaled -= scaled.max(axis=1, keepdims=True)
                 probabilities = np.exp(scaled)
                 probabilities /= probabilities.sum(axis=1, keepdims=True)
@@ -226,10 +213,7 @@ def main() -> None:
                     [int(record["image_id"])] * len(detections),
                     top_classes,
                     [float(item.score) for item in detections],
-                    [
-                        index / max(len(detections) - 1, 1)
-                        for index in range(len(detections))
-                    ],
+                    [index / max(len(detections) - 1, 1) for index in range(len(detections))],
                     probabilities.max(axis=1),
                     quality,
                     minimum_duplicate_rank=float(args.duplicate_min_rank),
@@ -239,9 +223,7 @@ def main() -> None:
         elapsed = (time.perf_counter_ns() - started) / 1_000_000.0
         return elapsed, full_path
 
-    warmup_records = [row for level in levels for row in selected[level]][
-        : int(args.warmup)
-    ]
+    warmup_records = [row for level in levels for row in selected[level]][: int(args.warmup)]
     for record in warmup_records:
         run(record)
 
@@ -257,9 +239,7 @@ def main() -> None:
         "duplicate_overlap_max_score": args.duplicate_overlap_max_score,
         "duplicate_overlap_max_quality": args.duplicate_overlap_max_quality,
         "duplicate_low_quality_multiplier": args.duplicate_low_quality_multiplier,
-        "duplicate_low_quality_max_quality": (
-            args.duplicate_low_quality_max_quality
-        ),
+        "duplicate_low_quality_max_quality": (args.duplicate_low_quality_max_quality),
         "duplicate_low_quality_min_score": args.duplicate_low_quality_min_score,
         "duplicate_min_rank": args.duplicate_min_rank,
         "assignment_conflict_top_k": args.assignment_conflict_top_k,

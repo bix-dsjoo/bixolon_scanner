@@ -54,7 +54,9 @@ def _nms(detections: list[Detection], threshold: float) -> list[Detection]:
             ix2 = min(current.x2, candidate.x2)
             iy2 = min(current.y2, candidate.y2)
             intersection = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
-            candidate_area = max(0.0, candidate.x2 - candidate.x1) * max(0.0, candidate.y2 - candidate.y1)
+            candidate_area = max(0.0, candidate.x2 - candidate.x1) * max(
+                0.0, candidate.y2 - candidate.y1
+            )
             union = current_area + candidate_area - intersection
             if union <= 0.0 or intersection / union <= threshold:
                 remaining.append(candidate)
@@ -89,12 +91,16 @@ class OrtRunner:
                     raise ProviderInitializationError
                 ort.preload_dlls(directory=str(cuda_dll_dir))
             available = ort.get_available_providers()
-            provider_name = "CUDAExecutionProvider" if provider == "cuda" else "CPUExecutionProvider"
+            provider_name = (
+                "CUDAExecutionProvider" if provider == "cuda" else "CPUExecutionProvider"
+            )
             if provider_name not in available:
                 raise ProviderInitializationError
             options = ort.SessionOptions()
             options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
-            self.session = ort.InferenceSession(str(model_path), sess_options=options, providers=[provider_name])
+            self.session = ort.InferenceSession(
+                str(model_path), sess_options=options, providers=[provider_name]
+            )
             if self.session.get_providers()[0] != provider_name:
                 raise ProviderInitializationError
             self.cuda = provider == "cuda"
@@ -166,7 +172,9 @@ class OnnxDetector:
         height, width = self.metadata.input_size
         dummy = np.zeros((1, 3, height, width), dtype=np.float32)
         self.runner.run(
-            [self.metadata.logits_output, self.metadata.boxes_output], self.metadata.input_name, dummy
+            [self.metadata.logits_output, self.metadata.boxes_output],
+            self.metadata.input_name,
+            dummy,
         )
 
     def detect(self, image: np.ndarray | Image.Image) -> DetectionResult:
@@ -182,7 +190,9 @@ class OnnxDetector:
             reducing_gap=self.metadata.resize_reducing_gap,
         )[None]
         logits, boxes = self.runner.run(
-            [self.metadata.logits_output, self.metadata.boxes_output], self.metadata.input_name, tensor
+            [self.metadata.logits_output, self.metadata.boxes_output],
+            self.metadata.input_name,
+            tensor,
         )
         logits = np.asarray(logits)[0]
         boxes = np.asarray(boxes)[0]
@@ -209,9 +219,7 @@ class OnnxDetector:
         uncertain_candidate_count = 0
         uncertain_candidate_scores: list[float] = []
         if self.metadata.uncertainty_score_threshold is not None:
-            shadow_indices = np.flatnonzero(
-                scores >= self.metadata.uncertainty_score_threshold
-            )
+            shadow_indices = np.flatnonzero(scores >= self.metadata.uncertainty_score_threshold)
             shadow = _nms(convert(shadow_indices), self.metadata.nms_iou_threshold)
             for candidate in shadow:
                 if candidate.score >= self.metadata.score_threshold:
@@ -224,10 +232,7 @@ class OnnxDetector:
                 if candidate_area_ratio < self.metadata.uncertainty_min_area_ratio:
                     continue
                 overlaps = [_box_iou(candidate, accepted) for accepted in detections]
-                if (
-                    not overlaps
-                    or max(overlaps) < self.metadata.uncertainty_match_iou_threshold
-                ):
+                if not overlaps or max(overlaps) < self.metadata.uncertainty_match_iou_threshold:
                     uncertain_candidate_count += 1
                     uncertain_candidate_scores.append(candidate.score)
         return DetectionResult(
@@ -256,9 +261,7 @@ class OnnxClassifier:
             dummy = np.zeros((batch_size, 3, height, width), dtype=np.float32)
             self.runner.run([self.metadata.logits_output], self.metadata.input_name, dummy)
 
-    def classify(
-        self, image: np.ndarray | Image.Image, detections: list[Detection]
-    ) -> np.ndarray:
+    def classify(self, image: np.ndarray | Image.Image, detections: list[Detection]) -> np.ndarray:
         if isinstance(image, Image.Image):
             pil_image = image
             pixel_width, pixel_height = image.size
@@ -326,9 +329,7 @@ class OnnxCountVerifier:
             self.metadata.std,
             reducing_gap=self.metadata.resize_reducing_gap,
         )[None]
-        (logits,) = self.runner.run(
-            [self.metadata.logits_output], self.metadata.input_name, tensor
-        )
+        (logits,) = self.runner.run([self.metadata.logits_output], self.metadata.input_name, tensor)
         values = np.asarray(logits, dtype=np.float32)
         if values.shape != (1, len(self.metadata.count_labels)):
             raise ModelExecutionError

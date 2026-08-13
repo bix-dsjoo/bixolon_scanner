@@ -15,8 +15,8 @@ from PIL import Image
 from ..inference import Detection, _box_iou, _nms
 from ..package import sha256_file
 from .evaluate_detector import _iou, _metrics, _xywh_to_xyxy
-from .train_detector import detector_optimizer_recipe, train as train_detector
-
+from .train_detector import detector_optimizer_recipe
+from .train_detector import train as train_detector
 
 SCHEMA_VERSION = "1.0"
 
@@ -80,19 +80,13 @@ def _prediction_identity(
         "record_count": len(records),
         "records": records,
     }
-    lineage = {
-        key: value
-        for key, value in inference_config.items()
-        if key.endswith("_sha256")
-    }
+    lineage = {key: value for key, value in inference_config.items() if key.endswith("_sha256")}
     if lineage:
         identity["lineage"] = dict(sorted(lineage.items()))
     return identity
 
 
-def _prediction_artifact_valid(
-    predictions_path: Path, identity: dict[str, Any]
-) -> bool:
+def _prediction_artifact_valid(predictions_path: Path, identity: dict[str, Any]) -> bool:
     metadata_path = _prediction_metadata_path(predictions_path)
     if not predictions_path.is_file() or not metadata_path.is_file():
         return False
@@ -100,11 +94,7 @@ def _prediction_artifact_valid(
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         if metadata.get("complete") is not True:
             return False
-        if any(
-            metadata.get(key) != value
-            for key, value in identity.items()
-            if key != "records"
-        ):
+        if any(metadata.get(key) != value for key, value in identity.items() if key != "records"):
             return False
         if metadata.get("predictions_sha256") != sha256_file(predictions_path):
             return False
@@ -169,8 +159,11 @@ def assign_oof_folds(records: list[dict[str, Any]], fold_count: int) -> dict[str
         stats.append((group_id, sum(classes.values()), classes, levels))
 
     for group_id, total, classes, levels in sorted(stats, key=lambda row: (-row[1], row[0])):
+
         def cost(fold: int) -> tuple[float, int]:
-            class_cost = sum((fold_classes[fold][key] + value) ** 2 for key, value in classes.items())
+            class_cost = sum(
+                (fold_classes[fold][key] + value) ** 2 for key, value in classes.items()
+            )
             level_cost = sum((fold_levels[fold][key] + value) ** 2 for key, value in levels.items())
             return fold_totals[fold] + total + 0.01 * class_cost + 0.1 * level_cost, fold
 
@@ -184,7 +177,9 @@ def assign_oof_folds(records: list[dict[str, Any]], fold_count: int) -> dict[str
     return assignment
 
 
-def build_rpc_detector_manifest(dataset_root: Path, detector_dir: Path, fold_count: int) -> list[dict[str, Any]]:
+def build_rpc_detector_manifest(
+    dataset_root: Path, detector_dir: Path, fold_count: int
+) -> list[dict[str, Any]]:
     payload = json.loads((dataset_root / "instances_val2019.json").read_text(encoding="utf-8"))
     by_image: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for annotation in payload["annotations"]:
@@ -213,9 +208,7 @@ def build_rpc_detector_manifest(dataset_root: Path, detector_dir: Path, fold_cou
                 "split": "development",
                 "fold": None,
                 "role": None,
-                "annotations": sorted(
-                    by_image[image_id], key=lambda row: row["annotation_id"]
-                ),
+                "annotations": sorted(by_image[image_id], key=lambda row: row["annotation_id"]),
             }
         )
     folds = assign_oof_folds(records, fold_count)
@@ -228,7 +221,8 @@ def build_rpc_detector_manifest(dataset_root: Path, detector_dir: Path, fold_cou
         manifest_path.parent / "metadata.json",
         {
             "schema_version": SCHEMA_VERSION,
-            "dataset_version": "rpc-detector-" + hashlib.sha256(("\n".join(lines) + "\n").encode()).hexdigest()[:12],
+            "dataset_version": "rpc-detector-"
+            + hashlib.sha256(("\n".join(lines) + "\n").encode()).hexdigest()[:12],
             "fold_count": fold_count,
             "record_count": len(records),
             "source_sha256": sha256_file(dataset_root / "instances_val2019.json"),
@@ -238,7 +232,9 @@ def build_rpc_detector_manifest(dataset_root: Path, detector_dir: Path, fold_cou
     return records
 
 
-def assign_validation_roles(records: list[dict[str, Any]], category_count: int, seed: int) -> dict[str, str]:
+def assign_validation_roles(
+    records: list[dict[str, Any]], category_count: int, seed: int
+) -> dict[str, str]:
     """Assign calibration/selection inside every OOF fold while keeping groups intact."""
     result: dict[str, str] = {}
     folds = sorted({int(record["fold"]) for record in records})
@@ -354,9 +350,7 @@ def _domain_adaptation_namespace(
             "learning_rate": float(adaptation["learning_rate"]),
             "seed": int(adaptation["seed"]),
             "head_lr_multiplier": float(
-                adaptation.get(
-                    "head_lr_multiplier", options.get("head_lr_multiplier", 10.0)
-                )
+                adaptation.get("head_lr_multiplier", options.get("head_lr_multiplier", 10.0))
             ),
             "weight_decay": float(adaptation.get("weight_decay", 0.0)),
             "workers": int(adaptation.get("workers", options.get("workers", 0))),
@@ -371,30 +365,25 @@ def _domain_adaptation_namespace(
         resume=resume,
     )
     namespace.initial_checkpoint = initial_checkpoint
-    namespace.initial_checkpoint_sha256 = sha256_file(
-        _detector_weights_path(initial_checkpoint)
-    )
+    namespace.initial_checkpoint_sha256 = sha256_file(_detector_weights_path(initial_checkpoint))
     namespace.training_identity = dict(training_identity)
     namespace.fixed_epoch_checkpoint = True
-    namespace.freeze_mode = str(
-        adaptation.get("freeze_mode", "classification_heads_only")
-    )
-    namespace.frozen_modules_eval = bool(
-        adaptation.get("frozen_modules_eval", True)
-    )
-    namespace.skip_epoch_validation = bool(
-        adaptation.get("skip_epoch_validation", False)
-    )
+    namespace.freeze_mode = str(adaptation.get("freeze_mode", "classification_heads_only"))
+    namespace.frozen_modules_eval = bool(adaptation.get("frozen_modules_eval", True))
+    namespace.skip_epoch_validation = bool(adaptation.get("skip_epoch_validation", False))
     return namespace
 
 
 def _detector_weights_path(checkpoint: Path) -> Path:
     candidates = [
-        path for path in (checkpoint / "model.safetensors", checkpoint / "pytorch_model.bin")
+        path
+        for path in (checkpoint / "model.safetensors", checkpoint / "pytorch_model.bin")
         if path.is_file()
     ]
     if len(candidates) != 1:
-        raise FileNotFoundError(f"detector checkpoint weights are missing or ambiguous: {checkpoint}")
+        raise FileNotFoundError(
+            f"detector checkpoint weights are missing or ambiguous: {checkpoint}"
+        )
     return candidates[0]
 
 
@@ -453,9 +442,7 @@ def _mark_checkpoint_complete(
     path: Path, *, optimizer_recipe: dict[str, Any] | None = None
 ) -> None:
     history = json.loads((path / "history.json").read_text(encoding="utf-8"))
-    metric_rows = [
-        row for row in history if isinstance(row.get("detector_quality_key"), list)
-    ]
+    metric_rows = [row for row in history if isinstance(row.get("detector_quality_key"), list)]
     best_metric_row = (
         history[-1]
         if optimizer_recipe is not None
@@ -480,14 +467,10 @@ def _mark_checkpoint_complete(
                 None if best_metric_row is None else best_metric_row.get("detector_metrics")
             ),
             "selected_score_threshold": (
-                None
-                if best_metric_row is None
-                else best_metric_row.get("selected_score_threshold")
+                None if best_metric_row is None else best_metric_row.get("selected_score_threshold")
             ),
             "target_recall_satisfied": (
-                None
-                if best_metric_row is None
-                else best_metric_row.get("target_recall_satisfied")
+                None if best_metric_row is None else best_metric_row.get("target_recall_satisfied")
             ),
         },
     )
@@ -520,9 +503,7 @@ def _detector_phase_complete(
         ),
     }
     if marker.get("adaptation_manifest_sha256") is not None:
-        artifacts["adaptation_manifest_sha256"] = (
-            artifact_root / "manifest" / "manifest.jsonl"
-        )
+        artifacts["adaptation_manifest_sha256"] = artifact_root / "manifest" / "manifest.jsonl"
         artifacts["adaptation_manifest_metadata_sha256"] = (
             artifact_root / "manifest" / "metadata.json"
         )
@@ -542,15 +523,16 @@ def _detector_phase_complete(
         options = config["detector"]
         if marker.get("checkpoint_set") == "domain_adaptation":
             adaptation = options.get("domain_adaptation")
-            if not isinstance(adaptation, dict) or marker.get(
-                "adaptation_config_sha256"
-            ) != hashlib.sha256(_canonical_json(adaptation).encode()).hexdigest():
+            if (
+                not isinstance(adaptation, dict)
+                or marker.get("adaptation_config_sha256")
+                != hashlib.sha256(_canonical_json(adaptation).encode()).hexdigest()
+            ):
                 return False
             baseline_path = detector_dir / "baseline" / "complete.json"
             if (
                 not baseline_path.is_file()
-                or marker.get("baseline_complete_sha256")
-                != sha256_file(baseline_path)
+                or marker.get("baseline_complete_sha256") != sha256_file(baseline_path)
                 or not _detector_phase_complete(
                     detector_dir,
                     dataset_root,
@@ -559,12 +541,9 @@ def _detector_phase_complete(
                 )
             ):
                 return False
-            threshold = json.loads(
-                (artifact_root / "threshold.json").read_text(encoding="utf-8")
-            )
+            threshold = json.loads((artifact_root / "threshold.json").read_text(encoding="utf-8"))
             if (
-                threshold.get("selection_threshold_policy")
-                != "frozen_calibration_threshold"
+                threshold.get("selection_threshold_policy") != "frozen_calibration_threshold"
                 or threshold.get("selection_score_threshold")
                 != threshold.get("selected_score_threshold")
                 or threshold.get("frozen_threshold_selection_gate") is not True
@@ -654,9 +633,7 @@ def _baseline_detector_complete(
         "contract": "rpc-detector-baseline-complete-v1",
     }
     _write_json(baseline_path, migrated)
-    return _detector_phase_complete(
-        detector_dir, dataset_root, config, marker_path=baseline_path
-    )
+    return _detector_phase_complete(detector_dir, dataset_root, config, marker_path=baseline_path)
 
 
 def _detector_checkpoint_set(
@@ -685,9 +662,7 @@ def _active_detector_artifact_root(
     return path
 
 
-def _manifest_valid(
-    manifest: Path, dataset_root: Path, *, fold_count: int
-) -> bool:
+def _manifest_valid(manifest: Path, dataset_root: Path, *, fold_count: int) -> bool:
     metadata_path = manifest.parent / "metadata.json"
     if not manifest.is_file() or not metadata_path.is_file():
         return False
@@ -744,7 +719,9 @@ def predict_records(
     torch = require_torch()
     from transformers import AutoImageProcessor, RTDetrV2ForObjectDetection
 
-    device = torch.device(device_name if device_name == "cpu" or torch.cuda.is_available() else "cpu")
+    device = torch.device(
+        device_name if device_name == "cpu" or torch.cuda.is_available() else "cpu"
+    )
     processor = AutoImageProcessor.from_pretrained(checkpoint)
     model = RTDetrV2ForObjectDetection.from_pretrained(checkpoint).to(device).eval()
     predictions: list[dict[str, Any]] = []
@@ -756,9 +733,15 @@ def predict_records(
             with Image.open(dataset_root / record["image_path"]) as source:
                 images.append(source.convert("RGB"))
             sizes.append([int(record["height"]), int(record["width"])])
-        inputs = {key: value.to(device) for key, value in processor(images=images, return_tensors="pt").items()}
-        with torch.inference_mode(), torch.autocast(
-            device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"
+        inputs = {
+            key: value.to(device)
+            for key, value in processor(images=images, return_tensors="pt").items()
+        }
+        with (
+            torch.inference_mode(),
+            torch.autocast(
+                device_type=device.type, dtype=torch.bfloat16, enabled=device.type == "cuda"
+            ),
         ):
             outputs = model(**inputs)
         processed = processor.post_process_object_detection(
@@ -824,7 +807,9 @@ def postprocess_worker_gate(
             if candidate.score >= score_threshold:
                 continue
             area_ratio = (
-                (candidate.x2 - candidate.x1) * (candidate.y2 - candidate.y1) / float(width * height)
+                (candidate.x2 - candidate.x1)
+                * (candidate.y2 - candidate.y1)
+                / float(width * height)
             )
             if area_ratio < float(options["uncertainty_min_area_ratio"]):
                 continue
@@ -845,7 +830,9 @@ def postprocess_worker_gate(
         reasons.append("DETECTOR_OBJECT_TOO_SMALL")
     if uncertain:
         reasons.append("DETECTOR_UNCERTAIN_OBJECT")
-    matches, missed = _match(detections, record["annotations"], float(options["match_iou_threshold"]))
+    matches, missed = _match(
+        detections, record["annotations"], float(options["match_iou_threshold"])
+    )
     return {
         "detections": [
             {"bbox_xyxy": [item.x1, item.y1, item.x2, item.y2], "score": item.score}
@@ -864,7 +851,9 @@ def select_detector_threshold(
 ) -> dict[str, Any]:
     by_key = {str(item["sample_key"]): item for item in predictions}
     calibration = [record for record in records if record["role"] == "calibration"]
-    ordered_predictions = [by_key[f"{record['source']}:{record['image_id']}"] for record in calibration]
+    ordered_predictions = [
+        by_key[f"{record['source']}:{record['image_id']}"] for record in calibration
+    ]
     candidates: list[dict[str, Any]] = []
     for threshold in np.linspace(
         float(options["min_score_threshold"]),
@@ -1002,12 +991,8 @@ def _domain_adaptation_train_subset(
     strategy: str = "view_farthest_first",
 ) -> list[dict[str, Any]]:
     if samples_per_surface_camera < 1:
-        raise ValueError(
-            "detector domain adaptation samples_per_surface_camera must be positive"
-        )
-    if any(
-        not 0 <= int(record["prediction_fold"]) < fold_count for record in records
-    ):
+        raise ValueError("detector domain adaptation samples_per_surface_camera must be positive")
+    if any(not 0 <= int(record["prediction_fold"]) < fold_count for record in records):
         raise ValueError("detector domain adaptation record has an invalid fold")
     if strategy != "view_farthest_first":
         raise ValueError(f"unsupported detector adaptation strategy: {strategy}")
@@ -1064,8 +1049,7 @@ def _domain_adaptation_train_subset(
                         for chosen in chosen_views
                     )
                     tie = hashlib.sha256(
-                        f"{seed}:{stratum}:{view_id}:"
-                        f"{candidates[index][0]['image_id']}".encode()
+                        f"{seed}:{stratum}:{view_id}:{candidates[index][0]['image_id']}".encode()
                     ).hexdigest()
                     return -distance, tie
 
@@ -1092,9 +1076,8 @@ def _target_oof_gate_report(
 ) -> dict[str, Any]:
     if not records or len(results) != len(records) or expected_class_count < 1:
         raise ValueError("target OOF gate inputs are incomplete")
-    def is_exact_normal(
-        record: dict[str, Any], result: dict[str, Any]
-    ) -> bool:
+
+    def is_exact_normal(record: dict[str, Any], result: dict[str, Any]) -> bool:
         return bool(
             not result["recapture_reasons"]
             and len(record["annotations"]) == 1
@@ -1116,12 +1099,9 @@ def _target_oof_gate_report(
         }
     )
     accepted_per_class = Counter(
-        int(record["annotations"][0]["category_id"])
-        for record, _result in exact_normal_pairs
+        int(record["annotations"][0]["category_id"]) for record, _result in exact_normal_pairs
     )
-    minimum_accepted_per_class = int(
-        adaptation.get("target_min_accepted_per_class", 1)
-    )
+    minimum_accepted_per_class = int(adaptation.get("target_min_accepted_per_class", 1))
     if minimum_accepted_per_class < 1:
         raise ValueError("target_min_accepted_per_class must be positive")
     minimum_observed = min(accepted_per_class.values(), default=0)
@@ -1130,15 +1110,11 @@ def _target_oof_gate_report(
         "bbox_recall": float(metrics["recall"]),
         "target_bbox_recall": float(adaptation.get("target_bbox_recall", 0.99)),
         "exact_normal_rate": exact_normal_count / len(records),
-        "target_exact_normal_rate": float(
-            adaptation.get("target_exact_normal_rate", 0.99)
-        ),
+        "target_exact_normal_rate": float(adaptation.get("target_exact_normal_rate", 0.99)),
         "class_count": class_count,
         "expected_class_count": expected_class_count,
         "class_coverage": class_count / expected_class_count,
-        "target_class_coverage": float(
-            adaptation.get("target_class_coverage", 1.0)
-        ),
+        "target_class_coverage": float(adaptation.get("target_class_coverage", 1.0)),
         "accepted_per_class": {
             str(category_id): accepted_per_class.get(category_id, 0)
             for category_id in range(1, expected_class_count + 1)
@@ -1260,10 +1236,7 @@ def _adaptation_progressive_fold_gate(
         match_iou_threshold=float(options["match_iou_threshold"]),
         max_queries=int(options["max_queries"]),
     )
-    by_target_key = {
-        str(prediction["sample_key"]): prediction
-        for prediction in target_predictions
-    }
+    by_target_key = {str(prediction["sample_key"]): prediction for prediction in target_predictions}
     target_results = [
         postprocess_worker_gate(
             record,
@@ -1305,13 +1278,9 @@ def _adaptation_progressive_fold_gate(
         "adaptation_config_sha256": recipe_sha256,
         "train_gate_policy_sha256": policy_sha256,
         "source_prediction_sha256": sha256_file(source_path),
-        "source_prediction_metadata_sha256": sha256_file(
-            _prediction_metadata_path(source_path)
-        ),
+        "source_prediction_metadata_sha256": sha256_file(_prediction_metadata_path(source_path)),
         "target_prediction_sha256": sha256_file(target_path),
-        "target_prediction_metadata_sha256": sha256_file(
-            _prediction_metadata_path(target_path)
-        ),
+        "target_prediction_metadata_sha256": sha256_file(_prediction_metadata_path(target_path)),
         "source_metrics": source_metrics,
         "source_role": "diagnostic_only",
         "target_gate": target_gate,
@@ -1334,24 +1303,16 @@ def _train_gate_complete(
         adaptation = config["detector"]["domain_adaptation"]
         root = _active_detector_artifact_root(detector_dir, marker)
         core_expected = {
-            "baseline_complete_sha256": detector_dir
-            / "baseline"
-            / "complete.json",
+            "baseline_complete_sha256": detector_dir / "baseline" / "complete.json",
             "baseline_threshold_sha256": detector_dir / "threshold.json",
             "adaptation_manifest_sha256": root / "manifest" / "manifest.jsonl",
-            "adaptation_manifest_metadata_sha256": root
-            / "manifest"
-            / "metadata.json",
-            "train_predictions_sha256": root
-            / "predictions"
-            / "train_assigned.jsonl",
+            "adaptation_manifest_metadata_sha256": root / "manifest" / "metadata.json",
+            "train_predictions_sha256": root / "predictions" / "train_assigned.jsonl",
             "train_predictions_metadata_sha256": _prediction_metadata_path(
                 root / "predictions" / "train_assigned.jsonl"
             ),
             "target_oof_gate_sha256": root / "target_oof_gate.json",
-            "progressive_fold0_gate_sha256": root
-            / "progressive-gate"
-            / "fold0.json",
+            "progressive_fold0_gate_sha256": root / "progressive-gate" / "fold0.json",
             "threshold_sha256": root / "threshold.json",
         }
         core_valid = (
@@ -1361,9 +1322,7 @@ def _train_gate_complete(
             == hashlib.sha256(_canonical_json(adaptation).encode()).hexdigest()
             and marker.get("train_gate_policy_sha256")
             == hashlib.sha256(
-                _canonical_json(
-                    config["detector"].get("train_gate_policy", adaptation)
-                ).encode()
+                _canonical_json(config["detector"].get("train_gate_policy", adaptation)).encode()
             ).hexdigest()
             and marker.get("target_oof_gate", {}).get("passes") is True
             and marker.get("progressive_fold0_gate", {}).get("passes") is True
@@ -1380,18 +1339,16 @@ def _train_gate_complete(
             and not selection_path.exists()
         ):
             experiment_path = detector_dir.parent / "prepared" / "experiment.json"
-            test_accessed = experiment_path.is_file() and json.loads(
-                experiment_path.read_text(encoding="utf-8")
-            ).get("test_accessed") is True
+            test_accessed = (
+                experiment_path.is_file()
+                and json.loads(experiment_path.read_text(encoding="utf-8")).get("test_accessed")
+                is True
+            )
             if not test_accessed:
                 baseline_marker = json.loads(
-                    (detector_dir / "baseline" / "complete.json").read_text(
-                        encoding="utf-8"
-                    )
+                    (detector_dir / "baseline" / "complete.json").read_text(encoding="utf-8")
                 )
-                baseline_predictions_path = (
-                    detector_dir / "predictions" / "val_oof.jsonl"
-                )
+                baseline_predictions_path = detector_dir / "predictions" / "val_oof.jsonl"
                 baseline_predictions_metadata_path = _prediction_metadata_path(
                     baseline_predictions_path
                 )
@@ -1421,13 +1378,10 @@ def _train_gate_complete(
                         _write_json(marker_path, marker)
         selection_valid = (
             selection_path.is_file()
-            and marker.get("baseline_frozen_selection_gate_sha256")
-            == sha256_file(selection_path)
+            and marker.get("baseline_frozen_selection_gate_sha256") == sha256_file(selection_path)
             and marker.get("baseline_frozen_selection_gate")
             == json.loads(selection_path.read_text(encoding="utf-8"))
-            and marker.get("baseline_frozen_selection_gate", {}).get(
-                "selection_threshold_policy"
-            )
+            and marker.get("baseline_frozen_selection_gate", {}).get("selection_threshold_policy")
             == "frozen_calibration_threshold"
             and marker.get("baseline_frozen_selection_gate", {}).get(
                 "frozen_threshold_selection_gate"
@@ -1476,55 +1430,34 @@ def prepare_detector_domain_adaptation(
         fold_count=fold_count,
         strategy=str(adaptation.get("strategy", "view_farthest_first")),
     )
-    adaptation_config_sha256 = hashlib.sha256(
-        _canonical_json(adaptation).encode()
-    ).hexdigest()
+    adaptation_config_sha256 = hashlib.sha256(_canonical_json(adaptation).encode()).hexdigest()
     source_replay_multiplier = int(adaptation.get("source_replay_multiplier", 1))
-    replay_records = _domain_adaptation_source_replay(
-        val_records, source_replay_multiplier
-    )
+    replay_records = _domain_adaptation_source_replay(val_records, source_replay_multiplier)
     adaptation_dir = detector_dir / "adaptation-attempts" / adaptation_config_sha256
     manifest = adaptation_dir / "manifest" / "manifest.jsonl"
-    combined_records = (
-        [dict(record) for record in val_records]
-        + replay_records
-        + adaptation_train
-    )
+    combined_records = [dict(record) for record in val_records] + replay_records + adaptation_train
     _write_jsonl(manifest, combined_records)
     _write_json(
         manifest.parent / "metadata.json",
         {
             "schema_version": SCHEMA_VERSION,
-            "dataset_version": "rpc-detector-domain-adaptation-"
-            + sha256_file(manifest)[:12],
+            "dataset_version": "rpc-detector-domain-adaptation-" + sha256_file(manifest)[:12],
             "fold_count": fold_count,
             "validation_record_count": len(val_records),
             "adaptation_train_record_count": len(adaptation_train),
             "source_replay_multiplier": source_replay_multiplier,
             "source_replay_record_count": len(replay_records),
-            "samples_per_surface_camera": int(
-                adaptation["samples_per_surface_camera"]
-            ),
-            "selection_strategy": str(
-                adaptation.get("strategy", "view_farthest_first")
-            ),
-            "train_source_sha256": sha256_file(
-                args.dataset_root / "instances_train2019.json"
-            ),
-            "validation_source_sha256": sha256_file(
-                args.dataset_root / "instances_val2019.json"
-            ),
+            "samples_per_surface_camera": int(adaptation["samples_per_surface_camera"]),
+            "selection_strategy": str(adaptation.get("strategy", "view_farthest_first")),
+            "train_source_sha256": sha256_file(args.dataset_root / "instances_train2019.json"),
+            "validation_source_sha256": sha256_file(args.dataset_root / "instances_val2019.json"),
             "manifest_sha256": sha256_file(manifest),
         },
     )
-    threshold_report = json.loads(
-        (detector_dir / "threshold.json").read_text(encoding="utf-8")
-    )
+    threshold_report = json.loads((detector_dir / "threshold.json").read_text(encoding="utf-8"))
     if threshold_report.get("threshold_policy") != "calibration_oof_only":
         raise ValueError("train gate requires immutable baseline calibration threshold")
-    baseline_val_predictions = _read_jsonl(
-        detector_dir / "predictions" / "val_oof.jsonl"
-    )
+    baseline_val_predictions = _read_jsonl(detector_dir / "predictions" / "val_oof.jsonl")
     baseline_selection_gate = evaluate_frozen_detector_threshold_selection(
         val_records,
         baseline_val_predictions,
@@ -1536,21 +1469,13 @@ def prepare_detector_domain_adaptation(
         baseline_selection_gate,
     )
     if baseline_selection_gate["frozen_threshold_selection_gate"] is not True:
-        raise RuntimeError(
-            "RPC baseline detector frozen-threshold selection recall is below gate"
-        )
-    baseline_checkpoints = _detector_checkpoint_set(
-        detector_dir, fold_count, "baseline"
-    )
+        raise RuntimeError("RPC baseline detector frozen-threshold selection recall is below gate")
+    baseline_checkpoints = _detector_checkpoint_set(detector_dir, fold_count, "baseline")
     adaptation_identity = {
         "manifest_sha256": sha256_file(manifest),
         "manifest_metadata_sha256": sha256_file(manifest.parent / "metadata.json"),
-        "train_annotation_sha256": sha256_file(
-            args.dataset_root / "instances_train2019.json"
-        ),
-        "validation_annotation_sha256": sha256_file(
-            args.dataset_root / "instances_val2019.json"
-        ),
+        "train_annotation_sha256": sha256_file(args.dataset_root / "instances_train2019.json"),
+        "validation_annotation_sha256": sha256_file(args.dataset_root / "instances_val2019.json"),
         "adaptation_config_sha256": adaptation_config_sha256,
         "workers": int(adaptation.get("workers", options.get("workers", 0))),
     }
@@ -1583,27 +1508,18 @@ def prepare_detector_domain_adaptation(
                 dataset_root=args.dataset_root,
                 checkpoint=output / "best",
                 fold=fold,
-                source_records=[
-                    record for record in val_records if int(record["fold"]) == fold
-                ],
+                source_records=[record for record in val_records if int(record["fold"]) == fold],
                 target_records=[
-                    record
-                    for record in adaptation_train
-                    if int(record["fold"]) == fold
+                    record for record in adaptation_train if int(record["fold"]) == fold
                 ],
                 options=options,
                 adaptation=adaptation,
                 resume=args.resume,
             )
             if progressive_report["passes"] is not True:
-                raise RuntimeError(
-                    "domain adaptation progressive fold0 gate failed before fold1"
-                )
+                raise RuntimeError("domain adaptation progressive fold0 gate failed before fold1")
 
-    checkpoints = [
-        adaptation_dir / "folds" / f"fold{fold}" / "best"
-        for fold in range(fold_count)
-    ]
+    checkpoints = [adaptation_dir / "folds" / f"fold{fold}" / "best" for fold in range(fold_count)]
     inference_config = {
         "batch_size": int(options["inference_batch_size"]),
         "minimum_score": float(options["min_score_threshold"]),
@@ -1630,9 +1546,7 @@ def prepare_detector_domain_adaptation(
         _write_prediction_artifact(train_predictions_path, train_predictions, train_identity)
     by_train_key = {str(item["sample_key"]): item for item in train_predictions}
     frozen_options = dict(options)
-    frozen_options["score_threshold"] = float(
-        threshold_report["selected_score_threshold"]
-    )
+    frozen_options["score_threshold"] = float(threshold_report["selected_score_threshold"])
     target_metrics = _metrics(
         train_records,
         [by_train_key[f"{record['source']}:{record['image_id']}"] for record in train_records],
@@ -1673,9 +1587,7 @@ def prepare_detector_domain_adaptation(
         "validation_images": len(val_records),
         "train_images": len(train_records),
         "adaptation_manifest_sha256": sha256_file(manifest),
-        "adaptation_manifest_metadata_sha256": sha256_file(
-            manifest.parent / "metadata.json"
-        ),
+        "adaptation_manifest_metadata_sha256": sha256_file(manifest.parent / "metadata.json"),
         "adaptation_config_sha256": adaptation_identity["adaptation_config_sha256"],
         "train_gate_policy_sha256": hashlib.sha256(
             _canonical_json(options.get("train_gate_policy", adaptation)).encode()
@@ -1687,17 +1599,13 @@ def prepare_detector_domain_adaptation(
             adaptation_dir / "baseline_frozen_selection_gate.json"
         ),
         "baseline_frozen_selection_gate": baseline_selection_gate,
-        "target_oof_gate_sha256": sha256_file(
-            adaptation_dir / "target_oof_gate.json"
-        ),
+        "target_oof_gate_sha256": sha256_file(adaptation_dir / "target_oof_gate.json"),
         "target_oof_gate": target_oof_gate,
         "progressive_fold0_gate_sha256": sha256_file(
             adaptation_dir / "progressive-gate" / "fold0.json"
         ),
         "progressive_fold0_gate": json.loads(
-            (adaptation_dir / "progressive-gate" / "fold0.json").read_text(
-                encoding="utf-8"
-            )
+            (adaptation_dir / "progressive-gate" / "fold0.json").read_text(encoding="utf-8")
         ),
         "threshold_sha256": sha256_file(adaptation_dir / "threshold.json"),
         "train_predictions_sha256": sha256_file(train_predictions_path),
@@ -1747,9 +1655,7 @@ def prepare_detector_phase(args: argparse.Namespace, config: dict[str, Any]) -> 
         except (OSError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise ValueError("active detector completion is invalid") from exc
         if str(active_marker.get("checkpoint_set", "baseline")) != "baseline":
-            raise ValueError(
-                "cannot reconstruct an immutable baseline from an adapted marker"
-            )
+            raise ValueError("cannot reconstruct an immutable baseline from an adapted marker")
         if not _baseline_detector_complete(detector_dir, args.dataset_root, config):
             raise ValueError("legacy baseline detector completion is invalid")
         return json.loads(baseline_path.read_text(encoding="utf-8"))
@@ -1760,7 +1666,9 @@ def prepare_detector_phase(args: argparse.Namespace, config: dict[str, Any]) -> 
     else:
         records = build_rpc_detector_manifest(args.dataset_root, detector_dir, fold_count)
     roles = assign_validation_roles(
-        records, int(config["experiment"]["expected_num_classes"]), int(config["experiment"]["validation_split_seed"])
+        records,
+        int(config["experiment"]["expected_num_classes"]),
+        int(config["experiment"]["validation_split_seed"]),
     )
     for record in records:
         record["role"] = roles[str(record["capture_session_id"])]
@@ -1909,7 +1817,11 @@ def load_worker_gated_records(
             _hard_negative_rows(record, result, config.get("training", {}))
         )
         reasons = list(result["recapture_reasons"])
-        if len(result["detections"]) != 1 or len(result["matches"]) != 1 or result["missed_annotation_indices"]:
+        if (
+            len(result["detections"]) != 1
+            or len(result["matches"]) != 1
+            or result["missed_annotation_indices"]
+        ):
             reasons.append("DATA_ALIGNMENT_REJECT")
         worker_recaptured = bool(reasons)
         if worker_recaptured:
@@ -1970,7 +1882,9 @@ def load_worker_gated_records(
                     "sample_id": f"val:{record['image_id']}:det{detection_index}",
                     "split": "val",
                     "image_id": int(record["image_id"]),
-                    "annotation_id": None if annotation is None else int(annotation["annotation_id"]),
+                    "annotation_id": None
+                    if annotation is None
+                    else int(annotation["annotation_id"]),
                     "image_path": record["image_path"],
                     "width": int(record["width"]),
                     "height": int(record["height"]),
@@ -1994,9 +1908,7 @@ def load_worker_gated_records(
         "threshold_source": "calibration_oof_only",
         "validation_detector_role": "immutable_baseline_oof",
         "training_detector_role": "train_gate_only",
-        "train_gate_complete_sha256": sha256_file(
-            detector_dir / "train-gate" / "complete.json"
-        ),
+        "train_gate_complete_sha256": sha256_file(detector_dir / "train-gate" / "complete.json"),
         "train_candidates": positive_train_count,
         "train_normal_positive_count": positive_train_count - recapture_positive_count,
         "train_recapture_positive_count": recapture_positive_count,
@@ -2005,7 +1917,9 @@ def load_worker_gated_records(
         "train_rejected": dict(sorted(train_rejected.items())),
         "validation_images": len(val_base),
         "validation_normal_images": sum(not row["recapture_reasons"] for row in val_image_outcomes),
-        "validation_recapture_images": sum(bool(row["recapture_reasons"]) for row in val_image_outcomes),
+        "validation_recapture_images": sum(
+            bool(row["recapture_reasons"]) for row in val_image_outcomes
+        ),
         "validation_recapture_reasons": dict(sorted(reason_counts.items())),
         "validation_missed_boxes": sum(row["missed_count"] for row in val_image_outcomes),
         "validation_unmatched_boxes": sum(row["unmatched_count"] for row in val_image_outcomes),
@@ -2062,9 +1976,7 @@ def _train_product_row(
         "camera": int(camera_text),
         "view_id": int(Path(view_text).stem),
         "prediction_fold": int(record["prediction_fold"]),
-        "worker_gate_role": (
-            "recapture_positive" if worker_recaptured else "normal_positive"
-        ),
+        "worker_gate_role": ("recapture_positive" if worker_recaptured else "normal_positive"),
         "worker_recapture_reasons": list(dict.fromkeys(reasons)),
     }
 
@@ -2085,10 +1997,7 @@ def _hard_negative_rows(
         raise ValueError("invalid classifier hard-negative overlap/score policy")
     if min_area_ratio < 0.0 or max_per_image < 1:
         raise ValueError("invalid classifier hard-negative area/count policy")
-    ground_truth = [
-        _xywh_to_xyxy(annotation["bbox_xywh"])
-        for annotation in record["annotations"]
-    ]
+    ground_truth = [_xywh_to_xyxy(annotation["bbox_xywh"]) for annotation in record["annotations"]]
     filename = Path(str(record["image_path"])).name
     prefix, camera_view = filename.rsplit("_camera", 1)
     camera_text, view_text = camera_view.rsplit("-", 1)
@@ -2100,9 +2009,7 @@ def _hard_negative_rows(
         detection = result["detections"][int(detection_index)]
         x1, y1, x2, y2 = [float(value) for value in detection["bbox_xyxy"]]
         area_ratio = max(0.0, x2 - x1) * max(0.0, y2 - y1) / image_area
-        overlap = max(
-            (_iou([x1, y1, x2, y2], box) for box in ground_truth), default=0.0
-        )
+        overlap = max((_iou([x1, y1, x2, y2], box) for box in ground_truth), default=0.0)
         score = float(detection["score"])
         if score < min_score or area_ratio < min_area_ratio or overlap > max_iou:
             continue
@@ -2146,9 +2053,7 @@ def _select_hard_negative_rows(
     """Select repeat-resistant, view-diverse hard negatives from train2019 only."""
     if not rows or not bool(training.get("hard_negative_enabled", False)):
         return []
-    views_per_stratum = int(
-        training.get("hard_negative_views_per_surface_camera", 8)
-    )
+    views_per_stratum = int(training.get("hard_negative_views_per_surface_camera", 8))
     max_ratio = float(training.get("hard_negative_max_ratio", 1.0))
     seed = int(training.get("hard_negative_seed", 20260810))
     if views_per_stratum < 1 or max_ratio <= 0.0:
@@ -2177,8 +2082,7 @@ def _select_hard_negative_rows(
                 def rank(index: int) -> tuple[int, float, str]:
                     view_id = int(candidates[index]["view_id"])
                     distance = min(
-                        min(abs(view_id - used), 40 - abs(view_id - used))
-                        for used in used_views
+                        min(abs(view_id - used), 40 - abs(view_id - used)) for used in used_views
                     )
                     tie = hashlib.sha256(
                         f"{seed}:{stratum}:{candidates[index]['sample_id']}".encode()
@@ -2247,14 +2151,8 @@ def _final_detector_paths(detector_dir: Path) -> dict[str, Path]:
         "baseline_manifest": detector_dir / "manifest" / "manifest.jsonl",
         "baseline_manifest_metadata": detector_dir / "manifest" / "metadata.json",
         "stage_a_complete": detector_dir / "final" / "stage-a-base" / "complete.json",
-        "stage_a_training": detector_dir
-        / "final"
-        / "stage-a-base"
-        / "final_training.json",
-        "stage_a_checkpoint": detector_dir
-        / "final"
-        / "stage-a-base"
-        / "best",
+        "stage_a_training": detector_dir / "final" / "stage-a-base" / "final_training.json",
+        "stage_a_checkpoint": detector_dir / "final" / "stage-a-base" / "best",
         "final_complete": detector_dir / "final" / "complete.json",
     }
 
@@ -2279,13 +2177,9 @@ def _final_detector_artifacts(
         "active_detector_complete_sha256": sha256_file(baseline_complete),
         "active_threshold_sha256": sha256_file(active_threshold),
         "baseline_manifest_sha256": sha256_file(paths["baseline_manifest"]),
-        "baseline_manifest_metadata_sha256": sha256_file(
-            paths["baseline_manifest_metadata"]
-        ),
+        "baseline_manifest_metadata_sha256": sha256_file(paths["baseline_manifest_metadata"]),
         "train_gate_complete_sha256": sha256_file(train_gate_complete),
-        "validation_annotation_sha256": sha256_file(
-            args.dataset_root / "instances_val2019.json"
-        ),
+        "validation_annotation_sha256": sha256_file(args.dataset_root / "instances_val2019.json"),
         "stage_a_complete_sha256": sha256_file(paths["stage_a_complete"]),
         "stage_a_checkpoint_sha256": sha256_file(
             _detector_weights_path(paths["stage_a_checkpoint"])
@@ -2294,16 +2188,12 @@ def _final_detector_artifacts(
     if any(complete.get(key) != value for key, value in expected.items()):
         raise ValueError("final detector lineage checksum mismatch")
     options = config["detector"]
-    expected_base_epochs = _best_detector_epoch(
-        detector_dir, int(options["fold_count"])
-    )
+    expected_base_epochs = _best_detector_epoch(detector_dir, int(options["fold_count"]))
     stage_a_identity = {
         "stage": "base",
         "epoch_policy": "median_baseline_oof_metric_best_epoch",
         "baseline_manifest_sha256": expected["baseline_manifest_sha256"],
-        "baseline_manifest_metadata_sha256": expected[
-            "baseline_manifest_metadata_sha256"
-        ],
+        "baseline_manifest_metadata_sha256": expected["baseline_manifest_metadata_sha256"],
         "config_sha256": expected["config_sha256"],
         "validation_annotation_sha256": expected["validation_annotation_sha256"],
     }
@@ -2338,9 +2228,7 @@ def _final_detector_artifacts(
     }
     if any(stage_a.get(key) != value for key, value in expected_stage_a_marker.items()):
         raise ValueError("final detector stage-A lineage is invalid")
-    stage_a_training = json.loads(
-        paths["stage_a_training"].read_text(encoding="utf-8")
-    )
+    stage_a_training = json.loads(paths["stage_a_training"].read_text(encoding="utf-8"))
     expected_stage_a_training = {
         "stage": "base",
         "epoch_policy": "median_baseline_oof_metric_best_epoch",
@@ -2349,10 +2237,7 @@ def _final_detector_artifacts(
         "parent": {"kind": "pretrained", "reference": options["pretrained_name"]},
         **stage_a_identity,
     }
-    if any(
-        stage_a_training.get(key) != value
-        for key, value in expected_stage_a_training.items()
-    ):
+    if any(stage_a_training.get(key) != value for key, value in expected_stage_a_training.items()):
         raise ValueError("final detector stage-A training policy is invalid")
 
     expected_aggregate_policy = {
@@ -2363,17 +2248,12 @@ def _final_detector_artifacts(
         "train_gate_role": "offline_roi_train_gate_only",
         "target_adaptation_stage": "disabled_train_gate_only",
     }
-    if any(
-        complete.get(key) != value
-        for key, value in expected_aggregate_policy.items()
-    ):
+    if any(complete.get(key) != value for key, value in expected_aggregate_policy.items()):
         raise ValueError("final detector aggregate training policy is invalid")
     return paths["stage_a_checkpoint"], complete
 
 
-def train_final_detector(
-    args: argparse.Namespace, config: dict[str, Any], *, resume: bool
-) -> Path:
+def train_final_detector(args: argparse.Namespace, config: dict[str, Any], *, resume: bool) -> Path:
     options = config["detector"]
     detector_dir = args.output_dir / "detector"
     _reject_post_test_mutation(args, "final operational detector training")
@@ -2408,20 +2288,19 @@ def train_final_detector(
         "stage": "base",
         "epoch_policy": "median_baseline_oof_metric_best_epoch",
         "baseline_manifest_sha256": sha256_file(paths["baseline_manifest"]),
-        "baseline_manifest_metadata_sha256": sha256_file(
-            paths["baseline_manifest_metadata"]
-        ),
+        "baseline_manifest_metadata_sha256": sha256_file(paths["baseline_manifest_metadata"]),
         "config_sha256": _config_sha256(args, config),
-        "validation_annotation_sha256": sha256_file(
-            args.dataset_root / "instances_val2019.json"
-        ),
+        "validation_annotation_sha256": sha256_file(args.dataset_root / "instances_val2019.json"),
     }
     recipe = detector_optimizer_recipe(namespace)
-    if not (resume and _checkpoint_complete(
-        stage_a,
-        expected_seed=int(namespace.seed),
-        expected_optimizer_recipe=recipe,
-    )):
+    if not (
+        resume
+        and _checkpoint_complete(
+            stage_a,
+            expected_seed=int(namespace.seed),
+            expected_optimizer_recipe=recipe,
+        )
+    ):
         train_detector(namespace)
         _mark_checkpoint_complete(stage_a, optimizer_recipe=recipe)
     stage_a_checkpoint = stage_a / "best"
@@ -2431,9 +2310,7 @@ def train_final_detector(
     stage_a_complete["parent_reference_sha256"] = hashlib.sha256(
         str(options["pretrained_name"]).encode()
     ).hexdigest()
-    stage_a_complete["manifest_sha256"] = namespace.training_identity[
-        "baseline_manifest_sha256"
-    ]
+    stage_a_complete["manifest_sha256"] = namespace.training_identity["baseline_manifest_sha256"]
     stage_a_complete["manifest_metadata_sha256"] = namespace.training_identity[
         "baseline_manifest_metadata_sha256"
     ]
@@ -2463,20 +2340,12 @@ def train_final_detector(
         "train_gate_role": "offline_roi_train_gate_only",
         "target_adaptation_stage": "disabled_train_gate_only",
         "config_sha256": _config_sha256(args, config),
-        "active_detector_complete_sha256": sha256_file(
-            detector_dir / "baseline" / "complete.json"
-        ),
+        "active_detector_complete_sha256": sha256_file(detector_dir / "baseline" / "complete.json"),
         "active_threshold_sha256": sha256_file(detector_dir / "threshold.json"),
-        "train_gate_complete_sha256": sha256_file(
-            detector_dir / "train-gate" / "complete.json"
-        ),
+        "train_gate_complete_sha256": sha256_file(detector_dir / "train-gate" / "complete.json"),
         "baseline_manifest_sha256": sha256_file(paths["baseline_manifest"]),
-        "baseline_manifest_metadata_sha256": sha256_file(
-            paths["baseline_manifest_metadata"]
-        ),
-        "validation_annotation_sha256": sha256_file(
-            args.dataset_root / "instances_val2019.json"
-        ),
+        "baseline_manifest_metadata_sha256": sha256_file(paths["baseline_manifest_metadata"]),
+        "validation_annotation_sha256": sha256_file(args.dataset_root / "instances_val2019.json"),
         "stage_a_complete_sha256": sha256_file(stage_a / "complete.json"),
         "stage_a_checkpoint_sha256": stage_a_sha256,
     }
@@ -2528,42 +2397,29 @@ def prepare_final_test_records(
 ) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     """Evaluate an already locked final detector without any training path."""
     experiment_path = args.output_dir / "prepared" / "experiment.json"
-    if experiment_path.is_file() and json.loads(
-        experiment_path.read_text(encoding="utf-8")
-    ).get("test_accessed") is True:
-        raise RuntimeError(
-            "post-test output is immutable; use the sealed final-test report"
-        )
+    if (
+        experiment_path.is_file()
+        and json.loads(experiment_path.read_text(encoding="utf-8")).get("test_accessed") is True
+    ):
+        raise RuntimeError("post-test output is immutable; use the sealed final-test report")
     detector_dir = args.output_dir / "detector"
     checkpoint, final_complete = _final_detector_artifacts(args, config)
     lock = json.loads(model_lock_path.read_text(encoding="utf-8"))
     lock_sha256 = sha256_file(model_lock_path)
     required_lock_hashes = {
         "rpc_config_sha256": final_complete["config_sha256"],
-        "active_detector_complete_sha256": final_complete[
-            "active_detector_complete_sha256"
-        ],
-        "active_detector_threshold_sha256": final_complete[
-            "active_threshold_sha256"
-        ],
-        "detector_train_gate_complete_sha256": final_complete[
-            "train_gate_complete_sha256"
-        ],
-        "final_detector_complete_sha256": sha256_file(
-            detector_dir / "final" / "complete.json"
-        ),
-        "final_detector_checkpoint_sha256": final_complete[
-            "stage_a_checkpoint_sha256"
-        ],
+        "active_detector_complete_sha256": final_complete["active_detector_complete_sha256"],
+        "active_detector_threshold_sha256": final_complete["active_threshold_sha256"],
+        "detector_train_gate_complete_sha256": final_complete["train_gate_complete_sha256"],
+        "final_detector_complete_sha256": sha256_file(detector_dir / "final" / "complete.json"),
+        "final_detector_checkpoint_sha256": final_complete["stage_a_checkpoint_sha256"],
     }
     if any(lock.get(key) != value for key, value in required_lock_hashes.items()):
         raise ValueError("model lock final detector lineage checksum mismatch")
     if (
-        lock.get("operational_detector_role")
-        != "checkout_baseline_val_all_operational"
+        lock.get("operational_detector_role") != "checkout_baseline_val_all_operational"
         or lock.get("train_gate_role") != "offline_roi_train_gate_only"
-        or final_complete.get("target_adaptation_stage")
-        != "disabled_train_gate_only"
+        or final_complete.get("target_adaptation_stage") != "disabled_train_gate_only"
     ):
         raise ValueError("model lock detector role separation mismatch")
     if before_test_access is not None:
@@ -2607,9 +2463,7 @@ def prepare_final_test_records(
         )
         _write_prediction_artifact(predictions_path, predictions, prediction_identity)
     by_key = {str(item["sample_key"]): item for item in predictions}
-    threshold = json.loads(
-        (detector_dir / "threshold.json").read_text(encoding="utf-8")
-    )
+    threshold = json.loads((detector_dir / "threshold.json").read_text(encoding="utf-8"))
     options = dict(config["detector"])
     options["score_threshold"] = float(threshold["selected_score_threshold"])
     rows: list[dict[str, Any]] = []
@@ -2644,7 +2498,9 @@ def prepare_final_test_records(
                     "sample_id": f"test:{record['image_id']}:det{detection_index}",
                     "split": "test",
                     "image_id": int(record["image_id"]),
-                    "annotation_id": None if annotation is None else int(annotation["annotation_id"]),
+                    "annotation_id": None
+                    if annotation is None
+                    else int(annotation["annotation_id"]),
                     "image_path": record["image_path"],
                     "width": int(record["width"]),
                     "height": int(record["height"]),
@@ -2668,13 +2524,9 @@ def prepare_final_test_records(
         "schema_version": SCHEMA_VERSION,
         "operational_detector_role": "checkout_baseline_val_all_operational",
         "train_gate_role": "offline_roi_train_gate_only",
-        "train_gate_complete_sha256": required_lock_hashes[
-            "detector_train_gate_complete_sha256"
-        ],
+        "train_gate_complete_sha256": required_lock_hashes["detector_train_gate_complete_sha256"],
         "detector_checkpoint_sha256": sha256_file(_detector_weights_path(checkpoint)),
-        "final_detector_complete_sha256": required_lock_hashes[
-            "final_detector_complete_sha256"
-        ],
+        "final_detector_complete_sha256": required_lock_hashes["final_detector_complete_sha256"],
         "model_lock_sha256": lock_sha256,
         "active_detector_threshold_sha256": required_lock_hashes[
             "active_detector_threshold_sha256"

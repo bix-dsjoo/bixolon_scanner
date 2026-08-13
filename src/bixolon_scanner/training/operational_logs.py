@@ -19,7 +19,6 @@ from ..package import load_model_package, sha256_file
 from .data import read_manifest
 from .manifest import _assign_folds, _canonical_json, _manifest_version
 
-
 SCHEMA_VERSION = "1.0"
 
 
@@ -205,7 +204,9 @@ def _render_review(
     accepted_boxes: list[Detection] = []
     for annotation in record["annotations"]:
         x, y, width, height = annotation["bbox_xywh"]
-        accepted_boxes.append(Detection(x, y, x + width, y + height, annotation["draft_detector_score"]))
+        accepted_boxes.append(
+            Detection(x, y, x + width, y + height, annotation["draft_detector_score"])
+        )
         color = (0, 170, 255)
         draw.rectangle((x, y, x + width, y + height), outline=color, width=line_width)
         label = labels[annotation["category_id"] - 1]["class_id"]
@@ -251,7 +252,9 @@ def _contact_sheets(paths: list[Path], output_dir: Path) -> None:
             x = margin + column * (width + margin)
             y = margin + row * (height + margin)
             sheet.paste(image, (x + (width - image.width) // 2, y + (height - image.height) // 2))
-        sheet.save(output_dir / f"contact_sheet_{start // 6 + 1:02d}.jpg", quality=90, optimize=True)
+        sheet.save(
+            output_dir / f"contact_sheet_{start // 6 + 1:02d}.jpg", quality=90, optimize=True
+        )
 
 
 def ingest(args: argparse.Namespace) -> dict[str, Any]:
@@ -292,11 +295,14 @@ def ingest(args: argparse.Namespace) -> dict[str, Any]:
     for record in base_records:
         record["image_path"] = (base_prefix / record["image_path"]).as_posix()
     next_image_id = max(int(record["image_id"]) for record in base_records) + 1
-    next_annotation_id = max(
-        int(annotation["annotation_id"])
-        for record in base_records
-        for annotation in record["annotations"]
-    ) + 1
+    next_annotation_id = (
+        max(
+            int(annotation["annotation_id"])
+            for record in base_records
+            for annotation in record["annotations"]
+        )
+        + 1
+    )
     labels = _load_json(args.base_metadata)["labels"]
     empty_ids = set(contract["empty_recapture_scan_ids"])
     blur_ids = set(contract["blur_recapture_scan_ids"])
@@ -409,8 +415,7 @@ def ingest(args: argparse.Namespace) -> dict[str, Any]:
         "operational_capture_session_count": 1,
         "operational_decisions": {
             "continue_count": sum(
-                record["expected_detector_action"] == "CONTINUE"
-                for record in operational_records
+                record["expected_detector_action"] == "CONTINUE" for record in operational_records
             ),
             "empty_recapture_count": len(empty_ids),
             "blur_recapture_count": len(blur_ids),
@@ -433,7 +438,9 @@ def ingest(args: argparse.Namespace) -> dict[str, Any]:
     (args.manifest_dir / "metadata.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
-    with (args.review_dir / "review_index.csv").open("w", encoding="utf-8-sig", newline="") as stream:
+    with (args.review_dir / "review_index.csv").open(
+        "w", encoding="utf-8-sig", newline=""
+    ) as stream:
         writer = csv.DictWriter(stream, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)
@@ -465,7 +472,9 @@ def main() -> None:
     parser.add_argument("--base-metadata", type=Path, required=True)
     parser.add_argument("--base-dataset-root", type=Path, required=True)
     parser.add_argument("--dataset-root", type=Path, required=True)
-    parser.add_argument("--operational-subdir", type=Path, default=Path("bixolon_operational_0.1.2"))
+    parser.add_argument(
+        "--operational-subdir", type=Path, default=Path("bixolon_operational_0.1.2")
+    )
     parser.add_argument("--manifest-dir", type=Path, required=True)
     parser.add_argument("--review-dir", type=Path, required=True)
     parser.add_argument("--fold-count", type=int, default=3)

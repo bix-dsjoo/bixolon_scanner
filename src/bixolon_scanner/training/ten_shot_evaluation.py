@@ -57,8 +57,7 @@ def _floor_checks(metrics: dict[str, Any], gates: PromotionGates) -> dict[str, b
     checks = {
         "top1_floor": _metric(metrics, "top1_accuracy") >= gates.minimum_top1_accuracy,
         "overall_top3_floor": (
-            _metric(metrics, "overall_top3_accuracy")
-            >= gates.minimum_overall_top3_accuracy
+            _metric(metrics, "overall_top3_accuracy") >= gates.minimum_overall_top3_accuracy
         ),
         "approved_samples_present": int(metrics.get("approved_count", 0)) > 0,
         "approved_precision_floor": (
@@ -137,19 +136,16 @@ def evaluate_promotion_gates(
         **waiver_checks,
         "top1_target": _metric(candidate, "top1_accuracy") >= gates.target_top1_accuracy,
         "overall_top3_target": (
-            _metric(candidate, "overall_top3_accuracy")
-            >= gates.minimum_overall_top3_accuracy
+            _metric(candidate, "overall_top3_accuracy") >= gates.minimum_overall_top3_accuracy
         ),
         "approved_precision_target": (
             _metric(candidate, "approved_precision") >= gates.minimum_approved_precision
         ),
         "coverage_non_regression": (
-            coverage_drop
-            <= gates.target_maximum_approval_coverage_drop_percentage_points
+            coverage_drop <= gates.target_maximum_approval_coverage_drop_percentage_points
         ),
         "unknown_top3_target": (
-            _metric(candidate, "unknown_top3_accuracy")
-            >= gates.minimum_unknown_top3_accuracy
+            _metric(candidate, "unknown_top3_accuracy") >= gates.minimum_unknown_top3_accuracy
         ),
     }
     if all(production_checks.values()):

@@ -109,9 +109,7 @@ def test_load_records_supports_root_coco_with_difficulty_directories(tmp_path):
         "images": [{"id": 1, "file_name": "E/E_001.jpg"}],
         "annotations": [{"id": 1, "image_id": 1, "category_id": 1, "bbox": [0, 0, 1, 1]}],
     }
-    (tmp_path / "annotations" / "instances.json").write_text(
-        json.dumps(coco), encoding="utf-8"
-    )
+    (tmp_path / "annotations" / "instances.json").write_text(json.dumps(coco), encoding="utf-8")
 
     records = _load_records(tmp_path)
 

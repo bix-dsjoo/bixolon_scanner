@@ -100,4 +100,3 @@ class ScanResponse(BaseModel):
             if not has_unknown or "ITEM_BELOW_APPROVAL_THRESHOLD" not in self.reason_codes:
                 raise ValueError("UNKNOWN response requires an UNKNOWN item and aggregate reason")
         return self
-

@@ -18,7 +18,6 @@ from .inference import build_onnx_adapters
 from .package import load_model_package
 from .pipeline import DecisionPipeline
 
-
 LOGGER = logging.getLogger(__name__)
 
 
@@ -28,7 +27,9 @@ def _request_id(request: Request | None = None) -> str:
     return uuid.uuid4().hex
 
 
-def _error_response(request_id: str, reason_code: str, elapsed_ms: float, status_code: int) -> JSONResponse:
+def _error_response(
+    request_id: str, reason_code: str, elapsed_ms: float, status_code: int
+) -> JSONResponse:
     body = ScanResponse(
         request_id=request_id,
         status=Status.ERROR,
@@ -135,11 +136,7 @@ def create_app(
                         app.state.pipeline.scan, decoded, _request_id(request)
                     )
                     total_ms = (time.perf_counter() - request.state.started) * 1000.0
-                    completed = response.model_copy(
-                        update={
-                            "processing_time_ms": total_ms
-                        }
-                    )
+                    completed = response.model_copy(update={"processing_time_ms": total_ms})
                     LOGGER.info(
                         "scan_request_complete",
                         extra={

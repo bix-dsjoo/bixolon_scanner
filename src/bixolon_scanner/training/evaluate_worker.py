@@ -9,8 +9,8 @@ from typing import Any
 import numpy as np
 
 from ..contracts import ItemStatus, Status
-from ..inference import build_onnx_adapters
 from ..imaging import decode_image
+from ..inference import build_onnx_adapters
 from ..package import load_model_package
 from ..pipeline import DecisionPipeline
 from .calibration import binomial_rate_upper_bound
@@ -104,9 +104,7 @@ def evaluate(args: argparse.Namespace) -> None:
         detection_result = recording_detector.last_result
         if detection_result is None:
             raise RuntimeError("detector result was not recorded")
-        detections = sorted(
-            detection_result.detections, key=lambda value: (value.y1, value.x1)
-        )
+        detections = sorted(detection_result.detections, key=lambda value: (value.y1, value.x1))
         is_recapture = response.status is Status.RECAPTURE
         recapture_count += int(is_recapture)
         capacity_saturated_count += int(detection_result.capacity_saturated)
@@ -136,9 +134,7 @@ def evaluate(args: argparse.Namespace) -> None:
             raise RuntimeError("Worker item count does not match detector output")
         if recording_classifier.last_logits is None:
             raise RuntimeError("classifier was not recorded on a non-recapture path")
-        ranks = np.argsort(
-            -recording_classifier.last_logits, axis=1, kind="stable"
-        )
+        ranks = np.argsort(-recording_classifier.last_logits, axis=1, kind="stable")
         classified_detection_count += len(detections)
         image_correct = len(detections) == len(gt_boxes)
         for detection_index, item in enumerate(response.items):
@@ -171,14 +167,12 @@ def evaluate(args: argparse.Namespace) -> None:
     detection_precision = matched_count / detection_count if detection_count else 0.0
     approved_precision = approved_correct / approved_count if approved_count else 1.0
     unknown_top3_gate_satisfied = (
-        unknown_matched_count > 0
-        and unknown_top3_correct / unknown_matched_count >= 0.95
+        unknown_matched_count > 0 and unknown_top3_correct / unknown_matched_count >= 0.95
     )
     unknown_top3_waived = bool(
         package.metadata.promotion
         and any(
-            waiver.gate == "unknown_top3_accuracy"
-            for waiver in package.metadata.promotion.waivers
+            waiver.gate == "unknown_top3_accuracy" for waiver in package.metadata.promotion.waivers
         )
     )
     report = {
@@ -208,27 +202,21 @@ def evaluate(args: argparse.Namespace) -> None:
         "classifier_on_detector_crops": {
             "matched_sample_count": classified_matched_count,
             "detector_matched_sample_count": matched_count,
-            "recapture_skipped_matched_sample_count": (
-                matched_count - classified_matched_count
-            ),
+            "recapture_skipped_matched_sample_count": (matched_count - classified_matched_count),
             "overall_top1_accuracy": (
-                matched_top1_correct / classified_matched_count
-                if classified_matched_count
-                else 0.0
+                matched_top1_correct / classified_matched_count if classified_matched_count else 0.0
             ),
             "overall_top3_accuracy": (
-                matched_top3_correct / classified_matched_count
-                if classified_matched_count
-                else 0.0
+                matched_top3_correct / classified_matched_count if classified_matched_count else 0.0
             ),
             "approved_count": approved_count,
             "approved_correct": approved_correct,
             "approved_unmatched": approved_unmatched,
-            "approval_coverage_of_detections": approved_count / detection_count if detection_count else 0.0,
+            "approval_coverage_of_detections": approved_count / detection_count
+            if detection_count
+            else 0.0,
             "approval_coverage_of_classified_detections": (
-                approved_count / classified_detection_count
-                if classified_detection_count
-                else 0.0
+                approved_count / classified_detection_count if classified_detection_count else 0.0
             ),
             "approved_precision": approved_precision,
             "approved_precision_95ci": list(wilson_interval(approved_correct, approved_count)),
@@ -239,13 +227,15 @@ def evaluate(args: argparse.Namespace) -> None:
             "unknown_count": unknown_count,
             "unknown_matched_count": unknown_matched_count,
             "unknown_top3_accuracy": (
-                unknown_top3_correct / unknown_matched_count
-                if unknown_matched_count
-                else None
+                unknown_top3_correct / unknown_matched_count if unknown_matched_count else None
             ),
             "unknown_top3_gate_satisfied": unknown_top3_gate_satisfied,
             "unknown_top3_promotion_disposition": (
-                "passed" if unknown_top3_gate_satisfied else "waived" if unknown_top3_waived else "failed"
+                "passed"
+                if unknown_top3_gate_satisfied
+                else "waived"
+                if unknown_top3_waived
+                else "failed"
             ),
         },
         "frame_policy": {
@@ -263,7 +253,9 @@ def evaluate(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Evaluate the packaged ONNX detector-crop pipeline")
+    parser = argparse.ArgumentParser(
+        description="Evaluate the packaged ONNX detector-crop pipeline"
+    )
     parser.add_argument("--package-dir", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--dataset-root", type=Path, required=True)

@@ -29,9 +29,7 @@ def _features():
     )
     labels = np.asarray([0, 0, 1, 1], dtype=np.int64)
     training = np.repeat(support, 3, axis=0)
-    training += np.random.default_rng(7).normal(0, 0.01, training.shape).astype(
-        np.float32
-    )
+    training += np.random.default_rng(7).normal(0, 0.01, training.shape).astype(np.float32)
     training_labels = np.repeat(labels, 3)
     source_indices = np.repeat(np.arange(4), 3)
     return support, labels, training, training_labels, source_indices

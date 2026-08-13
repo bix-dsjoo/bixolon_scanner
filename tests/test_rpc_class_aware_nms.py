@@ -41,9 +41,7 @@ def test_duplicate_ambiguity_uses_only_higher_score_same_class() -> None:
         _detection([25, 25, 75, 75], 0.70),
     ]
 
-    containment, repeated = _duplicate_ambiguity_features(
-        detections, [4, 4, 8]
-    )
+    containment, repeated = _duplicate_ambiguity_features(detections, [4, 4, 8])
 
     assert containment == [0.0, 1.0, 0.0]
     assert repeated == [False, True, False]

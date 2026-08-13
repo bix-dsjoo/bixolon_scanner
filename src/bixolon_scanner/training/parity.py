@@ -134,9 +134,9 @@ def parity(args: argparse.Namespace) -> None:
         metadata.detector.std,
         reducing_gap=metadata.detector.resize_reducing_gap,
     )[None].astype(np.float32, copy=False)
-    detector_reference = RTDetrV2ForObjectDetection.from_pretrained(
-        args.detector_checkpoint
-    ).to(device).eval()
+    detector_reference = (
+        RTDetrV2ForObjectDetection.from_pretrained(args.detector_checkpoint).to(device).eval()
+    )
     with torch.inference_mode():
         reference_output = detector_reference(
             pixel_values=torch.from_numpy(detector_tensor).to(device)
@@ -152,15 +152,11 @@ def parity(args: argparse.Namespace) -> None:
     reference_detections = _postprocess_detector(
         reference_logits, reference_boxes, metadata.detector, image.shape
     )
-    onnx_detections = _postprocess_detector(
-        onnx_logits, onnx_boxes, metadata.detector, image.shape
-    )
+    onnx_detections = _postprocess_detector(onnx_logits, onnx_boxes, metadata.detector, image.shape)
     minimum_iou, box_error, score_error = _matched_detection_errors(
         reference_detections, onnx_detections, image.shape
     )
-    detector = OnnxDetector(
-        package.detector_path, metadata.detector, provider, args.cuda_dll_dir
-    )
+    detector = OnnxDetector(package.detector_path, metadata.detector, provider, args.cuda_dll_dir)
     detection_result = detector.detect(image)
     if not detection_result.detections:
         raise RuntimeError("parity image produced no detections")
@@ -188,9 +184,7 @@ def parity(args: argparse.Namespace) -> None:
             "package_version": metadata.package_version,
             "dataset_version": metadata.dataset_version,
             "detector_version": metadata.detector.version,
-            "detector_checkpoint_sha256": _detector_checkpoint_sha256(
-                args.detector_checkpoint
-            ),
+            "detector_checkpoint_sha256": _detector_checkpoint_sha256(args.detector_checkpoint),
             "package_artifact_sha256": {
                 "metadata.json": sha256_file(args.package_dir / "metadata.json"),
                 metadata.detector.filename: sha256_file(package.detector_path),
@@ -219,12 +213,13 @@ def parity(args: argparse.Namespace) -> None:
     )
     classifier_reference.load_state_dict(checkpoint["state_dict"])
     classifier_reference.to(device).eval()
-    classifier_tensor = _classifier_batch(
-        image, detection_result.detections, metadata.classifier
-    )
+    classifier_tensor = _classifier_batch(image, detection_result.detections, metadata.classifier)
     with torch.inference_mode():
         classifier_reference_logits = (
-            classifier_reference(torch.from_numpy(classifier_tensor).to(device)).float().cpu().numpy()
+            classifier_reference(torch.from_numpy(classifier_tensor).to(device))
+            .float()
+            .cpu()
+            .numpy()
         )
     classifier_runner = OrtRunner(package.classifier_path, provider, args.cuda_dll_dir)
     (classifier_onnx_logits,) = classifier_runner.run(
@@ -232,17 +227,13 @@ def parity(args: argparse.Namespace) -> None:
         metadata.classifier.input_name,
         classifier_tensor,
     )
-    reference_probabilities = _softmax(
-        classifier_reference_logits, metadata.classifier.temperature
-    )
+    reference_probabilities = _softmax(classifier_reference_logits, metadata.classifier.temperature)
     onnx_probabilities = _softmax(
         np.asarray(classifier_onnx_logits), metadata.classifier.temperature
     )
     reference_ranks = np.argsort(-reference_probabilities, axis=1)[:, :3]
     onnx_ranks = np.argsort(-onnx_probabilities, axis=1)[:, :3]
-    reference_status = (
-        reference_probabilities.max(axis=1) >= metadata.classifier.approval_threshold
-    )
+    reference_status = reference_probabilities.max(axis=1) >= metadata.classifier.approval_threshold
     onnx_status = onnx_probabilities.max(axis=1) >= metadata.classifier.approval_threshold
 
     classifier_logits_error = float(
@@ -253,9 +244,7 @@ def parity(args: argparse.Namespace) -> None:
         "dataset_version": metadata.dataset_version,
         "detector_version": metadata.detector.version,
         "classifier_version": metadata.classifier.version,
-        "detector_checkpoint_sha256": _detector_checkpoint_sha256(
-            args.detector_checkpoint
-        ),
+        "detector_checkpoint_sha256": _detector_checkpoint_sha256(args.detector_checkpoint),
         "classifier_checkpoint_sha256": sha256_file(args.classifier_checkpoint),
         "package_artifact_sha256": {
             "metadata.json": sha256_file(args.package_dir / "metadata.json"),

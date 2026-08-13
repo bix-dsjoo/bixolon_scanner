@@ -13,7 +13,6 @@ from ..inference import Detection, _box_iou
 from .calibration import binomial_rate_upper_bound
 from .evaluate_detector import _iou, _xywh_to_xyxy
 
-
 TARGET_MODE_VERSION = "0.2.5"
 
 
@@ -41,9 +40,7 @@ class DetectorPolicy:
             raise ValueError("max_queries must be positive")
         if self.uncertainty_score_threshold is not None:
             if not 0.0 <= self.uncertainty_score_threshold < self.score_threshold:
-                raise ValueError(
-                    "uncertainty_score_threshold must be below score_threshold"
-                )
+                raise ValueError("uncertainty_score_threshold must be below score_threshold")
 
     @property
     def key(self) -> str:
@@ -58,25 +55,19 @@ class IndexedDetection:
 
 def policy_grid(config: dict[str, Any]) -> list[DetectorPolicy]:
     policies: list[DetectorPolicy] = []
-    uncertainty_scores: Sequence[float | None] = config[
-        "uncertainty_score_thresholds"
-    ]
+    uncertainty_scores: Sequence[float | None] = config["uncertainty_score_thresholds"]
     for score in config["score_thresholds"]:
         for nms in config["nms_iou_thresholds"]:
             for uncertainty_score in uncertainty_scores:
                 areas = (
-                    [0.0]
-                    if uncertainty_score is None
-                    else config["uncertainty_min_area_ratios"]
+                    [0.0] if uncertainty_score is None else config["uncertainty_min_area_ratios"]
                 )
                 for area in areas:
                     policy = DetectorPolicy(
                         score_threshold=float(score),
                         nms_iou_threshold=float(nms),
                         uncertainty_score_threshold=(
-                            None
-                            if uncertainty_score is None
-                            else float(uncertainty_score)
+                            None if uncertainty_score is None else float(uncertainty_score)
                         ),
                         uncertainty_min_area_ratio=float(area),
                         uncertainty_match_iou_threshold=float(
@@ -87,8 +78,7 @@ def policy_grid(config: dict[str, Any]) -> list[DetectorPolicy]:
                     )
                     if (
                         policy.uncertainty_score_threshold is not None
-                        and policy.uncertainty_score_threshold
-                        >= policy.score_threshold
+                        and policy.uncertainty_score_threshold >= policy.score_threshold
                     ):
                         continue
                     policy.validate()
@@ -96,15 +86,12 @@ def policy_grid(config: dict[str, Any]) -> list[DetectorPolicy]:
     return sorted({policy.key: policy for policy in policies}.values(), key=lambda p: p.key)
 
 
-def _indexed_nms(
-    detections: list[IndexedDetection], threshold: float
-) -> list[IndexedDetection]:
+def _indexed_nms(detections: list[IndexedDetection], threshold: float) -> list[IndexedDetection]:
     ordered = sorted(detections, key=lambda item: item.detection.score, reverse=True)
     selected: list[IndexedDetection] = []
     for candidate in ordered:
         if all(
-            _box_iou(candidate.detection, accepted.detection) <= threshold
-            for accepted in selected
+            _box_iou(candidate.detection, accepted.detection) <= threshold for accepted in selected
         ):
             selected.append(candidate)
     return selected
@@ -114,13 +101,9 @@ def _raw_detections(prediction: dict[str, Any]) -> list[IndexedDetection]:
     return [
         IndexedDetection(
             index=index,
-            detection=Detection(
-                *[float(value) for value in box], score=float(score)
-            ),
+            detection=Detection(*[float(value) for value in box], score=float(score)),
         )
-        for index, (box, score) in enumerate(
-            zip(prediction["boxes_xyxy"], prediction["scores"])
-        )
+        for index, (box, score) in enumerate(zip(prediction["boxes_xyxy"], prediction["scores"]))
     ]
 
 
@@ -131,9 +114,7 @@ def _apply_policy_to_raw(
     raw: list[IndexedDetection],
     nms_for_score: Any,
 ) -> dict[str, Any]:
-    accepted_raw = [
-        item for item in raw if item.detection.score >= policy.score_threshold
-    ]
+    accepted_raw = [item for item in raw if item.detection.score >= policy.score_threshold]
     detections = nms_for_score(policy.score_threshold, policy.nms_iou_threshold)
     reasons = list(prediction.get("fixed_hard_reason_codes", ()))
     if len(accepted_raw) >= policy.max_queries:
@@ -151,9 +132,7 @@ def _apply_policy_to_raw(
         reasons.append("DETECTOR_OBJECT_TOO_SMALL")
     uncertain_indices: list[int] = []
     if policy.uncertainty_score_threshold is not None:
-        shadow = nms_for_score(
-            policy.uncertainty_score_threshold, policy.nms_iou_threshold
-        )
+        shadow = nms_for_score(policy.uncertainty_score_threshold, policy.nms_iou_threshold)
         for candidate in shadow:
             if candidate.detection.score >= policy.score_threshold:
                 continue
@@ -165,13 +144,9 @@ def _apply_policy_to_raw(
             if area_ratio < policy.uncertainty_min_area_ratio:
                 continue
             overlaps = [
-                _box_iou(candidate.detection, accepted.detection)
-                for accepted in detections
+                _box_iou(candidate.detection, accepted.detection) for accepted in detections
             ]
-            if (
-                not overlaps
-                or max(overlaps) < policy.uncertainty_match_iou_threshold
-            ):
+            if not overlaps or max(overlaps) < policy.uncertainty_match_iou_threshold:
                 uncertain_indices.append(candidate.index)
         if uncertain_indices:
             reasons.append("DETECTOR_UNCERTAIN_OBJECT")
@@ -201,11 +176,7 @@ class PolicyEvaluationCache:
         cached = self._nms.get(key)
         if cached is None:
             cached = _indexed_nms(
-                [
-                    item
-                    for item in self._raw[image_index]
-                    if item.detection.score >= score
-                ],
+                [item for item in self._raw[image_index] if item.detection.score >= score],
                 nms_iou,
             )
             self._nms[key] = cached
@@ -223,9 +194,7 @@ class PolicyEvaluationCache:
             prediction,
             policy,
             self._raw[image_index],
-            lambda score, nms_iou: self._nms_for_score(
-                image_index, score, nms_iou
-            ),
+            lambda score, nms_iou: self._nms_for_score(image_index, score, nms_iou),
         )
 
     def diagnostics(
@@ -302,7 +271,10 @@ def match_boxes(
     ) + overlaps
     detection_indices, annotation_indices = linear_sum_assignment(-reward)
     return {
-        int(detection_index): (int(annotation_index), float(overlaps[detection_index, annotation_index]))
+        int(detection_index): (
+            int(annotation_index),
+            float(overlaps[detection_index, annotation_index]),
+        )
         for detection_index, annotation_index in zip(
             detection_indices.tolist(), annotation_indices.tolist()
         )
@@ -344,15 +316,9 @@ def detector_image_diagnostics(
         else:
             background += 1
     localization = sum(overlap < 0.75 for _, overlap in matches_50.values())
-    localization_error = sum(
-        (1.0 - overlap) / 0.5 for _, overlap in matches_50.values()
-    )
+    localization_error = sum((1.0 - overlap) / 0.5 for _, overlap in matches_50.values())
     lrp_denominator = tp + fp + fn
-    lrp = (
-        (localization_error + fp + fn) / lrp_denominator
-        if lrp_denominator
-        else 0.0
-    )
+    lrp = (localization_error + fp + fn) / lrp_denominator if lrp_denominator else 0.0
     return {
         "ground_truth_count": ground_truth_count,
         "prediction_count": predicted_count,
@@ -418,13 +384,9 @@ def evaluate_image(
     if detector_pass:
         selected_classifications: list[dict[str, Any]] = []
         for item in applied["detections"]:
-            classification = classifications.get(
-                str(item.index), classifications.get(item.index)
-            )
+            classification = classifications.get(str(item.index), classifications.get(item.index))
             if classification is None:
-                raise ValueError(
-                    f"missing cached classifier output for raw detection {item.index}"
-                )
+                raise ValueError(f"missing cached classifier output for raw detection {item.index}")
             selected_classifications.append(classification)
         classifier_recapture = any(
             bool(item.get("recapture", False))
@@ -434,9 +396,12 @@ def evaluate_image(
             )
             for item in selected_classifications
         )
-        approved = bool(selected_classifications) and not classifier_recapture and all(
-            float(item["confidence"]) >= approval_threshold
-            for item in selected_classifications
+        approved = (
+            bool(selected_classifications)
+            and not classifier_recapture
+            and all(
+                float(item["confidence"]) >= approval_threshold for item in selected_classifications
+            )
         )
         matches = diagnostics["matches_iou_50"]
         all_classes_correct = len(matches) == len(selected_classifications)
@@ -458,9 +423,7 @@ def evaluate_image(
                     expected in [str(value) for value in classification["top3_class_ids"]]
                 )
         e2e_correct = bool(approved and detector_correct and all_classes_correct)
-    ranking_score = min(
-        (item.detection.score for item in applied["detections"]), default=0.0
-    )
+    ranking_score = min((item.detection.score for item in applied["detections"]), default=0.0)
     return {
         "image_id": record.get("image_id"),
         "detector_correct": detector_correct,
@@ -502,9 +465,7 @@ def _gate_counts(rows: Sequence[dict[str, Any]]) -> dict[str, int]:
 
 
 def _auc(labels: Sequence[bool], scores: Sequence[float]) -> float | None:
-    pairs = sorted(
-        (float(score), bool(label)) for label, score in zip(labels, scores)
-    )
+    pairs = sorted((float(score), bool(label)) for label, score in zip(labels, scores))
     positive_count = sum(label for _, label in pairs)
     negative_count = len(pairs) - positive_count
     if not positive_count or not negative_count:
@@ -533,9 +494,7 @@ def summarize_rows(
     counts = _gate_counts(rows)
     detector_pass_count = counts["silent_failure"] + counts["safe_pass"]
     approved_count = sum(bool(row["approved"]) for row in rows)
-    approved_errors = sum(
-        bool(row["approved"] and not row["e2e_correct"]) for row in rows
-    )
+    approved_errors = sum(bool(row["approved"] and not row["e2e_correct"]) for row in rows)
     safe_approved = approved_count - approved_errors
     unknown_count = sum(int(row["unknown_top3_count"]) for row in rows)
     unknown_correct = sum(int(row["unknown_top3_correct"]) for row in rows)
@@ -544,9 +503,7 @@ def summarize_rows(
     gt = sum(int(value["ground_truth_count"]) for value in diagnostics)
     predictions = sum(int(value["prediction_count"]) for value in diagnostics)
     tp = sum(int(value["true_positive"]) for value in diagnostics)
-    error_types = dict(
-        sum((Counter(value["error_types"]) for value in diagnostics), Counter())
-    )
+    error_types = dict(sum((Counter(value["error_types"]) for value in diagnostics), Counter()))
     error_types.setdefault("border_related", 0)
     error_types.setdefault("size_related", 0)
     groups: dict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -556,9 +513,7 @@ def summarize_rows(
     group_reports = {}
     for name, values in sorted(groups.items()):
         group_counts = _gate_counts(values)
-        group_detector_pass = (
-            group_counts["silent_failure"] + group_counts["safe_pass"]
-        )
+        group_detector_pass = group_counts["silent_failure"] + group_counts["safe_pass"]
         group_approved = sum(bool(value["approved"]) for value in values)
         group_safe = sum(bool(value["e2e_correct"]) for value in values)
         group_approved_errors = group_approved - group_safe
@@ -588,16 +543,12 @@ def summarize_rows(
     detector_risk_upper = binomial_rate_upper_bound(
         counts["silent_failure"], detector_pass_count, confidence_level
     )
-    e2e_risk_upper = binomial_rate_upper_bound(
-        approved_errors, approved_count, confidence_level
-    )
+    e2e_risk_upper = binomial_rate_upper_bound(approved_errors, approved_count, confidence_level)
     return {
         "sample_count": len(rows),
         "gate_table": counts,
         "detector_pass_count": detector_pass_count,
-        "detector_pass_risk": _safe_rate(
-            counts["silent_failure"], detector_pass_count
-        ),
+        "detector_pass_risk": _safe_rate(counts["silent_failure"], detector_pass_count),
         "detector_pass_risk_upper_95": detector_risk_upper,
         "detector_coverage": _safe_rate(detector_pass_count, len(rows)),
         "error_catch_recall": _safe_rate(counts["useful_reject"], detector_errors),
@@ -669,16 +620,11 @@ def curve_metrics(points: Sequence[dict[str, Any]]) -> dict[str, Any]:
             float(value["detector_pass_risk"] or 0.0),
         ),
     )
-    coverage = np.asarray(
-        [float(value["detector_coverage"] or 0.0) for value in ordered]
-    )
-    selective_risk = np.asarray(
-        [float(value["detector_pass_risk"] or 0.0) for value in ordered]
-    )
+    coverage = np.asarray([float(value["detector_coverage"] or 0.0) for value in ordered])
+    selective_risk = np.asarray([float(value["detector_pass_risk"] or 0.0) for value in ordered])
     generalized_risk = np.asarray(
         [
-            int(value["gate_table"]["silent_failure"])
-            / max(1, int(value["sample_count"]))
+            int(value["gate_table"]["silent_failure"]) / max(1, int(value["sample_count"]))
             for value in ordered
         ]
     )
@@ -694,12 +640,8 @@ def curve_metrics(points: Sequence[dict[str, Any]]) -> dict[str, Any]:
                 ordered, coverage, selective_risk, generalized_risk
             )
         ],
-        "aurc": float(np.trapezoid(selective_risk, coverage))
-        if len(ordered) > 1
-        else 0.0,
-        "augrc": float(np.trapezoid(generalized_risk, coverage))
-        if len(ordered) > 1
-        else 0.0,
+        "aurc": float(np.trapezoid(selective_risk, coverage)) if len(ordered) > 1 else 0.0,
+        "augrc": float(np.trapezoid(generalized_risk, coverage)) if len(ordered) > 1 else 0.0,
     }
 
 
@@ -718,14 +660,10 @@ def evaluate_policy(
     rows = []
     for image_index, (record, prediction) in enumerate(zip(records, predictions)):
         applied = (
-            cache.apply(image_index, record, prediction, policy)
-            if cache is not None
-            else None
+            cache.apply(image_index, record, prediction, policy) if cache is not None else None
         )
         diagnostics = (
-            cache.diagnostics(
-                image_index, applied["detections"], record["annotations"]
-            )
+            cache.diagnostics(image_index, applied["detections"], record["annotations"])
             if cache is not None
             else None
         )
@@ -811,8 +749,7 @@ def select_candidate(
     return {
         "schema_version": "1.0",
         "selection_rule": (
-            "risk_u95_constraints_then_safe_auto_pass_then_worst_group_coverage_"
-            "then_augrc"
+            "risk_u95_constraints_then_safe_auto_pass_then_worst_group_coverage_then_augrc"
         ),
         "promotion_status": status,
         "eligible_candidate_count": len(eligible),
@@ -839,16 +776,12 @@ def assert_no_split_leakage(records: Iterable[dict[str, Any]]) -> None:
             key = (field, str(value))
             previous = seen.setdefault(key, split)
             if previous != split:
-                raise ValueError(
-                    f"split leakage for {field}={value}: {previous} vs {split}"
-                )
+                raise ValueError(f"split leakage for {field}={value}: {previous} vs {split}")
             if split == "development" and record.get("fold") is not None:
                 fold = int(record["fold"])
                 previous_fold = folds.setdefault(key, fold)
                 if previous_fold != fold:
-                    raise ValueError(
-                        f"fold leakage for {field}={value}: {previous_fold} vs {fold}"
-                    )
+                    raise ValueError(f"fold leakage for {field}={value}: {previous_fold} vs {fold}")
 
 
 def sha256_paths(paths: dict[str, Path]) -> dict[str, str]:

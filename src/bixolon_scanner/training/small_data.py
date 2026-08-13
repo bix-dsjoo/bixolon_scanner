@@ -37,9 +37,7 @@ def apply_layer_norm(
     mean = values.mean(axis=-1, keepdims=True)
     variance = values.var(axis=-1, keepdims=True)
     normalized = (values - mean) / np.sqrt(variance + float(epsilon))
-    return normalized * np.asarray(weight, dtype=np.float32) + np.asarray(
-        bias, dtype=np.float32
-    )
+    return normalized * np.asarray(weight, dtype=np.float32) + np.asarray(bias, dtype=np.float32)
 
 
 def fit_cosine_prototype_head(
@@ -62,9 +60,7 @@ def fit_cosine_prototype_head(
             f"prototype construction requires classes {expected.tolist()}, got {observed.tolist()}"
         )
     counts = np.bincount(targets, minlength=num_classes).astype(np.int64)
-    prototypes = np.stack(
-        [values[targets == class_index].mean(axis=0) for class_index in expected]
-    )
+    prototypes = np.stack([values[targets == class_index].mean(axis=0) for class_index in expected])
     return PrototypeHead(
         weights=l2_normalize(prototypes),
         bias=np.zeros(num_classes, dtype=np.float32),
@@ -89,9 +85,9 @@ def brightness_c2_frofa(
     maximum = values.max(axis=1, keepdims=True)
     span = np.maximum(maximum - minimum, 1e-6)
     mapped = (values - minimum) / span
-    delta = rng.uniform(
-        -magnitude, magnitude, size=(len(values), 1, values.shape[-1])
-    ).astype(np.float32)
+    delta = rng.uniform(-magnitude, magnitude, size=(len(values), 1, values.shape[-1])).astype(
+        np.float32
+    )
     augmented = np.clip(mapped + delta, 0.0, 1.0)
     return augmented * span + minimum
 

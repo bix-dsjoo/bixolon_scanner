@@ -31,8 +31,8 @@ from .selective_detector import (
     select_candidate,
     sha256_paths,
 )
-from .train_detector import detector_optimizer_recipe, train as train_detector
-
+from .train_detector import detector_optimizer_recipe
+from .train_detector import train as train_detector
 
 PHASES = (
     "prepare",
@@ -50,9 +50,7 @@ PHASES = (
 
 def _write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
+    path.write_text(json.dumps(value, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def _write_jsonl(path: Path, values: Iterable[dict[str, Any]]) -> None:
@@ -124,9 +122,7 @@ def _group_values(record: dict[str, Any]) -> dict[str, Any]:
         "novel_object": record.get("novel_object", False),
     }
     boxes = [annotation.get("bbox_xywh", annotation.get("bbox")) for annotation in annotations]
-    groups["small_object"] = any(
-        float(box[2]) * float(box[3]) / image_area < 0.01 for box in boxes
-    )
+    groups["small_object"] = any(float(box[2]) * float(box[3]) / image_area < 0.01 for box in boxes)
     groups["border_contact"] = any(
         float(box[0]) <= 0
         or float(box[1]) <= 0
@@ -269,9 +265,7 @@ def _training_namespace(
     )
 
 
-def _legacy_recipe_is_neutral_extension(
-    stored: dict[str, Any], current: dict[str, Any]
-) -> bool:
+def _legacy_recipe_is_neutral_extension(stored: dict[str, Any], current: dict[str, Any]) -> bool:
     neutral = {
         "freeze_mode": "none",
         "frozen_modules_eval": False,
@@ -295,9 +289,7 @@ def _migrate_neutral_resume_recipe(namespace: Namespace) -> None:
     stored = run.get("optimizer_recipe")
     if stored == current:
         return
-    if not isinstance(stored, dict) or not _legacy_recipe_is_neutral_extension(
-        stored, current
-    ):
+    if not isinstance(stored, dict) or not _legacy_recipe_is_neutral_extension(stored, current):
         return
     import torch
 
@@ -423,9 +415,7 @@ def _attach_classifier_outputs(
     if classification_batch_size < 1:
         raise ValueError("classification_batch_size must be positive")
     package = load_model_package(classifier_package)
-    _, classifier, _ = build_onnx_adapters(
-        package, provider, cuda_dll_dir=cuda_dll_dir
-    )
+    _, classifier, _ = build_onnx_adapters(package, provider, cuda_dll_dir=cuda_dll_dir)
     labels = package.metadata.classifier.labels
     temperature = float(package.metadata.classifier.temperature)
     for record, prediction in zip(records, predictions):
@@ -435,22 +425,23 @@ def _attach_classifier_outputs(
             Detection(*[float(value) for value in box], float(score))
             for box, score in zip(prediction["boxes_xyxy"], prediction["scores"])
         ]
-        candidate_indices = _classification_candidate_indices(
-            prediction, nms_iou_thresholds
-        )
+        candidate_indices = _classification_candidate_indices(prediction, nms_iou_thresholds)
         detections = [raw_detections[index] for index in candidate_indices]
         if not detections:
             prediction["classifications"] = {}
             continue
-        logits = np.concatenate(
-            [
-                classifier.classify(
-                    image, detections[start : start + classification_batch_size]
-                )
-                for start in range(0, len(detections), classification_batch_size)
-            ],
-            axis=0,
-        ).astype(np.float64) / temperature
+        logits = (
+            np.concatenate(
+                [
+                    classifier.classify(
+                        image, detections[start : start + classification_batch_size]
+                    )
+                    for start in range(0, len(detections), classification_batch_size)
+                ],
+                axis=0,
+            ).astype(np.float64)
+            / temperature
+        )
         logits -= logits.max(axis=1, keepdims=True)
         probabilities = np.exp(logits)
         probabilities /= probabilities.sum(axis=1, keepdims=True)
@@ -463,11 +454,9 @@ def _attach_classifier_outputs(
                 "recapture": bool(labels[int(order[0])].recapture),
                 "touches_border": (
                     detections[index].x1
-                    <= int(record["width"])
-                    * float(package.metadata.quality.border_margin_ratio)
+                    <= int(record["width"]) * float(package.metadata.quality.border_margin_ratio)
                     or detections[index].y1
-                    <= int(record["height"])
-                    * float(package.metadata.quality.border_margin_ratio)
+                    <= int(record["height"]) * float(package.metadata.quality.border_margin_ratio)
                     or detections[index].x2
                     >= int(record["width"])
                     * (1.0 - float(package.metadata.quality.border_margin_ratio))
@@ -490,19 +479,11 @@ def _classification_candidate_indices(
     raw = [
         IndexedDetection(
             index=index,
-            detection=Detection(
-                *[float(value) for value in box], float(score)
-            ),
+            detection=Detection(*[float(value) for value in box], float(score)),
         )
-        for index, (box, score) in enumerate(
-            zip(prediction["boxes_xyxy"], prediction["scores"])
-        )
+        for index, (box, score) in enumerate(zip(prediction["boxes_xyxy"], prediction["scores"]))
     ]
-    selected = {
-        item.index
-        for threshold in thresholds
-        for item in _indexed_nms(raw, threshold)
-    }
+    selected = {item.index for threshold in thresholds for item in _indexed_nms(raw, threshold)}
     return sorted(selected)
 
 
@@ -517,12 +498,7 @@ def cache(args: argparse.Namespace, config: dict[str, Any]) -> None:
     prepared = args.output_dir / "prepared"
     for model_id, _, checkpoint, single_checkpoint in _model_specs(args, config):
         for name in ("natural", "hard"):
-            cache_path = (
-                args.output_dir
-                / "cache"
-                / model_id
-                / f"{name}-development.jsonl"
-            )
+            cache_path = args.output_dir / "cache" / model_id / f"{name}-development.jsonl"
             if args.resume and cache_path.is_file():
                 continue
             records = [
@@ -620,12 +596,8 @@ def _candidate_summaries(
                 **curve,
                 "failure_auroc_by_threshold": [
                     {
-                        "score_threshold": member["natural"]["policy"][
-                            "score_threshold"
-                        ],
-                        "failure_auroc": member["natural"]["metrics"][
-                            "failure_auroc"
-                        ],
+                        "score_threshold": member["natural"]["policy"]["score_threshold"],
+                        "failure_auroc": member["natural"]["metrics"]["failure_auroc"],
                     }
                     for member in members
                 ],
@@ -706,12 +678,7 @@ def lock(args: argparse.Namespace, config: dict[str, Any]) -> None:
     else:
         epochs = round(
             statistics.median(
-                _best_epoch(
-                    args.output_dir
-                    / "detector"
-                    / f"seed-{seed}"
-                    / f"fold-{fold}"
-                )
+                _best_epoch(args.output_dir / "detector" / f"seed-{seed}" / f"fold-{fold}")
                 for fold in range(3)
             )
         )
@@ -734,9 +701,7 @@ def lock(args: argparse.Namespace, config: dict[str, Any]) -> None:
         "hard_manifest": args.hard_manifest,
         "shift_manifest": args.shift_manifest,
         "selection": decision_path,
-        "policy_sweep": args.output_dir
-        / "reports"
-        / "development-policy-sweep.json",
+        "policy_sweep": args.output_dir / "reports" / "development-policy-sweep.json",
         "classifier_metadata": args.classifier_package / "metadata.json",
         "classifier_onnx": load_model_package(args.classifier_package).classifier_path,
     }
@@ -766,15 +731,8 @@ def lock(args: argparse.Namespace, config: dict[str, Any]) -> None:
 def verify_lock(args: argparse.Namespace) -> dict[str, Any]:
     lock_path = args.output_dir / "lock" / "pretest-lock.json"
     lock = _load_json(lock_path)
-    current = sha256_paths(
-        {name: Path(path) for name, path in lock["paths"].items()}
-    )
-    current.update(
-        {
-            name: _tree_sha256(Path(path))
-            for name, path in lock["tree_paths"].items()
-        }
-    )
+    current = sha256_paths({name: Path(path) for name, path in lock["paths"].items()})
+    current.update({name: _tree_sha256(Path(path)) for name, path in lock["tree_paths"].items()})
     if current != lock["hashes"]:
         raise ValueError("0.2.5 pretest lock changed before test evaluation")
     return lock
@@ -850,9 +808,7 @@ def export_package(args: argparse.Namespace, config: dict[str, Any]) -> None:
     from .export import export_models
 
     audit = _load_json(args.output_dir / "prepared" / "audit.json")
-    selected = _load_json(args.output_dir / "reports" / "development-selection.json")[
-        "selected"
-    ]
+    selected = _load_json(args.output_dir / "reports" / "development-selection.json")["selected"]
     metrics = selected["natural"]["metrics"]
     policy = selected["natural"]["policy"]
     detector_report = {
@@ -883,9 +839,7 @@ def export_package(args: argparse.Namespace, config: dict[str, Any]) -> None:
             detector_size=int(config["training"]["image_size"]),
             uncertainty_score_threshold=policy["uncertainty_score_threshold"],
             uncertainty_min_area_ratio=policy["uncertainty_min_area_ratio"],
-            uncertainty_match_iou_threshold=policy[
-                "uncertainty_match_iou_threshold"
-            ],
+            uncertainty_match_iou_threshold=policy["uncertainty_match_iou_threshold"],
             crop_margin=0.05,
             resize_reducing_gap=1.0,
             classifier_warmup_max_batch=7,
@@ -927,34 +881,25 @@ def parity(args: argparse.Namespace, config: dict[str, Any]) -> None:
         "top3_set_and_order_equal",
         "final_state_equal",
     )
-    strict_reports = [
-        report for report in reports if isinstance(report.get("checks"), dict)
-    ]
-    provider_reports = [
-        report for report in reports if str(report.get("provider", "")).lower()
-    ]
+    strict_reports = [report for report in reports if isinstance(report.get("checks"), dict)]
+    provider_reports = [report for report in reports if str(report.get("provider", "")).lower()]
     if len(reports) == 1 and strict_reports:
         checks = {name: bool(reports[0]["checks"].get(name)) for name in required}
     elif len(strict_reports) == 1 and len(provider_reports) == 2:
         strict = strict_reports[0]
-        by_provider = {
-            str(report["provider"]).lower(): report for report in provider_reports
-        }
+        by_provider = {str(report["provider"]).lower(): report for report in provider_reports}
         if set(by_provider) != {"cpu", "cuda"}:
             raise ValueError("detector parity evidence requires CPU and CUDA reports")
         cpu = by_provider["cpu"]
         cuda = by_provider["cuda"]
         package_metadata_hashes = {
-            report.get("package_artifact_sha256", {}).get("metadata.json")
-            for report in reports
+            report.get("package_artifact_sha256", {}).get("metadata.json") for report in reports
         }
         same_package = len(package_metadata_hashes) == 1 and None not in package_metadata_hashes
         detector_passes = bool(cpu.get("detector", {}).get("passes")) and bool(
             cuda.get("detector", {}).get("passes")
         )
-        checks = {
-            name: bool(strict["checks"].get(name)) for name in required
-        }
+        checks = {name: bool(strict["checks"].get(name)) for name in required}
         checks["pytorch_cpu_tolerance"] &= bool(cpu.get("passes"))
         checks["pytorch_cuda_tolerance"] &= bool(cuda.get("passes"))
         checks["cpu_cuda_tolerance"] &= same_package and detector_passes
@@ -965,15 +910,11 @@ def parity(args: argparse.Namespace, config: dict[str, Any]) -> None:
             raise ValueError("generic parity evidence requires both CPU and CUDA reports")
         cpu = by_provider["cpu"]
         cuda = by_provider["cuda"]
-        same_package = cpu.get("package_artifact_sha256") == cuda.get(
-            "package_artifact_sha256"
-        )
+        same_package = cpu.get("package_artifact_sha256") == cuda.get("package_artifact_sha256")
         checks = {
             "pytorch_cpu_tolerance": bool(cpu.get("passes")),
             "pytorch_cuda_tolerance": bool(cuda.get("passes")),
-            "cpu_cuda_tolerance": bool(
-                same_package and cpu.get("passes") and cuda.get("passes")
-            ),
+            "cpu_cuda_tolerance": bool(same_package and cpu.get("passes") and cuda.get("passes")),
             "top1_equal": bool(
                 cpu.get("classifier", {}).get("top3_equal")
                 and cuda.get("classifier", {}).get("top3_equal")
@@ -1029,19 +970,13 @@ def finalize(args: argparse.Namespace, config: dict[str, Any]) -> None:
     unknown_top3 = natural.get("unknown_top3_accuracy")
     checks = {
         "independent_data_ready": bool(test_report["data_evidence_ready"]),
-        "detector_pass_risk_u95": float(natural["detector_pass_risk_upper_95"])
-        <= 0.005,
-        "e2e_approved_risk_u95": float(natural["e2e_approved_risk_upper_95"])
-        <= 0.005,
-        "detector_silent_failure_zero": int(
-            natural["gate_table"]["silent_failure"]
-        )
-        == 0,
+        "detector_pass_risk_u95": float(natural["detector_pass_risk_upper_95"]) <= 0.005,
+        "e2e_approved_risk_u95": float(natural["e2e_approved_risk_upper_95"]) <= 0.005,
+        "detector_silent_failure_zero": int(natural["gate_table"]["silent_failure"]) == 0,
         "e2e_approved_error_zero": int(natural["approved_error_count"]) == 0,
         "hard_error_catch_recall": hard.get("error_catch_recall") is not None
         and float(hard["error_catch_recall"]) >= 0.99,
-        "unknown_top3_accuracy": unknown_top3 is not None
-        and float(unknown_top3) >= 0.95,
+        "unknown_top3_accuracy": unknown_top3 is not None and float(unknown_top3) >= 0.95,
         "parity": bool(parity_gate["passed"]),
         "full_path_latency": bool(benchmark_gate["passed"]),
     }

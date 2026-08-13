@@ -15,7 +15,9 @@ from .calibration import (
 )
 
 
-def wilson_interval(successes: int, count: int, z: float = 1.959963984540054) -> tuple[float, float]:
+def wilson_interval(
+    successes: int, count: int, z: float = 1.959963984540054
+) -> tuple[float, float]:
     if count == 0:
         return 0.0, 1.0
     rate = successes / count
@@ -45,12 +47,12 @@ def evaluate_predictions(
     approved_correct = int((predictions[approved] == targets[approved]).sum())
     approved_count = int(approved.sum())
     unknown = ~approved
-    unknown_top3 = topk_accuracy(probabilities[unknown], targets[unknown]) if unknown.any() else None
+    unknown_top3 = (
+        topk_accuracy(probabilities[unknown], targets[unknown]) if unknown.any() else None
+    )
     precision_interval = wilson_interval(approved_correct, approved_count)
     approved_precision = approved_correct / approved_count if approved_count else 1.0
-    false_rate_upper = binomial_rate_upper_bound(
-        approved_count - approved_correct, approved_count
-    )
+    false_rate_upper = binomial_rate_upper_bound(approved_count - approved_correct, approved_count)
     return {
         "sample_count": int(len(targets)),
         "temperature": temperature,
@@ -76,7 +78,9 @@ def evaluate_predictions(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Calibrate and evaluate classifier prediction archives")
+    parser = argparse.ArgumentParser(
+        description="Calibrate and evaluate classifier prediction archives"
+    )
     parser.add_argument("--predictions", type=Path, required=True, nargs="+")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--calibration-report", type=Path)
