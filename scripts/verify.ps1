@@ -36,3 +36,5 @@ if (-not $SkipFlutter) {
     Invoke-Checked $Flutter @("analyze") $app
     Invoke-Checked $Flutter @("test") $app
 }
+
+Invoke-Checked "git" @("diff", "--check") $root

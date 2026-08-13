@@ -1,0 +1,25 @@
+# 문서 인덱스
+
+문서는 현재 계약, 작업 가이드, 운영 상태와 실험 기록을 분리합니다. 구현과 함께 유지해야 하는 공개 계약은 `contracts`, 변경 절차는 `guides`, 시점에 따라 달라지는 값은 `status`, 모델 후보의 근거는 `experiments`에서 관리합니다.
+
+## 기준 문서
+
+- [아키텍처 개요](architecture/overview.md): Python과 Flutter의 소유권 및 의존 방향
+- [API 계약](contracts/api.md): `POST /v1/scan`, 네 상태, 오류와 응답 규칙
+- [개발 가이드](guides/development.md): 설치, CLI, 설정, 검증 절차
+- [모델 승격 가이드](guides/model-promotion.md): 실험 수명주기와 수동 gate
+- [현재 상태](status/current.md): 운영·실험 버전과 승격 여부
+
+## 실험 기록
+
+- [Bread](experiments/bread/README.md)
+- [Detector](experiments/detector/README.md)
+- [RPC200](experiments/rpc200/README.md)
+
+실험 문서는 재현성과 의사결정 근거를 위한 기록입니다. 보고서에 `promoted`가 명시되지 않은 모델을 운영 기본값으로 해석하지 않습니다.
+
+## 앱 문서
+
+- [Flutter 앱 운영·개발](../apps/product_scanner/README.md)
+- [현재 디자인 시스템 계약](../apps/product_scanner/DESIGN_SYSTEM.md)
+- [디자인 시스템 개선 이력](../apps/product_scanner/docs/DESIGN_SYSTEM_HISTORY.md)

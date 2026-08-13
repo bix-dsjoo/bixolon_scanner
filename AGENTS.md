@@ -15,19 +15,50 @@
 
 `ERROR`를 `RECAPTURE`로 변환하지 마십시오. 모델 판정과 시스템 장애는 서로 다른 도메인입니다.
 
-## 권장 코드 영역
+## 코드 소유권과 의존 방향
 
-새 코드를 추가할 때는 책임을 다음 영역으로 분리하십시오. 실제 디렉터리 이름이 정해지면 이 목록과 README를 함께 갱신하십시오.
+Python canonical 코드는 `src/bixolon_scanner` 아래의 다음 영역에 둡니다.
 
-- Worker API: multipart 입력 검증, 응답 직렬화, HTTP 오류 매핑
-- Pipeline: detector → 조기 종료 → ROI → classifier → 최종 상태 결정
-- Inference adapter: ONNX Runtime session, CPU/CUDA provider 선택, tensor 변환
-- Training: detector 및 classifier PyTorch 학습
-- Evaluation/benchmark: 정확도, PyTorch/ONNX parity, 지연 및 회귀 측정
-- Configuration/model package: 전처리, 라벨, 임계값, 버전, checksum
-- Tests: 상태 계약, 오류 처리, provider 호환성, 성능 회귀
+- `contracts`: API schema, 오류, 이미지와 모델 package 계약
+- `pipeline`: detector → 조기 종료 → ROI batch → classifier → 최종 상태를 결정하는 단일 정책
+- `runtime`: 이미지 decode, 전처리·후처리, ONNX Runtime session과 CPU/CUDA provider
+- `worker`: FastAPI, 환경 설정, 구조화 로그와 실행 조립
+- `training`: 재사용 가능한 데이터셋, 모델, trainer와 calibration
+- `evaluation`: 정확도, PyTorch/ONNX parity, 지연과 회귀 측정
+- `experiments`: bread, detector, RPC200 버전별 orchestration
+- `operations`: 운영 로그 수집과 검수 export
+- `cli.py`: 통합 `bixolon` 명령과 기존 console command 호환 alias
 
-API, 파이프라인 정책, 추론 엔진과 학습 코드 사이에 순환 의존성을 만들지 마십시오. 상태 결정은 한 곳에서 수행하고 HTTP 계층이나 모델 어댑터에 중복 구현하지 마십시오.
+운영 요청 경로의 의존 방향은 `worker → pipeline/runtime → contracts`입니다. `worker`는 `training`, `evaluation`, `experiments`, PyTorch를 import할 수 없습니다. `runtime`에도 PyTorch를 추가하지 마십시오. 실험은 `training`과 `evaluation`을 조립할 수 있지만 반대 방향 import는 허용하지 않습니다.
+
+상태 결정은 `pipeline` 한 곳에서 수행하고 HTTP 계층이나 모델 adapter에 복제하지 마십시오. 여러 영역에서 사용하는 NMS, IoU, RGB 변환 등의 함수는 `runtime`의 명시적인 내부 공용 API로 승격하며 다른 모듈의 private 함수를 import하지 마십시오.
+
+루트의 `api.py`, `pipeline.py`, `inference.py`, `package.py` 등과 과거 `training.*` 실험 경로는 호환 계층입니다. 새 구현을 호환 파일에 추가하지 마십시오. 이 경로와 기존 `bixolon-*` 명령은 Python `0.3.x`까지 유지하며 제거는 `0.4.0` 이상의 migration을 포함한 변경에서만 허용합니다.
+
+Flutter canonical 코드는 `apps/product_scanner/lib`의 `core/design_system`, `shared`, `features/scanner`, `features/activity`에 둡니다. 과거 `screens`, `services`, `models`, `widgets` 파일은 import 호환 export 계층입니다. feature 사이에서 화면 구현을 직접 참조하지 말고 공용 데이터 계약은 `shared`, 재사용 UI는 `core/design_system`이 소유합니다.
+
+## 버전 구분
+
+다음 버전은 서로 독립적인 계약입니다.
+
+- Python 배포 버전: `pyproject.toml`과 `bixolon_scanner.__version__`
+- 모델 package 버전: detector, classifier, metadata와 checksum의 운영 단위
+- 데이터셋 버전: manifest, label, split과 촬영 provenance
+- Flutter 앱 버전: 작업자 UI와 Windows bundle
+
+한 축의 버전 변경이나 배포가 다른 축의 자동 승격을 의미하지 않습니다. 현재 Python은 `0.2.0`, 운영 모델 package는 `bread-worker-0.1.1`, Flutter 앱은 `1.0.0+1`입니다. Detector `0.2.5`는 `experiment_only`이며 운영 기본값으로 사용하지 마십시오.
+
+## 실험 수명주기
+
+모든 모델 실험은 `proposal → active → promoted/rejected → archive` 수명주기를 따릅니다.
+
+- `proposal`: 가설, 데이터, KPI, 중단 조건을 문서화합니다.
+- `active`: 재현 가능한 설정과 canonical CLI 경로가 있어야 합니다.
+- `promoted`: 잠긴 정확도·parity·성능 gate를 모두 통과하고 운영 package 채택을 명시합니다.
+- `rejected`: 실패 gate와 근거를 보고서에 남깁니다.
+- `archive`: 완료, 거절 또는 prototype 설정을 `configs/archive`와 실험 문서에 보존합니다.
+
+통합 CLI에는 최신 active 실험과 재현 가능한 공용 파이프라인만 노출하십시오. `experiment_only`, rejected 또는 archive 결과를 운영 설정에 자동 반영하지 마십시오.
 
 ## 변경할 수 없는 파이프라인 계약
 
@@ -83,7 +114,7 @@ API, 파이프라인 정책, 추론 엔진과 학습 코드 사이에 순환 의
 - 데이터 수정, 라벨 정책 변경, split 재생성은 데이터셋 버전을 올리고 재현 가능한 기록을 남기십시오.
 - Detector 재촬영 조건과 classifier의 명시적 품질 클래스는 서로 구분되는 라벨과 reason code를 사용하십시오.
 
-모델 승격 순서는 `PyTorch checkpoint → 고정 평가셋 KPI 검증 → ONNX export → PyTorch/ONNX parity → 패키징 → Worker benchmark`입니다. 중간 검증을 생략한 모델을 운영 패키지로 표시하지 마십시오.
+모델 승격 순서는 `PyTorch checkpoint → 고정 validation KPI → ONNX export → PyTorch/CPU/CUDA parity → 패키징 → 잠긴 test KPI → Worker benchmark → 승격 결정`입니다. 중간 검증을 생략한 모델을 운영 패키지로 표시하지 마십시오.
 
 ## 성능 및 품질 게이트
 
@@ -133,3 +164,15 @@ API, 파이프라인 정책, 추론 엔진과 학습 코드 사이에 순환 의
 - 실제 설치, 실행, 학습, export, 평가 명령이 생기면 검증한 명령만 README에 추가하십시오.
 - 문서는 한국어를 기본으로 작성하되 코드 식별자, 상태, API 필드와 reason code는 영어를 유지하십시오.
 - `RECAPTURE` 철자를 일관되게 사용하십시오.
+
+## 변경 단계 완료 조건
+
+구조 변경은 가능한 한 다음 경계를 독립 커밋으로 유지하고 각 단계에서 관련 검증을 완료하십시오.
+
+1. 저장소 기준선: ignore, 버전, Ruff, 검증 스크립트와 CI가 일치해야 합니다.
+2. 운영 계층: `contracts`, `pipeline`, `runtime`, `worker` 경계와 기존 import 호환 테스트가 통과해야 합니다.
+3. ML·도구 계층: `training`, `evaluation`, `experiments`, `operations`, 통합 CLI와 설정 redirect가 검증되어야 합니다.
+4. Flutter: feature 경계, analyze, 전체 test와 Golden 무변경을 확인해야 합니다.
+5. 문서: README, 이 파일, 문서 인덱스, 내부 링크와 실제 버전·실험 상태가 일치해야 합니다.
+
+최종 변경은 `ruff check`, `ruff format --check`, 전체 Python 테스트, `flutter analyze`, 전체 Flutter 테스트와 `git diff --check`를 통과해야 합니다. CUDA parity, RTX 5080 benchmark와 원본 데이터 KPI가 필요한 변경은 결과를 문서화한 수동 gate가 끝나기 전까지 운영 승격으로 표시하지 마십시오.

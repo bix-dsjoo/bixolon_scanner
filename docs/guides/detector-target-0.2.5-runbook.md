@@ -10,7 +10,7 @@
 4. 적격 후보 중 `Safe Auto-Pass Rate` 최대
 5. worst-group coverage, AUGRC, seed와 canonical policy JSON 순 tie-break
 
-`2026-08-13` 실행은 코드·선택·lock·test·ONNX parity·RTX 5080 benchmark까지 완료했지만 정확도와 독립 데이터 gate를 통과하지 못했다. 최종 상태는 `experiment_only`이며 운영 기본 package `bread-worker-0.1.1`은 유지한다. 실제 수치는 [0.2.5 결과 보고서](../reports/detector-target-0.2.5.md)에 기록한다.
+`2026-08-13` 실행은 코드·선택·lock·test·ONNX parity·RTX 5080 benchmark까지 완료했지만 정확도와 독립 데이터 gate를 통과하지 못했다. 최종 상태는 `experiment_only`이며 운영 기본 package `bread-worker-0.1.1`은 유지한다. 실제 수치는 [0.2.5 결과 보고서](../experiments/detector/detector-target-0.2.5.md)에 기록한다.
 
 ## 재실행 전 데이터 조건
 

@@ -9,6 +9,20 @@ Windows 작업자가 카메라 또는 JPEG/PNG 이미지에서 검출된 빵을 
 - Visual Studio 2022 Build Tools와 Desktop development with C++ 구성 요소
 - `bixolon-worker` 명령이 설치된 Python Worker 환경
 
+## 코드 구조
+
+앱은 feature-first 경계를 사용합니다.
+
+```text
+lib/
+├─ core/design_system/       토큰, 테마, 카피, 공통 컴포넌트
+├─ shared/                   API 모델과 상품 카탈로그
+├─ features/scanner/         스캔 domain/application/data/presentation
+└─ features/activity/        활동 domain/data/presentation
+```
+
+과거 `screens`, `services`, `models`, `widgets` 경로는 기존 import 호환을 위한 export 계층입니다. 새 구현은 canonical feature 경로에 추가합니다.
+
 ## 실행
 
 기본 Worker 주소는 `http://127.0.0.1:8000`입니다. Windows 앱을 실행하면 Worker도 숨김 자식 프로세스로 자동 실행되며, 모델 warm-up이 끝나기 전에 분석을 눌러도 readiness가 열릴 때까지 기다립니다. 앱이 직접 시작한 Worker는 앱 종료 시 함께 종료됩니다. 이미 같은 주소에 Worker가 실행 중이면 해당 서버를 계속 사용합니다.
@@ -79,6 +93,7 @@ UI는 번들된 Pretendard Variable을 사용합니다. 글꼴은 `assets/fonts/
 ## UI 기준
 
 - 상세 토큰, 컴포넌트, 접근성 계약은 [`DESIGN_SYSTEM.md`](DESIGN_SYSTEM.md)를 따릅니다.
+- 누적 검수와 변경 과정은 [디자인 시스템 개선 이력](docs/DESIGN_SYSTEM_HISTORY.md)에 보존하며 현재 계약을 대체하지 않습니다.
 - 토스플레이스의 [POS](https://tossplace.com/product/pos), [키오스크](https://tossplace.com/product/kiosk), [Front Template API](https://docs.tossplace.com/reference/plugin-sdk/front/template.html)에서 확인한 단일 핵심 행동, 큰 선택 영역, 표준 선택 화면, 단계적 정보 공개 패턴을 운영 검수 흐름에 맞게 적용합니다.
 - BIXOLON Orange `#EE7203`을 선택과 Primary action에 사용하고 Orange 배경의 텍스트는 Ink `#171717`을 사용합니다.
 - Pretendard의 화면 위계는 `AppTypography`의 `12/18·13/20·14/20·15/20·16/24·18/26·24/32`, `400·500·600·700` 굵기와 역할별 tracking만 사용하며 화면에서 글자 값을 직접 만들지 않습니다.
