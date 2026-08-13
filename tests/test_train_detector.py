@@ -6,9 +6,13 @@ from argparse import Namespace
 
 import pytest
 
+from bixolon_scanner.training.data import DetectionDataset
 from bixolon_scanner.training.train_detector import (
+    configure_detector_freeze,
+    detector_dataset_plan,
     detector_optimizer_parameter_groups,
     detector_optimizer_recipe,
+    enforce_frozen_modules_eval,
     evaluate_detector_validation_predictions,
     initialize_detector_classification_head_biases,
     postprocess_detector_validation_batch,
@@ -25,6 +29,10 @@ def _args(**overrides):
         "class_head_prior_probability": 0.5,
         "warmup_epochs": 0,
         "weight_decay": 1e-4,
+        "freeze_mode": "none",
+        "frozen_modules_eval": False,
+        "skip_epoch_validation": False,
+        "workers": 0,
         "epochs": 100,
         "min_score_threshold": 0.05,
         "max_score_threshold": 0.95,
@@ -43,6 +51,7 @@ def _tiny_detector(torch):
         def __init__(self):
             super().__init__()
             self.backbone = torch.nn.Linear(3, 4)
+            self.encoder = torch.nn.Linear(4, 4)
             self.enc_score_head = torch.nn.Linear(4, 1)
             self.denoising_class_embed = torch.nn.Embedding(2, 4)
 
@@ -53,6 +62,7 @@ def _tiny_detector(torch):
             self.class_embed = torch.nn.ModuleList(
                 [torch.nn.Linear(4, 1), torch.nn.Linear(4, 1)]
             )
+            self.bbox_embed = torch.nn.Linear(4, 4)
 
     return Detector()
 
@@ -111,6 +121,10 @@ def test_optimizer_recipe_records_all_resume_sensitive_values():
         "randomly_reinitialized_learning_rate": 1e-5,
         "head_lr_multiplier": 1.0,
         "weight_decay": 1e-4,
+        "freeze_mode": "none",
+        "frozen_modules_eval": False,
+        "skip_epoch_validation": False,
+        "workers": 0,
         "class_head_prior_probability": 0.5,
         "class_head_bias": pytest.approx(0.0),
         "scheduler": "cosine",
@@ -134,6 +148,177 @@ def test_optimizer_recipe_records_all_resume_sensitive_values():
     }
 
 
+def test_skip_epoch_validation_keeps_fold_excluding_train_dataset_plan(tmp_path):
+    training_mode, validation_mode = detector_dataset_plan(
+        Namespace(final_training=False, skip_epoch_validation=True)
+    )
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text(
+        "\n".join(
+            json.dumps(
+                {
+                    "record_type": "detection",
+                    "split": "development",
+                    "fold": fold,
+                    "image_id": fold + 1,
+                    "image_path": f"image-{fold}.jpg",
+                    "annotations": [],
+                }
+            )
+            for fold in (0, 1)
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    training_dataset = DetectionDataset(
+        manifest, tmp_path, mode=training_mode, fold=0
+    )
+
+    assert training_mode == "train"
+    assert validation_mode is None
+    assert [record["image_id"] for record in training_dataset.records] == [2]
+    assert detector_dataset_plan(
+        Namespace(final_training=False, skip_epoch_validation=False)
+    ) == ("train", "validation")
+
+
+def test_adaptation_source_replay_never_enters_heldout_validation(tmp_path):
+    manifest = tmp_path / "manifest.jsonl"
+    records = []
+    for fold in (0, 1):
+        original = {
+            "record_type": "detection",
+            "split": "development",
+            "fold": fold,
+            "image_id": fold + 1,
+            "image_path": f"image-{fold}.jpg",
+            "annotations": [],
+        }
+        records.append(original)
+        records.extend(
+            {
+                **original,
+                "adaptation_replay_only": True,
+                "adaptation_replay_index": replay_index,
+            }
+            for replay_index in range(1, 8)
+        )
+    manifest.write_text(
+        "\n".join(json.dumps(record) for record in records) + "\n",
+        encoding="utf-8",
+    )
+
+    training = DetectionDataset(manifest, tmp_path, mode="train", fold=0)
+    validation = DetectionDataset(manifest, tmp_path, mode="validation", fold=0)
+    final_training = DetectionDataset(manifest, tmp_path, mode="final_train", fold=0)
+
+    assert len(training.records) == 8
+    assert {record["fold"] for record in training.records} == {1}
+    assert [record["image_id"] for record in validation.records] == [1]
+    assert len(final_training.records) == 16
+
+
+def test_classification_heads_only_freezes_base_and_keeps_frozen_bn_in_eval():
+    torch = pytest.importorskip("torch")
+    model = _tiny_detector(torch)
+    model.model.backbone = torch.nn.Sequential(
+        torch.nn.Linear(3, 4), torch.nn.BatchNorm1d(4)
+    )
+    recipe = detector_optimizer_recipe(
+        _args(freeze_mode="classification_heads_only", frozen_modules_eval=True)
+    )
+
+    configure_detector_freeze(model, recipe)
+    groups = detector_optimizer_parameter_groups(model, recipe)
+    model.train()
+    enforce_frozen_modules_eval(model, recipe)
+    frozen_before = {
+        name: parameter.detach().clone()
+        for name, parameter in model.named_parameters()
+        if not parameter.requires_grad
+    }
+    heads_before = {
+        name: parameter.detach().clone()
+        for name, parameter in model.named_parameters()
+        if parameter.requires_grad
+    }
+    running_mean_before = model.model.backbone[1].running_mean.detach().clone()
+    features = model.model.backbone(torch.randn(4, 3))
+    loss = model.model.enc_score_head(features).sum()
+    loss += sum(head(features).sum() for head in model.class_embed)
+    loss += model.model.denoising_class_embed.weight.sum()
+    optimizer = torch.optim.AdamW(groups, weight_decay=recipe["weight_decay"])
+    loss.backward()
+    optimizer.step()
+
+    assert [group["group_name"] for group in groups] == [
+        "randomly_reinitialized_modules"
+    ]
+    assert not model.model.backbone.training
+    assert model.model.enc_score_head.training
+    assert all(not parameter.requires_grad for parameter in model.model.backbone.parameters())
+    assert all(
+        parameter.requires_grad
+        for module in [
+            model.model.enc_score_head,
+            *model.class_embed,
+            model.model.denoising_class_embed,
+        ]
+        for parameter in module.parameters()
+    )
+    assert all(
+        torch.equal(parameter, frozen_before[name])
+        for name, parameter in model.named_parameters()
+        if name in frozen_before
+    )
+    assert any(
+        not torch.equal(parameter, heads_before[name])
+        for name, parameter in model.named_parameters()
+        if name in heads_before
+    )
+    assert torch.equal(model.model.backbone[1].running_mean, running_mean_before)
+
+
+def test_visual_backbone_only_freezes_backbone_and_trains_hybrid_and_heads():
+    torch = pytest.importorskip("torch")
+    model = _tiny_detector(torch)
+    model.model.backbone = torch.nn.Sequential(
+        torch.nn.Linear(3, 4), torch.nn.BatchNorm1d(4)
+    )
+    recipe = detector_optimizer_recipe(
+        _args(freeze_mode="visual_backbone_only", frozen_modules_eval=True)
+    )
+
+    configure_detector_freeze(model, recipe)
+    groups = detector_optimizer_parameter_groups(model, recipe)
+    model.train()
+    enforce_frozen_modules_eval(model, recipe)
+
+    assert [group["group_name"] for group in groups] == [
+        "base",
+        "randomly_reinitialized_modules",
+    ]
+    assert all(
+        not parameter.requires_grad for parameter in model.model.backbone.parameters()
+    )
+    assert all(parameter.requires_grad for parameter in model.model.encoder.parameters())
+    assert all(parameter.requires_grad for parameter in model.bbox_embed.parameters())
+    assert all(parameter.requires_grad for parameter in model.class_embed.parameters())
+    assert not model.model.backbone.training
+    assert not model.model.backbone[1].training
+    assert model.model.encoder.training
+    assert model.bbox_embed.training
+    running_mean = model.model.backbone[1].running_mean.detach().clone()
+    model.model.backbone(torch.randn(4, 3))
+    assert torch.equal(model.model.backbone[1].running_mean, running_mean)
+    grouped_ids = {
+        id(parameter) for group in groups for parameter in group["params"]
+    }
+    assert grouped_ids == {
+        id(parameter) for parameter in model.parameters() if parameter.requires_grad
+    }
+
+
 def test_resume_rejects_any_optimizer_recipe_change():
     args = _args()
     recipe = detector_optimizer_recipe(args)
@@ -153,6 +338,16 @@ def test_resume_rejects_any_optimizer_recipe_change():
     changed_metrics = detector_optimizer_recipe(_args(nms_iou_threshold=0.6))
     with pytest.raises(ValueError, match="identity mismatch"):
         validate_detector_progress_identity(progress, identity, changed_metrics)
+
+    changed_validation = detector_optimizer_recipe(_args(skip_epoch_validation=True))
+    with pytest.raises(ValueError, match="identity mismatch"):
+        validate_detector_progress_identity(progress, identity, changed_validation)
+
+    changed_freeze = detector_optimizer_recipe(
+        _args(freeze_mode="visual_backbone_only", frozen_modules_eval=True)
+    )
+    with pytest.raises(ValueError, match="identity mismatch"):
+        validate_detector_progress_identity(progress, identity, changed_freeze)
 
 
 def test_resume_run_provenance_requires_exact_optimizer_recipe(tmp_path):
@@ -183,6 +378,59 @@ def test_metric_candidate_selection_prefers_recall_gate_then_count_precision_thr
     selected, key = select_detector_metric_candidate(candidates, 1.0)
     assert selected["recall"] == 0.999
     assert key == (0.0, 0.999, 0.4, 0.7)
+
+
+def test_selective_checkpoint_mode_prioritizes_zero_silent_failures():
+    records = [
+        {
+            "image_id": 1,
+            "width": 100,
+            "height": 100,
+            "annotations": [{"bbox_xywh": [10.0, 10.0, 30.0, 30.0]}],
+        },
+        {
+            "image_id": 2,
+            "width": 100,
+            "height": 100,
+            "annotations": [{"bbox_xywh": [10.0, 10.0, 30.0, 30.0]}],
+        },
+    ]
+    predictions = [
+        {
+            "image_id": 1,
+            "boxes_xyxy": [[10.0, 10.0, 40.0, 40.0]],
+            "scores": [0.9],
+        },
+        {
+            "image_id": 2,
+            "boxes_xyxy": [[60.0, 60.0, 90.0, 90.0]],
+            "scores": [0.4],
+        },
+    ]
+    recipe = {
+        "checkpoint_selection": {
+            "policy": "silent_failure_then_safe_pass_exact_image_loss",
+            "mode": "selective_image_risk",
+            "min_score_threshold": 0.3,
+            "max_score_threshold": 0.5,
+            "threshold_steps": 2,
+            "nms_iou_threshold": 0.7,
+            "match_iou_threshold": 0.5,
+            "target_recall": 0.99,
+            "max_queries": 300,
+            "maximum_risk_upper_95": 0.005,
+            "uncertainty_score_threshold": None,
+            "uncertainty_min_area_ratio": 0.0,
+            "uncertainty_match_iou_threshold": 0.5,
+            "min_object_area_ratio": 0.005,
+        }
+    }
+
+    result = evaluate_detector_validation_predictions(records, predictions, recipe)
+
+    assert result["selected_score_threshold"] == 0.5
+    assert result["detector_metrics"]["silent_failure_images"] == 0
+    assert result["detector_metrics"]["safe_pass_images"] == 1
 
 
 def test_validation_metrics_use_zero_threshold_predictions_and_select_grid_candidate():

@@ -27,8 +27,12 @@ def export_models(args: argparse.Namespace) -> None:
     detector_evaluation = json.loads(args.detector_evaluation_report.read_text(encoding="utf-8"))
     classifier_path = args.output_dir / "classifier.onnx"
     reused_metadata = None
+    reused_classifier_source_version = None
+    reused_classifier_source_sha256 = None
     if args.reuse_classifier_package is not None:
         reused_metadata = _copy_reused_classifier(args.reuse_classifier_package, classifier_path)
+        reused_classifier_source_version = str(reused_metadata["classifier"]["version"])
+        reused_classifier_source_sha256 = sha256_file(classifier_path)
     else:
         if args.classifier_checkpoint is None or args.calibration_report is None:
             raise ValueError(
@@ -47,6 +51,10 @@ def export_models(args: argparse.Namespace) -> None:
                 if classifier_checkpoint.get("source_revision")
                 else "facebookresearch/dinov3"
             ),
+            classifier_head_kind=classifier_checkpoint.get(
+                "classifier_head_kind", "linear"
+            ),
+            cosine_scale=float(classifier_checkpoint.get("cosine_scale", 16.0)),
         )
         classifier.load_state_dict(classifier_checkpoint["state_dict"])
         classifier.eval()
@@ -106,7 +114,10 @@ def export_models(args: argparse.Namespace) -> None:
         classifier_metadata = dict(reused_metadata["classifier"])
         classifier_metadata["filename"] = classifier_path.name
         if classifier_metadata["version"] != args.classifier_version:
-            raise ValueError("reused classifier version does not match --classifier-version")
+            if bool(getattr(args, "relabel_reused_classifier", False)):
+                classifier_metadata["version"] = args.classifier_version
+            else:
+                raise ValueError("reused classifier version does not match --classifier-version")
         if [label["class_id"] for label in classifier_metadata["labels"]] != [
             label["class_id"] for label in labels
         ]:
@@ -196,9 +207,26 @@ def export_models(args: argparse.Namespace) -> None:
             "target_recall_satisfied": detector_evaluation["target_recall_satisfied"],
         },
     }
+    target_provenance = getattr(args, "detector_target_provenance", None)
+    if target_provenance is not None:
+        if reused_metadata is None:
+            raise ValueError("detector target mode requires a frozen reused classifier")
+        metadata["bundle_provenance"] = {
+            "target_mode": "detector_safety_first_0.2.5",
+            "model_version": args.package_version,
+            "classifier_source_version": reused_classifier_source_version,
+            "classifier_source_sha256": reused_classifier_source_sha256,
+            "detector_selection_sha256": target_provenance[
+                "selection_report_sha256"
+            ],
+            "evaluation_dataset_versions": target_provenance[
+                "evaluation_dataset_versions"
+            ],
+        }
     (args.output_dir / "metadata.json").write_text(
         json.dumps(metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+    load_model_package(args.output_dir)
 
 
 def main() -> None:
@@ -217,6 +245,11 @@ def main() -> None:
     parser.add_argument("--package-version", default="0.1.0")
     parser.add_argument("--detector-version", default="0.1.0")
     parser.add_argument("--classifier-version", default="0.1.0")
+    parser.add_argument(
+        "--relabel-reused-classifier",
+        action="store_true",
+        help="Expose the reused classifier under the package-wide inference version.",
+    )
     parser.add_argument("--detector-size", type=int, default=640)
     parser.add_argument("--uncertainty-score-threshold", type=float)
     parser.add_argument("--uncertainty-min-area-ratio", type=float, default=0.0)

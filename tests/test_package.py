@@ -157,3 +157,48 @@ def test_schema_10_rejects_uncertainty_area_policy(tmp_path):
 
     with pytest.raises(PackageValidationError):
         load_model_package(tmp_path)
+
+
+def test_detector_target_bundle_requires_one_shared_model_version(tmp_path):
+    detector = tmp_path / "detector.onnx"
+    classifier = tmp_path / "classifier.onnx"
+    detector.write_bytes(b"detector")
+    classifier.write_bytes(b"classifier")
+    metadata = _metadata(sha256_file(detector), sha256_file(classifier))
+    metadata.update(
+        {
+            "schema_version": "1.1",
+            "package_version": "0.2.5",
+            "bundle_provenance": {
+                "target_mode": "detector_safety_first_0.2.5",
+                "model_version": "0.2.5",
+                "classifier_source_version": "0.2.4",
+                "classifier_source_sha256": sha256_file(classifier),
+                "detector_selection_sha256": "a" * 64,
+                "evaluation_dataset_versions": {
+                    "natural": "natural-v1",
+                    "hard": "hard-v1",
+                    "shift": "shift-v1",
+                },
+            },
+        }
+    )
+    metadata["detector"]["version"] = "0.2.5"
+    metadata["classifier"]["version"] = "0.2.5"
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
+    package = load_model_package(tmp_path)
+    assert package.metadata.package_version == "0.2.5"
+    assert package.metadata.detector.version == "0.2.5"
+    assert package.metadata.classifier.version == "0.2.5"
+    assert package.metadata.bundle_provenance.classifier_source_version == "0.2.4"
+    assert package.metadata.bundle_provenance.evaluation_dataset_versions == {
+        "natural": "natural-v1",
+        "hard": "hard-v1",
+        "shift": "shift-v1",
+    }
+
+    metadata["classifier"]["version"] = "0.2.4"
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    with pytest.raises(PackageValidationError):
+        load_model_package(tmp_path)

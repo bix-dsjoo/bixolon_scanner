@@ -192,6 +192,44 @@ class DetectorEvaluationMetadata(BaseModel):
     target_recall_satisfied: bool
 
 
+class BundleProvenance(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    target_mode: Literal["detector_safety_first_0.2.5"]
+    model_version: str
+    classifier_source_version: str
+    classifier_source_sha256: str
+    detector_selection_sha256: str
+    evaluation_dataset_versions: dict[str, str]
+
+    @field_validator("model_version", "classifier_source_version")
+    @classmethod
+    def validate_versions(cls, value: str) -> str:
+        if not SEMVER.fullmatch(value):
+            raise ValueError("bundle provenance versions must use semantic versioning")
+        return value
+
+    @field_validator("classifier_source_sha256", "detector_selection_sha256")
+    @classmethod
+    def validate_sha256(cls, value: str) -> str:
+        if not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise ValueError("bundle provenance requires lowercase SHA-256 digests")
+        return value
+
+    @field_validator("evaluation_dataset_versions")
+    @classmethod
+    def validate_evaluation_dataset_versions(
+        cls, value: dict[str, str]
+    ) -> dict[str, str]:
+        if set(value) != {"natural", "hard", "shift"}:
+            raise ValueError(
+                "bundle provenance requires natural/hard/shift dataset versions"
+            )
+        if any(not version.strip() for version in value.values()):
+            raise ValueError("evaluation dataset versions cannot be empty")
+        return value
+
+
 class PromotionWaiver(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -244,6 +282,7 @@ class ModelPackageMetadata(BaseModel):
     sources: dict[str, ModelSource] = Field(default_factory=dict)
     calibration: CalibrationMetadata | None = None
     detector_evaluation: DetectorEvaluationMetadata | None = None
+    bundle_provenance: BundleProvenance | None = None
     promotion: PromotionMetadata | None = None
 
     @field_validator("package_version")
@@ -264,6 +303,18 @@ class ModelPackageMetadata(BaseModel):
             or self.quality.border_policy != "always_recapture"
         ):
             raise ValueError("schema 1.1 is required for confidence quality policies")
+        if self.bundle_provenance is not None:
+            if self.schema_version != "1.1":
+                raise ValueError("bundle provenance requires schema 1.1")
+            if not (
+                self.package_version
+                == self.detector.version
+                == self.classifier.version
+                == self.bundle_provenance.model_version
+            ):
+                raise ValueError(
+                    "detector target packages require one shared inference model version"
+                )
         return self
 
 

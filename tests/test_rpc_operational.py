@@ -53,12 +53,21 @@ def _locked_training_root(tmp_path: Path) -> tuple[Path, Path]:
                 "min_object_area_ratio": 0.005,
                 "border_margin_ratio": 0.002,
                 "border_policy": "classifier_confidence",
+                "domain_adaptation": {
+                    "epochs": 1,
+                    "patience": 1,
+                    "learning_rate": 2.5e-7,
+                    "seed": 20260810,
+                    "samples_per_surface_camera": 2,
+                },
             },
             "training": {"image_size": 224, "eval_margin_ratio": 0.05},
         },
     )
+    detector_dir = root / "detector"
+    active_threshold = detector_dir / "threshold.json"
     _write_json(
-        root / "detector" / "threshold.json",
+        active_threshold,
         {
             "threshold_policy": "calibration_oof_only",
             "selected_score_threshold": 0.42,
@@ -69,6 +78,86 @@ def _locked_training_root(tmp_path: Path) -> tuple[Path, Path]:
                 "precision": 0.98,
                 "count_accuracy": 0.97,
             },
+            "selection_threshold_policy": "frozen_calibration_threshold",
+            "selection_score_threshold": 0.42,
+            "selection_metrics": {
+                "recall": 0.992,
+                "precision": 0.975,
+                "count_accuracy": 0.965,
+                "score_threshold": 0.42,
+            },
+            "selection_target_recall_satisfied": True,
+            "frozen_threshold_selection_gate": True,
+        },
+    )
+    target_oof_gate = detector_dir / "domain-adaptation" / "target_oof_gate.json"
+    _write_json(
+        target_oof_gate,
+        {
+            "passes": True,
+            "bbox_recall": 0.995,
+            "exact_normal_rate": 0.995,
+            "class_coverage": 1.0,
+            "failure_reasons": [],
+        },
+    )
+    _write_json(
+        detector_dir / "baseline" / "complete.json",
+        {
+            "checkpoint_set": "baseline",
+            "artifact_root": ".",
+        },
+    )
+    adaptation_manifest = (
+        detector_dir / "domain-adaptation" / "manifest" / "manifest.jsonl"
+    )
+    adaptation_manifest.parent.mkdir(parents=True, exist_ok=True)
+    adaptation_manifest.write_text('{"sample":1}\n', encoding="utf-8")
+    _write_json(adaptation_manifest.parent / "metadata.json", {"complete": True})
+    train_gate_complete = detector_dir / "train-gate" / "complete.json"
+    _write_json(
+        train_gate_complete,
+        {
+            "role": "train_gate_only",
+            "complete": True,
+            "baseline_frozen_selection_gate": {
+                "selection_threshold_policy": "frozen_calibration_threshold",
+                "selection_score_threshold": 0.42,
+                "selection_metrics": {
+                    "recall": 0.992,
+                    "precision": 0.975,
+                    "count_accuracy": 0.965,
+                    "score_threshold": 0.42,
+                },
+                "selection_target_recall_satisfied": True,
+                "frozen_threshold_selection_gate": True,
+            },
+        },
+    )
+    final_checkpoint = (
+        detector_dir
+        / "final"
+        / "stage-a-base"
+        / "best"
+        / "model.safetensors"
+    )
+    final_checkpoint.parent.mkdir(parents=True, exist_ok=True)
+    final_checkpoint.write_bytes(b"final-detector")
+    _write_json(
+        detector_dir / "final" / "stage-a-base" / "complete.json",
+        {"complete": True},
+    )
+    _write_json(
+        detector_dir / "final" / "complete.json",
+        {
+            "complete": True,
+            "contract": "rpc-final-detector-baseline-val-all-v1",
+            "target_adaptation_stage": "disabled_train_gate_only",
+            "operational_detector_role": "checkout_baseline_val_all_operational",
+            "train_gate_role": "offline_roi_train_gate_only",
+            "active_threshold_sha256": sha256_file(active_threshold),
+            "stage_a_checkpoint_sha256": sha256_file(final_checkpoint),
+            "train_gate_complete_sha256": sha256_file(train_gate_complete),
         },
     )
     _write_json(
@@ -97,16 +186,30 @@ def _locked_training_root(tmp_path: Path) -> tuple[Path, Path]:
         },
     )
     _write_json(run_dir / "selection_report.json", {"ok": True})
-    _write_json(
-        root / "model_lock.json",
-        {
+    lock = {
+            "status": "validation_passed",
+            "operational_gate": True,
             "mode": "full_dataset",
             "model_run": "runs/full/seed20260810",
             "checkpoint_sha256": sha256_file(run_dir / "best.pt"),
             "calibration_sha256": sha256_file(run_dir / "calibration.json"),
             "selection_report_sha256": sha256_file(run_dir / "selection_report.json"),
-        },
-    )
+            "rpc_config_sha256": sha256_file(config_path),
+            "active_detector_complete_sha256": sha256_file(
+                detector_dir / "baseline" / "complete.json"
+            ),
+            "active_detector_threshold_sha256": sha256_file(active_threshold),
+            "detector_train_gate_complete_sha256": sha256_file(
+                train_gate_complete
+            ),
+            "final_detector_complete_sha256": sha256_file(
+                detector_dir / "final" / "complete.json"
+            ),
+            "final_detector_checkpoint_sha256": sha256_file(final_checkpoint),
+            "operational_detector_role": "checkout_baseline_val_all_operational",
+            "train_gate_role": "offline_roi_train_gate_only",
+        }
+    _write_json(root / "model_lock.json", lock)
     return root, config_path
 
 
@@ -120,6 +223,14 @@ def test_package_inputs_preserves_rpc_logit_order_and_checksums(tmp_path: Path):
     export_config = json.loads((destination / "export-config.json").read_text())
 
     assert detector["metrics"]["recall"] == 0.995
+    assert detector["detector_role"] == "checkout_baseline_operational"
+    assert detector["selection_threshold_policy"] == "frozen_calibration_threshold"
+    assert detector["selection_score_threshold"] == 0.42
+    assert detector["selection_metrics"]["recall"] == 0.992
+    assert detector["frozen_threshold_selection_gate"] is True
+    assert detector["train_gate_complete_sha256"] == sha256_file(
+        root / "detector" / "train-gate" / "complete.json"
+    )
     assert detector["nms_iou_threshold"] == 0.7
     assert calibration["sample_count"] == 100
     assert [row["category_id"] for row in metadata["labels"]] == list(range(1, 201))
@@ -129,11 +240,61 @@ def test_package_inputs_preserves_rpc_logit_order_and_checksums(tmp_path: Path):
     assert export_config["export"]["uncertainty_min_area_ratio"] == 0.039
     assert export_config["export"]["crop_margin"] == 0.05
     assert export_config["expected_package_metadata"]["detector"]["max_queries"] == 300
+    assert first["inputs"]["detector_threshold"] == sha256_file(
+        root / "detector" / "threshold.json"
+    )
+    assert first["inputs"]["final_detector_checkpoint"] == json.loads(
+        (root / "model_lock.json").read_text()
+    )["final_detector_checkpoint_sha256"]
+    assert "detector_train_gate_complete" in first["inputs"]
     assert first == package_inputs(root, config, resume=True)
 
+    threshold_path = root / "detector" / "threshold.json"
+    threshold_payload = json.loads(threshold_path.read_text())
+    threshold_payload["threshold_policy"] = "target_selected_forbidden"
+    _write_json(threshold_path, threshold_payload)
+    lock_path = root / "model_lock.json"
+    lock_payload = json.loads(lock_path.read_text())
+    lock_payload["active_detector_threshold_sha256"] = sha256_file(threshold_path)
+    final_complete_path = root / "detector" / "final" / "complete.json"
+    final_complete_payload = json.loads(final_complete_path.read_text())
+    final_complete_payload["active_threshold_sha256"] = sha256_file(threshold_path)
+    _write_json(final_complete_path, final_complete_payload)
+    lock_payload["final_detector_complete_sha256"] = sha256_file(final_complete_path)
+    _write_json(lock_path, lock_payload)
+    with pytest.raises(ValueError, match="immutable baseline calibration"):
+        package_inputs(root, config)
+
     config.write_text(config.read_text() + "\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="input checksums"):
+    with pytest.raises(ValueError, match="rpc_config_sha256"):
         package_inputs(root, config, resume=True)
+
+
+def test_package_inputs_never_accepts_train_gate_as_operational_detector(
+    tmp_path: Path,
+):
+    root, config = _locked_training_root(tmp_path)
+    baseline_path = root / "detector" / "baseline" / "complete.json"
+    _write_json(
+        baseline_path,
+        {
+            "checkpoint_set": "domain_adaptation",
+            "role": "train_gate_only",
+            "artifact_root": "adaptation-attempts/forbidden",
+        },
+    )
+    lock_path = root / "model_lock.json"
+    lock = json.loads(lock_path.read_text())
+    lock["active_detector_complete_sha256"] = sha256_file(baseline_path)
+    final_path = root / "detector" / "final" / "complete.json"
+    final = json.loads(final_path.read_text())
+    final["active_detector_complete_sha256"] = sha256_file(baseline_path)
+    _write_json(final_path, final)
+    lock["final_detector_complete_sha256"] = sha256_file(final_path)
+    _write_json(lock_path, lock)
+
+    with pytest.raises(ValueError, match="immutable checkout baseline"):
+        package_inputs(root, config)
 
 
 def test_benchmark_manifest_is_deterministic_and_only_uses_full_path_frames(
@@ -616,7 +777,8 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
     labels = manifest_metadata["labels"]
     dataset_version = manifest_metadata["dataset_version"]
     _package(package_dir, labels, dataset_version)
-    detector_checkpoint_sha256 = "d" * 64
+    model_lock = json.loads((root / "model_lock.json").read_text())
+    detector_checkpoint_sha256 = model_lock["final_detector_checkpoint_sha256"]
     rpc_root = tmp_path / "rpc"
     (rpc_root / "test2019").mkdir(parents=True)
     (rpc_root / "test2019" / "frame-1.jpg").write_bytes(b"benchmark-image")
@@ -642,6 +804,18 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
         root / "test" / "detector_report.json",
         {
             "detector_checkpoint_sha256": detector_checkpoint_sha256,
+            "final_detector_complete_sha256": model_lock[
+                "final_detector_complete_sha256"
+            ],
+            "model_lock_sha256": sha256_file(root / "model_lock.json"),
+            "active_detector_threshold_sha256": model_lock[
+                "active_detector_threshold_sha256"
+            ],
+            "train_gate_complete_sha256": model_lock[
+                "detector_train_gate_complete_sha256"
+            ],
+            "operational_detector_role": "checkout_baseline_val_all_operational",
+            "train_gate_role": "offline_roi_train_gate_only",
             "test_annotation_sha256": sha256_file(
                 rpc_root / "instances_test2019.json"
             ),
@@ -668,7 +842,6 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
         "classifier_version": "1.0.0",
         "package_artifact_sha256": package_hashes,
     }
-    model_lock = json.loads((root / "model_lock.json").read_text())
     detector_report_sha256 = sha256_file(root / "test" / "detector_report.json")
     _write_json(
         root / "reports" / "final_test.json",
@@ -853,7 +1026,7 @@ def test_integrate_marks_recapture_not_evaluable_and_enforces_latency_gate(tmp_p
         )
     benchmark_image.write_bytes(benchmark_image_bytes)
     config_path.write_text(config_path.read_text() + "\n", encoding="utf-8")
-    with pytest.raises(ValueError, match="source artifacts"):
+    with pytest.raises(ValueError, match="rpc_config_sha256"):
         integrate(
             root, package_dir, config_path=config_path, parity_report_paths=parities
         )
@@ -898,5 +1071,29 @@ def test_operation_plan_blocks_final_test_until_model_lock_exists(tmp_path: Path
     assert by_id["final_test"]["status"] == "blocked"
     assert by_id["final_test"]["missing_required_inputs"] == [
         str((root / "model_lock.json").resolve())
+    ]
+    assert "final_test" not in report["next_steps"]
+
+
+def test_operation_plan_blocks_final_test_when_validation_lock_failed(tmp_path: Path):
+    root = tmp_path / "experiment"
+    config_path = tmp_path / "config.json"
+    _write_json(config_path, {"experiment": {"mode": "full_dataset"}})
+    _write_json(
+        root / "model_lock.json",
+        {
+            "status": "validation_gate_failed",
+            "operational_gate": False,
+        },
+    )
+
+    report = operation_plan(root, tmp_path / "package", config_path=config_path)
+
+    final_test = {stage["id"]: stage for stage in report["stages"]}["final_test"]
+    assert final_test["status"] == "blocked"
+    assert final_test["missing_required_inputs"] == []
+    assert final_test["authorization_failures"] == [
+        "VALIDATION_GATE_NOT_PASSED",
+        "OPERATIONAL_GATE_NOT_PASSED",
     ]
     assert "final_test" not in report["next_steps"]

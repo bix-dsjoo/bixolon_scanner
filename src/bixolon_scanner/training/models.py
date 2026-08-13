@@ -31,6 +31,7 @@ def build_dino_classifier(
     support_per_class: int | None = None,
     hybrid_knn_k: int = 3,
     hybrid_prototype_weight: float = 0.5,
+    cosine_scale: float = 16.0,
 ):
     torch = require_torch()
 
@@ -66,6 +67,24 @@ def build_dino_classifier(
                 + (1.0 - self.prototype_weight) * knn_scores
             )
 
+    class CosineClassifierHead(torch.nn.Module):
+        def __init__(self, hidden_size: int):
+            super().__init__()
+            if cosine_scale <= 0.0:
+                raise ValueError("cosine classifier scale must be positive")
+            self.weight = torch.nn.Parameter(torch.empty(num_classes, hidden_size))
+            torch.nn.init.trunc_normal_(self.weight, std=0.02)
+            self.scale = float(cosine_scale)
+
+        def forward(self, features):
+            normalized_features = torch.nn.functional.normalize(
+                features, p=2.0, dim=-1, eps=1e-12
+            )
+            normalized_weight = torch.nn.functional.normalize(
+                self.weight, p=2.0, dim=-1, eps=1e-12
+            )
+            return self.scale * normalized_features @ normalized_weight.transpose(0, 1)
+
     class DinoClassifier(torch.nn.Module):
         def __init__(self, backbone, hidden_size: int, kind: str):
             super().__init__()
@@ -74,12 +93,14 @@ def build_dino_classifier(
             self.feature_l2_normalize = feature_l2_normalize
             if classifier_head_kind == "linear":
                 self.classifier = torch.nn.Linear(hidden_size, num_classes)
+            elif classifier_head_kind == "cosine":
+                self.classifier = CosineClassifierHead(hidden_size)
             elif classifier_head_kind == "prototype_knn_hybrid":
                 self.classifier = PrototypeKnnHybridHead(hidden_size)
             else:
                 raise ValueError(f"unsupported classifier head: {classifier_head_kind}")
 
-        def forward(self, pixel_values):
+        def extract_features(self, pixel_values):
             if self.backbone_kind == "dinov2":
                 features = self.backbone(pixel_values=pixel_values).last_hidden_state[
                     :, 0
@@ -90,6 +111,10 @@ def build_dino_classifier(
                 features = torch.nn.functional.normalize(
                     features, p=2.0, dim=-1, eps=1e-12
                 )
+            return features
+
+        def forward(self, pixel_values):
+            features = self.extract_features(pixel_values)
             return self.classifier(features)
 
     if backbone_kind == "dinov2":
@@ -117,10 +142,32 @@ def build_dino_classifier(
     raise ValueError(f"unsupported classifier backbone: {backbone_kind}")
 
 
-def set_frozen_backbone(model, *, unfreeze_last_blocks: int = 0) -> None:
+def set_frozen_backbone(
+    model,
+    *,
+    unfreeze_last_blocks: int = 0,
+    unfreeze_last_stages: int = 0,
+    unfreeze_all: bool = False,
+) -> None:
+    if sum(bool(value) for value in (unfreeze_last_blocks, unfreeze_last_stages, unfreeze_all)) > 1:
+        raise ValueError("choose one backbone unfreezing policy")
     for parameter in model.backbone.parameters():
         parameter.requires_grad = False
-    if unfreeze_last_blocks:
+    if unfreeze_all:
+        for parameter in model.backbone.parameters():
+            parameter.requires_grad = True
+    elif unfreeze_last_stages:
+        if model.backbone_kind != "dinov3_convnext_tiny":
+            raise ValueError("stage unfreezing is only supported for ConvNeXt backbones")
+        stages = model.backbone.stages
+        if not 1 <= unfreeze_last_stages <= len(stages):
+            raise ValueError("unfreeze_last_stages exceeds the ConvNeXt stage count")
+        for stage in stages[-unfreeze_last_stages:]:
+            for parameter in stage.parameters():
+                parameter.requires_grad = True
+        for parameter in model.backbone.norm.parameters():
+            parameter.requires_grad = True
+    elif unfreeze_last_blocks:
         if model.backbone_kind == "dinov2":
             blocks = model.backbone.encoder.layer
             normalization = model.backbone.layernorm

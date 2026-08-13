@@ -267,6 +267,20 @@ def _validate_package_bridge_metadata(
     detector_evaluation: dict[str, Any],
     classifier_calibration: dict[str, Any],
 ) -> None:
+    if (
+        detector_evaluation.get("detector_role")
+        != "checkout_baseline_operational"
+        or detector_evaluation.get("threshold_policy") != "calibration_oof_only"
+        or detector_evaluation.get("selection_threshold_policy")
+        != "frozen_calibration_threshold"
+        or detector_evaluation.get("frozen_threshold_selection_gate") is not True
+        or detector_evaluation.get("selection_target_recall_satisfied") is not True
+        or not isinstance(detector_evaluation.get("selection_metrics"), dict)
+        or not isinstance(
+            detector_evaluation.get("train_gate_complete_sha256"), str
+        )
+    ):
+        raise ValueError("package operational baseline detector evidence is invalid")
     comparisons = (
         (
             package.metadata.detector.score_threshold,
@@ -428,7 +442,57 @@ def _validate_resume(ledger_path: Path, inputs: dict[str, str], output_dir: Path
 def _validate_full_dataset_inputs(
     output_root: Path, config_path: Path
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], Path, dict[str, Path]]:
-    threshold_path = output_root / "detector" / "threshold.json"
+    detector_dir = output_root / "detector"
+    detector_complete_path = detector_dir / "baseline" / "complete.json"
+    detector_complete = _read_json(detector_complete_path)
+    if (
+        detector_complete.get("checkpoint_set") != "baseline"
+        or detector_complete.get("role") == "train_gate_only"
+    ):
+        raise ValueError("operational detector must be the immutable checkout baseline")
+    artifact_root = str(detector_complete.get("artifact_root", "."))
+    threshold_path = (detector_dir / artifact_root / "threshold.json").resolve()
+    try:
+        threshold_path.relative_to(detector_dir.resolve())
+    except ValueError as exc:
+        raise ValueError("active detector threshold escapes detector directory") from exc
+    train_gate_complete_path = detector_dir / "train-gate" / "complete.json"
+    train_gate_complete = _read_json(train_gate_complete_path)
+    if train_gate_complete.get("role") != "train_gate_only":
+        raise ValueError("detector train-gate marker has an invalid role")
+    selection_gate = train_gate_complete.get("baseline_frozen_selection_gate")
+    if (
+        not isinstance(selection_gate, dict)
+        or selection_gate.get("selection_threshold_policy")
+        != "frozen_calibration_threshold"
+        or selection_gate.get("frozen_threshold_selection_gate") is not True
+        or selection_gate.get("selection_target_recall_satisfied") is not True
+    ):
+        raise ValueError("baseline frozen-threshold selection gate is invalid")
+    final_complete_path = detector_dir / "final" / "complete.json"
+    final_complete = _read_json(final_complete_path)
+    if (
+        final_complete.get("contract")
+        != "rpc-final-detector-baseline-val-all-v1"
+        or final_complete.get("target_adaptation_stage")
+        != "disabled_train_gate_only"
+        or final_complete.get("operational_detector_role")
+        != "checkout_baseline_val_all_operational"
+        or final_complete.get("train_gate_role") != "offline_roi_train_gate_only"
+    ):
+        raise ValueError("operational final detector role is invalid")
+    checkpoint_root = detector_dir / "final" / "stage-a-base" / "best"
+    checkpoint_candidates = [
+        path
+        for path in (
+            checkpoint_root / "model.safetensors",
+            checkpoint_root / "pytorch_model.bin",
+        )
+        if path.is_file()
+    ]
+    if len(checkpoint_candidates) != 1:
+        raise ValueError("final detector checkpoint weights are missing or ambiguous")
+    final_checkpoint_path = checkpoint_candidates[0]
     experiment_path = output_root / "prepared" / "experiment.json"
     lock_path = output_root / "model_lock.json"
     config = _read_json(config_path)
@@ -445,6 +509,12 @@ def _validate_full_dataset_inputs(
         raise ValueError("prepared experiment is not the locked 200-class full dataset")
     if lock.get("mode") != "full_dataset" or not lock.get("model_run"):
         raise ValueError("model_lock.json does not identify a full-dataset model run")
+    if (
+        lock.get("operational_detector_role")
+        != "checkout_baseline_val_all_operational"
+        or lock.get("train_gate_role") != "offline_roi_train_gate_only"
+    ):
+        raise ValueError("model lock detector role separation is invalid")
     configured_seeds = config["experiment"].get("seeds")
     if configured_seeds:
         if len(configured_seeds) != 1:
@@ -456,7 +526,11 @@ def _validate_full_dataset_inputs(
     calibration_path = run_dir / "calibration.json"
     paths = {
         "config": config_path,
+        "detector_complete": detector_complete_path,
         "detector_threshold": threshold_path,
+        "detector_train_gate_complete": train_gate_complete_path,
+        "final_detector_complete": final_complete_path,
+        "final_detector_checkpoint": final_checkpoint_path,
         "prepared_experiment": experiment_path,
         "classifier_calibration": calibration_path,
         "model_lock": lock_path,
@@ -471,6 +545,26 @@ def _validate_full_dataset_inputs(
         if field in lock:
             if not path.is_file() or sha256_file(path) != lock[field]:
                 raise ValueError(f"model lock checksum mismatch: {path.name}")
+    detector_lock_artifacts = {
+        "rpc_config_sha256": config_path,
+        "active_detector_complete_sha256": detector_complete_path,
+        "active_detector_threshold_sha256": threshold_path,
+        "detector_train_gate_complete_sha256": train_gate_complete_path,
+        "final_detector_complete_sha256": final_complete_path,
+        "final_detector_checkpoint_sha256": final_checkpoint_path,
+    }
+    for field, path in detector_lock_artifacts.items():
+        if not path.is_file() or lock.get(field) != sha256_file(path):
+            raise ValueError(f"model lock checksum mismatch: {field}")
+    if (
+        final_complete.get("active_threshold_sha256")
+        != lock["active_detector_threshold_sha256"]
+        or final_complete.get("stage_a_checkpoint_sha256")
+        != lock["final_detector_checkpoint_sha256"]
+        or final_complete.get("train_gate_complete_sha256")
+        != lock["detector_train_gate_complete_sha256"]
+    ):
+        raise ValueError("final detector complete marker is not bound to the model lock")
     return config, experiment, lock, run_dir, paths
 
 
@@ -514,10 +608,19 @@ def package_inputs(
     if resume and _validate_resume(ledger_path, input_hashes, destination):
         return _read_json(ledger_path)
 
-    threshold = _read_json(output_root / "detector" / "threshold.json")
+    threshold = _read_json(input_paths["detector_threshold"])
     metrics = threshold.get("calibration_metrics")
     if not isinstance(metrics, dict):
         raise ValueError("detector threshold has no calibration_metrics")
+    if threshold.get("threshold_policy") != "calibration_oof_only":
+        raise ValueError("operational detector requires immutable baseline calibration")
+    selection_gate = _read_json(input_paths["detector_train_gate_complete"])[
+        "baseline_frozen_selection_gate"
+    ]
+    if float(selection_gate["selection_score_threshold"]) != float(
+        threshold["selected_score_threshold"]
+    ):
+        raise ValueError("baseline frozen-threshold selection score is invalid")
     detector_options = config.get("detector", {})
     detector_evaluation = {
         "schema_version": SCHEMA_VERSION,
@@ -527,6 +630,19 @@ def package_inputs(
         "target_recall": float(threshold["target_recall"]),
         "target_recall_satisfied": bool(threshold["target_recall_satisfied"]),
         "metrics": metrics,
+        "selection_threshold_policy": selection_gate[
+            "selection_threshold_policy"
+        ],
+        "selection_score_threshold": float(
+            selection_gate["selection_score_threshold"]
+        ),
+        "selection_metrics": selection_gate["selection_metrics"],
+        "selection_target_recall_satisfied": True,
+        "frozen_threshold_selection_gate": True,
+        "detector_role": "checkout_baseline_operational",
+        "train_gate_complete_sha256": sha256_file(
+            input_paths["detector_train_gate_complete"]
+        ),
     }
 
     calibration = _read_json(run_dir / "calibration.json")
@@ -1530,13 +1646,31 @@ def integrate(
         locked_path = locked_run_dir / filename
         if not locked_path.is_file() or sha256_file(locked_path) != model_lock.get(field):
             raise ValueError(f"model lock checksum mismatch: {filename}")
-    bridge_input_paths = {
-        "config": config_path,
-        "detector_threshold": output_root / "detector" / "threshold.json",
-        "prepared_experiment": output_root / "prepared" / "experiment.json",
-        "classifier_calibration": locked_run_dir / "calibration.json",
-        "model_lock": model_lock_path,
+    _config, _experiment, validated_lock, validated_run_dir, bridge_input_paths = (
+        _validate_full_dataset_inputs(output_root, config_path)
+    )
+    if validated_lock != model_lock or validated_run_dir != locked_run_dir:
+        raise ValueError("operational inputs differ from the selected model lock")
+    detector_bindings = {
+        "detector_checkpoint_sha256": model_lock.get(
+            "final_detector_checkpoint_sha256"
+        ),
+        "final_detector_complete_sha256": model_lock.get(
+            "final_detector_complete_sha256"
+        ),
+        "model_lock_sha256": sha256_file(model_lock_path),
+        "active_detector_threshold_sha256": model_lock.get(
+            "active_detector_threshold_sha256"
+        ),
+        "train_gate_complete_sha256": model_lock.get(
+            "detector_train_gate_complete_sha256"
+        ),
+        "operational_detector_role": "checkout_baseline_val_all_operational",
+        "train_gate_role": "offline_roi_train_gate_only",
     }
+    for field, expected in detector_bindings.items():
+        if detector_test_report.get(field) != expected:
+            raise ValueError(f"final detector report evidence mismatch: {field}")
     package_bridge = _read_json(package_inputs_dir / "checksums.json")
     if package_bridge.get("phase") != "package-inputs":
         raise ValueError("package input checksum ledger is invalid")
@@ -1977,14 +2111,43 @@ def operation_plan(
             [output_root / "reports" / "integrated-worker-kpi.json"],
         ),
     ]
-    completed = {
+    model_lock_path = output_root / "model_lock.json"
+    test_authorized = False
+    test_authorization_failures: list[str] = []
+    if model_lock_path.is_file():
+        try:
+            model_lock = _read_json(model_lock_path)
+        except (OSError, ValueError, json.JSONDecodeError):
+            test_authorization_failures.append("MODEL_LOCK_INVALID")
+        else:
+            if model_lock.get("status") != "validation_passed":
+                test_authorization_failures.append("VALIDATION_GATE_NOT_PASSED")
+            if model_lock.get("operational_gate") is not True:
+                test_authorization_failures.append("OPERATIONAL_GATE_NOT_PASSED")
+            test_authorized = not test_authorization_failures
+    artifacts_complete = {
         stage: all(path.is_file() for path in artifacts)
         for stage, _dependencies, _required_inputs, artifacts in stage_specs
     }
+    # A failed validation lock must never become runnable merely because the
+    # marker file exists (or because stale test artifacts happen to exist).
+    artifacts_complete["final_test"] = (
+        artifacts_complete["final_test"] and test_authorized
+    )
+    completed: dict[str, bool] = {}
+    for stage, dependencies, _required_inputs, _artifacts in stage_specs:
+        completed[stage] = artifacts_complete[stage] and all(
+            completed[dependency] for dependency in dependencies
+        )
     stages = []
     for stage, dependencies, required_inputs, artifacts in stage_specs:
         inputs_available = all(path.is_file() for path in required_inputs)
-        if completed[stage]:
+        authorization_failures = (
+            test_authorization_failures if stage == "final_test" else []
+        )
+        if authorization_failures:
+            status = "blocked"
+        elif completed[stage]:
             status = "completed"
         elif inputs_available and all(completed[dependency] for dependency in dependencies):
             status = "ready"
@@ -2001,6 +2164,7 @@ def operation_plan(
                 ],
                 "artifacts": [str(path) for path in artifacts],
                 "missing_artifacts": [str(path) for path in artifacts if not path.is_file()],
+                "authorization_failures": authorization_failures,
             }
         )
     report = {

@@ -1,0 +1,69 @@
+{
+  "experiment": {
+    "model_version": "0.2.5",
+    "architecture": "PekingU/rtdetr_v2_r18vd",
+    "fold_count": 3,
+    "fold_group": "capture_session_id",
+    "seeds": [20260812, 20260813, 20260814],
+    "classifier_source_version": "0.2.4",
+    "classifier_frozen": true
+  },
+  "training": {
+    "pretrained_name": "PekingU/rtdetr_v2_r18vd",
+    "image_size": 640,
+    "batch_size": 8,
+    "inference_batch_size": 8,
+    "workers": 4,
+    "epochs": 100,
+    "patience": 20,
+    "learning_rate": 0.00001,
+    "head_lr_multiplier": 1.0,
+    "class_head_prior_probability": 0.5,
+    "warmup_epochs": 0,
+    "weight_decay": 0.0001,
+    "min_score_threshold": 0.05,
+    "max_score_threshold": 0.95,
+    "threshold_steps": 91,
+    "nms_iou_threshold": 0.7
+  },
+  "policy_grid": {
+    "score_thresholds": [
+      0.05, 0.06, 0.07, 0.08, 0.09, 0.10, 0.11, 0.12, 0.13, 0.14,
+      0.15, 0.16, 0.17, 0.18, 0.19, 0.20, 0.21, 0.22, 0.23, 0.24,
+      0.25, 0.26, 0.27, 0.28, 0.29, 0.30, 0.31, 0.32, 0.33, 0.34,
+      0.35, 0.36, 0.37, 0.38, 0.39, 0.40, 0.41, 0.42, 0.43, 0.44,
+      0.45, 0.46, 0.47, 0.48, 0.49, 0.50, 0.51, 0.52, 0.53, 0.54,
+      0.55, 0.56, 0.57, 0.58, 0.59, 0.60, 0.61, 0.62, 0.63, 0.64,
+      0.65, 0.66, 0.67, 0.68, 0.69, 0.70, 0.71, 0.72, 0.73, 0.74,
+      0.75, 0.76, 0.77, 0.78, 0.79, 0.80, 0.81, 0.82, 0.83, 0.84,
+      0.85, 0.86, 0.87, 0.88, 0.89, 0.90, 0.91, 0.92, 0.93, 0.94,
+      0.95
+    ],
+    "nms_iou_thresholds": [0.5, 0.6, 0.7, 0.8],
+    "uncertainty_score_thresholds": [null, 0.10, 0.20, 0.30, 0.40],
+    "uncertainty_min_area_ratios": [0.020, 0.039, 0.050],
+    "uncertainty_match_iou_threshold": 0.5,
+    "min_object_area_ratio": 0.005,
+    "max_queries": 300
+  },
+  "fixed_worker_policy": {
+    "border_margin_ratio": 0.002,
+    "border_policy": "classifier_confidence",
+    "count_verifier_frozen": true,
+    "quality_gates_frozen": true
+  },
+  "selection": {
+    "maximum_risk_upper_95": 0.005,
+    "minimum_error_catch_recall": 0.99,
+    "minimum_group_sample_count": 30,
+    "primary_objective": "safe_auto_pass_rate",
+    "tie_break": ["worst_group_approval_coverage", "augrc", "seed", "policy_json"]
+  },
+  "promotion": {
+    "minimum_unknown_top3_accuracy": 0.95,
+    "maximum_full_path_p95_ms": 100.0,
+    "warmup_runs": 30,
+    "benchmark_runs": 1000,
+    "manual_waiver_allowed": false
+  }
+}

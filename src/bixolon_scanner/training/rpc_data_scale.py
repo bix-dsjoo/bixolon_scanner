@@ -27,16 +27,32 @@ from .calibration import fit_temperature, select_approval_threshold, softmax, to
 from .models import build_dino_classifier, require_torch, set_frozen_backbone
 from .rpc_worker_gate import (
     _detector_phase_complete,
+    _final_detector_artifacts,
     load_worker_gated_records,
+    prepare_detector_domain_adaptation,
     prepare_detector_phase,
     prepare_final_test_records,
+    train_final_detector,
 )
 
 
 SCHEMA_VERSION = "2.0"
+CLASSIFIER_STAGE_SELECTION_POLICY = (
+    "calibration_risk_then_coverage_else_top3_top1_v2"
+)
 LEVELS = ("easy", "medium", "hard")
 TRAIN_NAME = re.compile(r"^(?P<barcode>.+)_camera(?P<camera>\d+)-")
 CHECKOUT_GROUP = re.compile(r"-(?P<group>\d+)\.[^.]+$")
+TEST_ACCESS_SEAL_FIELDS = (
+    "test_access_started_at",
+    "test_access_model_lock_sha256",
+    "test_access_final_detector_complete_sha256",
+    "test_access_final_detector_checkpoint_sha256",
+)
+TEST_RESULT_SEAL_FIELDS = (
+    "final_test_report_sha256",
+    "final_test_detector_report_sha256",
+)
 
 
 def _canonical_json(value: Any) -> str:
@@ -63,6 +79,47 @@ def _write_json_durable(path: Path, value: Any) -> None:
             os.fsync(handle.fileno())
     finally:
         temporary.unlink(missing_ok=True)
+
+
+def _write_experiment_metadata(
+    path: Path, value: dict[str, Any], *, durable: bool = False
+) -> None:
+    """Persist experiment metadata without allowing a test seal downgrade."""
+    previous = (
+        json.loads(path.read_text(encoding="utf-8")) if path.is_file() else {}
+    )
+    if previous.get("test_accessed") is True:
+        if value.get("test_accessed") is not True:
+            raise ValueError("test-access seal cannot be downgraded or removed")
+        for field in TEST_ACCESS_SEAL_FIELDS:
+            if previous.get(field) is None or value.get(field) != previous.get(field):
+                raise ValueError(f"test-access seal field changed or missing: {field}")
+    if value.get("test_accessed") is True and any(
+        value.get(field) is None for field in TEST_ACCESS_SEAL_FIELDS
+    ):
+        raise ValueError("complete test-access seal evidence is required")
+    for field in TEST_RESULT_SEAL_FIELDS:
+        if previous.get(field) is not None and value.get(field) != previous.get(field):
+            raise ValueError(f"test-result seal field changed or missing: {field}")
+    if durable:
+        _write_json_durable(path, value)
+    else:
+        _write_json(path, value)
+
+
+def _sealed_test_metadata(output_dir: Path) -> dict[str, Any] | None:
+    path = output_dir / "prepared" / "experiment.json"
+    if not path.is_file():
+        return None
+    metadata = json.loads(path.read_text(encoding="utf-8"))
+    return metadata if metadata.get("test_accessed") is True else None
+
+
+def _reject_sealed_mutation(output_dir: Path, operation: str) -> None:
+    if _sealed_test_metadata(output_dir) is not None:
+        raise RuntimeError(
+            f"post-test output is immutable; {operation} requires a fresh output directory"
+        )
 
 
 def _write_jsonl(path: Path, records: Iterable[dict[str, Any]]) -> None:
@@ -728,6 +785,7 @@ def _build_cache(
 
 
 def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
+    _reject_sealed_mutation(args.output_dir, "prepare")
     experiment_options = config["experiment"]
     training_options = config["training"]
     prepared_dir = args.output_dir / "prepared"
@@ -747,9 +805,11 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
         args.dataset_root, args.output_dir, config
     )
     _write_json(prepared_dir / "worker_gate_report.json", worker_gate_report)
+    positive_train_records = [record for record in train_records if int(record["target"]) >= 0]
+    hard_negative_records = [record for record in train_records if int(record["target"]) < 0]
     full_dataset = _is_full_dataset(config)
     counts = defaultdict(int)
-    for record in train_records:
+    for record in positive_train_records:
         counts[int(record["category_id"])] += 1
     if full_dataset:
         hashes_path = prepared_dir / "roi_hashes.json"
@@ -757,8 +817,8 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
         hash_fingerprint = hashlib.sha256(
             _canonical_json(
                 {
-                    "sample_ids": [record["sample_id"] for record in train_records],
-                    "bboxes": [record["bbox_xywh"] for record in train_records],
+                    "sample_ids": [record["sample_id"] for record in positive_train_records],
+                    "bboxes": [record["bbox_xywh"] for record in positive_train_records],
                     "detector_complete_sha256": sha256_file(detector_complete),
                     "image_size": int(training_options["image_size"]),
                     "normalization": "rgb_zero_margin_bilinear_resize",
@@ -773,7 +833,9 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
             roi_hashes = json.loads(hashes_path.read_text(encoding="utf-8"))
         else:
             roi_hashes = _extract_exact_roi_hashes(
-                train_records, args.dataset_root, int(training_options["image_size"])
+                positive_train_records,
+                args.dataset_root,
+                int(training_options["image_size"]),
             )
             _write_json(hashes_path, roi_hashes)
             _write_json(
@@ -786,7 +848,7 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
                 },
             )
         unique_records, duplicate_groups = _deduplicate_full_dataset_roi_hashes(
-            train_records, list(roi_hashes)
+            positive_train_records, list(roi_hashes)
         )
         unique_counts = Counter(int(record["category_id"]) for record in unique_records)
         imbalance = _class_imbalance(unique_counts, expected_count)
@@ -800,6 +862,30 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
             dict(record, role="train")
             for record in sorted(unique_records, key=lambda row: str(row["sample_id"]))
         ]
+        hard_negative_hashes = _extract_exact_roi_hashes(
+            hard_negative_records,
+            args.dataset_root,
+            int(training_options["image_size"]),
+        )
+        positive_hashes = set(roi_hashes)
+        seen_hard_hashes: set[str] = set()
+        selected_hard_negatives: list[dict[str, Any]] = []
+        hard_negative_duplicates: dict[str, list[str]] = defaultdict(list)
+        for record, digest in zip(hard_negative_records, hard_negative_hashes):
+            if digest in positive_hashes:
+                hard_negative_duplicates["conflicts_with_positive"].append(
+                    str(record["sample_id"])
+                )
+                continue
+            if digest in seen_hard_hashes:
+                hard_negative_duplicates["duplicate_hard_negative"].append(
+                    str(record["sample_id"])
+                )
+                continue
+            seen_hard_hashes.add(digest)
+            selected_hard_negatives.append(record)
+        selected_train.extend(selected_hard_negatives)
+        duplicate_groups.update(hard_negative_duplicates)
     else:
         max_size = max(int(value) for value in experiment_options["sample_sizes"])
         undersized = {key: value for key, value in counts.items() if value < max_size}
@@ -891,7 +977,7 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
     }
     previous: dict[str, Any] = {}
     metadata_path = prepared_dir / "experiment.json"
-    if args.resume and metadata_path.is_file():
+    if metadata_path.is_file():
         previous = json.loads(metadata_path.read_text(encoding="utf-8"))
     metadata = {
         "schema_version": SCHEMA_VERSION,
@@ -911,6 +997,12 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
         "train_class_imbalance": imbalance,
         "duplicate_group_count": len(duplicate_groups),
         "train_union_count": len(selected_train),
+        "positive_train_count": len(selected_train) - len(selected_hard_negatives)
+        if full_dataset
+        else len(selected_train),
+        "hard_negative_train_count": len(selected_hard_negatives)
+        if full_dataset
+        else 0,
         "validation_annotation_count": len(val_records),
         "validation_groups": partition,
         "orders": orders,
@@ -918,7 +1010,10 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
     }
     if previous.get("test_source_hash"):
         metadata["test_source_hash"] = previous["test_source_hash"]
-    _write_json(prepared_dir / "experiment.json", metadata)
+    if previous.get("test_accessed") is True:
+        for field in TEST_ACCESS_SEAL_FIELDS:
+            metadata[field] = previous.get(field)
+    _write_experiment_metadata(metadata_path, metadata)
     cached_records = _build_cache(
         args.dataset_root,
         prepared_dir / "cache",
@@ -931,7 +1026,7 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
     for record in cached_records:
         role_counts[str(record["role"])] += 1
     metadata["cache_role_counts"] = dict(sorted(role_counts.items()))
-    _write_json(prepared_dir / "experiment.json", metadata)
+    _write_experiment_metadata(metadata_path, metadata)
     _write_json(prepared_dir / "duplicate_groups.json", duplicate_groups)
     if not full_dataset:
         _render_sampling_audit(
@@ -954,6 +1049,9 @@ class RpcCachedDataset:
         image_size: int,
         training: bool,
         include_metadata: bool = False,
+        crop_scale_min: float = 0.78,
+        crop_ratio_min: float = 0.9,
+        crop_ratio_max: float = 1.1,
     ) -> None:
         import torchvision.transforms as transforms
 
@@ -961,10 +1059,18 @@ class RpcCachedDataset:
         self.array_path = array_path
         self.images = None
         self.include_metadata = include_metadata
+        if not 0.0 < crop_scale_min <= 1.0:
+            raise ValueError("training crop scale minimum must be in (0, 1]")
+        if not 0.0 < crop_ratio_min <= crop_ratio_max:
+            raise ValueError("training crop ratio range is invalid")
         augmentation = [
             transforms.RandomRotation(180, fill=(255, 255, 255)),
             transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.15, hue=0.03),
-            transforms.RandomResizedCrop(image_size, scale=(0.78, 1.0), ratio=(0.9, 1.1)),
+            transforms.RandomResizedCrop(
+                image_size,
+                scale=(crop_scale_min, 1.0),
+                ratio=(crop_ratio_min, crop_ratio_max),
+            ),
         ] if training else [transforms.Resize((image_size, image_size))]
         self.transform = transforms.Compose(
             augmentation
@@ -1111,7 +1217,14 @@ def evaluate_logits(
     metric = normal & matched
     if not metric.any():
         raise ValueError("selection contains no matched normal detector boxes")
-    approved = normal & (confidence >= threshold)
+    # A failed calibration uses a fail-closed threshold sentinel.  Do not rely on
+    # floating-point probabilities staying strictly below that sentinel: an
+    # extreme logit can produce an exact probability of 1.0.
+    approved = (
+        normal & (confidence >= threshold)
+        if bool(calibration["risk_control_satisfied"])
+        else np.zeros(len(targets), dtype=bool)
+    )
     approved_count = int(approved.sum())
     approved_correct = int((correct & approved).sum())
     approved_matched = approved & matched
@@ -1129,10 +1242,48 @@ def evaluate_logits(
     difficulty: dict[str, Any] = {}
     for level in LEVELS:
         mask = metric & (levels == level)
+        level_unknown_matched = unknown & matched & (levels == level)
+        if level_unknown_matched.any():
+            level_unknown_top = np.argsort(
+                -probabilities[level_unknown_matched], axis=1
+            )[:, :3]
+            candidate_in_count = int(
+                np.any(
+                    level_unknown_top == targets[level_unknown_matched, None], axis=1
+                ).sum()
+            )
+        else:
+            candidate_in_count = 0
+        level_approved = approved & (levels == level)
+        level_approved_count = int(level_approved.sum())
+        level_misrecognized = int((level_approved & ~correct).sum())
         difficulty[level] = {
             "sample_count": int(mask.sum()),
             "top1_accuracy": float(correct[mask].mean()) if mask.any() else None,
             "top3_accuracy": topk_accuracy(probabilities[mask], targets[mask]) if mask.any() else None,
+            "recognition_rate": float(correct[mask].mean()) if mask.any() else None,
+            "candidate_sample_count": int(level_unknown_matched.sum()),
+            "candidate_in_count": candidate_in_count,
+            "candidate_in_rate": (
+                candidate_in_count / int(level_unknown_matched.sum())
+                if level_unknown_matched.any()
+                else None
+            ),
+            "candidate_out_count": int(level_unknown_matched.sum())
+            - candidate_in_count,
+            "candidate_out_rate": (
+                1.0 - candidate_in_count / int(level_unknown_matched.sum())
+                if level_unknown_matched.any()
+                else None
+            ),
+            "approved_count": level_approved_count,
+            "misrecognition_count": level_misrecognized,
+            "misrecognition_rate": (
+                level_misrecognized / level_approved_count
+                if level_approved_count
+                else 0.0
+            ),
+            "processing_speed_p95_ms": None,
         }
     matched_unknown = unknown & matched
     unknown_top3 = (
@@ -1232,6 +1383,191 @@ def _ground_truth_worker_outcomes(
     }
 
 
+def _difficulty_worker_metrics(
+    classifier_report: dict[str, Any],
+    detector_report: dict[str, Any],
+    *,
+    role: str,
+) -> dict[str, dict[str, Any]]:
+    """Join classifier KPIs with detector misses using fixed difficulty denominators."""
+    outcomes = [
+        row
+        for row in detector_report["validation_image_outcomes"]
+        if row["role"] == role
+    ]
+    result: dict[str, dict[str, Any]] = {}
+    for level in LEVELS:
+        level_outcomes = [row for row in outcomes if row["level"] == level]
+        ground_truth_count = sum(
+            int(row["ground_truth_count"]) for row in level_outcomes
+        )
+        missed_count = sum(int(row["missed_count"]) for row in level_outcomes)
+        metrics = dict(classifier_report["difficulty"][level])
+        metrics.update(
+            {
+                "ground_truth_count": ground_truth_count,
+                "segmentation_failure_count": missed_count,
+                "segmentation_failure_rate": (
+                    missed_count / ground_truth_count if ground_truth_count else None
+                ),
+            }
+        )
+        result[level] = metrics
+    return result
+
+
+def evaluate_worker_taxonomy(
+    predictions: dict[str, np.ndarray],
+    calibration: dict[str, Any],
+    detector_report: dict[str, Any],
+    *,
+    role: str,
+    segment_quality_scores: np.ndarray | None = None,
+    segment_quality_threshold: float | None = None,
+) -> dict[str, dict[str, Any]]:
+    """Evaluate RPC image/segment outcomes without double-counting recapture misses."""
+    logits = predictions["logits"]
+    targets = predictions["targets"].astype(np.int64)
+    image_ids = predictions["image_ids"].astype(np.int64)
+    touches_border = predictions.get(
+        "touches_border", np.zeros(len(targets), dtype=bool)
+    ).astype(bool)
+    probabilities = softmax(logits, float(calibration["temperature"]))
+    predicted = probabilities.argmax(axis=1)
+    confidence = probabilities.max(axis=1)
+    if (segment_quality_scores is None) != (segment_quality_threshold is None):
+        raise ValueError(
+            "segment quality scores and threshold must be provided together"
+        )
+    if segment_quality_scores is None:
+        quality_recapture = np.zeros(len(targets), dtype=bool)
+    else:
+        quality_scores = np.asarray(segment_quality_scores, dtype=np.float64)
+        if quality_scores.shape != targets.shape:
+            raise ValueError("segment quality scores must align with predictions")
+        quality_recapture = quality_scores < float(segment_quality_threshold)
+    approval_enabled = bool(calibration["risk_control_satisfied"])
+    threshold = float(calibration["approval_threshold"])
+    outcomes = [
+        row
+        for row in detector_report["validation_image_outcomes"]
+        if row["role"] == role
+    ]
+    result: dict[str, dict[str, Any]] = {}
+    for level in LEVELS:
+        level_outcomes = [row for row in outcomes if row["level"] == level]
+        level_image_ids = {int(row["image_id"]) for row in level_outcomes}
+        image_recapture_ids = {
+            int(row["image_id"])
+            for row in level_outcomes
+            if row["recapture_reasons"]
+        }
+        level_detection = np.asarray(
+            [int(image_id) in level_image_ids for image_id in image_ids]
+        )
+        image_normal = np.asarray(
+            [int(image_id) not in image_recapture_ids for image_id in image_ids]
+        )
+        segment_recapture = (
+            level_detection
+            & image_normal
+            & ((touches_border & (confidence < threshold)) | quality_recapture)
+        )
+        recognition_target = (
+            level_detection & image_normal & ~segment_recapture & (targets >= 0)
+        )
+        approved = (
+            level_detection
+            & image_normal
+            & ~segment_recapture
+            & (confidence >= threshold)
+            if approval_enabled
+            else np.zeros(len(targets), dtype=bool)
+        )
+        correct = (targets >= 0) & (predicted == targets)
+        correct_approved = approved & correct
+        wrong_approved = approved & ~correct
+        unknown = recognition_target & ~approved
+        if unknown.any():
+            unknown_top3 = np.argsort(-probabilities[unknown], axis=1)[:, :3]
+            top3_in_count = int(
+                np.any(unknown_top3 == targets[unknown, None], axis=1).sum()
+            )
+        else:
+            top3_in_count = 0
+        non_image_recapture = [
+            row for row in level_outcomes if not row["recapture_reasons"]
+        ]
+        ground_truth_count = sum(
+            int(row["ground_truth_count"]) for row in level_outcomes
+        )
+        recognition_count = int(recognition_target.sum())
+        approved_count = int(approved.sum())
+        detected_non_image_recapture = int(
+            (level_detection & image_normal).sum()
+        )
+        missed_count = sum(int(row["missed_count"]) for row in non_image_recapture)
+        non_recapture_gt_count = sum(
+            int(row["ground_truth_count"]) for row in non_image_recapture
+        )
+        unmatched_count = int(
+            (level_detection & image_normal & (targets < 0)).sum()
+        )
+        result[level] = {
+            "image_count": len(level_outcomes),
+            "ground_truth_count": ground_truth_count,
+            "recognition_target_count": recognition_count,
+            "correct_approved_count": int(correct_approved.sum()),
+            "recognition_rate": (
+                int(correct_approved.sum()) / recognition_count
+                if recognition_count
+                else None
+            ),
+            "approved_count": approved_count,
+            "wrong_approved_count": int(wrong_approved.sum()),
+            "misrecognition_rate": (
+                int(wrong_approved.sum()) / approved_count if approved_count else 0.0
+            ),
+            "unknown_count": int(unknown.sum()),
+            "unknown_top3_in_count": top3_in_count,
+            "unknown_top3_in_rate": (
+                top3_in_count / int(unknown.sum()) if unknown.any() else None
+            ),
+            "image_recapture_count": len(image_recapture_ids),
+            "image_recapture_rate": (
+                len(image_recapture_ids) / len(level_outcomes)
+                if level_outcomes
+                else None
+            ),
+            "segment_recapture_count": int(segment_recapture.sum()),
+            "segment_recapture_rate": (
+                int(segment_recapture.sum()) / detected_non_image_recapture
+                if detected_non_image_recapture
+                else None
+            ),
+            "segmentation_missed_count": missed_count,
+            "segmentation_missed_rate": (
+                missed_count / non_recapture_gt_count
+                if non_recapture_gt_count
+                else None
+            ),
+            "segmentation_false_positive_count": unmatched_count,
+            "segmentation_false_positive_rate": (
+                unmatched_count / detected_non_image_recapture
+                if detected_non_image_recapture
+                else None
+            ),
+            "end_to_end_success_rate": (
+                int(correct_approved.sum()) / ground_truth_count
+                if ground_truth_count
+                else None
+            ),
+            "processing_time_mean_ms": None,
+            "processing_time_p95_ms": None,
+        }
+    return result
+
+
 def _checkpoint(
     model,
     path: Path,
@@ -1255,6 +1591,10 @@ def _checkpoint(
             "source_weight_sha256": sha256_file(weights),
             "num_classes": category_count,
             "image_size": int(training["image_size"]),
+            "classifier_head_kind": str(
+                training.get("classifier_head_kind", "linear")
+            ),
+            "cosine_scale": float(training.get("cosine_scale", 16.0)),
             "stage": stage,
             "metrics": metrics,
         },
@@ -1379,6 +1719,96 @@ def _run_complete(
         return False
 
 
+def _classifier_stage_rank(
+    metrics: dict[str, Any],
+) -> tuple[float, float, float, float]:
+    """Rank classifier stages using calibration data only."""
+    risk_controlled = bool(metrics["risk_control_satisfied"])
+    if risk_controlled:
+        return (
+            1.0,
+            float(metrics["approval_coverage"]),
+            float(metrics["top3_accuracy"]),
+            float(metrics["accuracy"]),
+        )
+    return (
+        0.0,
+        float(metrics["top3_accuracy"]),
+        float(metrics["accuracy"]),
+        float(metrics["approval_coverage"]),
+    )
+
+
+def _classifier_training_loss(
+    logits,
+    labels,
+    *,
+    hard_negative_loss_weight: float,
+    label_smoothing: float = 0.05,
+):
+    """Combine supervised CE with uniform-target Outlier Exposure."""
+    torch = require_torch()
+    if hard_negative_loss_weight < 0.0:
+        raise ValueError("hard-negative loss weight must be non-negative")
+    positive = labels >= 0
+    negative = ~positive
+    components = []
+    positive_loss = None
+    negative_loss = None
+    if positive.any():
+        positive_loss = torch.nn.functional.cross_entropy(
+            logits[positive], labels[positive], label_smoothing=label_smoothing
+        )
+        components.append(positive_loss)
+    if negative.any():
+        negative_loss = -torch.nn.functional.log_softmax(
+            logits[negative], dim=1
+        ).mean()
+        components.append(hard_negative_loss_weight * negative_loss)
+    if not components:
+        raise RuntimeError("classifier batch has no trainable samples")
+    return sum(components), positive_loss, negative_loss
+
+
+def _classifier_domain_split(
+    calibration_records: list[dict[str, Any]],
+    *,
+    fraction: float,
+    seed: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split calibration capture groups into adaptation and risk calibration."""
+    if not 0.0 <= fraction < 1.0:
+        raise ValueError("checkout adaptation group fraction must be in [0, 1)")
+    if fraction == 0.0:
+        return [], calibration_records
+    groups = sorted(
+        {str(record["group_id"]) for record in calibration_records},
+        key=lambda group: hashlib.sha256(f"{seed}:{group}".encode()).hexdigest(),
+    )
+    adaptation_count = int(round(len(groups) * fraction))
+    if adaptation_count < 1 or adaptation_count >= len(groups):
+        raise ValueError("checkout adaptation split leaves an empty group partition")
+    adaptation_groups = set(groups[:adaptation_count])
+    adaptation = [
+        dict(
+            record,
+            role=(
+                "checkout_adaptation"
+                if int(record["target"]) >= 0
+                else "checkout_hard_negative"
+            ),
+        )
+        for record in calibration_records
+        if str(record["group_id"]) in adaptation_groups
+    ]
+    risk_calibration = [
+        record
+        for record in calibration_records
+        if str(record["group_id"]) not in adaptation_groups
+    ]
+    return adaptation, risk_calibration
+
+
 def _train_one(
     args: argparse.Namespace,
     config: dict[str, Any],
@@ -1387,8 +1817,9 @@ def _train_one(
     sample_size: int | None,
     seed: int,
 ) -> None:
+    _reject_sealed_mutation(args.output_dir, "classifier training")
     torch = require_torch()
-    from torch.utils.data import DataLoader
+    from torch.utils.data import DataLoader, WeightedRandomSampler
 
     training = config["training"]
     experiment = config["experiment"]
@@ -1400,11 +1831,24 @@ def _train_one(
         if full_dataset
         else args.output_dir / "runs" / f"n{sample_size}" / f"seed{seed}"
     )
-    calibration_records = [record for record in records if record["role"] == "calibration"]
+    original_calibration_records = [
+        record for record in records if record["role"] == "calibration"
+    ]
+    checkout_adaptation, calibration_records = _classifier_domain_split(
+        original_calibration_records,
+        fraction=float(training.get("checkout_adaptation_group_fraction", 0.0)),
+        seed=int(training.get("checkout_adaptation_seed", seed)),
+    )
     selection_records = [record for record in records if record["role"] == "selection"]
     if full_dataset:
-        train_records = [record for record in records if record["role"] == "train"]
-        expected_train = int(metadata["train_union_count"])
+        train_records = [
+            record
+            for record in records
+            if record["role"] in {"train", "hard_negative"}
+        ] + checkout_adaptation
+        expected_train = int(metadata["train_union_count"]) + len(
+            checkout_adaptation
+        )
     else:
         orders = metadata["orders"][str(seed)]
         train_ids = {
@@ -1429,15 +1873,40 @@ def _train_one(
                     str(record["sample_id"])
                     for record in sorted(train_records, key=lambda row: str(row["sample_id"]))
                 ],
+                "risk_calibration_sample_ids": [
+                    str(record["sample_id"])
+                    for record in sorted(
+                        calibration_records, key=lambda row: str(row["sample_id"])
+                    )
+                ],
                 "source_hashes": metadata["source_hashes"],
                 "training": training,
                 "weights_sha256": sha256_file(args.weights),
+                "warm_start_checkpoint_sha256": (
+                    sha256_file(args.output_dir / str(training["warm_start_checkpoint"]))
+                    if training.get("warm_start_checkpoint")
+                    else None
+                ),
             }
         ).encode()
     ).hexdigest()
     if args.resume and _run_complete(run_dir, len(selection_records), run_fingerprint):
-        print(json.dumps({"skipped_complete_run": str(run_dir)}), flush=True)
-        return
+        completed_run = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
+        if (
+            completed_run.get("stage_selection_policy")
+            == CLASSIFIER_STAGE_SELECTION_POLICY
+        ):
+            print(json.dumps({"skipped_complete_run": str(run_dir)}), flush=True)
+            return
+        print(
+            json.dumps(
+                {
+                    "migrating_classifier_stage_selection": str(run_dir),
+                    "stage_selection_policy": CLASSIFIER_STAGE_SELECTION_POLICY,
+                }
+            ),
+            flush=True,
+        )
     run_dir.mkdir(parents=True, exist_ok=True)
     identity_path = run_dir / "run_identity.json"
     identity = {
@@ -1461,7 +1930,13 @@ def _train_one(
     torch.set_float32_matmul_precision("high")
     cache_path = args.output_dir / "prepared" / "cache" / "images.npy"
     train_dataset = RpcCachedDataset(
-        train_records, cache_path, image_size=int(training["image_size"]), training=True
+        train_records,
+        cache_path,
+        image_size=int(training["image_size"]),
+        training=True,
+        crop_scale_min=float(training.get("augmentation_crop_scale_min", 0.78)),
+        crop_ratio_min=float(training.get("augmentation_crop_ratio_min", 0.9)),
+        crop_ratio_max=float(training.get("augmentation_crop_ratio_max", 1.1)),
     )
     calibration_dataset = RpcCachedDataset(
         calibration_records,
@@ -1478,10 +1953,70 @@ def _train_one(
         include_metadata=True,
     )
     generator = torch.Generator().manual_seed(seed)
+    sampling_policy = str(training.get("sampling_policy", "shuffle"))
+    if sampling_policy == "class_balanced":
+        checkout_positive = [
+            record
+            for record in train_records
+            if record["role"] == "checkout_adaptation"
+            and int(record["target"]) >= 0
+        ]
+        source_positive = [
+            record
+            for record in train_records
+            if record["role"] == "train" and int(record["target"]) >= 0
+        ]
+        checkout_counts = Counter(
+            int(record["target"]) for record in checkout_positive
+        )
+        source_counts = Counter(int(record["target"]) for record in source_positive)
+        negative_count = sum(int(record["target"]) < 0 for record in train_records)
+        negative_fraction = float(training.get("hard_negative_batch_fraction", 0.25))
+        if negative_count and not 0.0 < negative_fraction < 1.0:
+            raise ValueError("hard-negative batch fraction must be between zero and one")
+        checkout_fraction = float(
+            training.get("checkout_adaptation_batch_fraction", 0.0)
+        )
+        if checkout_positive and not 0.0 < checkout_fraction < 1.0 - negative_fraction:
+            raise ValueError("checkout adaptation batch fraction is invalid")
+        source_fraction = 1.0 - negative_fraction - checkout_fraction
+        if source_fraction <= 0.0 or not source_counts:
+            raise ValueError("source-positive batch fraction is invalid")
+        checkout_class_mass = (
+            checkout_fraction / len(checkout_counts) if checkout_counts else 0.0
+        )
+        source_class_mass = source_fraction / len(source_counts)
+        negative_mass = negative_fraction / negative_count if negative_count else 0.0
+        sample_weights = torch.as_tensor(
+            [
+                negative_mass
+                if int(record["target"]) < 0
+                else (
+                    checkout_class_mass / checkout_counts[int(record["target"])]
+                    if record["role"] == "checkout_adaptation"
+                    else source_class_mass / source_counts[int(record["target"])]
+                )
+                for record in train_records
+            ],
+            dtype=torch.double,
+        )
+        train_sampler = WeightedRandomSampler(
+            sample_weights,
+            num_samples=len(train_records),
+            replacement=True,
+            generator=generator,
+        )
+        train_shuffle = False
+    elif sampling_policy == "shuffle":
+        train_sampler = None
+        train_shuffle = True
+    else:
+        raise ValueError(f"unsupported classifier sampling policy: {sampling_policy}")
     train_loader = DataLoader(
         train_dataset,
         batch_size=int(training["batch_size"]),
-        shuffle=True,
+        shuffle=train_shuffle,
+        sampler=train_sampler,
         generator=generator,
         num_workers=int(training["workers"]),
         pin_memory=True,
@@ -1505,12 +2040,36 @@ def _train_one(
         int(metadata["category_count"]),
         weights_path=args.weights,
         hub_repository=str(training["hub_repository"]),
+        classifier_head_kind=str(training.get("classifier_head_kind", "linear")),
+        cosine_scale=float(training.get("cosine_scale", 16.0)),
     ).to(device)
+    warm_start_path = (
+        args.output_dir / str(training["warm_start_checkpoint"])
+        if training.get("warm_start_checkpoint")
+        else None
+    )
+    if warm_start_path is not None:
+        checkpoint = torch.load(warm_start_path, map_location=device, weights_only=False)
+        if int(checkpoint.get("num_classes", -1)) != int(metadata["category_count"]):
+            raise ValueError("warm-start classifier category count mismatch")
+        if checkpoint.get("classifier_head_kind", "linear") != str(
+            training.get("classifier_head_kind", "linear")
+        ):
+            raise ValueError("warm-start classifier head mismatch")
+        model.load_state_dict(checkpoint["state_dict"])
     started = time.perf_counter()
     histories: dict[str, list[dict[str, Any]]] = {}
     stage_results: dict[str, dict[str, Any]] = {}
 
-    def run_stage(name: str, epochs: int, learning_rate: float, unfreeze_blocks: int) -> Path:
+    def run_stage(
+        name: str,
+        epochs: int,
+        learning_rate: float,
+        *,
+        unfreeze_blocks: int = 0,
+        unfreeze_stages: int = 0,
+        unfreeze_all: bool = False,
+    ) -> Path:
         checkpoint_path = run_dir / f"{name}.pt"
         calibration_path = run_dir / f"{name}_calibration.json"
         predictions_path = run_dir / f"{name}_calibration_predictions.npz"
@@ -1538,7 +2097,12 @@ def _train_one(
             return checkpoint_path
         if not args.resume:
             progress_path.unlink(missing_ok=True)
-        set_frozen_backbone(model, unfreeze_last_blocks=unfreeze_blocks)
+        set_frozen_backbone(
+            model,
+            unfreeze_last_blocks=unfreeze_blocks,
+            unfreeze_last_stages=unfreeze_stages,
+            unfreeze_all=unfreeze_all,
+        )
         optimizer = torch.optim.AdamW(
             [parameter for parameter in model.parameters() if parameter.requires_grad],
             lr=learning_rate,
@@ -1576,13 +2140,28 @@ def _train_one(
         for epoch in range(start_epoch, epochs):
             model.train()
             losses: list[float] = []
+            positive_losses: list[float] = []
+            negative_losses: list[float] = []
             for images, labels in train_loader:
                 images = images.to(device, non_blocking=True)
                 labels = labels.to(device, non_blocking=True)
                 optimizer.zero_grad(set_to_none=True)
                 with torch.autocast(device_type="cuda", dtype=torch.bfloat16):
                     output = model(images)
-                    loss = torch.nn.functional.cross_entropy(output, labels, label_smoothing=0.05)
+                    loss, positive_loss, negative_loss = _classifier_training_loss(
+                        output,
+                        labels,
+                        hard_negative_loss_weight=float(
+                            training.get("hard_negative_loss_weight", 0.5)
+                        ),
+                        label_smoothing=float(
+                            training.get("label_smoothing", 0.05)
+                        ),
+                    )
+                    if positive_loss is not None:
+                        positive_losses.append(float(positive_loss.detach().cpu()))
+                    if negative_loss is not None:
+                        negative_losses.append(float(negative_loss.detach().cpu()))
                 losses.append(float(loss.detach().cpu()))
                 scaler.scale(loss).backward()
                 scaler.step(optimizer)
@@ -1592,6 +2171,12 @@ def _train_one(
                 "stage": name,
                 "epoch": epoch + 1,
                 "training_loss": float(np.mean(losses)),
+                "positive_loss": (
+                    float(np.mean(positive_losses)) if positive_losses else None
+                ),
+                "hard_negative_loss": (
+                    float(np.mean(negative_losses)) if negative_losses else None
+                ),
             }
             history.append(row)
             print(
@@ -1637,17 +2222,28 @@ def _train_one(
         return checkpoint_path
 
     frozen_path = run_stage(
-        "frozen", int(training["frozen_epochs"]), float(training["frozen_lr"]), 0
+        "frozen",
+        int(training["frozen_epochs"]),
+        float(training["frozen_lr"]),
     )
     frozen_state = torch.load(frozen_path, map_location=device, weights_only=False)["state_dict"]
     partial_path = run_stage(
-        "partial", int(training["finetune_epochs"]), float(training["finetune_lr"]), 2
+        "partial",
+        int(training["finetune_epochs"]),
+        float(training["finetune_lr"]),
+        unfreeze_all=bool(training.get("finetune_unfreeze_all_backbone", False)),
+        unfreeze_stages=int(training.get("finetune_unfreeze_last_stages", 0)),
+        unfreeze_blocks=(
+            0
+            if bool(training.get("finetune_unfreeze_all_backbone", False))
+            or int(training.get("finetune_unfreeze_last_stages", 0))
+            else int(training.get("finetune_unfreeze_last_blocks", 2))
+        ),
     )
     frozen_metrics = stage_results["frozen"]
     partial_metrics = stage_results["partial"]
-    use_partial = (
-        partial_metrics["accuracy"] >= frozen_metrics["accuracy"]
-        and partial_metrics["approval_coverage"] > frozen_metrics["approval_coverage"]
+    use_partial = _classifier_stage_rank(partial_metrics) > _classifier_stage_rank(
+        frozen_metrics
     )
     selected_stage = "partial" if use_partial else "frozen"
     selected_path = partial_path if use_partial else frozen_path
@@ -1671,6 +2267,15 @@ def _train_one(
     selection_report["all_ground_truth_box_outcomes"] = _ground_truth_worker_outcomes(
         selection_report, detector_report, role="selection"
     )
+    selection_report["difficulty_worker_metrics"] = _difficulty_worker_metrics(
+        selection_report, detector_report, role="selection"
+    )
+    selection_report["worker_taxonomy"] = evaluate_worker_taxonomy(
+        selection_predictions,
+        calibration,
+        detector_report,
+        role="selection",
+    )
     _write_json(run_dir / "selection_report.json", selection_report)
     elapsed = time.perf_counter() - started
     run_record = {
@@ -1679,9 +2284,17 @@ def _train_one(
         "sample_size_per_class": sample_size,
         "seed": seed,
         "train_sample_count": len(train_records),
+        "positive_train_sample_count": sum(
+            int(record["target"]) >= 0 for record in train_records
+        ),
+        "hard_negative_train_sample_count": sum(
+            int(record["target"]) < 0 for record in train_records
+        ),
+        "checkout_adaptation_sample_count": len(checkout_adaptation),
         "calibration_sample_count": len(calibration_records),
         "selection_sample_count": len(selection_records),
         "selected_stage": selected_stage,
+        "stage_selection_policy": CLASSIFIER_STAGE_SELECTION_POLICY,
         "elapsed_seconds": elapsed,
         "weights_sha256": sha256_file(args.weights),
         "source_hashes": metadata["source_hashes"],
@@ -1711,6 +2324,7 @@ def _train_one(
 
 
 def train_all(args: argparse.Namespace, config: dict[str, Any]) -> None:
+    _reject_sealed_mutation(args.output_dir, "train")
     metadata_path = args.output_dir / "prepared" / "experiment.json"
     if not metadata_path.is_file():
         raise FileNotFoundError("prepare phase has not completed")
@@ -1774,7 +2388,8 @@ def _operational_gate(calibration: dict[str, Any], report: dict[str, Any]) -> bo
     return (
         bool(calibration["risk_control_satisfied"])
         and float(report["approved_precision"]) >= 0.995
-        and (unknown_top3 is None or float(unknown_top3) >= 0.95)
+        and unknown_top3 is not None
+        and float(unknown_top3) >= 0.95
     )
 
 
@@ -1787,9 +2402,79 @@ def _test_operational_gate(calibration: dict[str, Any], report: dict[str, Any]) 
     )
 
 
+def _post_test_locked_full_summary(
+    args: argparse.Namespace,
+    config: dict[str, Any],
+    metadata: dict[str, Any],
+) -> dict[str, Any]:
+    """Return the immutable selection after exact post-test seal verification."""
+    lock_path = args.output_dir / "model_lock.json"
+    summary_path = args.output_dir / "reports" / "selection_summary.json"
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    summary = json.loads(summary_path.read_text(encoding="utf-8"))
+    if (
+        lock.get("mode") != "full_dataset"
+        or lock.get("status") != "validation_passed"
+        or lock.get("operational_gate") is not True
+        or summary.get("status") != "validation_passed"
+        or summary.get("operational_gate") is not True
+        or lock.get("selection_summary_sha256") != sha256_file(summary_path)
+        or metadata.get("test_access_model_lock_sha256") != sha256_file(lock_path)
+    ):
+        raise ValueError("post-test classifier selection/model lock seal is invalid")
+    model_run = lock.get("model_run")
+    if not isinstance(model_run, str) or not model_run:
+        raise ValueError("post-test model lock has no classifier run")
+    run_dir = args.output_dir / model_run
+    for filename, field in (
+        ("best.pt", "checkpoint_sha256"),
+        ("calibration.json", "calibration_sha256"),
+        ("selection_report.json", "selection_report_sha256"),
+    ):
+        path = run_dir / filename
+        if not path.is_file() or lock.get(field) != sha256_file(path):
+            raise ValueError(f"post-test model lock checksum mismatch: {filename}")
+    _checkpoint, final_complete = _final_detector_artifacts(args, config)
+    final_complete_path = args.output_dir / "detector" / "final" / "complete.json"
+    expected_detector_lock = {
+        "rpc_config_sha256": final_complete["config_sha256"],
+        "active_detector_complete_sha256": final_complete[
+            "active_detector_complete_sha256"
+        ],
+        "active_detector_threshold_sha256": final_complete[
+            "active_threshold_sha256"
+        ],
+        "detector_train_gate_complete_sha256": final_complete[
+            "train_gate_complete_sha256"
+        ],
+        "final_detector_complete_sha256": sha256_file(final_complete_path),
+        "final_detector_checkpoint_sha256": final_complete[
+            "stage_a_checkpoint_sha256"
+        ],
+        "operational_detector_role": "checkout_baseline_val_all_operational",
+        "train_gate_role": "offline_roi_train_gate_only",
+    }
+
+
+    if (
+        any(lock.get(key) != value for key, value in expected_detector_lock.items())
+        or metadata.get("test_access_final_detector_complete_sha256")
+        != expected_detector_lock["final_detector_complete_sha256"]
+        or metadata.get("test_access_final_detector_checkpoint_sha256")
+        != expected_detector_lock["final_detector_checkpoint_sha256"]
+    ):
+        raise ValueError("post-test detector/model lock seal is invalid")
+    return summary
+
+
 def _summarize_full_dataset(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any]:
     experiment = config["experiment"]
     seed = int(experiment["seeds"][0])
+    metadata = json.loads(
+        (args.output_dir / "prepared" / "experiment.json").read_text(encoding="utf-8")
+    )
+    if metadata.get("test_accessed") is True:
+        return _post_test_locked_full_summary(args, config, metadata)
     run_dir = args.output_dir / "runs" / "full" / f"seed{seed}"
     predictions_path = run_dir / "selection_predictions.npz"
     expected_selection = (
@@ -1800,13 +2485,28 @@ def _summarize_full_dataset(args: argparse.Namespace, config: dict[str, Any]) ->
     calibration = json.loads((run_dir / "calibration.json").read_text(encoding="utf-8"))
     report = json.loads((run_dir / "selection_report.json").read_text(encoding="utf-8"))
     run_record = json.loads((run_dir / "run.json").read_text(encoding="utf-8"))
-    metadata = json.loads(
-        (args.output_dir / "prepared" / "experiment.json").read_text(encoding="utf-8")
-    )
     worker_gate = json.loads(
         (args.output_dir / "prepared" / "worker_gate_report.json").read_text(encoding="utf-8")
     )
     operational = _operational_gate(calibration, report)
+    validation_failures: list[str] = []
+    if not bool(calibration["risk_control_satisfied"]):
+        validation_failures.append("CALIBRATION_APPROVAL_RISK_CONTROL")
+    if float(report["approved_precision"]) < 0.995:
+        validation_failures.append("SELECTION_APPROVED_PRECISION")
+    if report["unknown_top3_accuracy"] is None:
+        validation_failures.append("SELECTION_UNKNOWN_TOP3_NOT_EVALUABLE")
+    elif float(report["unknown_top3_accuracy"]) < 0.95:
+        validation_failures.append("SELECTION_UNKNOWN_TOP3_ACCURACY")
+    final_detector_complete: dict[str, Any] | None = None
+    final_detector_complete_path = args.output_dir / "detector" / "final" / "complete.json"
+    if operational:
+        # Model selection is the last training-authorized phase. Complete the
+        # checkout-only final detector now so test remains strictly read-only.
+        train_final_detector(args, config, resume=bool(getattr(args, "resume", False)))
+        final_detector_complete = json.loads(
+            final_detector_complete_path.read_text(encoding="utf-8")
+        )
     metrics = {
         "overall_top1_accuracy": float(report["overall_top1_accuracy"]),
         "overall_top3_accuracy": float(report["overall_top3_accuracy"]),
@@ -1831,7 +2531,25 @@ def _summarize_full_dataset(args: argparse.Namespace, config: dict[str, Any]) ->
         "train_counts": metadata["train_counts"],
         "train_class_imbalance": metadata["train_class_imbalance"],
         "operational_gate": operational,
+        "validation_failure_reasons": validation_failures,
+        "test_accessed": False,
         "calibration_risk_control": bool(calibration["risk_control_satisfied"]),
+        "calibration_metrics": {
+            key: calibration[key]
+            for key in (
+                "temperature",
+                "approval_threshold",
+                "approved_count",
+                "approved_precision",
+                "approval_coverage",
+                "approved_false_rate_upper_95",
+                "risk_control_satisfied",
+                "accuracy",
+                "top3_accuracy",
+                "matched_count",
+                "unmatched_detector_count",
+            )
+        },
         "validation_metrics": metrics,
         "detector_worker_gate": {
             key: worker_gate[key]
@@ -1848,6 +2566,15 @@ def _summarize_full_dataset(args: argparse.Namespace, config: dict[str, Any]) ->
             )
         },
     }
+    if final_detector_complete is not None:
+        summary["final_detector"] = {
+            "contract": final_detector_complete["contract"],
+            "base_epochs": final_detector_complete["base_epochs"],
+            "checkpoint_sha256": final_detector_complete[
+                "stage_a_checkpoint_sha256"
+            ],
+            "complete_sha256": sha256_file(final_detector_complete_path),
+        }
     reports_dir = args.output_dir / "reports"
     summary_path = reports_dir / "selection_summary.json"
     _write_json(summary_path, summary)
@@ -1871,11 +2598,15 @@ def _summarize_full_dataset(args: argparse.Namespace, config: dict[str, Any]) ->
         "# RPC Classifier 전체 데이터셋 검증",
         "",
         f"- 결론: `{summary['status']}`",
+        f"- 실패 사유: `{', '.join(validation_failures) if validation_failures else '없음'}`",
+        "- test2019 접근: `false`",
         f"- 학습 ROI 수: `{summary['train_sample_count']}`",
         f"- Seed: `{seed}`",
         f"- Top-1: `{metrics['overall_top1_accuracy']:.4%}`",
         f"- Top-3: `{metrics['overall_top3_accuracy']:.4%}`",
-        f"- 승인 precision: `{metrics['approved_precision']:.4%}`",
+        f"- 승인 수 / coverage: `{calibration['approved_count']} / {calibration['approval_coverage']:.4%}`",
+        f"- 승인 false-rate 단측 95% 상한: `{calibration['approved_false_rate_upper_95']:.4%}`",
+        f"- calibration risk-control: `{calibration['risk_control_satisfied']}`",
         f"- UNKNOWN Top-3: `{unknown_display}`",
     ]
     (reports_dir / "selection_summary.md").write_text(
@@ -1894,6 +2625,29 @@ def _summarize_full_dataset(args: argparse.Namespace, config: dict[str, Any]) ->
         "selection_report_sha256": sha256_file(run_dir / "selection_report.json"),
         "selection_summary_sha256": sha256_file(summary_path),
     }
+    if final_detector_complete is not None:
+        lock.update(
+            {
+                "rpc_config_sha256": final_detector_complete["config_sha256"],
+                "active_detector_complete_sha256": final_detector_complete[
+                    "active_detector_complete_sha256"
+                ],
+                "active_detector_threshold_sha256": final_detector_complete[
+                    "active_threshold_sha256"
+                ],
+                "detector_train_gate_complete_sha256": final_detector_complete[
+                    "train_gate_complete_sha256"
+                ],
+                "final_detector_complete_sha256": sha256_file(
+                    final_detector_complete_path
+                ),
+                "final_detector_checkpoint_sha256": final_detector_complete[
+                    "stage_a_checkpoint_sha256"
+                ],
+                "operational_detector_role": "checkout_baseline_val_all_operational",
+                "train_gate_role": "offline_roi_train_gate_only",
+            }
+        )
     _write_json(args.output_dir / "model_lock.json", lock)
     return summary
 
@@ -2078,9 +2832,57 @@ def _load_checkpoint_model(checkpoint_path: Path, config: dict[str, Any], device
         checkpoint["backbone_kind"],
         int(checkpoint["num_classes"]),
         hub_repository=str(config["training"]["hub_repository"]),
+        classifier_head_kind=checkpoint.get("classifier_head_kind", "linear"),
+        cosine_scale=float(checkpoint.get("cosine_scale", 16.0)),
     )
     model.load_state_dict(checkpoint["state_dict"])
     return model.to(device).eval(), checkpoint
+
+
+def _post_test_locked_final_result(
+    args: argparse.Namespace,
+    config: dict[str, Any],
+    metadata: dict[str, Any],
+    lock_path: Path,
+) -> dict[str, Any]:
+    """Verify and return an already completed final test without data access."""
+    if not _is_full_dataset(config):
+        raise RuntimeError("sealed data-scale test requires a fresh output directory")
+    _post_test_locked_full_summary(args, config, metadata)
+    final_path = args.output_dir / "reports" / "final_test.json"
+    detector_report_path = args.output_dir / "test" / "detector_report.json"
+    if (
+        metadata.get("final_test_report_sha256") != sha256_file(final_path)
+        or metadata.get("final_test_detector_report_sha256")
+        != sha256_file(detector_report_path)
+    ):
+        raise ValueError("post-test result seal is missing or invalid")
+    final = json.loads(final_path.read_text(encoding="utf-8"))
+    detector_report = json.loads(detector_report_path.read_text(encoding="utf-8"))
+    lock = json.loads(lock_path.read_text(encoding="utf-8"))
+    expected_final = {
+        "model_run": lock["model_run"],
+        "classifier_checkpoint_sha256": lock["checkpoint_sha256"],
+        "model_lock_sha256": sha256_file(lock_path),
+        "detector_report_sha256": sha256_file(detector_report_path),
+        "detector_checkpoint_sha256": lock["final_detector_checkpoint_sha256"],
+    }
+    expected_detector = {
+        "model_lock_sha256": sha256_file(lock_path),
+        "detector_checkpoint_sha256": lock["final_detector_checkpoint_sha256"],
+        "final_detector_complete_sha256": lock[
+            "final_detector_complete_sha256"
+        ],
+        "active_detector_threshold_sha256": lock[
+            "active_detector_threshold_sha256"
+        ],
+    }
+    if any(final.get(key) != value for key, value in expected_final.items()) or any(
+        detector_report.get(key) != value
+        for key, value in expected_detector.items()
+    ):
+        raise ValueError("post-test result is not bound to the immutable model lock")
+    return final
 
 
 def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str, Any] | None:
@@ -2126,17 +2928,29 @@ def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str,
             raise RuntimeError("full_dataset validation/model lock gate has not passed")
     metadata_path = args.output_dir / "prepared" / "experiment.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    if metadata.get("test_accessed") is True:
+        return _post_test_locked_final_result(
+            args, config, metadata, lock_path
+        )
 
     def seal_test_access() -> None:
         if not metadata.get("test_accessed", False):
             metadata["test_accessed"] = True
             metadata["test_access_started_at"] = datetime.now(UTC).isoformat()
-            _write_json_durable(metadata_path, metadata)
+            metadata["test_access_model_lock_sha256"] = sha256_file(lock_path)
+            metadata["test_access_final_detector_complete_sha256"] = lock.get(
+                "final_detector_complete_sha256"
+            )
+            metadata["test_access_final_detector_checkpoint_sha256"] = lock.get(
+                "final_detector_checkpoint_sha256"
+            )
+            _write_experiment_metadata(metadata_path, metadata, durable=True)
 
     test_records, detector_test_report = prepare_final_test_records(
         args,
         config,
         resume=args.resume,
+        model_lock_path=lock_path,
         before_test_access=seal_test_access,
     )
     test_metadata = {
@@ -2159,7 +2973,7 @@ def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str,
         resume=args.resume,
     )
     metadata["test_source_hash"] = test_metadata["instances_test2019_sha256"]
-    _write_json_durable(metadata_path, metadata)
+    _write_experiment_metadata(metadata_path, metadata, durable=True)
     torch = require_torch()
     from torch.utils.data import DataLoader
 
@@ -2271,6 +3085,13 @@ def test_selected(args: argparse.Namespace, config: dict[str, Any]) -> dict[str,
         ]
     )
     (reports_dir / "final_test.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    metadata["final_test_report_sha256"] = sha256_file(
+        reports_dir / "final_test.json"
+    )
+    metadata["final_test_detector_report_sha256"] = sha256_file(
+        args.output_dir / "test" / "detector_report.json"
+    )
+    _write_experiment_metadata(metadata_path, metadata, durable=True)
     return final
 
 
@@ -2282,7 +3103,7 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument(
         "--phase",
-        choices=("detector", "prepare", "train", "select", "test", "all"),
+        choices=("detector", "adapt-detector", "prepare", "train", "select", "test", "all"),
         default="all",
     )
     parser.add_argument("--resume", action="store_true")
@@ -2292,6 +3113,13 @@ def _parse_args() -> argparse.Namespace:
 def main() -> None:
     args = _parse_args()
     config = _load_config(args.config)
+    if _sealed_test_metadata(args.output_dir) is not None:
+        if args.phase == "test":
+            test_selected(args, config)
+            return
+        raise RuntimeError(
+            f"post-test output is immutable; phase {args.phase!r} requires a fresh output directory"
+        )
     if not args.dataset_root.is_dir():
         raise FileNotFoundError(args.dataset_root)
     if not args.weights.is_file():
@@ -2300,6 +3128,8 @@ def main() -> None:
     _write_json(args.output_dir / "environment.json", _environment_snapshot(config, args.weights))
     if args.phase in ("detector", "all"):
         prepare_detector_phase(args, config)
+    if args.phase in ("adapt-detector", "all"):
+        prepare_detector_domain_adaptation(args, config)
     if args.phase in ("prepare", "all"):
         prepare(args, config)
     if args.phase in ("train", "all"):

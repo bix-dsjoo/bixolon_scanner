@@ -24,6 +24,8 @@ def predict(args: argparse.Namespace) -> None:
         checkpoint["num_classes"],
         pretrained_name=checkpoint["pretrained_name"],
         hub_repository=repository,
+        classifier_head_kind=checkpoint.get("classifier_head_kind", "linear"),
+        cosine_scale=float(checkpoint.get("cosine_scale", 16.0)),
     )
     model.load_state_dict(checkpoint["state_dict"])
     device = torch.device("cuda" if torch.cuda.is_available() and not args.cpu else "cpu")

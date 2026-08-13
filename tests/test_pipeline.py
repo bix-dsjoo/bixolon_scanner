@@ -42,6 +42,31 @@ def test_detector_recapture_skips_classifier(classifier_metadata, quality_metada
     assert classifier.calls == 0
 
 
+def test_025_bundle_reports_one_version_and_preserves_early_exit_null(
+    classifier_metadata, quality_metadata
+):
+    detector = FakeDetector(DetectionResult([Detection(10, 10, 40, 40, 0.95)]))
+    classifier = FakeClassifier([[10.0, 0.0, 0.0]])
+    detector.version = "0.2.5"
+    classifier.version = "0.2.5"
+    pipeline = DecisionPipeline(
+        detector, classifier, classifier_metadata, quality_metadata
+    )
+
+    approved = pipeline.scan(
+        np.full((100, 100, 3), 128, dtype=np.uint8), "request-025-approved"
+    )
+    assert approved.model_versions.detector == "0.2.5"
+    assert approved.model_versions.classifier == "0.2.5"
+
+    detector.result = DetectionResult([])
+    recapture = pipeline.scan(
+        np.full((100, 100, 3), 128, dtype=np.uint8), "request-025-recapture"
+    )
+    assert recapture.model_versions.detector == "0.2.5"
+    assert recapture.model_versions.classifier is None
+
+
 def test_multiple_items_are_sorted_and_aggregated_unknown(classifier_metadata, quality_metadata):
     detections = [
         Detection(50, 50, 80, 80, 0.9),

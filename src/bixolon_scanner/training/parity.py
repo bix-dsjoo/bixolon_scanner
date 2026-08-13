@@ -171,6 +171,8 @@ def parity(args: argparse.Namespace) -> None:
         checkpoint["num_classes"],
         pretrained_name=checkpoint["pretrained_name"],
         hub_repository=f"facebookresearch/dinov3:{checkpoint['source_revision']}",
+        classifier_head_kind=checkpoint.get("classifier_head_kind", "linear"),
+        cosine_scale=float(checkpoint.get("cosine_scale", 16.0)),
     )
     classifier_reference.load_state_dict(checkpoint["state_dict"])
     classifier_reference.to(device).eval()

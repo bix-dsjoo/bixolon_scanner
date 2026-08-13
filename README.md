@@ -1,5 +1,31 @@
 # Bixolon Multi-Bread Scanner Worker
 
+## `0.2.5` detector 안전성 우선 목표 모드
+
+`0.2.5`는 detector 후보와 score/NMS/`DETECTOR_UNCERTAIN_OBJECT` 정책을 이미지 단위 selective-risk로 함께 비교하는 실험 경로입니다. 객체 recall이나 count accuracy만으로 checkpoint를 고르지 않고, `Detector PASS Risk U95 ≤ 0.5%`와 `E2E APPROVED Risk U95 ≤ 0.5%`를 먼저 만족한 후보 중 `Safe Auto-Pass Rate`가 가장 높은 후보를 선택합니다. 적격 후보가 없거나 독립 표본이 부족하면 결과는 항상 `experiment_only`이며 수동 waiver를 허용하지 않습니다.
+
+전체 추론 패키지는 단일 버전으로 관리합니다. `0.2.5` package의 `detector.version`, `classifier.version`, 응답의 실행된 component version은 모두 `0.2.5`입니다. classifier ONNX와 calibration은 `0.2.4`에서 byte-for-byte 계승하고 원본 버전과 SHA-256, Natural/Hard/Shift 평가 데이터 버전을 `bundle_provenance`에 보존합니다. detector hard gate가 classifier 호출 전에 종료되면 기존 계약대로 `model_versions.classifier=null`입니다.
+
+단계형 CLI는 다음 순서로 사용합니다. manifest는 natural/hard/shift를 분리하고 각 레코드에 `development` 또는 `test` split을 기록해야 합니다. `capture_session_id`, `physical_target_group_id`, SHA-256이 split을 넘나들면 `prepare`가 실패합니다.
+
+```powershell
+bixolon-detector-target `
+  --config configs/detector_target_0.2.5.json `
+  --training-manifest C:\path\to\training\manifest.jsonl `
+  --training-dataset-root C:\path\to\training-data `
+  --natural-manifest C:\path\to\natural\manifest.jsonl `
+  --hard-manifest C:\path\to\hard\manifest.jsonl `
+  --shift-manifest C:\path\to\shift\manifest.jsonl `
+  --evaluation-dataset-root C:\path\to\evaluation-data `
+  --classifier-package artifacts\packages\bread-worker-0.2.4 `
+  --baseline-detector-checkpoint artifacts\detector\production\best `
+  --classifier-manifest-metadata manifests\bread-10shot-v1\metadata.json `
+  --output-dir artifacts\experiments\detector-target-0.2.5 `
+  --phase prepare
+```
+
+후속 phase는 `train`, `cache`, `select`, `lock`, `test`, `export-package`, `parity`, `benchmark`, `finalize`입니다. `test` 이후 단계는 config·세 manifest·선택 결과·최종 detector·동결 classifier hash가 pre-test lock과 다르면 실행을 거부합니다. parity에는 기존 도구가 만든 CPU/CUDA 보고서를 `--parity-report`로 각각 전달하고, RTX 5080 보고서는 `--benchmark-report`로 전달합니다. 전체 평가 계약과 아직 확보되지 않은 증거는 [0.2.5 detector 보고서](docs/reports/detector-target-0.2.5.md)에 기록합니다.
+
 ## `0.2.0` strict 10-shot classifier
 
 `0.2.0`은 detector와 Worker API 계약을 `0.1.1` 그대로 유지하고 classifier 학습 경로만 교체합니다. classifier 가중치 학습에는 `C:\workspace\raw_data\bread_project_3`의 클래스별 정확히 10장만 사용합니다. `DETECTOR_UNCERTAIN_OBJECT`는 계속 classifier 호출 전 `RECAPTURE` hard gate이며 이 경로의 `model_versions.classifier`는 `null`입니다.
@@ -230,9 +256,9 @@ bixolon-rpc-data-scale `
   --resume
 ```
 
-`detector`, `prepare`, `train`, `select`, `test` phase를 따로 실행할 수 있습니다. `detector`는 RPC `val2019` 촬영 그룹 기준 3-fold OOF 학습·예측과 calibration 전용 threshold 선택을 수행합니다. `prepare`는 Worker `RECAPTURE` 이미지를 정상군에서 분리하고, 실제 예측 bbox crop의 DINOv3 임베딩으로 시각 다양성 순서를 고정합니다.
+`detector`, `adapt-detector`, `prepare`, `train`, `select`, `test` phase를 따로 실행할 수 있습니다. `detector`는 checkout-domain RPC `val2019` 촬영 그룹 기준 3-fold OOF 학습·예측과 calibration 전용 threshold 선택을 수행합니다. `adapt-detector`의 train-rig domain adaptation은 classifier 학습 ROI를 선별하는 offline `train_gate_only` artifact입니다. 이 artifact는 `train2019` physical-group OOF 예측에만 사용하며 Worker, test, ONNX package의 active detector 또는 threshold로 승격하지 않습니다. `prepare`는 train ROI에는 이 train-gate OOF 예측을, validation ROI에는 immutable baseline OOF 예측과 baseline calibration threshold를 사용합니다.
 
-제외 이미지는 삭제하지 않으며 비율과 reason code를 `prepared/worker_gate_report.json`에 기록합니다. 클래스·seed별 첫 5장 bbox/crop은 `prepared/sampling_contact_sheets`에서 확인할 수 있습니다. 선택 조건을 통과한 N이 있을 때만 val 전체로 최종 detector를 학습하고 `test2019`를 엽니다. `--resume`은 detector epoch 상태, 완료 marker, source/checkpoint hash와 cache fingerprint를 검증합니다. 운영 Worker, 20종 bread label map과 모델 패키지는 변경하지 않습니다.
+제외 이미지는 삭제하지 않으며 비율과 reason code를 `prepared/worker_gate_report.json`에 기록합니다. 클래스·seed별 첫 5장 bbox/crop은 `prepared/sampling_contact_sheets`에서 확인할 수 있습니다. 선택 조건을 통과한 N이 있을 때만 checkout `val2019` 전체로 operational final detector를 baseline fold best epoch 중앙값만큼 고정 학습하고 `test2019`를 엽니다. target adaptation Stage-B는 만들지 않습니다. `model_lock.json`은 operational baseline/final lineage와 offline train-gate lineage를 서로 다른 role과 hash로 봉인하며, test/package threshold는 baseline calibration-only threshold로 고정합니다. `--resume`은 detector epoch 상태, 완료 marker, source/checkpoint hash와 cache fingerprint를 검증합니다. 운영 Worker, 20종 bread label map과 모델 패키지는 변경하지 않습니다.
 
 ### 빵 DINO 단품 학습 데이터량 실험
 

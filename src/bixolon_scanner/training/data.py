@@ -135,6 +135,11 @@ class DetectionDataset:
                 continue
             if record.get("exclude_from_detector_training", False) and mode != "test":
                 continue
+            if record.get("adaptation_replay_only", False) and mode in (
+                "validation",
+                "test",
+            ):
+                continue
             include = (
                 mode == "test" and record["split"] == "test"
                 or mode == "validation" and record["split"] == "development" and record["fold"] == fold
