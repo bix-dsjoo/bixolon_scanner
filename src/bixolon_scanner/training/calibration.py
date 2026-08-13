@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 import numpy as np
+
+NO_APPROVAL_THRESHOLD = math.nextafter(1.0, math.inf)
 
 
 @dataclass(frozen=True)
@@ -63,7 +66,7 @@ def select_approval_threshold(
     predictions = probabilities.argmax(axis=1)
     confidence = probabilities.max(axis=1)
     if len(confidence) == 0:
-        return ThresholdResult(1.0, 0, 1.0, 0.0, 1.0, False)
+        return ThresholdResult(NO_APPROVAL_THRESHOLD, 0, 1.0, 0.0, 1.0, False)
     order = np.argsort(-confidence, kind="stable")
     sorted_confidence = confidence[order]
     sorted_errors = (predictions[order] != targets[order]).astype(np.int64)
@@ -88,7 +91,7 @@ def select_approval_threshold(
         )
     valid = np.flatnonzero(false_rate_upper <= max_false_approval_rate)
     if len(valid) == 0:
-        return ThresholdResult(1.0, 0, 1.0, 0.0, 1.0, False)
+        return ThresholdResult(NO_APPROVAL_THRESHOLD, 0, 1.0, 0.0, 1.0, False)
     best = int(valid[-1])
     count = int(counts[best])
     return ThresholdResult(

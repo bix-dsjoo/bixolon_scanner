@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 
 from bixolon_scanner.training.calibration import (
+    NO_APPROVAL_THRESHOLD,
     binomial_rate_upper_bound,
     select_approval_threshold,
     softmax,
@@ -35,6 +36,20 @@ def test_threshold_keeps_all_equal_confidence_samples_together():
     assert result.threshold == 0.9
     assert result.approved_count == 2
     assert result.approved_precision == 1.0
+
+
+def test_failed_threshold_is_strictly_fail_closed_at_exact_one_confidence():
+    probabilities = np.asarray([[1.0, 0.0]], dtype=float)
+    targets = np.asarray([1])
+
+    result = select_approval_threshold(
+        probabilities, targets, max_false_approval_rate=0.0, confidence_level=None
+    )
+
+    assert result.threshold == NO_APPROVAL_THRESHOLD
+    assert result.threshold > 1.0
+    assert not bool((probabilities.max(axis=1) >= result.threshold).any())
+    assert result.risk_control_satisfied is False
 
 
 def test_evaluation_combines_oof_archives(tmp_path):

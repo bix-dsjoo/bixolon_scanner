@@ -1,5 +1,115 @@
-"""Compatibility entry point for the Worker CLI."""
+"""Unified CLI with compatibility access to the Worker command."""
+
+from __future__ import annotations
+
+import sys
+from importlib import import_module
+from typing import Callable
 
 from .worker.cli import serve
 
-__all__ = ["serve"]
+CommandTarget = tuple[str, str]
+
+COMMANDS: dict[tuple[str, ...], CommandTarget] = {
+    ("worker",): ("bixolon_scanner.worker.cli", "serve"),
+    ("data", "manifest"): ("bixolon_scanner.training.manifest", "main"),
+    ("data", "ten-shot-manifest"): ("bixolon_scanner.training.ten_shot_manifest", "main"),
+    ("train", "classifier"): ("bixolon_scanner.training.train_classifier", "main"),
+    ("train", "detector"): ("bixolon_scanner.training.train_detector", "main"),
+    ("evaluate", "classifier"): ("bixolon_scanner.evaluation.classifier", "main"),
+    ("evaluate", "detector"): ("bixolon_scanner.evaluation.detector", "main"),
+    ("evaluate", "aggregate-detector"): (
+        "bixolon_scanner.evaluation.aggregate_detector",
+        "main",
+    ),
+    ("evaluate", "worker"): ("bixolon_scanner.evaluation.worker", "main"),
+    ("evaluate", "difficulty"): ("bixolon_scanner.evaluation.difficulty", "main"),
+    ("evaluate", "operational"): ("bixolon_scanner.evaluation.operational", "main"),
+    ("evaluate", "parity"): ("bixolon_scanner.evaluation.parity", "main"),
+    ("evaluate", "benchmark"): ("bixolon_scanner.evaluation.benchmark", "main"),
+    ("evaluate", "compare-difficulty"): (
+        "bixolon_scanner.evaluation.compare_difficulty",
+        "main",
+    ),
+    ("model", "export"): ("bixolon_scanner.training.export", "main"),
+    ("model", "ten-shot-package"): ("bixolon_scanner.training.ten_shot_package", "main"),
+    ("model", "ten-shot-finalize"): ("bixolon_scanner.training.ten_shot_finalize", "main"),
+    ("experiment", "bread-10shot"): ("bixolon_scanner.experiments.bread.ten_shot", "main"),
+    ("experiment", "bread-data-scale"): (
+        "bixolon_scanner.experiments.bread.data_scale",
+        "main",
+    ),
+    ("experiment", "detector-target"): (
+        "bixolon_scanner.experiments.detector.target",
+        "main",
+    ),
+    ("experiment", "rpc-data-scale"): (
+        "bixolon_scanner.experiments.rpc200.data_scale",
+        "main",
+    ),
+    ("experiment", "rpc-operational"): (
+        "bixolon_scanner.experiments.rpc200.operational",
+        "main",
+    ),
+    ("operations", "ingest-logs"): (
+        "bixolon_scanner.operations.operational_logs",
+        "main",
+    ),
+    ("operations", "export-review"): (
+        "bixolon_scanner.operations.scan_log_review_export",
+        "main",
+    ),
+    ("tools", "cache-classifier"): (
+        "bixolon_scanner.training.cache_classifier",
+        "main",
+    ),
+    ("tools", "cache-detector"): ("bixolon_scanner.training.cache_detector", "main"),
+    ("tools", "predict-classifier"): (
+        "bixolon_scanner.training.predict_classifier",
+        "main",
+    ),
+    ("tools", "render-detections"): (
+        "bixolon_scanner.training.render_detection_overlays",
+        "main",
+    ),
+}
+
+
+def _help() -> str:
+    lines = ["usage: bixolon <group> <command> [options]", "", "commands:"]
+    lines.extend(f"  {' '.join(path)}" for path in sorted(COMMANDS))
+    lines.append("")
+    lines.append("Use `bixolon <group> <command> --help` for command-specific options.")
+    return "\n".join(lines)
+
+
+def _resolve(argv: list[str]) -> tuple[tuple[str, ...], list[str], CommandTarget] | None:
+    for length in (2, 1):
+        path = tuple(argv[:length])
+        target = COMMANDS.get(path)
+        if target is not None:
+            return path, argv[length:], target
+    return None
+
+
+def main(argv: list[str] | None = None) -> None:
+    arguments = list(sys.argv[1:] if argv is None else argv)
+    if not arguments or arguments == ["--help"] or arguments == ["-h"]:
+        print(_help())
+        return
+    resolved = _resolve(arguments)
+    if resolved is None:
+        print(_help(), file=sys.stderr)
+        raise SystemExit(2)
+    path, remaining, (module_name, function_name) = resolved
+    module = import_module(module_name)
+    command: Callable[[], None] = getattr(module, function_name)
+    original = sys.argv
+    try:
+        sys.argv = [f"bixolon {' '.join(path)}", *remaining]
+        command()
+    finally:
+        sys.argv = original
+
+
+__all__ = ["COMMANDS", "main", "serve"]

@@ -30,6 +30,9 @@ def _softmax(logits: np.ndarray, temperature: float) -> np.ndarray:
     return (exponential / exponential.sum(axis=1, keepdims=True)).astype(np.float32)
 
 
+softmax = _softmax
+
+
 def _as_array(image: np.ndarray | Image.Image) -> np.ndarray:
     return image if isinstance(image, np.ndarray) else np.asarray(image, dtype=np.uint8)
 

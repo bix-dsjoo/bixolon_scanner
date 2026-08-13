@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import argparse
-import json
 from pathlib import Path
+
+from ..configuration import load_json_config, resolve_config_path
 
 
 def parse_args_with_config(parser: argparse.ArgumentParser, *, section: str) -> argparse.Namespace:
@@ -11,7 +12,8 @@ def parse_args_with_config(parser: argparse.ArgumentParser, *, section: str) -> 
     preliminary.add_argument("--config", type=Path)
     known, _ = preliminary.parse_known_args()
     if known.config is not None:
-        raw = json.loads(known.config.read_text(encoding="utf-8"))
+        known.config = resolve_config_path(known.config)
+        raw = load_json_config(known.config)
         defaults = raw.get(section)
         if not isinstance(defaults, dict):
             raise ValueError(f"missing configuration section: {section}")
@@ -20,4 +22,7 @@ def parse_args_with_config(parser: argparse.ArgumentParser, *, section: str) -> 
         if unexpected:
             raise ValueError(f"unsupported {section} configuration keys: {unexpected}")
         parser.set_defaults(**defaults)
-    return parser.parse_args()
+    parsed = parser.parse_args()
+    if parsed.config is not None:
+        parsed.config = resolve_config_path(parsed.config)
+    return parsed
