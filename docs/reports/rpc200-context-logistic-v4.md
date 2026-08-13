@@ -192,6 +192,14 @@ python -m bixolon_scanner.training.rpc_validation_benchmark `
   --images-per-level 200
 ```
 
+## 12. 2026-08-13 오승인 원인 정정
+
+기존 표의 잘못된 `APPROVED` 117건을 다시 분해한 결과, detector unmatched
+오검출 승인이 113건이고 실제 classifier 오분류 승인은 4건이다. 따라서 113건은
+`Segmentation 실패`로 분류하고 실제 오인율 구성은 4건만 사용한다. 정정 표와
+후속 개선 결과는 [rpc200-class-aware-nms-v8.md](rpc200-class-aware-nms-v8.md)에
+보존한다. 기존 원시 수치 자체는 변경하지 않는다.
+
 ## 10. Artifact 위치와 SHA-256
 
 대형 모델·예측·원본 보고서는 Git에 커밋하지 않는다. 아래 로컬 artifact의

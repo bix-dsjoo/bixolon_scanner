@@ -16,6 +16,7 @@ from ..inference import build_onnx_adapters
 from ..package import load_model_package
 from ..pipeline import DecisionPipeline
 from .rpc_context_rejector import runtime_context_features
+from .rpc_class_aware_nms import _keep_indices
 from .rpc_data_scale import LEVELS
 
 
@@ -73,6 +74,7 @@ def main() -> None:
     parser.add_argument("--cuda-dll-dir", type=Path)
     parser.add_argument("--warmup", type=int, default=30)
     parser.add_argument("--images-per-level", type=int, default=200)
+    parser.add_argument("--class-aware-nms-threshold", type=float)
     args = parser.parse_args()
 
     package = load_model_package(args.package_dir)
@@ -124,9 +126,31 @@ def main() -> None:
         if full_path:
             if detector.last_result is None or classifier.last_logits is None:
                 raise RuntimeError("full Worker path did not capture model outputs")
+            detections = list(detector.last_result.detections)
+            logits = classifier.last_logits
+            if args.class_aware_nms_threshold is not None:
+                rows = [
+                    {
+                        "bbox_xyxy": [
+                            item.x1,
+                            item.y1,
+                            item.x2,
+                            item.y2,
+                        ],
+                        "score": item.score,
+                    }
+                    for item in detections
+                ]
+                keep = _keep_indices(
+                    rows,
+                    logits.argmax(axis=1).astype(int).tolist(),
+                    float(args.class_aware_nms_threshold),
+                )
+                detections = [detections[index] for index in keep]
+                logits = logits[np.asarray(keep, dtype=np.int64)]
             features = runtime_context_features(
-                detector.last_result.detections,
-                classifier.last_logits,
+                detections,
+                logits,
                 int(record["width"]),
                 int(record["height"]),
                 float(package.metadata.classifier.temperature),
@@ -148,6 +172,7 @@ def main() -> None:
         "onnxruntime_version": ort.__version__,
         "python_version": platform.python_version(),
         "platform": platform.platform(),
+        "class_aware_nms_threshold": args.class_aware_nms_threshold,
         "difficulty": {},
     }
     for level in LEVELS:
