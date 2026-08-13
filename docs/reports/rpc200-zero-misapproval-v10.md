@@ -1,5 +1,9 @@
 # RPC200 ambiguity gate v10 검증 결과
 
+> 이 결과는 후속 v18에 의해 대체되었다. 특히 과거 표의 `Segmentation 실패 이미지`
+> 비율은 예외 outcome 내부 구성비였으며 전체 이미지 실패율이 아니다. 동일 분모의
+> 중복 없는 이미지 비교는 `rpc200-segmentation-failure-v18.md`를 사용한다.
+
 ## 결론
 
 `val2019` selection 전체에서 실제 classifier 오분류 승인을 Easy, Medium, Hard

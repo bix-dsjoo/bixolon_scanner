@@ -1684,6 +1684,7 @@ def test_worker_taxonomy_separates_image_and_segment_recapture_without_double_co
 
     assert report["image_recapture_count"] == 1
     assert report["segment_recapture_count"] == 1
+    assert report["segment_recapture_image_count"] == 1
     assert report["segmentation_missed_count"] == 1
     assert report["segmentation_missed_rate"] == pytest.approx(1 / 3)
     assert report["segmentation_false_positive_count"] == 1
@@ -1691,6 +1692,8 @@ def test_worker_taxonomy_separates_image_and_segment_recapture_without_double_co
     assert report["recognition_rate"] == 1.0
     assert report["misrecognition_rate"] == pytest.approx(1 / 2)
     assert report["end_to_end_success_rate"] == 0.25
+    assert report["segmentation_failure_image_count"] == 3
+    assert report["segmentation_failure_image_rate"] == 1.0
 
 
 def test_worker_taxonomy_applies_segment_quality_without_hiding_it_as_unknown():
@@ -1733,6 +1736,48 @@ def test_worker_taxonomy_applies_segment_quality_without_hiding_it_as_unknown():
     assert report["correct_approved_count"] == 1
     assert report["wrong_approved_count"] == 0
     assert report["unknown_count"] == 0
+
+
+def test_worker_taxonomy_can_force_valid_ambiguous_roi_to_unknown():
+    predictions = {
+        "logits": np.asarray([[8.0, 0.0]], dtype=float),
+        "targets": np.asarray([1]),
+        "levels": np.asarray(["easy"]),
+        "image_ids": np.asarray([1]),
+        "touches_border": np.asarray([False]),
+    }
+    calibration = {
+        "temperature": 1.0,
+        "approval_threshold": 0.9,
+        "risk_control_satisfied": True,
+    }
+    detector_report = {
+        "validation_image_outcomes": [
+            {
+                "image_id": 1,
+                "role": "selection",
+                "level": "easy",
+                "ground_truth_count": 1,
+                "missed_count": 0,
+                "recapture_reasons": [],
+            }
+        ]
+    }
+
+    report = evaluate_worker_taxonomy(
+        predictions,
+        calibration,
+        detector_report,
+        role="selection",
+        force_unknown_mask=np.asarray([True]),
+    )["easy"]
+
+    assert report["segment_recapture_count"] == 0
+    assert report["recognition_target_count"] == 1
+    assert report["approved_count"] == 0
+    assert report["unknown_count"] == 1
+    assert report["unknown_top3_in_count"] == 1
+    assert report["segmentation_failure_image_count"] == 0
 
 
 def test_prepare_builds_cache_without_reading_test_and_resume_reuses_it(tmp_path, monkeypatch):

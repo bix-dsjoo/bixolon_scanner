@@ -1424,6 +1424,7 @@ def evaluate_worker_taxonomy(
     role: str,
     segment_quality_scores: np.ndarray | None = None,
     segment_quality_threshold: float | None = None,
+    force_unknown_mask: np.ndarray | None = None,
 ) -> dict[str, dict[str, Any]]:
     """Evaluate RPC image/segment outcomes without double-counting recapture misses."""
     logits = predictions["logits"]
@@ -1446,6 +1447,12 @@ def evaluate_worker_taxonomy(
         if quality_scores.shape != targets.shape:
             raise ValueError("segment quality scores must align with predictions")
         quality_recapture = quality_scores < float(segment_quality_threshold)
+    if force_unknown_mask is None:
+        force_unknown = np.zeros(len(targets), dtype=bool)
+    else:
+        force_unknown = np.asarray(force_unknown_mask, dtype=bool)
+        if force_unknown.shape != targets.shape:
+            raise ValueError("force unknown mask must align with predictions")
     approval_enabled = bool(calibration["risk_control_satisfied"])
     threshold = float(calibration["approval_threshold"])
     outcomes = [
@@ -1480,6 +1487,7 @@ def evaluate_worker_taxonomy(
             level_detection
             & image_normal
             & ~segment_recapture
+            & ~force_unknown
             & (confidence >= threshold)
             if approval_enabled
             else np.zeros(len(targets), dtype=bool)
@@ -1513,6 +1521,18 @@ def evaluate_worker_taxonomy(
         unmatched_count = int(
             (level_detection & image_normal & (targets < 0)).sum()
         )
+        segment_recapture_image_ids = set(
+            int(value) for value in image_ids[segment_recapture].tolist()
+        )
+        approved_unmatched_image_ids = set(
+            int(value)
+            for value in image_ids[approved & (targets < 0)].tolist()
+        )
+        segmentation_failure_image_ids = (
+            image_recapture_ids
+            | segment_recapture_image_ids
+            | approved_unmatched_image_ids
+        )
         result[level] = {
             "image_count": len(level_outcomes),
             "ground_truth_count": ground_truth_count,
@@ -1540,6 +1560,7 @@ def evaluate_worker_taxonomy(
                 else None
             ),
             "segment_recapture_count": int(segment_recapture.sum()),
+            "segment_recapture_image_count": len(segment_recapture_image_ids),
             "segment_recapture_rate": (
                 int(segment_recapture.sum()) / detected_non_image_recapture
                 if detected_non_image_recapture
@@ -1555,6 +1576,17 @@ def evaluate_worker_taxonomy(
             "segmentation_false_positive_rate": (
                 unmatched_count / detected_non_image_recapture
                 if detected_non_image_recapture
+                else None
+            ),
+            "approved_unmatched_image_count": len(
+                approved_unmatched_image_ids
+            ),
+            "segmentation_failure_image_count": len(
+                segmentation_failure_image_ids
+            ),
+            "segmentation_failure_image_rate": (
+                len(segmentation_failure_image_ids) / len(level_outcomes)
+                if level_outcomes
                 else None
             ),
             "end_to_end_success_rate": (

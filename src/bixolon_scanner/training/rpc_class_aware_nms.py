@@ -86,7 +86,10 @@ def _duplicate_ambiguity_mask(
     context_threshold: float,
     overlap_threshold: float | None,
     overlap_max_score: float | None,
+    overlap_max_quality: float | None,
     low_quality_multiplier: float | None,
+    low_quality_max_quality: float | None,
+    low_quality_min_score: float | None,
     minimum_rank: float,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
     containment_values = np.asarray(containment, dtype=np.float64)
@@ -100,14 +103,116 @@ def _duplicate_ambiguity_mask(
         overlap = rank_eligible & (containment_values >= overlap_threshold)
         if overlap_max_score is not None:
             overlap &= score_values <= overlap_max_score
+        if overlap_max_quality is not None:
+            overlap &= quality_values <= overlap_max_quality
     low_quality = np.zeros(len(rank_values), dtype=bool)
-    if low_quality_multiplier is not None:
+    if low_quality_multiplier is not None or low_quality_max_quality is not None:
+        maximum_quality = (
+            context_threshold * low_quality_multiplier
+            if low_quality_max_quality is None
+            else low_quality_max_quality
+        )
         low_quality = (
             rank_eligible
             & repeated_values
-            & (quality_values < context_threshold * low_quality_multiplier)
+            & (quality_values < maximum_quality)
         )
+        if low_quality_min_score is not None:
+            low_quality &= score_values >= low_quality_min_score
     return overlap | low_quality, overlap, low_quality
+
+
+def _assignment_conflict_mask(
+    image_ids: list[int] | np.ndarray,
+    top_classes: list[list[int]] | np.ndarray,
+    detector_scores: list[float] | np.ndarray,
+    detector_ranks: list[float] | np.ndarray,
+    confidence: list[float] | np.ndarray,
+    quality: list[float] | np.ndarray,
+    *,
+    minimum_duplicate_rank: float,
+    minimum_mutual_confidence: float = 0.0,
+    minimum_mutual_quality: float = 0.0,
+    enable_duplicate_alternative: bool = True,
+    mutual_class_pairs: set[tuple[int, int]] | None = None,
+) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
+    """Find label-assignment conflicts without consulting ground truth.
+
+    ``mutual_swap`` identifies two ROIs whose Top-1 labels differ while each
+    ROI contains the other's Top-1 in its remaining candidate list.
+    ``duplicate_alternative`` identifies a lower detector-score duplicate
+    whose alternative candidate is already the Top-1 of another ROI in the
+    same image.  The latter is rank-gated so that a strong primary detection
+    is never rejected merely because the checkout image contains variants of
+    the same product family.
+    """
+
+    images = np.asarray(image_ids, dtype=np.int64)
+    candidates = np.asarray(top_classes, dtype=np.int64)
+    scores = np.asarray(detector_scores, dtype=np.float64)
+    ranks = np.asarray(detector_ranks, dtype=np.float64)
+    confidence_values = np.asarray(confidence, dtype=np.float64)
+    quality_values = np.asarray(quality, dtype=np.float64)
+    if candidates.ndim != 2 or candidates.shape[1] < 2:
+        raise ValueError("assignment conflict requires at least Top-2 classes")
+    if not (
+        len(images)
+        == len(candidates)
+        == len(scores)
+        == len(ranks)
+        == len(confidence_values)
+        == len(quality_values)
+    ):
+        raise ValueError("assignment conflict inputs must have equal lengths")
+
+    mutual_swap = np.zeros(len(images), dtype=bool)
+    duplicate_alternative = np.zeros(len(images), dtype=bool)
+    for image_id in np.unique(images):
+        group = np.flatnonzero(images == image_id)
+        for index in group:
+            top1 = int(candidates[index, 0])
+            alternatives = set(int(value) for value in candidates[index, 1:])
+            for other in group:
+                if other == index:
+                    continue
+                other_top1 = int(candidates[other, 0])
+                pair = tuple(sorted((top1, other_top1)))
+                if (
+                    other_top1 != top1
+                    and (
+                        mutual_class_pairs is None
+                        or pair in mutual_class_pairs
+                    )
+                    and other_top1 in alternatives
+                    and top1 in set(int(value) for value in candidates[other, 1:])
+                    and confidence_values[index] >= minimum_mutual_confidence
+                    and confidence_values[other] >= minimum_mutual_confidence
+                    and quality_values[index] >= minimum_mutual_quality
+                    and quality_values[other] >= minimum_mutual_quality
+                ):
+                    mutual_swap[index] = True
+            has_higher_duplicate = any(
+                other != index
+                and int(candidates[other, 0]) == top1
+                and scores[other] > scores[index]
+                for other in group
+            )
+            alternative_is_present = any(
+                other != index
+                and int(candidates[other, 0]) in alternatives
+                for other in group
+            )
+            duplicate_alternative[index] = (
+                enable_duplicate_alternative
+                and ranks[index] >= minimum_duplicate_rank
+                and has_higher_duplicate
+                and alternative_is_present
+            )
+    return (
+        mutual_swap | duplicate_alternative,
+        mutual_swap,
+        duplicate_alternative,
+    )
 
 
 def _evaluate_role(
@@ -124,9 +229,20 @@ def _evaluate_role(
     nms_threshold: float,
     duplicate_overlap_threshold: float | None = None,
     duplicate_overlap_max_score: float | None = None,
+    duplicate_overlap_max_quality: float | None = None,
     duplicate_low_quality_multiplier: float | None = None,
+    duplicate_low_quality_max_quality: float | None = None,
+    duplicate_low_quality_min_score: float | None = None,
     duplicate_min_rank: float = 0.0,
+    assignment_conflict_top_k: int | None = None,
+    assignment_mutual_min_confidence: float = 0.0,
+    assignment_mutual_min_quality: float = 0.0,
+    assignment_mutual_only: bool = False,
+    assignment_mutual_class_pairs: set[tuple[int, int]] | None = None,
+    ambiguity_outcome: str = "segment_recapture",
 ) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    if ambiguity_outcome not in {"segment_recapture", "unknown"}:
+        raise ValueError("ambiguity outcome must be segment_recapture or unknown")
     sample_index = {
         str(sample_id): index
         for index, sample_id in enumerate(archive["sample_ids"])
@@ -230,6 +346,7 @@ def _evaluate_role(
     )[0].reshape(-1)
     probabilities = softmax(filtered["logits"], float(calibration["temperature"]))
     predicted = probabilities.argmax(axis=1)
+    confidence = probabilities.max(axis=1)
     top2 = np.argsort(-probabilities, axis=1)[:, :2]
     extra_recapture, overlap_recapture, low_quality_recapture = (
         _duplicate_ambiguity_mask(
@@ -241,12 +358,46 @@ def _evaluate_role(
             context_threshold=context_threshold,
             overlap_threshold=duplicate_overlap_threshold,
             overlap_max_score=duplicate_overlap_max_score,
+            overlap_max_quality=duplicate_overlap_max_quality,
             low_quality_multiplier=duplicate_low_quality_multiplier,
+            low_quality_max_quality=duplicate_low_quality_max_quality,
+            low_quality_min_score=duplicate_low_quality_min_score,
             minimum_rank=duplicate_min_rank,
         )
     )
+    assignment_recapture = np.zeros(len(filtered["targets"]), dtype=bool)
+    mutual_swap_recapture = np.zeros(len(filtered["targets"]), dtype=bool)
+    duplicate_alternative_recapture = np.zeros(
+        len(filtered["targets"]), dtype=bool
+    )
+    if assignment_conflict_top_k is not None:
+        top_classes = np.argsort(-probabilities, axis=1)[
+            :, :assignment_conflict_top_k
+        ]
+        (
+            assignment_recapture,
+            mutual_swap_recapture,
+            duplicate_alternative_recapture,
+        ) = _assignment_conflict_mask(
+            filtered["image_ids"],
+            top_classes,
+            [detector_score[int(index)] for index in selected],
+            [detector_rank[int(index)] for index in selected],
+            confidence,
+            quality,
+            minimum_duplicate_rank=duplicate_min_rank,
+            minimum_mutual_confidence=assignment_mutual_min_confidence,
+            minimum_mutual_quality=assignment_mutual_min_quality,
+            enable_duplicate_alternative=not assignment_mutual_only,
+            mutual_class_pairs=assignment_mutual_class_pairs,
+        )
+    extra_recapture |= assignment_recapture
     effective_quality = quality.copy()
-    effective_quality[extra_recapture] = -np.inf
+    force_unknown = np.zeros(len(filtered["targets"]), dtype=bool)
+    if ambiguity_outcome == "segment_recapture":
+        effective_quality[extra_recapture] = -np.inf
+    else:
+        force_unknown = extra_recapture
     metrics = evaluate_worker_taxonomy(
         filtered,
         calibration,
@@ -254,12 +405,26 @@ def _evaluate_role(
         role=role,
         segment_quality_scores=effective_quality,
         segment_quality_threshold=context_threshold,
+        force_unknown_mask=force_unknown,
     )
-    confidence = probabilities.max(axis=1)
     attribution: dict[str, Any] = {
-        "duplicate_ambiguity_recapture_count": int(extra_recapture.sum()),
+        "ambiguity_action_count": int(extra_recapture.sum()),
+        "duplicate_ambiguity_recapture_count": (
+            int(extra_recapture.sum())
+            if ambiguity_outcome == "segment_recapture"
+            else 0
+        ),
+        "ambiguity_unknown_count": (
+            int(extra_recapture.sum()) if ambiguity_outcome == "unknown" else 0
+        ),
         "duplicate_overlap_recapture_count": int(overlap_recapture.sum()),
         "duplicate_low_quality_recapture_count": int(low_quality_recapture.sum()),
+        "assignment_conflict_recapture_count": int(assignment_recapture.sum()),
+        "mutual_swap_recapture_count": int(mutual_swap_recapture.sum()),
+        "duplicate_alternative_recapture_count": int(
+            duplicate_alternative_recapture.sum()
+        ),
+        "ambiguity_outcome": ambiguity_outcome,
         "examples": [],
     }
     for level in LEVELS:
@@ -291,6 +456,7 @@ def _evaluate_role(
             level_mask
             & normal
             & ~segment_recapture
+            & ~force_unknown
             & (confidence >= float(calibration["approval_threshold"]))
         )
         matched = filtered["targets"] >= 0
@@ -331,10 +497,42 @@ def main() -> None:
     parser.add_argument("--class-aware-nms-threshold", type=float, default=0.55)
     parser.add_argument("--duplicate-overlap-threshold", type=float)
     parser.add_argument("--duplicate-overlap-max-score", type=float)
+    parser.add_argument("--duplicate-overlap-max-quality", type=float)
     parser.add_argument("--duplicate-low-quality-multiplier", type=float)
+    parser.add_argument("--duplicate-low-quality-max-quality", type=float)
+    parser.add_argument("--duplicate-low-quality-min-score", type=float)
     parser.add_argument("--duplicate-min-rank", type=float, default=0.0)
+    parser.add_argument("--context-threshold-override", type=float)
+    parser.add_argument("--assignment-conflict-top-k", type=int)
+    parser.add_argument(
+        "--assignment-mutual-min-confidence", type=float, default=0.0
+    )
+    parser.add_argument(
+        "--ambiguity-outcome",
+        choices=("segment_recapture", "unknown"),
+        default="segment_recapture",
+    )
+    parser.add_argument("--assignment-mutual-min-quality", type=float, default=0.0)
+    parser.add_argument("--assignment-mutual-only", action="store_true")
+    parser.add_argument(
+        "--assignment-mutual-pair",
+        action="append",
+        default=[],
+        metavar="CLASS_A:CLASS_B",
+    )
     parser.add_argument("--report-version", default="v8")
     args = parser.parse_args()
+    mutual_pairs: set[tuple[int, int]] | None = None
+    if args.assignment_mutual_pair:
+        try:
+            mutual_pairs = {
+                tuple(sorted(int(value) for value in raw.split(":")))
+                for raw in args.assignment_mutual_pair
+            }
+        except ValueError as error:
+            parser.error(f"invalid --assignment-mutual-pair: {error}")
+        if any(len(pair) != 2 or pair[0] == pair[1] for pair in mutual_pairs):
+            parser.error("--assignment-mutual-pair requires two different classes")
     config = json.loads(args.config.read_text(encoding="utf-8"))
     root = args.output_dir
     run_dir = root / "runs" / "full" / f"seed{args.seed}"
@@ -357,6 +555,11 @@ def main() -> None:
     context_report = json.loads(
         (run_dir / "context-rejector" / "report.json").read_text(encoding="utf-8")
     )["models"]["logistic"]["policy"]
+    context_threshold = (
+        float(context_report["quality_threshold"])
+        if args.context_threshold_override is None
+        else float(args.context_threshold_override)
+    )
     policy_calibration = dict(
         calibration,
         approval_threshold=float(context_report["classifier_threshold"]),
@@ -377,8 +580,24 @@ def main() -> None:
         "duplicate_ambiguity_policy": {
             "overlap_threshold": args.duplicate_overlap_threshold,
             "overlap_max_detector_score": args.duplicate_overlap_max_score,
+            "overlap_max_context_quality": args.duplicate_overlap_max_quality,
             "low_quality_multiplier": args.duplicate_low_quality_multiplier,
+            "low_quality_max_context_quality": (
+                args.duplicate_low_quality_max_quality
+            ),
+            "low_quality_min_detector_score": args.duplicate_low_quality_min_score,
             "minimum_detector_rank": float(args.duplicate_min_rank),
+            "assignment_conflict_top_k": args.assignment_conflict_top_k,
+            "assignment_mutual_min_confidence": (
+                args.assignment_mutual_min_confidence
+            ),
+            "assignment_mutual_min_quality": args.assignment_mutual_min_quality,
+            "assignment_mutual_only": bool(args.assignment_mutual_only),
+            "assignment_mutual_class_pairs": (
+                None if mutual_pairs is None else sorted(mutual_pairs)
+            ),
+            "ambiguity_outcome": args.ambiguity_outcome,
+            "context_quality_threshold": context_threshold,
         },
     }
     archives: dict[str, dict[str, np.ndarray]] = {}
@@ -399,14 +618,27 @@ def main() -> None:
             detector_report=copy.deepcopy(detector_report),
             calibration=policy_calibration,
             context_session=context_session,
-            context_threshold=float(context_report["quality_threshold"]),
+            context_threshold=context_threshold,
             nms_threshold=float(args.class_aware_nms_threshold),
             duplicate_overlap_threshold=args.duplicate_overlap_threshold,
             duplicate_overlap_max_score=args.duplicate_overlap_max_score,
+            duplicate_overlap_max_quality=args.duplicate_overlap_max_quality,
             duplicate_low_quality_multiplier=(
                 args.duplicate_low_quality_multiplier
             ),
+            duplicate_low_quality_max_quality=(
+                args.duplicate_low_quality_max_quality
+            ),
+            duplicate_low_quality_min_score=args.duplicate_low_quality_min_score,
             duplicate_min_rank=float(args.duplicate_min_rank),
+            assignment_conflict_top_k=args.assignment_conflict_top_k,
+            assignment_mutual_min_confidence=float(
+                args.assignment_mutual_min_confidence
+            ),
+            assignment_mutual_min_quality=float(args.assignment_mutual_min_quality),
+            assignment_mutual_only=bool(args.assignment_mutual_only),
+            assignment_mutual_class_pairs=mutual_pairs,
+            ambiguity_outcome=args.ambiguity_outcome,
         )
         output[role] = {
             "metrics": metrics,
