@@ -2,12 +2,11 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Protocol
 
 import numpy as np
 from PIL import Image
 
-from .contracts import (
+from ..contracts import (
     BoundingBox,
     Candidate,
     ItemStatus,
@@ -17,25 +16,11 @@ from .contracts import (
     ScanResponse,
     Status,
 )
-from .imaging import image_original_size
-from .inference import Detection, DetectionResult
-from .package import ClassifierMetadata, CountVerifierMetadata, QualityMetadata
+from ..contracts.image import image_original_size
+from ..contracts.model_package import ClassifierMetadata, CountVerifierMetadata, QualityMetadata
+from .ports import Classifier, Detection, DetectionResult, Detector
 
 LOGGER = logging.getLogger(__name__)
-
-
-class Detector(Protocol):
-    version: str
-
-    def detect(self, image: np.ndarray | Image.Image) -> DetectionResult: ...
-
-
-class Classifier(Protocol):
-    version: str
-
-    def classify(
-        self, image: np.ndarray | Image.Image, detections: list[Detection]
-    ) -> np.ndarray: ...
 
 
 def _softmax(logits: np.ndarray, temperature: float) -> np.ndarray:
