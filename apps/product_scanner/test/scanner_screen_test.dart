@@ -668,6 +668,49 @@ void main() {
     semantics.dispose();
   });
 
+  testWidgets('포함 중복 UNKNOWN은 재촬영이 아닌 박스·Top-3 검토로 안내한다', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final controller =
+        ScannerController(
+            _UnusedApi(),
+            _EmptyCameraGateway(),
+            _EmptyFileGateway(),
+            _MemoryLogRepository(),
+            testCatalog,
+          )
+          ..cameraInitializing = false
+          ..inputMode = InputMode.image
+          ..imageBytes = _testInputImage.bytes
+          ..imageFileName = _testInputImage.fileName
+          ..imageSize = const Size(400, 400)
+          ..processState = ProcessState.reviewing
+          ..response = _duplicateResponse
+          ..detections = testReviewDetections(_duplicateResponse)
+          ..selectedItemId = 'segmentation_001';
+
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('중복 검출 가능성이 있어요'), findsOneWidget);
+    expect(find.text('중복 박스 확인'), findsOneWidget);
+    expect(find.text('1번 중복으로 검출된 상품인지 확인해 주세요'), findsOneWidget);
+    expect(find.textContaining('같은 상품을 가리키는 박스'), findsOneWidget);
+    expect(find.text('재촬영 필요'), findsNothing);
+    expect(find.text('머핀'), findsOneWidget);
+    expect(find.text('다른 상품 검색'), findsOneWidget);
+
+    controller.dispose();
+  });
+
   testWidgets('활동에서 저장된 스캔 로그와 접힌 진단 정보를 확인한다', (tester) async {
     final semantics = tester.ensureSemantics();
     tester.view.physicalSize = const Size(1440, 900);
@@ -2302,6 +2345,48 @@ const _response = ScanResponse(
   ],
   processingTimeMs: 70,
   modelVersions: ModelVersions(detector: '0.1.1', classifier: '0.1.1'),
+);
+
+const _duplicateResponse = ScanResponse(
+  requestId: 'request_duplicate_1234',
+  status: ScanStatus.unknown,
+  reasonCodes: ['SEGMENT_DUPLICATE_REVIEW_REQUIRED'],
+  items: [
+    ScanItem(
+      itemId: 'segmentation_001',
+      bbox: BoundingBox(x: 20, y: 30, width: 200, height: 220),
+      status: ItemStatus.unknown,
+      reasonCodes: ['DETECTOR_CONTAINED_DUPLICATE'],
+      prediction: null,
+      top3: [
+        Candidate(
+          classId: 'bread_13',
+          className: 'Muffin',
+          displayName: 'Muffin',
+          confidence: 1,
+        ),
+        Candidate(
+          classId: 'bread_04',
+          className: 'Scon',
+          displayName: 'Scon',
+          confidence: 0,
+        ),
+        Candidate(
+          classId: 'bread_14',
+          className: 'Red Bean Bread',
+          displayName: 'Red Bean Bread',
+          confidence: 0,
+        ),
+      ],
+      confidence: 1,
+    ),
+  ],
+  processingTimeMs: 66.6,
+  modelVersions: ModelVersions(
+    worker: '1.0.0',
+    detector: '1.0.0',
+    classifier: '1.0.0',
+  ),
 );
 
 ScanResponse _manyItemResponse() {

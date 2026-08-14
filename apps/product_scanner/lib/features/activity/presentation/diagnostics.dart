@@ -36,6 +36,7 @@ class _DiagnosticItem extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final confidence = '${(item.confidence * 100).toStringAsFixed(1)}%';
+    final reasonLabel = activityItemReasonLabel(item);
     return Padding(
       padding: const EdgeInsets.only(top: AppSpacing.x3),
       child: Row(
@@ -64,6 +65,15 @@ class _DiagnosticItem extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
+                if (reasonLabel.isNotEmpty)
+                  Text(
+                    '$reasonLabel · ${item.reasonCodes.join(', ')}',
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: Theme.of(
+                      context,
+                    ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+                  ),
               ],
             ),
           ),
@@ -142,7 +152,14 @@ class _LogItem extends StatelessWidget {
               style: Theme.of(context).textTheme.titleMedium,
             ),
           ),
-          if (item.userModified)
+          if (item.reasonCodes.contains('DETECTOR_CONTAINED_DUPLICATE'))
+            const AppStatusBadge(
+              label: '중복 검토',
+              icon: Icons.copy_all_outlined,
+              color: AppColors.attention,
+              backgroundColor: AppColors.attentionSoft,
+            )
+          else if (item.userModified)
             const AppStatusBadge(
               label: '수정됨',
               icon: Icons.edit_outlined,

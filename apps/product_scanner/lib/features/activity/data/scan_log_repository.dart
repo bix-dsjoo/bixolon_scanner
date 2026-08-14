@@ -80,6 +80,7 @@ class ScanLogItemSummary {
     required this.confirmationMethod,
     this.classId,
     this.className,
+    this.reasonCodes = const [],
   });
 
   final String itemId;
@@ -89,6 +90,7 @@ class ScanLogItemSummary {
   final String confirmationMethod;
   final String? classId;
   final String? className;
+  final List<String> reasonCodes;
 
   ScanLogItemSummary withProductName(String value) => ScanLogItemSummary(
     itemId: itemId,
@@ -98,6 +100,7 @@ class ScanLogItemSummary {
     confirmationMethod: confirmationMethod,
     classId: classId,
     className: className,
+    reasonCodes: reasonCodes,
   );
 }
 
@@ -180,7 +183,7 @@ class FileScanLogRepository implements ScanLogRepository {
     await imageFile.writeAsBytes(record.imageBytes, flush: true);
 
     final payload = <String, dynamic>{
-      'log_schema_version': 2,
+      'log_schema_version': 3,
       'scan_id': record.scanId,
       'capture_session_id': _captureSessionId,
       'worker_status': _workerStatusValue(record.workerStatus),
@@ -283,6 +286,12 @@ class FileScanLogRepository implements ScanLogRepository {
                         'UNKNOWN',
                     classId: product?['class_id'] as String?,
                     className: product?['class_name'] as String?,
+                    reasonCodes: switch (detection['reason_codes']) {
+                      final List values => values.whereType<String>().toList(
+                        growable: false,
+                      ),
+                      _ => const <String>[],
+                    },
                   );
                 })
                 .toList(growable: false),

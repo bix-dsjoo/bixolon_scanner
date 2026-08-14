@@ -46,4 +46,22 @@ void main() {
     expect(summarizeActivityProducts(items, query: 'bagel'), '베이글 외 1개');
     expect(summarizeActivityProducts(items, query: 'bread_11'), '베이글 외 1개');
   });
+
+  test('중복 검토 reason은 한국어와 raw code 모두 검색할 수 있다', () {
+    const item = ScanLogItemSummary(
+      itemId: 'segmentation_004',
+      productName: '소보로빵',
+      confidence: 1,
+      userModified: true,
+      confirmationMethod: 'TOP3_SELECTED',
+      reasonCodes: ['DETECTOR_CONTAINED_DUPLICATE'],
+    );
+
+    expect(activityItemReasonLabel(item), '중복 검출 검토');
+    expect(activityItemMatchesQuery(item, '중복 검출'), isTrue);
+    expect(
+      activityItemMatchesQuery(item, 'detector_contained_duplicate'),
+      isTrue,
+    );
+  });
 }

@@ -557,11 +557,12 @@ class _DetectionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final needsReview = !detection.isConfirmed;
+    final reviewPresentation = presentSegmentReview(detection.source);
     final tone = needsReview ? AppColors.attention : AppColors.success;
     final confidence =
         '${(detection.source.confidence * 100).toStringAsFixed(0)}%';
     final semanticLabel = needsReview
-        ? '$index번 상품, 확인 필요'
+        ? '$index번 상품, ${reviewPresentation.shortLabel}'
         : '$index번 상품, ${detection.finalProduct!.displayName}, 확정, 신뢰도 $confidence';
     return AppSelectableSurface(
       selected: selected,
@@ -595,7 +596,9 @@ class _DetectionRow extends StatelessWidget {
           const SizedBox(width: AppSpacing.x3),
           Expanded(
             child: Text(
-              needsReview ? '상품 확인이 필요해요' : detection.finalProduct!.displayName,
+              needsReview
+                  ? reviewPresentation.rowTitle
+                  : detection.finalProduct!.displayName,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(
@@ -604,7 +607,7 @@ class _DetectionRow extends StatelessWidget {
             ),
           ),
           Text(
-            needsReview ? '확인 필요' : confidence,
+            needsReview ? reviewPresentation.shortLabel : confidence,
             maxLines: 1,
             softWrap: false,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(

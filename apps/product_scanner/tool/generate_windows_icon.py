@@ -13,7 +13,6 @@ import struct
 import zlib
 from pathlib import Path
 
-
 ORANGE = (0xEE, 0x72, 0x03, 0xFF)
 INK = (0x17, 0x17, 0x17, 0xFF)
 TRANSPARENT = (0, 0, 0, 0)
@@ -27,10 +26,7 @@ def _chunk(kind: bytes, payload: bytes) -> bytes:
 
 
 def _png(width: int, height: int, pixels: bytes) -> bytes:
-    rows = b"".join(
-        b"\x00" + pixels[y * width * 4 : (y + 1) * width * 4]
-        for y in range(height)
-    )
+    rows = b"".join(b"\x00" + pixels[y * width * 4 : (y + 1) * width * 4] for y in range(height))
     header = struct.pack(">IIBBBBB", width, height, 8, 6, 0, 0, 0)
     return (
         b"\x89PNG\r\n\x1a\n"
@@ -112,9 +108,7 @@ def _render(size: int) -> bytes:
                     for channel in range(4):
                         totals[channel] += source[offset + channel]
             target = (y * size + x) * 4
-            output[target : target + 4] = bytes(
-                round(total / sample_count) for total in totals
-            )
+            output[target : target + 4] = bytes(round(total / sample_count) for total in totals)
     return _png(size, size, bytes(output))
 
 
@@ -146,7 +140,9 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    target = Path(__file__).resolve().parents[1] / "windows" / "runner" / "resources" / "app_icon.ico"
+    target = (
+        Path(__file__).resolve().parents[1] / "windows" / "runner" / "resources" / "app_icon.ico"
+    )
     generated = build_icon()
     if args.check:
         if not target.exists() or target.read_bytes() != generated:

@@ -46,7 +46,7 @@ void main() {
         return http.Response(
           readinessChecks == 1
               ? '{"status":"not_ready"}'
-              : '{"status":"ready"}',
+              : '{"status":"ready","worker_version":"1.0.0"}',
           readinessChecks == 1 ? 503 : 200,
         );
       }
@@ -56,6 +56,7 @@ void main() {
       baseUrl: 'http://127.0.0.1:8000',
       client: client,
       waitForReady: true,
+      expectedWorkerVersion: '1.0.0',
       readinessPollInterval: Duration.zero,
     );
 
@@ -70,6 +71,63 @@ void main() {
       'GET /health/ready',
       'POST /v1/scan',
     ]);
+  });
+
+  test('앱과 다른 Worker 버전이면 스캔을 실행하지 않는다', () async {
+    final methods = <String>[];
+    final client = MockClient((request) async {
+      methods.add('${request.method} ${request.url.path}');
+      return http.Response('{"status":"ready","worker_version":"0.1.1"}', 200);
+    });
+    final api = WorkerScannerApi(
+      baseUrl: 'http://127.0.0.1:8000',
+      client: client,
+      waitForReady: true,
+      expectedWorkerVersion: '1.0.0',
+      readinessPollInterval: Duration.zero,
+    );
+
+    await expectLater(
+      api.scan(imageBytes: Uint8List(2), fileName: 'scan.jpg'),
+      throwsA(
+        isA<ScannerApiException>().having(
+          (error) => error.reasonCodes,
+          'reasonCodes',
+          ['WORKER_VERSION_MISMATCH'],
+        ),
+      ),
+    );
+    expect(methods, ['GET /health/ready']);
+  });
+
+  test('Detector와 Classifier 버전도 readiness에서 함께 확인한다', () async {
+    final client = MockClient(
+      (_) async => http.Response(
+        '{"status":"ready","worker_version":"1.0.0",'
+        '"detector_version":"1.0.0","classifier_version":"1.1.0"}',
+        200,
+      ),
+    );
+    final api = WorkerScannerApi(
+      baseUrl: 'http://127.0.0.1:8000',
+      client: client,
+      waitForReady: true,
+      expectedWorkerVersion: '1.0.0',
+      expectedDetectorVersion: '1.0.0',
+      expectedClassifierVersion: '1.0.0',
+      readinessPollInterval: Duration.zero,
+    );
+
+    await expectLater(
+      api.scan(imageBytes: Uint8List(2), fileName: 'scan.jpg'),
+      throwsA(
+        isA<ScannerApiException>().having(
+          (error) => error.reasonCodes,
+          'reasonCodes',
+          ['CLASSIFIER_VERSION_MISMATCH'],
+        ),
+      ),
+    );
   });
 
   test('Worker ERROR 응답은 ScannerApiException으로 변환한다', () async {

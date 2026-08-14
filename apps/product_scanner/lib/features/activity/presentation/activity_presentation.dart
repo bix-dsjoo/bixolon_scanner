@@ -15,7 +15,11 @@ bool activityItemMatchesQuery(ScanLogItemSummary item, String query) {
   if (normalized.isEmpty) return true;
   return activityProductLabel(item).toLowerCase().contains(normalized) ||
       (item.className?.toLowerCase().contains(normalized) ?? false) ||
-      (item.classId?.toLowerCase().contains(normalized) ?? false);
+      (item.classId?.toLowerCase().contains(normalized) ?? false) ||
+      item.reasonCodes.any(
+        (reason) => reason.toLowerCase().contains(normalized),
+      ) ||
+      activityItemReasonLabel(item).toLowerCase().contains(normalized);
 }
 
 bool activityLogMatchesQuery(ScanLogSummary log, String query) {
@@ -76,3 +80,19 @@ String activityConfirmationMethodLabel(String value) => switch (value) {
   'USER_CORRECTED' => '사용자 수정',
   _ => AppActivityCopy.confirmationMethodUnavailable,
 };
+
+String activityItemReasonLabel(ScanLogItemSummary item) {
+  if (item.reasonCodes.contains('DETECTOR_CONTAINED_DUPLICATE')) {
+    return '중복 검출 검토';
+  }
+  if (item.reasonCodes.contains('DETECTOR_BORDER_CLIPPED')) {
+    return '잘린 상품 검토';
+  }
+  if (item.reasonCodes.contains('CLASSIFIER_QUALITY_CLASS')) {
+    return '상품 상태 검토';
+  }
+  if (item.reasonCodes.contains('BELOW_APPROVAL_THRESHOLD')) {
+    return '낮은 신뢰도 검토';
+  }
+  return '';
+}

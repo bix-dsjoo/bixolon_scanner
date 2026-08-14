@@ -25,7 +25,7 @@ lib/
 
 ## 실행
 
-기본 Worker 주소는 `http://127.0.0.1:8000`입니다. Windows 앱을 실행하면 Worker도 숨김 자식 프로세스로 자동 실행되며, 모델 warm-up이 끝나기 전에 분석을 눌러도 readiness가 열릴 때까지 기다립니다. 앱이 직접 시작한 Worker는 앱 종료 시 함께 종료됩니다. 이미 같은 주소에 Worker가 실행 중이면 해당 서버를 계속 사용합니다.
+기본 Worker 주소는 `http://127.0.0.1:8000`입니다. Windows 앱을 실행하면 Worker도 숨김 자식 프로세스로 자동 실행되며, 모델 warm-up이 끝나기 전에 분석을 눌러도 readiness가 열릴 때까지 기다립니다. 앱이 직접 시작한 Worker는 앱 종료 시 함께 종료됩니다. 이미 같은 주소에 Worker가 실행 중이면 `/health/ready`의 `worker_version`이 앱 계약 `1.0.0`과 일치할 때만 사용하고, 구버전 Worker에는 스캔을 전송하지 않습니다.
 
 ```powershell
 cd apps\product_scanner
@@ -53,22 +53,30 @@ flutter run -d windows --dart-define=SCANNER_API_BASE_URL=http://192.168.0.20:80
 ```powershell
 flutter analyze
 flutter test
+cd ..\..
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_worker.ps1
+cd apps\product_scanner
 flutter build windows --release
 ```
 
-CUDA 13·cuDNN 9 기반 ONNX Runtime GPU Release를 만들 때는 재배포 가능한 DLL 디렉터리를 CMake cache 또는 환경 변수로 지정한 뒤 빌드합니다. 해당 디렉터리는 `cublas64_13.dll`, `cublasLt64_13.dll`, `cudart64_13.dll`, cuDNN 9 component DLL, `cufft64_12.dll`, `zlibwapi.dll`을 포함해야 합니다.
+`build_worker.ps1`은 학습용 PyTorch를 제외하고 FastAPI와 ONNX Runtime만 포함한
+`artifacts\worker\bixolon-worker` 독립 실행본을 만듭니다. Release 빌드는 이 실행본 전체를
+`worker` 폴더에 복사하므로 설치 PC의 Python 또는 전역 `bixolon-worker` 설치에 의존하지
+않습니다.
+
+CUDA 13·cuDNN 9 기반 ONNX Runtime GPU Release를 만들 때는 재배포 가능한 DLL 디렉터리를 CMake cache 또는 환경 변수로 지정한 뒤 빌드합니다. 해당 디렉터리는 `cublas64_13.dll`, `cublasLt64_13.dll`, `cudart64_13.dll`, cuDNN 9 component DLL, `cufft64_12.dll`, `nvJitLink_130_0.dll`, `nvrtc64_130_0.dll`, `nvrtc-builtins64_130.dll`, `zlibwapi.dll`을 포함해야 합니다.
 
 ```powershell
 $env:BIXOLON_CUDA_DLL_DIR = "C:\path\to\CUDA-13-cuDNN-9-runtime"
 flutter build windows --release
 ```
 
-성공한 Release는 `worker\cuda-runtime`을 포함하고 `/health/ready`의 `provider`가 `cuda`여야 합니다. CUDA DLL이 불완전하면 readiness를 열지 않으며 CPU full-path로 조용히 실행하지 않습니다.
+성공한 Release는 `worker\bixolon-worker.exe`, `worker\model-package`, `worker\cuda-runtime`을 포함하고 `/health/ready`의 `provider`가 `cuda`여야 합니다. CUDA DLL이 불완전하면 readiness를 열지 않으며 CPU full-path로 조용히 실행하지 않습니다.
 
 대표 운영 상태는 `test/goldens` 이미지로도 회귀 검증합니다. 골든은 시각 비평 후 의도한 변경일 때만 `flutter test test/scanner_screen_test.dart --update-goldens`로 갱신합니다.
 
 Release 결과는 `build\windows\x64\runner\Release`에 생성됩니다.
-승격 모델 패키지는 기본적으로 저장소의 `artifacts\packages\bread-worker-0.1.1`에서 release 폴더의 `worker\model-package`로 복사됩니다. 다른 패키지를 묶을 때는 CMake의 `SCANNER_MODEL_PACKAGE_DIR` cache 값을 변경합니다. 모델 바이너리는 Git에 커밋하지 않습니다.
+운영 모델 패키지와 기대 버전은 release composition manifest에서 읽는다. Release 빌드는 composition, Worker, Detector, Classifier 또는 CUDA runtime 파일이 하나라도 없으면 실패하며 전체 bundle file manifest를 생성한다. 앱 `1.0.0+2`는 `/health/ready`에서 Worker·Detector·Classifier 세 버전을 모두 검사하고, `DETECTOR_CONTAINED_DUPLICATE`를 재촬영으로 바꾸지 않은 채 중복 박스와 Top-3 검토로 안내한다. 모델 바이너리는 Git에 커밋하지 않는다.
 
 ## 로컬 데이터
 
@@ -78,7 +86,7 @@ MVP에는 별도 검색·저장 서버 API가 없으므로 다음 기능을 앱 
 - Scan Log: Windows application support 디렉터리의 `ProductScanner\scan_logs`에 원본 이미지와 JSON을 함께 저장
 - 박스 미검출 피드백: `ProductScanner\feedback_logs\missed_object`에 원본 이미지와 검수 대기 JSON을 일반 Activity와 분리해 저장
 
-Scan Log v2는 기존 판정 데이터에 Worker 원본 상태 `worker_status`, 원본 `reason_codes`, 기록 시각 `recorded_at`, nullable `confirmed_at`을 추가합니다. 일반 `APPROVED`·`UNKNOWN` 기록은 최종 확정 때 자동 저장하고, `RECAPTURE`는 결과 화면의 Outlined `재촬영 기록 저장`을 실행한 경우에만 빈 `detections`와 함께 저장합니다. 저장 중에는 중복 입력을 막고 성공 뒤에도 현재 이미지와 재촬영 안내를 유지합니다. 같은 Scan ID는 한 세션에서 한 번만 저장하며 실패하면 판정과 이미지를 보존한 채 `다시 저장`할 수 있습니다. v1 로그는 기존 `confirmed_at`을 기록 시각으로 사용하고, 현재 로그 폴더 안의 안전한 `original_image` 파일만 해석합니다.
+Scan Log v3는 Worker 상태와 최상위 `reason_codes`에 더해 각 detection의 `reason_codes`와 Worker/Detector/Classifier 버전을 보존합니다. 일반 `APPROVED`·`UNKNOWN` 기록은 최종 확정 때 자동 저장하고, `RECAPTURE`는 결과 화면의 Outlined `재촬영 기록 저장`을 실행한 경우에만 빈 `detections`와 함께 저장합니다. 저장 중에는 중복 입력을 막고 성공 뒤에도 현재 이미지와 재촬영 안내를 유지합니다. 같은 Scan ID는 한 세션에서 한 번만 저장하며 실패하면 판정과 이미지를 보존한 채 `다시 저장`할 수 있습니다. v1·v2 로그는 기존 필드만으로 계속 호환 로드하며, 현재 로그 폴더 안의 안전한 `original_image` 파일만 해석합니다.
 
 Worker가 `APPROVED` 또는 `UNKNOWN`을 반환했지만 실제 상품 박스가 빠진 경우 결과 하단의 `박스 미검출 기록`을 실행합니다. 앱은 Worker의 `worker_status`와 `reason_codes`, 검출된 bbox를 변경하지 않고 `operator_feedback.type=MISSED_OBJECT`, `expected_status=RECAPTURE`, `expected_reason=DETECTOR_MISSED_OBJECT`, `annotation_status=PENDING_BBOX_CLASS_REVIEW`를 별도로 기록합니다. 앱 실행마다 생성되는 `capture_session_id`도 모든 새 로그에 포함되므로 촬영 조건을 바꿀 때 앱을 재시작하면 세션 단위 분리가 가능합니다. 이 피드백은 Activity 확정 기록으로 취급하지 않으며, 학습에 넣기 전에 누락 bbox와 class overlay 검수·승인을 받아야 합니다.
 

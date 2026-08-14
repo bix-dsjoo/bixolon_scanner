@@ -12,6 +12,7 @@ import '../../../core/design_system/tokens.dart';
 import '../../../shared/models/scan_models.dart';
 import '../application/scanner_controller.dart';
 import '../data/scanner_api.dart';
+import 'segment_review_presentation.dart';
 
 part 'top_navigation.dart';
 part 'preview.dart';

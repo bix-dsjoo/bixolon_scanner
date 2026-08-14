@@ -6,6 +6,7 @@ import 'controllers/scanner_controller.dart';
 import 'services/image_input.dart';
 import 'services/scan_log_repository.dart';
 import 'services/scanner_api.dart';
+import 'shared/release_versions.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,7 +16,13 @@ Future<void> main() async {
   );
   final catalog = await ProductCatalog.load();
   final controller = ScannerController(
-    WorkerScannerApi(baseUrl: baseUrl, waitForReady: true),
+    WorkerScannerApi(
+      baseUrl: baseUrl,
+      waitForReady: true,
+      expectedWorkerVersion: ReleaseVersions.worker,
+      expectedDetectorVersion: ReleaseVersions.detector,
+      expectedClassifierVersion: ReleaseVersions.classifier,
+    ),
     WindowsCameraGateway(),
     WindowsImageFileGateway(),
     FileScanLogRepository(),

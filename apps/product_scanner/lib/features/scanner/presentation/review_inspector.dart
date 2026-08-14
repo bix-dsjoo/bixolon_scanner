@@ -97,6 +97,12 @@ class _ReviewInspectorState extends State<_ReviewInspector> {
                   onExitBackward: widget.onCandidateExitBackward,
                   onKeyboardChoiceConfirmed: widget.onKeyboardChoiceConfirmed,
                 )
+              : widget.detection.source.status == ItemStatus.segmentRecapture
+              ? _SegmentRecaptureReview(
+                  controller: widget.controller,
+                  detection: widget.detection,
+                  searchActionFocusNode: widget.searchActionFocusNode,
+                )
               : Row(
                   children: [
                     Expanded(
@@ -146,6 +152,7 @@ class _CandidatePicker extends StatelessWidget {
           (item) => item.source.itemId == detection.source.itemId,
         ) +
         1;
+    final presentation = presentSegmentReview(detection.source);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -155,13 +162,13 @@ class _CandidatePicker extends StatelessWidget {
           child: Text(
             detection.isConfirmed
                 ? '$itemNumber번 상품을 변경할까요?'
-                : '$itemNumber번 상품을 확인해 주세요',
+                : '$itemNumber번 ${presentation.inspectorTitle}',
             style: Theme.of(context).textTheme.titleMedium,
           ),
         ),
         const SizedBox(height: AppSpacing.x1),
         Text(
-          detection.isConfirmed ? '선택하면 상품이 바로 변경돼요.' : '선택하면 다음 확인 항목으로 이동해요.',
+          detection.isConfirmed ? '선택하면 상품이 바로 변경돼요.' : presentation.detail,
           style: Theme.of(
             context,
           ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
@@ -199,6 +206,59 @@ class _CandidatePicker extends StatelessWidget {
                 ? null
                 : () => controller.showSearch(detection.source.itemId),
             child: const Text('다른 상품 검색'),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _SegmentRecaptureReview extends StatelessWidget {
+  const _SegmentRecaptureReview({
+    required this.controller,
+    required this.detection,
+    required this.searchActionFocusNode,
+  });
+
+  final ScannerController controller;
+  final ReviewDetection detection;
+  final FocusNode searchActionFocusNode;
+
+  @override
+  Widget build(BuildContext context) {
+    final itemNumber =
+        controller.detections.indexWhere(
+          (item) => item.source.itemId == detection.source.itemId,
+        ) +
+        1;
+    final presentation = presentSegmentReview(detection.source);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Semantics(
+          header: true,
+          liveRegion: true,
+          child: Text(
+            '$itemNumber번 ${presentation.inspectorTitle}',
+            style: Theme.of(context).textTheme.titleMedium,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.x1),
+        Text(
+          presentation.detail,
+          style: Theme.of(
+            context,
+          ).textTheme.bodySmall?.copyWith(color: AppColors.muted),
+        ),
+        const SizedBox(height: AppSpacing.x2),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: TextButton(
+            focusNode: searchActionFocusNode,
+            onPressed: controller.isBusy
+                ? null
+                : () => controller.showSearch(detection.source.itemId),
+            child: const Text('상품 직접 확인'),
           ),
         ),
       ],

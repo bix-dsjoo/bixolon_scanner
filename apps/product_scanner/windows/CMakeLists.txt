@@ -1,5 +1,5 @@
 # Project-level configuration.
-cmake_minimum_required(VERSION 3.14)
+cmake_minimum_required(VERSION 3.19)
 project(product_scanner LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
@@ -63,6 +63,31 @@ include(flutter/generated_plugins.cmake)
 # run in place. This is done instead of making a separate bundle (as on Linux)
 # so that building and running from within Visual Studio will work.
 set(BUILD_BUNDLE_DIR "$<TARGET_FILE_DIR:${BINARY_NAME}>")
+set(SCANNER_RELEASE_BUILD FALSE)
+if(CMAKE_BUILD_TYPE STREQUAL "Release" OR FLUTTER_BUILD_MODE STREQUAL "release")
+  set(SCANNER_RELEASE_BUILD TRUE)
+endif()
+
+# A release composition is the only source of package identity for distributable builds.
+set(SCANNER_RELEASE_COMPOSITION "" CACHE FILEPATH
+  "BIXOLON release composition JSON")
+if(NOT SCANNER_RELEASE_COMPOSITION AND DEFINED ENV{SCANNER_RELEASE_COMPOSITION})
+  file(TO_CMAKE_PATH "$ENV{SCANNER_RELEASE_COMPOSITION}"
+    SCANNER_RELEASE_COMPOSITION)
+endif()
+if(SCANNER_RELEASE_COMPOSITION)
+  if(NOT EXISTS "${SCANNER_RELEASE_COMPOSITION}")
+    message(FATAL_ERROR
+      "Release composition does not exist: ${SCANNER_RELEASE_COMPOSITION}")
+  endif()
+  file(READ "${SCANNER_RELEASE_COMPOSITION}" SCANNER_RELEASE_JSON)
+  string(JSON SCANNER_COMPOSED_PACKAGE_PATH GET
+    "${SCANNER_RELEASE_JSON}" model_package path)
+  get_filename_component(SCANNER_REPOSITORY_ROOT
+    "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+  get_filename_component(SCANNER_MODEL_PACKAGE_DIR
+    "${SCANNER_REPOSITORY_ROOT}/${SCANNER_COMPOSED_PACKAGE_PATH}" ABSOLUTE)
+endif()
 # Make the "install" step default, as it's required to run.
 set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD 1)
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
@@ -107,20 +132,50 @@ install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
 
-# Bundle the promoted model package beside the Windows application. The Python
-# Worker executable can be installed globally or placed in the worker folder.
-set(SCANNER_MODEL_PACKAGE_DIR
-  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/packages/bread-worker-0.1.1"
-  CACHE PATH "Promoted BIXOLON Worker model package")
+# Bundle the standalone ONNX Runtime Worker beside the Windows application.
+set(SCANNER_DEFAULT_WORKER_RUNTIME_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/worker/bixolon-worker")
+set(SCANNER_WORKER_RUNTIME_DIR "${SCANNER_DEFAULT_WORKER_RUNTIME_DIR}"
+  CACHE PATH "Standalone BIXOLON Worker runtime")
+if(EXISTS "${SCANNER_WORKER_RUNTIME_DIR}/bixolon-worker.exe")
+  install(DIRECTORY "${SCANNER_WORKER_RUNTIME_DIR}/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/worker"
+    COMPONENT Runtime)
+else()
+  if(SCANNER_RELEASE_BUILD)
+    message(FATAL_ERROR
+      "Release requires standalone Worker: ${SCANNER_WORKER_RUNTIME_DIR}")
+  else()
+    message(WARNING
+      "Standalone BIXOLON Worker was not found at ${SCANNER_WORKER_RUNTIME_DIR}")
+  endif()
+endif()
+
+# Bundle the promoted model package beside the Windows application.
+set(SCANNER_DEFAULT_MODEL_PACKAGE_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/packages/bread-worker-1.0.0")
+set(SCANNER_LEGACY_MODEL_PACKAGE_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/packages/bread-worker-0.1.1")
+if(NOT SCANNER_MODEL_PACKAGE_DIR OR
+   SCANNER_MODEL_PACKAGE_DIR STREQUAL SCANNER_LEGACY_MODEL_PACKAGE_DIR)
+  set(SCANNER_MODEL_PACKAGE_DIR "${SCANNER_DEFAULT_MODEL_PACKAGE_DIR}"
+    CACHE PATH "Promoted BIXOLON Worker model package" FORCE)
+else()
+  set(SCANNER_MODEL_PACKAGE_DIR "${SCANNER_MODEL_PACKAGE_DIR}"
+    CACHE PATH "Promoted BIXOLON Worker model package")
+endif()
 if(EXISTS "${SCANNER_MODEL_PACKAGE_DIR}/metadata.json")
   install(DIRECTORY "${SCANNER_MODEL_PACKAGE_DIR}/"
     DESTINATION "${CMAKE_INSTALL_PREFIX}/worker/model-package"
     COMPONENT Runtime)
 else()
-  message(WARNING
-    "BIXOLON Worker model package was not found at "
-    "${SCANNER_MODEL_PACKAGE_DIR}; automatic Worker startup will require "
-    "BIXOLON_PACKAGE_DIR at runtime.")
+  if(SCANNER_RELEASE_BUILD)
+    message(FATAL_ERROR
+      "Release requires the composed model package: ${SCANNER_MODEL_PACKAGE_DIR}")
+  else()
+    message(WARNING
+      "BIXOLON Worker model package was not found at ${SCANNER_MODEL_PACKAGE_DIR}")
+  endif()
 endif()
 
 # Optionally make the Release bundle self-contained for ONNX Runtime CUDA.
@@ -145,6 +200,9 @@ set(SCANNER_CUDA_RUNTIME_FILES
   cudnn_heuristic64_9.dll
   cudnn_ops64_9.dll
   cufft64_12.dll
+  nvJitLink_130_0.dll
+  nvrtc64_130_0.dll
+  nvrtc-builtins64_130.dll
   zlibwapi.dll
 )
 
@@ -157,8 +215,11 @@ if(SCANNER_CUDA_RUNTIME_DIR)
       list(APPEND SCANNER_CUDA_RUNTIME_PATHS "${RUNTIME_PATH}")
     else()
       set(SCANNER_CUDA_RUNTIME_COMPLETE FALSE)
-      message(WARNING
-        "CUDA runtime file is missing: ${RUNTIME_PATH}")
+      if(SCANNER_RELEASE_BUILD)
+        message(FATAL_ERROR "CUDA runtime file is missing: ${RUNTIME_PATH}")
+      else()
+        message(WARNING "CUDA runtime file is missing: ${RUNTIME_PATH}")
+      endif()
     endif()
   endforeach()
   if(SCANNER_CUDA_RUNTIME_COMPLETE)
@@ -169,11 +230,16 @@ if(SCANNER_CUDA_RUNTIME_DIR)
       "Bundling ONNX Runtime CUDA dependencies from "
       "${SCANNER_CUDA_RUNTIME_DIR}")
   else()
-    message(WARNING
-      "CUDA runtime bundle is incomplete; no CUDA DLLs will be installed.")
+    if(SCANNER_RELEASE_BUILD)
+      message(FATAL_ERROR "CUDA runtime bundle is incomplete")
+    else()
+      message(WARNING "CUDA runtime bundle is incomplete")
+    endif()
   endif()
 else()
-  message(STATUS
-    "SCANNER_CUDA_RUNTIME_DIR is empty; the app will use an externally "
-    "configured BIXOLON_CUDA_DLL_DIR or allow Worker auto provider selection.")
+  if(SCANNER_RELEASE_BUILD)
+    message(FATAL_ERROR "Release requires SCANNER_CUDA_RUNTIME_DIR")
+  else()
+    message(STATUS "SCANNER_CUDA_RUNTIME_DIR is empty")
+  endif()
 endif()

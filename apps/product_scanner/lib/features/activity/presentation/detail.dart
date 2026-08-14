@@ -86,7 +86,7 @@ class _LogDetail extends StatelessWidget {
                 _DetailLine(
                   label: '모델 버전',
                   value:
-                      'Detector ${log.modelVersions.detector ?? '—'}  ·  Classifier ${log.modelVersions.classifier ?? '—'}',
+                      'Worker ${log.modelVersions.worker ?? '—'}  ·  Detector ${log.modelVersions.detector ?? '—'}  ·  Classifier ${log.modelVersions.classifier ?? '—'}',
                 ),
                 if (log.reasonCodes.isNotEmpty)
                   _DetailLine(

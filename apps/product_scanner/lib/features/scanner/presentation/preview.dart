@@ -433,6 +433,7 @@ class _DetectionBoxState extends State<_DetectionBox> {
       context.appTokens.controlHeight,
     );
     final needsReview = !widget.detection.isConfirmed;
+    final reviewPresentation = presentSegmentReview(widget.detection.source);
     final statusColor = needsReview ? AppColors.attention : AppColors.success;
     final label = widget.selected
         ? '${widget.index}  현재 검수'
@@ -440,7 +441,7 @@ class _DetectionBoxState extends State<_DetectionBox> {
         ? '${widget.index}  ?'
         : '${widget.index}';
     final statusLabel = needsReview
-        ? '확인 필요'
+        ? reviewPresentation.shortLabel
         : '${widget.detection.finalProduct?.displayName ?? '상품'}, 확정';
     final visualLeft = visualRect.left - hitRect.left;
     final visualTop = visualRect.top - hitRect.top;

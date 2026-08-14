@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -35,6 +36,9 @@ class WorkerScannerApi implements ScannerApi {
     http.Client? client,
     this.timeout = const Duration(seconds: 35),
     this.waitForReady = false,
+    this.expectedWorkerVersion,
+    this.expectedDetectorVersion,
+    this.expectedClassifierVersion,
     this.readinessTimeout = const Duration(seconds: 35),
     this.readinessPollInterval = const Duration(milliseconds: 250),
   }) : _client = client ?? http.Client();
@@ -42,6 +46,9 @@ class WorkerScannerApi implements ScannerApi {
   final String baseUrl;
   final Duration timeout;
   final bool waitForReady;
+  final String? expectedWorkerVersion;
+  final String? expectedDetectorVersion;
+  final String? expectedClassifierVersion;
   final Duration readinessTimeout;
   final Duration readinessPollInterval;
   final http.Client _client;
@@ -98,8 +105,38 @@ class WorkerScannerApi implements ScannerApi {
             .get(readyUrl)
             .timeout(const Duration(seconds: 1));
         if (response.statusCode >= 200 && response.statusCode < 300) {
+          if (expectedWorkerVersion != null ||
+              expectedDetectorVersion != null ||
+              expectedClassifierVersion != null) {
+            final decoded = jsonDecode(response.body);
+            if (decoded is! Map<String, dynamic>) {
+              throw const ScannerApiException(
+                'Worker readiness 응답 형식이 올바르지 않습니다.',
+                reasonCodes: ['WORKER_READINESS_INVALID'],
+              );
+            }
+            final mismatches = <String>[
+              if (expectedWorkerVersion != null &&
+                  decoded['worker_version'] != expectedWorkerVersion)
+                'WORKER_VERSION_MISMATCH',
+              if (expectedDetectorVersion != null &&
+                  decoded['detector_version'] != expectedDetectorVersion)
+                'DETECTOR_VERSION_MISMATCH',
+              if (expectedClassifierVersion != null &&
+                  decoded['classifier_version'] != expectedClassifierVersion)
+                'CLASSIFIER_VERSION_MISMATCH',
+            ];
+            if (mismatches.isNotEmpty) {
+              throw ScannerApiException(
+                'Worker 버전이 앱과 맞지 않습니다. BIXOLON SCANNER와 Worker를 함께 업데이트해 주세요.',
+                reasonCodes: mismatches,
+              );
+            }
+          }
           return;
         }
+      } on ScannerApiException {
+        rethrow;
       } catch (_) {
         // The local Worker may still be starting or warming its model sessions.
       }

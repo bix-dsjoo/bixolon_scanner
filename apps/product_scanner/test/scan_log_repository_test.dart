@@ -55,11 +55,12 @@ void main() {
     final savedDetection =
         (payload['detections'] as List).single as Map<String, dynamic>;
     expect(payload['input_mode'], 'IMAGE');
-    expect(payload['log_schema_version'], 2);
+    expect(payload['log_schema_version'], 3);
     expect(payload['worker_status'], 'UNKNOWN');
     expect(payload['reason_codes'], ['ITEM_BELOW_APPROVAL_THRESHOLD']);
     expect(payload['recorded_at'], payload['confirmed_at']);
     expect(savedDetection['initial_ai_status'], 'TOP3_CANDIDATES');
+    expect(savedDetection['reason_codes'], ['BELOW_APPROVAL_THRESHOLD']);
     expect(savedDetection['final_product']['class_id'], 'bread_13');
     expect(savedDetection['confirmation_method'], 'TOP3_SELECTED');
 
@@ -71,6 +72,7 @@ void main() {
     expect(logs.single.items.single.className, 'Muffin');
     expect(logs.single.workerStatus, ScanStatus.unknown);
     expect(logs.single.reasonCodes, ['ITEM_BELOW_APPROVAL_THRESHOLD']);
+    expect(logs.single.items.single.reasonCodes, ['BELOW_APPROVAL_THRESHOLD']);
     expect(logs.single.originalImagePath, image.path);
     expect(logs.single.recordedAt, logs.single.confirmedAt);
   });

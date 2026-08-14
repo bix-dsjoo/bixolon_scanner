@@ -96,4 +96,83 @@ void main() {
       throwsFormatException,
     );
   });
+  mainOfficialContractTests();
+}
+
+void mainOfficialContractTests() {
+  test('parses official segmentation response and direct versions', () {
+    final response = ScanResponse.fromJson({
+      'request_id': 'request-100',
+      'status': 'SEGMENTATION',
+      'reason_codes': ['SEGMENT_RECAPTURE_REQUIRED'],
+      'segmentations': [
+        {
+          'segmentation_id': 'segmentation_001',
+          'bbox': {'x': 1, 'y': 2, 'width': 30, 'height': 40},
+          'status': 'SEGMENT_RECAPTURE',
+          'reason_codes': ['CLASSIFIER_QUALITY_CLASS'],
+          'prediction': null,
+          'top3': <dynamic>[],
+          'confidence': 0.99,
+        },
+      ],
+      'processing_time_ms': 10.0,
+      'worker_version': '1.0.0',
+      'detector_version': '1.0.0',
+      'classifier_version': '1.0.0',
+    });
+
+    expect(response.status, ScanStatus.unknown);
+    expect(response.items.single.status, ItemStatus.segmentRecapture);
+    expect(response.modelVersions.worker, '1.0.0');
+  });
+
+  test(
+    'parses contained duplicate UNKNOWN with Top-3 and all model versions',
+    () {
+      final response = ScanResponse.fromJson({
+        'request_id': 'request-duplicate',
+        'status': 'SEGMENTATION',
+        'reason_codes': ['SEGMENT_DUPLICATE_REVIEW_REQUIRED'],
+        'segmentations': [
+          {
+            'segmentation_id': 'segmentation_004',
+            'bbox': {'x': 10, 'y': 20, 'width': 300, 'height': 400},
+            'status': 'UNKNOWN',
+            'reason_codes': ['DETECTOR_CONTAINED_DUPLICATE'],
+            'prediction': null,
+            'top3': [
+              {
+                'class_id': 'bread_15',
+                'class_name': 'Sandwich',
+                'confidence': 1.0,
+              },
+              {'class_id': 'bread_04', 'class_name': 'Scon', 'confidence': 0.0},
+              {
+                'class_id': 'bread_14',
+                'class_name': 'Red Bean Bread',
+                'confidence': 0.0,
+              },
+            ],
+            'confidence': 1.0,
+          },
+        ],
+        'processing_time_ms': 66.6,
+        'worker_version': '1.0.0',
+        'detector_version': '1.0.0',
+        'classifier_version': '1.0.0',
+      });
+
+      expect(response.status, ScanStatus.unknown);
+      expect(response.reasonCodes, ['SEGMENT_DUPLICATE_REVIEW_REQUIRED']);
+      expect(response.items.single.reasonCodes, [
+        'DETECTOR_CONTAINED_DUPLICATE',
+      ]);
+      expect(response.items.single.top3, hasLength(3));
+      expect(response.items.single.top3.first.classId, 'bread_15');
+      expect(response.modelVersions.worker, '1.0.0');
+      expect(response.modelVersions.detector, '1.0.0');
+      expect(response.modelVersions.classifier, '1.0.0');
+    },
+  );
 }
