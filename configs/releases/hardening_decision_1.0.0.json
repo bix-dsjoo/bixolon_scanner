@@ -1,0 +1,36 @@
+{
+  "schema_version": "1.0",
+  "release": "bixolon-scanner-1.0.0-schema-2.1-hardening",
+  "decision": "not_promoted",
+  "decided_on": "2026-08-14",
+  "reason": "Improve and revalidate instead of waiving the failed one-sided 95% approved-misrecognition upper-bound gate.",
+  "candidate": {
+    "path": "artifacts/packages/bread-worker-1.0.0-hardened-candidate-recovered",
+    "promotion_status": "development",
+    "detector_onnx_sha256": "f0d2eaf8e67821627957c3eed1462812063c32c4ad17028dda869addc5371b09",
+    "classifier_onnx_sha256": "93a9d92c6fd63f5a6aef65e11e3d0acecfffd7c6cf5ac2bfdba732f4e543ab8f"
+  },
+  "release_gate": {
+    "path": "artifacts/experiments/bread-1.0.0-release-hardening/reports/release-gate-multi-cuda.json",
+    "sha256": "ecb1397743bde44a7d58f6add333ff89d6afe91f6151adf4c69f53237f870b03",
+    "recognition_accuracy": 0.9907801418439717,
+    "approved_misrecognition_count": 0,
+    "approved_sample_count": 1121,
+    "approved_misrecognition_rate_upper_95": 0.0026688072943848507,
+    "segmentation_recall_iou50": 0.9929078014184397,
+    "segmentation_precision_iou50": 0.9971509971509972,
+    "mean_latency_ms": 69.88818866739166,
+    "p95_latency_ms": 84.20239998886245,
+    "failed_checks": ["approved_misrecognition_risk_upper_95"]
+  },
+  "next_release_requirements": {
+    "minimum_independent_approved_samples_with_zero_errors": 2995,
+    "may_use_current_benchmark_to_tune_threshold": false,
+    "may_increase_recapture_to_bypass_gate": false,
+    "failure_opens_component_minor_proposal": true,
+    "new_training_data_requires_new_validation_and_test": true
+  },
+  "unchanged_production_package": "artifacts/packages/bread-worker-1.0.0",
+  "release_composition_created": false,
+  "release_tags_created": false
+}

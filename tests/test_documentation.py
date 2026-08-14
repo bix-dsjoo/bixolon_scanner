@@ -50,8 +50,8 @@ def test_documented_versions_match_release_sources() -> None:
 
     assert f'__version__ = "{python_version}"' in package_init
     assert f"`bixolon-scanner {python_version}`" in root_readme
-    assert "version: 1.0.0+1" in flutter_pubspec
-    assert "`1.0.0+1`" in root_readme
+    assert "version: 1.0.0+2" in flutter_pubspec
+    assert "`1.0.0+2`" in root_readme
     assert "`bread-worker-0.1.1`" in root_readme
     assert "`bread-worker-0.1.1`" in current_status
     assert "`0.2.5` | `experiment_only`" in current_status
@@ -62,4 +62,9 @@ def test_windows_bundle_keeps_promoted_model_package() -> None:
         encoding="utf-8"
     )
 
-    assert "artifacts/packages/bread-worker-0.1.1" in cmake.replace("\\", "/")
+    assert "artifacts/packages/bread-worker-1.0.0" in cmake.replace("\\", "/")
+    assert "SCANNER_LEGACY_MODEL_PACKAGE_DIR" in cmake
+    assert 'CACHE PATH "Promoted BIXOLON Worker model package" FORCE' in cmake
+    assert "artifacts/worker/bixolon-worker" in cmake.replace("\\", "/")
+    assert 'EXISTS "${SCANNER_WORKER_RUNTIME_DIR}/bixolon-worker.exe"' in cmake
+    assert 'DESTINATION "${CMAKE_INSTALL_PREFIX}/worker"' in cmake
