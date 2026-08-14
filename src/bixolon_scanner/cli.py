@@ -16,6 +16,18 @@ COMMANDS: dict[tuple[str, ...], CommandTarget] = {
     ("data", "ten-shot-manifest"): ("bixolon_scanner.training.ten_shot_manifest", "main"),
     ("train", "classifier"): ("bixolon_scanner.training.train_classifier", "main"),
     ("train", "detector"): ("bixolon_scanner.training.train_detector", "main"),
+    ("train", "verify-pipeline"): (
+        "bixolon_scanner.training.pipeline_contract",
+        "main",
+    ),
+    ("train", "lock-detector-checkpoint"): (
+        "bixolon_scanner.training.checkpoint_lock",
+        "main",
+    ),
+    ("train", "write-run-evidence"): (
+        "bixolon_scanner.training.run_evidence",
+        "main",
+    ),
     ("evaluate", "classifier"): ("bixolon_scanner.evaluation.classifier", "main"),
     ("evaluate", "detector"): ("bixolon_scanner.evaluation.detector", "main"),
     ("evaluate", "aggregate-detector"): (
@@ -32,6 +44,7 @@ COMMANDS: dict[tuple[str, ...], CommandTarget] = {
         "main",
     ),
     ("model", "export"): ("bixolon_scanner.training.export", "main"),
+    ("model", "promote"): ("bixolon_scanner.training.promote_package", "main"),
     ("model", "ten-shot-package"): ("bixolon_scanner.training.ten_shot_package", "main"),
     ("model", "ten-shot-finalize"): ("bixolon_scanner.training.ten_shot_finalize", "main"),
     ("experiment", "bread-10shot"): ("bixolon_scanner.experiments.bread.ten_shot", "main"),
@@ -57,6 +70,14 @@ COMMANDS: dict[tuple[str, ...], CommandTarget] = {
     ),
     ("operations", "export-review"): (
         "bixolon_scanner.operations.scan_log_review_export",
+        "main",
+    ),
+    ("operations", "metrics"): (
+        "bixolon_scanner.operations.worker_metrics",
+        "main",
+    ),
+    ("release", "verify"): (
+        "bixolon_scanner.operations.release_composition",
         "main",
     ),
     ("tools", "cache-classifier"): (

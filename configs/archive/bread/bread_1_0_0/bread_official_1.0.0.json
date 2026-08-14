@@ -1,0 +1,101 @@
+{
+  "release": {
+    "worker_version": "1.0.0",
+    "detector_version": "1.0.0",
+    "classifier_version": "1.0.0",
+    "status": "production",
+    "dataset_root": "datasets/bread_dataset",
+    "dataset_version": "bread-1.0-a52b4faa3e20",
+    "candidate_package": "artifacts/packages/bread-worker-1.0.0-candidate-v3",
+    "production_package": "artifacts/packages/bread-worker-1.0.0"
+  },
+  "promotion": {
+    "decision": "approved",
+    "method": "owner_directed_manual_waiver",
+    "decided_on": "2026-08-14",
+    "waived_gate": "approved_misrecognition_rate_upper_95",
+    "observed": 0.0026688072943848507,
+    "target": 0.001,
+    "approved_sample_count": 1121,
+    "observed_error_count": 0,
+    "independent_post_deployment_validation_required": true
+  },
+  "data": {
+    "training_source": "single_objects_3",
+    "classes": 20,
+    "originals_per_class": 12,
+    "training_original_count": 240,
+    "multi_object_scenes_are_evaluation_only": true,
+    "scan_log_samples_are_reference_only": true,
+    "detector_synthetic_images": 1600,
+    "detector_synthetic_empty_images": 383,
+    "detector_synthetic_recipe_sha256": "3e8eb5916cd30570c9106c5af58ffe4e05656291e75fe785a37927f1d03aaccf"
+  },
+  "classifier": {
+    "primary": "dinov3_convnext_tiny_last_stage_l2sp",
+    "pretrained_revision": "6876159a11b4df116f30f667f8c9888617df0751",
+    "fallback_comparison": "dinov3_vits16_frozen_feature_linear_probe",
+    "fine_tune_backbone": "last_stage_only",
+    "selection": "three_fold_by_capture_slot_before_locked_evaluation"
+  },
+  "detector": {
+    "baseline": "PekingU/rtdetr_v2_r18vd",
+    "challengers": [
+      "Peterande/D-FINE-N",
+      "Peterande/D-FINE-S",
+      "Intellindust-AI-Lab/DEIM-D-FINE-N"
+    ],
+    "initial_candidate": "PekingU/rtdetr_v2_r18vd",
+    "image_size": 640,
+    "batch_size": 8,
+    "epochs": 40,
+    "learning_rate": 0.00001,
+    "head_learning_rate_multiplier": 10.0,
+    "class_head_prior_probability": 0.01,
+    "max_object_aspect_ratio": 5.0,
+    "weight_decay": 0.0001,
+    "selection": "three_fold_synthetic_validation_then_locked_real_evaluation"
+  },
+  "runtime": {
+    "jpeg_draft_size": 1050,
+    "approval_threshold": 0.9999998211860657,
+    "final_views": ["vflip", "rot-15", "rot30"],
+    "top3_views": ["base", "vflip", "rot-15", "rot30"],
+    "top3_aggregation": "top3_vote",
+    "duplicate_review_containment_threshold": 0.99,
+    "duplicate_review_requires_same_top1": true,
+    "recapture_policy_changed": false
+  },
+  "latest_multi_object_scenes_result": {
+    "report": "artifacts/experiments/bread-source-single_objects_3-dinov3/reports/release-gate-multi-cuda-production.json",
+    "recognition_accuracy": 0.9907801418439717,
+    "approved_count": 1121,
+    "approved_misrecognition_count": 0,
+    "approved_misrecognition_rate": 0.0,
+    "approved_misrecognition_rate_upper_95": 0.0026688072943848507,
+    "segmentation_recall_iou50": 0.9929078014184397,
+    "segmentation_precision_iou50": 0.9971509971509972,
+    "image_recapture_count": 0,
+    "segment_recapture_count": 0,
+    "mean_latency_ms": 77.79238633321559,
+    "p95_latency_ms": 96.01189999957569,
+    "point_kpis_pass": true,
+    "statistical_risk_gate_pass": false
+  },
+  "release_gates": {
+    "minimum_recognition_accuracy": 0.99,
+    "maximum_approved_misrecognition_rate": 0.001,
+    "maximum_approved_misrecognition_rate_upper_95": 0.001,
+    "minimum_segmentation_recall_iou50": 0.99,
+    "minimum_segmentation_precision_iou50": 0.99,
+    "minimum_image_recapture_recall": 0.99,
+    "maximum_false_image_recapture_rate": 0.01,
+    "maximum_segment_recapture_rate": 0.01,
+    "recapture_non_regression": true,
+    "maximum_mean_latency_ms": 100.0,
+    "maximum_p95_latency_ms": 100.0,
+    "minimum_zero_error_approved_samples_for_risk_proof": 2995,
+    "manual_waiver_allowed": true,
+    "manual_waiver_applied": true
+  }
+}

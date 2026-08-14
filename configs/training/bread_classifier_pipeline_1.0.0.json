@@ -1,0 +1,120 @@
+{
+  "schema_version": "1.1",
+  "component": "classifier",
+  "pipeline_version": "1.0.0",
+  "lifecycle": "promoted",
+  "dataset": {
+    "root_path": "datasets/bread_dataset",
+    "metadata_path": "manifests/bread-1.0-a52b4faa3e20/metadata.json",
+    "manifest_path": "manifests/bread-1.0-a52b4faa3e20/manifest.jsonl",
+    "evaluation_manifest_path": "manifests/bread-1.0-a52b4faa3e20/evaluation_manifest.jsonl",
+    "dataset_version": "bread-1.0-a52b4faa3e20",
+    "training_directory": "single_objects_3",
+    "original_image_count": 240,
+    "forbidden_sources": [
+      "multi_object_scenes",
+      "scan_log_samples"
+    ]
+  },
+  "pretrained": {
+    "repository": "facebookresearch/dinov3",
+    "revision": "6876159a11b4df116f30f667f8c9888617df0751",
+    "weight_sha256": "21b726bb286e037f00a23fb4699fa9bda9c75b6a615bd57ce3013cec1b528d54"
+  },
+  "stages": [
+    "dataset_audit",
+    "group_split",
+    "train",
+    "validation_selection",
+    "checkpoint_lock",
+    "onnx_export",
+    "cpu_cuda_parity"
+  ],
+  "test_access_policy": "forbidden_until_cpu_cuda_parity",
+  "recipe": {
+    "kind": "classifier",
+    "architecture": "DINOv3 ConvNeXt-Tiny",
+    "input_size": [224, 224],
+    "class_count": 20,
+    "original_image_count": 240,
+    "epochs": 40,
+    "batch_size": 128,
+    "learning_rate": 0.001,
+    "weight_decay": 0.0001,
+    "contrastive_weight": 0.1,
+    "contrastive_temperature": 0.1,
+    "seeds": [20260812, 20260813, 20260814],
+    "challenger": "last_stage_l2sp",
+    "finetune_scope": "backbone.stages[-1]",
+    "challenger_learning_rate": 0.00001,
+    "l2_sp_weight": 0.001,
+    "export_policy": "staged_affine_view_tta",
+    "final_views": ["vflip", "rot-15", "rot30"],
+    "top3_views": ["base", "vflip", "rot-15", "rot30"],
+    "top3_aggregation": "top3_vote"
+  },
+  "selection": {
+    "kind": "classifier",
+    "assignment": {
+      "path": "manifests/bread-1.0-a52b4faa3e20/classifier_selection.jsonl",
+      "sha256": "250f318800c194f9fca42eb2c9f0e96946d13419387ffbfe27231281ff84464e"
+    },
+    "group_key": "group_id",
+    "fold_key": "fold",
+    "target_key": "target",
+    "image_id_key": "image_id",
+    "folds": 3,
+    "selection_source": "multi_object_scenes_development_roi",
+    "selected_recipe": "last_stage_l2sp",
+    "selected_seed": 20260813,
+    "mean_validation_top1": 0.976906739321434,
+    "benchmark_source": "multi_object_scenes",
+    "independent_test_status": "pending_user_images"
+  },
+  "run_evidence": {
+    "path": "configs/training/evidence/classifier_1.0.0_recovered.json",
+    "sha256": "c449b2916f7537001d7712265ba2119ff728d4b8795eb0e3eb6362f610a211af",
+    "provenance_mode": "recovered"
+  },
+  "smoke": {
+    "kind": "classifier",
+    "parity_tensors": {
+      "path": "artifacts/experiments/bread-source-single_objects_3-dinov3/prepared/evaluation_tensors.npy",
+      "sha256": "54914e41746de9e7e3e84745c7467dacd13bc92bde3095ea286288eacbb3bad4"
+    },
+    "crop_scale": 0.855
+  },
+  "checkpoint": {
+    "path": "artifacts/experiments/bread-source-single_objects_3-dinov3/classifier/best.pt",
+    "sha256": "1be1781c2ece6e8ac12aa9ac9915fd5f81f115d093f1e08f7c9c3b9622e3b104"
+  },
+  "onnx": {
+    "path": "artifacts/packages/bread-worker-1.0.0/classifier.onnx",
+    "sha256": "93a9d92c6fd63f5a6aef65e11e3d0acecfffd7c6cf5ac2bfdba732f4e543ab8f",
+    "inputs": {
+      "pixel_values": ["batch", 3, 224, 224],
+      "view_affine": ["batch", 2, 3]
+    },
+    "outputs": {
+      "logits": ["batch", 20]
+    },
+    "dynamic_batch": true
+  },
+  "parity": {
+    "path": "artifacts/experiments/bread-source-single_objects_3-dinov3/reports/classifier-cpu-cuda-parity.json",
+    "sha256": "e05ec32de5bae21a447179e6c3b41851f209fbbb7055ebe1a1e6a71e516117ff",
+    "passes_key": "passes"
+  },
+  "package": {
+    "path": "artifacts/packages/bread-worker-1.0.0",
+    "model_filename": "classifier.onnx",
+    "model_version": "1.0.0",
+    "schema_policy": "legacy_external_lock"
+  },
+  "output_schema": {
+    "checkpoint": "dinov3_last_stage_l2sp_checkpoint",
+    "onnx_inputs": ["pixel_values", "view_affine"],
+    "onnx_outputs": ["logits"],
+    "ranking_aggregation": "top3_vote"
+  }
+}

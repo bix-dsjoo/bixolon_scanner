@@ -1,0 +1,148 @@
+{
+  "schema_version": "1.0",
+  "dataset_version": "bread-1.0-17a07d799c4e",
+  "dataset_digest_sha256": "17a07d799c4e63fbe5c09cd73dfa6d7fc911cde24a6e79476d2d55fde198ac00",
+  "root_name": "bread_dataset",
+  "root_policy": "only-this-root",
+  "training_contract": {
+    "allowed_directory": "single_objects",
+    "class_count": 20,
+    "shots_per_class": 10,
+    "original_image_count": 200,
+    "derived_evaluation_images_are_training_forbidden": true
+  },
+  "class_count": 20,
+  "shots_per_class": 10,
+  "labels": [
+    {
+      "category_id": 1,
+      "class_id": "bread_01",
+      "class_name": "Walnut Donut"
+    },
+    {
+      "category_id": 2,
+      "class_id": "bread_02",
+      "class_name": "Croffle"
+    },
+    {
+      "category_id": 3,
+      "class_id": "bread_03",
+      "class_name": "Waffle"
+    },
+    {
+      "category_id": 4,
+      "class_id": "bread_04",
+      "class_name": "Scone"
+    },
+    {
+      "category_id": 5,
+      "class_id": "bread_05",
+      "class_name": "Half-moon Croissant"
+    },
+    {
+      "category_id": 6,
+      "class_id": "bread_06",
+      "class_name": "Croissant"
+    },
+    {
+      "category_id": 7,
+      "class_id": "bread_07",
+      "class_name": "Flower Bread"
+    },
+    {
+      "category_id": 8,
+      "class_id": "bread_08",
+      "class_name": "Almond Scone"
+    },
+    {
+      "category_id": 9,
+      "class_id": "bread_09",
+      "class_name": "Dinner Roll"
+    },
+    {
+      "category_id": 10,
+      "class_id": "bread_10",
+      "class_name": "Sugar Donut"
+    },
+    {
+      "category_id": 11,
+      "class_id": "bread_11",
+      "class_name": "Bagel"
+    },
+    {
+      "category_id": 12,
+      "class_id": "bread_12",
+      "class_name": "Egg Tart"
+    },
+    {
+      "category_id": 13,
+      "class_id": "bread_13",
+      "class_name": "Muffin"
+    },
+    {
+      "category_id": 14,
+      "class_id": "bread_14",
+      "class_name": "Burger"
+    },
+    {
+      "category_id": 15,
+      "class_id": "bread_15",
+      "class_name": "Sandwich"
+    },
+    {
+      "category_id": 16,
+      "class_id": "bread_16",
+      "class_name": "Grain Campagne"
+    },
+    {
+      "category_id": 17,
+      "class_id": "bread_17",
+      "class_name": "Almond Campagne"
+    },
+    {
+      "category_id": 18,
+      "class_id": "bread_18",
+      "class_name": "Mini Bread"
+    },
+    {
+      "category_id": 19,
+      "class_id": "bread_19",
+      "class_name": "Pastry Bread"
+    },
+    {
+      "category_id": 20,
+      "class_id": "bread_20",
+      "class_name": "Plain Bread"
+    }
+  ],
+  "evaluation_sets": {
+    "multi_object_scenes": {
+      "annotation_file": "annotations/multi_object_instances.json",
+      "annotation_sha256": "bf93b4363029ea5785c50e860406eb4365814e9b6eb5c7271f2a57cdad4afeeb",
+      "image_content_sha256": "13223c4cf62d28f51c3dbc4e7a228d1e25bcfa47ca1311330dd681adf6a4af2f",
+      "image_count": 300,
+      "annotation_count": 1410,
+      "status_counts": {},
+      "difficulty_counts": {
+        "easy": 100,
+        "hard": 100,
+        "medium": 100
+      },
+      "training_allowed": false
+    },
+    "scan_log_samples": {
+      "annotation_file": "annotations/scan_log_instances.json",
+      "annotation_sha256": "1a8fab56976a329745d6be30d78b7ede2fc1a8990e0010c9e0f9491985d0db92",
+      "image_content_sha256": "8a6d19c353be7f34cf0a5fbd569ab2948be9b2ef8f1d773746e5429b3d6a35de",
+      "image_count": 100,
+      "annotation_count": 213,
+      "status_counts": {
+        "ANNOTATED": 69,
+        "RECAPTURE": 31
+      },
+      "difficulty_counts": {},
+      "training_allowed": false
+    }
+  },
+  "manifest_sha256": "c9340401499f8cb89d71fb59ce485ed68b3ad751b26660c073822377f0975a3c"
+}

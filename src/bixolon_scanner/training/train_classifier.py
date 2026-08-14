@@ -230,6 +230,7 @@ def train(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Train the DINOv3/DINOv2 bread classifier")
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--pipeline-contract", type=Path)
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--fold", type=int, default=0)

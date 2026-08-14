@@ -1,0 +1,54 @@
+{
+  "schema_version": "1.0",
+  "component": "detector",
+  "pipeline_version": "1.0.0",
+  "provenance_mode": "recovered",
+  "recovery_statement": "Reconstructed from the pinned D-FINE source revision, immutable synthetic/COCO provenance, checkpoint scheduler state and training log. The original generated overlay was not retained, so this is not represented as a native run config.",
+  "dataset": {
+    "version": "bread-1.0-17a07d799c4e",
+    "training_directory": "single_objects",
+    "original_image_count": 200,
+    "manifest_sha256": "c9340401499f8cb89d71fb59ce485ed68b3ad751b26660c073822377f0975a3c"
+  },
+  "synthetic": {
+    "image_count": 2000,
+    "empty_image_count": 698,
+    "annotation_count": 5235,
+    "seed": 20260815,
+    "recipe_sha256": "92fea72cb9f0e542340c2d139b2480eaacb9b4a56f68ddc104525b0141af073f"
+  },
+  "split": {
+    "validation_fold": 2,
+    "training_image_count": 1334,
+    "validation_image_count": 666,
+    "training_annotation_count": 3499,
+    "validation_annotation_count": 1736,
+    "evaluation_images_used": false
+  },
+  "model": {
+    "architecture": "D-FINE-N HGNetv2 B0",
+    "source_revision": "267a6da6d04c8ad52e54120692896515b9e55981",
+    "source_weight_sha256": "70a372e8cbc59b34c5da2943261ecb633faf304a58e7e05461a27bd8d8b7f3d1",
+    "input_size": [640, 640],
+    "class_count": 20
+  },
+  "training": {
+    "epochs": 30,
+    "selected_checkpoint_epoch": 27,
+    "total_batch_size": 8,
+    "optimizer": "AdamW",
+    "base_learning_rate": 0.0008,
+    "backbone_learning_rate": 0.0004,
+    "head_learning_rate_multiplier": 2.0,
+    "weight_decay": 0.0001,
+    "warmup_end_values": [0.0004, 0.0004, 0.0008, 0.0008],
+    "warmup_duration_steps": 100
+  },
+  "selection": {
+    "checkpoint_source": "group-aware synthetic validation",
+    "operating_threshold": 0.49,
+    "threshold_source": "multi_object_scenes development benchmark",
+    "selection_benchmark_overlap": true,
+    "independent_final_test": "pending_user_images"
+  }
+}

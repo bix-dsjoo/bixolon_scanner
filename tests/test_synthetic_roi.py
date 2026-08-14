@@ -7,10 +7,13 @@ import pytest
 from PIL import Image, ImageDraw
 
 from bixolon_scanner.training.synthetic_roi import (
+    ClutterRoiRecipe,
     DirectRoiRecipe,
     SyntheticRecipe,
+    augment_clutter_roi,
     augment_direct_roi,
     border_connected_background_alpha,
+    clutter_roi_recipe_sha256,
     compose_synthetic_frame,
     crop_with_margin,
     prepare_direct_roi_source,
@@ -145,3 +148,42 @@ def test_crop_with_margin_matches_expected_clamped_geometry():
     assert crop.size == (44, 44)
     edge = crop_with_margin(image, (0, 0, 20, 20), margin_ratio=0.05)
     assert edge.size == (21, 21)
+
+
+def test_clutter_roi_is_deterministic_and_preserves_source_provenance():
+    target = Image.new("RGBA", (80, 56), (0, 0, 0, 0))
+    ImageDraw.Draw(target).ellipse((8, 8, 72, 48), fill=(190, 110, 45, 255))
+    distractor = Image.new("RGBA", (52, 72), (0, 0, 0, 0))
+    ImageDraw.Draw(distractor).rectangle((8, 5, 44, 67), fill=(115, 65, 32, 255))
+    recipe = ClutterRoiRecipe(output_size=96, distractor_count_min=2, distractor_count_max=2)
+
+    kwargs = {
+        "target_sha256": "a" * 64,
+        "target_category_id": 1,
+        "distractors": [(distractor, "b" * 64, 2)],
+        "seed": 42,
+        "recipe": recipe,
+    }
+    first = augment_clutter_roi(target, **kwargs)
+    second = augment_clutter_roi(target, **kwargs)
+
+    assert first.image.tobytes() == second.image.tobytes()
+    assert first.image.size == (96, 96)
+    assert first.provenance["target_source_sha256"] == "a" * 64
+    assert len(first.provenance["distractors"]) == 2
+    assert all(row["source_sha256"] == "b" * 64 for row in first.provenance["distractors"])
+    assert all(row["target_occlusion"] <= 0.12 for row in first.provenance["distractors"])
+    assert first.provenance["recipe_sha256"] == clutter_roi_recipe_sha256(recipe)
+
+
+def test_clutter_roi_rejects_same_class_distractors():
+    cutout = Image.new("RGBA", (32, 32), (120, 80, 40, 255))
+    with pytest.raises(ValueError, match="different category"):
+        augment_clutter_roi(
+            cutout,
+            target_sha256="a" * 64,
+            target_category_id=1,
+            distractors=[(cutout, "b" * 64, 1)],
+            seed=1,
+            recipe=ClutterRoiRecipe(),
+        )

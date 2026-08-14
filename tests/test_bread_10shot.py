@@ -139,6 +139,37 @@ def test_support_loader_derives_arbitrary_label_count_and_rejects_checksum_drift
         _load_support_records(manifest, metadata)
 
 
+def test_support_loader_accepts_balanced_seven_shot_manifest(tmp_path: Path):
+    records = [
+        {
+            "record_type": "classification",
+            "category_id": category,
+            "image_path": f"{category}/{shot}.jpg",
+            "image_sha256": f"{category:02d}{shot:02d}".ljust(64, "b"),
+            "split": "train_support",
+        }
+        for category in range(1, 3)
+        for shot in range(7)
+    ]
+    body = "".join(json.dumps(row, sort_keys=True) + "\n" for row in records)
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text(body, encoding="utf-8", newline="\n")
+    metadata = tmp_path / "metadata.json"
+    metadata.write_text(
+        json.dumps(
+            {
+                "class_count": 2,
+                "shots_per_class": 7,
+                "manifest_sha256": hashlib.sha256(body.encode()).hexdigest(),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    loaded, _ = _load_support_records(manifest, metadata)
+    assert len(loaded) == 14
+
+
 def test_tta_disagreement_reduces_logit_confidence_without_changing_shape():
     primary = np.asarray([[8.0, 1.0], [8.0, 1.0]], dtype=np.float32)
     secondary = np.asarray([[7.0, 1.0], [1.0, 8.0]], dtype=np.float32)

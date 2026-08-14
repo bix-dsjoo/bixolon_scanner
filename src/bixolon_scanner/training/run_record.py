@@ -88,6 +88,18 @@ def write_run_record(
         "dependencies": _package_versions(),
         "source_sha256": _sha256_path(Path(__file__).parent, suffix=".py"),
     }
+    pipeline_contract_path = getattr(args, "pipeline_contract", None)
+    if pipeline_contract_path is not None:
+        from .pipeline_contract import canonical_contract_sha256, load_pipeline_contract
+
+        contract = load_pipeline_contract(Path(pipeline_contract_path))
+        if contract.component != task.removesuffix("_training"):
+            raise ValueError("pipeline contract component does not match the training task")
+        record["training_pipeline"] = {
+            "component": contract.component,
+            "version": contract.pipeline_version,
+            "contract_sha256": canonical_contract_sha256(contract),
+        }
     pretrained = getattr(args, "pretrained_name", None)
     if pretrained is not None and Path(str(pretrained)).exists():
         checkpoint_path = Path(str(pretrained)).resolve()

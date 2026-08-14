@@ -1,9 +1,23 @@
 from __future__ import annotations
 
 import json
+from argparse import Namespace
+
+import pytest
 
 from bixolon_scanner.package import sha256_file
-from bixolon_scanner.training.export import _copy_reused_classifier
+from bixolon_scanner.training.export import _copy_reused_classifier, _export_worker_version
+
+
+def test_export_worker_version_prefers_new_name_and_rejects_mismatch():
+    assert (
+        _export_worker_version(Namespace(worker_version="1.0.0", package_version=None)) == "1.0.0"
+    )
+    assert (
+        _export_worker_version(Namespace(worker_version=None, package_version="0.2.4")) == "0.2.4"
+    )
+    with pytest.raises(ValueError, match="must match"):
+        _export_worker_version(Namespace(worker_version="1.0.0", package_version="1.0.1"))
 
 
 def test_reused_classifier_is_copied_byte_for_byte(tmp_path):

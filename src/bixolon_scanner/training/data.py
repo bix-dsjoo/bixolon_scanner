@@ -21,7 +21,7 @@ class ClassifierDataset:
         manifest_path: Path,
         dataset_root: Path,
         *,
-        mode: Literal["train", "final_train", "validation", "test"],
+        mode: Literal["train", "final_train", "validation", "evaluation", "test"],
         fold: int = 0,
         image_size: int = 224,
         cache_dir: Path | None = None,
@@ -147,7 +147,10 @@ class DetectionDataset:
         for record in records:
             if record["record_type"] != "detection":
                 continue
-            if record.get("exclude_from_detector_training", False) and mode != "test":
+            if record.get("exclude_from_detector_training", False) and mode not in (
+                "evaluation",
+                "test",
+            ):
                 continue
             if record.get("adaptation_replay_only", False) and mode in (
                 "validation",
@@ -157,6 +160,9 @@ class DetectionDataset:
             include = (
                 mode == "test"
                 and record["split"] == "test"
+                or mode == "evaluation"
+                and record["split"] == "development"
+                and record.get("exclude_from_detector_training", False)
                 or mode == "validation"
                 and record["split"] == "development"
                 and record["fold"] == fold

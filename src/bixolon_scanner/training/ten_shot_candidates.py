@@ -30,7 +30,7 @@ class CandidateResult:
 def validate_seed_matrix(seeds: Iterable[int]) -> tuple[int, ...]:
     values = tuple(int(value) for value in seeds)
     if values != (20260812, 20260813, 20260814):
-        raise ValueError("0.2.0 requires seeds 20260812, 20260813 and 20260814")
+        raise ValueError("strict 10-shot selection requires seeds 20260812, 20260813 and 20260814")
     return values
 
 

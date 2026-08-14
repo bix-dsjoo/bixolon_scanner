@@ -1,0 +1,40 @@
+__include__:
+  - ../../artifacts/vendor/D-FINE/configs/dfine/dfine_hgnetv2_n_coco.yml
+
+output_dir: artifacts/experiments/bread-detector-1.0.0-rebuild/training
+num_classes: 20
+remap_mscoco_category: false
+epochs: 40
+
+optimizer:
+  type: AdamW
+  params:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.00001
+    - params: '^(?=.*backbone)(?=.*norm|bn).*$'
+      lr: 0.00001
+      weight_decay: 0.0
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.0
+  lr: 0.0001
+  betas: [0.9, 0.999]
+  weight_decay: 0.0001
+
+train_dataloader:
+  total_batch_size: 8
+  dataset:
+    img_folder: artifacts/experiments/bread-detector-1.0.0-rebuild/synthetic_detector
+    ann_file: artifacts/experiments/bread-detector-1.0.0-rebuild/coco/instances_train.json
+    transforms:
+      policy:
+        epoch: 36
+  collate_fn:
+    stop_epoch: 36
+    ema_restart_decay: 0.9999
+    base_size_repeat: null
+
+val_dataloader:
+  total_batch_size: 8
+  dataset:
+    img_folder: artifacts/experiments/bread-detector-1.0.0-rebuild/synthetic_detector
+    ann_file: artifacts/experiments/bread-detector-1.0.0-rebuild/coco/instances_validation.json

@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0",
+  "component": "detector",
+  "pipeline_version": "1.0.0",
+  "provenance_mode": "native",
+  "stages": [
+    {
+      "stage": "dataset_audit",
+      "passes": true,
+      "artifact": {
+        "path": "manifests/bread-1.0-a52b4faa3e20/metadata.json",
+        "sha256": "44b15a5376730f6793c6fe4605a3a484ef62704d9b2122b487d23bfec52febc9"
+      },
+      "previous_stage_sha256": null,
+      "stage_sha256": "e62aa54e32de4d9786655aae5996d66db3306aa8d79258565abe6bbf67203e73"
+    },
+    {
+      "stage": "group_split",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-detector-1.0.0-rebuild/coco/provenance.json",
+        "sha256": "33f15f7344b304357a1d7a03ce1adeee2a61783bbafed99cd5d902cf16b246e1"
+      },
+      "previous_stage_sha256": "e62aa54e32de4d9786655aae5996d66db3306aa8d79258565abe6bbf67203e73",
+      "stage_sha256": "7042dc88deae94d380f437138840108067caf50a0736d079bc2e41972f760dde"
+    },
+    {
+      "stage": "train",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-detector-1.0.0-rebuild/training/log.txt",
+        "sha256": "c03a56ee48d6227aa095ac84655fb57f94c9f096b3415c3e72e707109250b27c"
+      },
+      "previous_stage_sha256": "7042dc88deae94d380f437138840108067caf50a0736d079bc2e41972f760dde",
+      "stage_sha256": "c90723d290d130a29c23bf57ab7b52ea64b726949dfb7e26ef1677f4f2b0a34f"
+    },
+    {
+      "stage": "validation_selection",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-detector-1.0.0-rebuild/reports/validation-threshold-cuda.json",
+        "sha256": "b6c3f29cbdad39a0e28e95bec54e6cb85478827e3ba23089f5dc63631f232795"
+      },
+      "previous_stage_sha256": "c90723d290d130a29c23bf57ab7b52ea64b726949dfb7e26ef1677f4f2b0a34f",
+      "stage_sha256": "1c9379c78cce3765417664a4a5f287b32625e5f65543c2bb6ae530b773af8755"
+    },
+    {
+      "stage": "checkpoint_lock",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-detector-1.0.0-rebuild/training/detector-1.0.0-locked.pth",
+        "sha256": "096d2fdc63268c9bd574339d1a25756c5f4e96b4ea9fadeb9afb4fba73151424"
+      },
+      "previous_stage_sha256": "1c9379c78cce3765417664a4a5f287b32625e5f65543c2bb6ae530b773af8755",
+      "stage_sha256": "c3cffb1c3258ba89d683ebf0424c9e3a97a767257dd4ce76cddeaab9166c64c3"
+    },
+    {
+      "stage": "onnx_export",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-detector-1.0.0-rebuild/reports/export-report.json",
+        "sha256": "7edfabf349a8321d47b5268c14fb10f19dc3aa6914f34d719d3f1948b37acc9f"
+      },
+      "previous_stage_sha256": "c3cffb1c3258ba89d683ebf0424c9e3a97a767257dd4ce76cddeaab9166c64c3",
+      "stage_sha256": "79267519f607e84a9566198feb175c4eb3fc538c8b42859d2c2bffc445e44e80"
+    },
+    {
+      "stage": "cpu_cuda_parity",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-detector-1.0.0-rebuild/reports/detector-cpu-cuda-parity.json",
+        "sha256": "21c76fe091e4157af0fa8e47959a7f95a1d731c25dce16ea55e124d92a24396b"
+      },
+      "previous_stage_sha256": "79267519f607e84a9566198feb175c4eb3fc538c8b42859d2c2bffc445e44e80",
+      "stage_sha256": "ef5604bfc54be0dccda48098f6c3edcb39dd052cb31f8094c12d0321cea72d87"
+    }
+  ],
+  "final_stage_sha256": "ef5604bfc54be0dccda48098f6c3edcb39dd052cb31f8094c12d0321cea72d87"
+}

@@ -110,6 +110,209 @@ class DirectRoiRecipe:
             raise ValueError("mask_feather_radius cannot be negative")
 
 
+@dataclass(frozen=True)
+class ClutterRoiRecipe:
+    """Target-preserving multi-object context for classifier training."""
+
+    output_size: int = 224
+    target_scale_min: float = 0.58
+    target_scale_max: float = 0.88
+    distractor_count_min: int = 1
+    distractor_count_max: int = 3
+    distractor_scale_min: float = 0.28
+    distractor_scale_max: float = 0.62
+    maximum_rotation_degrees: float = 40.0
+    foreground_distractor_probability: float = 0.35
+    maximum_target_occlusion: float = 0.12
+    placement_attempts: int = 40
+    background_min: int = 185
+    background_max: int = 235
+    jpeg_quality_min: int = 82
+    jpeg_quality_max: int = 96
+
+    def validate(self) -> None:
+        if self.output_size < 64:
+            raise ValueError("clutter ROI output_size must be at least 64")
+        if not 0 < self.target_scale_min <= self.target_scale_max <= 1:
+            raise ValueError("clutter target scale range is invalid")
+        if not 1 <= self.distractor_count_min <= self.distractor_count_max:
+            raise ValueError("clutter distractor count range is invalid")
+        if not 0 < self.distractor_scale_min <= self.distractor_scale_max <= 1:
+            raise ValueError("clutter distractor scale range is invalid")
+        if not 0 <= self.foreground_distractor_probability <= 1:
+            raise ValueError("foreground distractor probability is invalid")
+        if not 0 <= self.maximum_target_occlusion <= 0.5:
+            raise ValueError("maximum target occlusion must be in [0, 0.5]")
+        if self.placement_attempts < 1:
+            raise ValueError("clutter placement_attempts must be positive")
+        if not 0 <= self.background_min <= self.background_max <= 255:
+            raise ValueError("clutter background range is invalid")
+        if not 1 <= self.jpeg_quality_min <= self.jpeg_quality_max <= 100:
+            raise ValueError("clutter JPEG quality range is invalid")
+
+
+def clutter_roi_recipe_sha256(recipe: ClutterRoiRecipe) -> str:
+    recipe.validate()
+    return hashlib.sha256(_canonical_json(asdict(recipe)).encode("utf-8")).hexdigest()
+
+
+def augment_clutter_roi(
+    target_cutout: Image.Image,
+    *,
+    target_sha256: str,
+    target_category_id: int,
+    distractors: Sequence[tuple[Image.Image, str, int]],
+    seed: int,
+    recipe: ClutterRoiRecipe,
+) -> SyntheticSample:
+    """Compose a labelled target with other 10-shot cutouts at crop boundaries."""
+    recipe.validate()
+    if len(target_sha256) != 64:
+        raise ValueError("target_sha256 must be a full SHA-256 digest")
+    if not distractors:
+        raise ValueError("clutter ROI requires at least one distractor")
+    if any(len(sha256) != 64 for _, sha256, _ in distractors):
+        raise ValueError("distractor SHA-256 digests must be complete")
+    if any(int(category_id) == int(target_category_id) for _, _, category_id in distractors):
+        raise ValueError("clutter distractors must use a different category")
+
+    rng = np.random.default_rng(seed)
+    neutral = int(rng.integers(recipe.background_min, recipe.background_max + 1))
+    tint = tuple(int(np.clip(neutral + rng.integers(-10, 11), 0, 255)) for _ in range(3))
+    canvas = Image.new("RGB", (recipe.output_size, recipe.output_size), tint)
+    target = _transform_clutter_cutout(
+        target_cutout,
+        rng,
+        output_size=recipe.output_size,
+        scale_min=recipe.target_scale_min,
+        scale_max=recipe.target_scale_max,
+        rotation_degrees=recipe.maximum_rotation_degrees,
+    )
+    target_left = (recipe.output_size - target.width) // 2
+    target_top = (recipe.output_size - target.height) // 2
+    target_box = (
+        target_left,
+        target_top,
+        target_left + target.width,
+        target_top + target.height,
+    )
+    target_mask = Image.new("L", canvas.size, 0)
+    target_mask.paste(target.getchannel("A"), (target_left, target_top))
+    target_area = max(1, int(np.count_nonzero(np.asarray(target_mask))))
+
+    count = int(rng.integers(recipe.distractor_count_min, recipe.distractor_count_max + 1))
+    chosen = rng.choice(len(distractors), size=count, replace=len(distractors) < count)
+    placed: list[dict[str, Any]] = []
+    foreground: list[tuple[Image.Image, tuple[int, int], dict[str, Any]]] = []
+    for distractor_index in chosen:
+        source, source_sha256, category_id = distractors[int(distractor_index)]
+        cutout = _transform_clutter_cutout(
+            source,
+            rng,
+            output_size=recipe.output_size,
+            scale_min=recipe.distractor_scale_min,
+            scale_max=recipe.distractor_scale_max,
+            rotation_degrees=recipe.maximum_rotation_degrees,
+        )
+        is_foreground = bool(rng.random() < recipe.foreground_distractor_probability)
+        selected_position: tuple[int, int] | None = None
+        selected_occlusion = 0.0
+        for _ in range(recipe.placement_attempts):
+            edge = int(rng.integers(0, 4))
+            if edge in {0, 1}:
+                left = int(rng.integers(-cutout.width // 2, recipe.output_size - cutout.width // 2))
+                top = (
+                    int(rng.integers(-cutout.height // 2, 1))
+                    if edge == 0
+                    else int(rng.integers(recipe.output_size - cutout.height, recipe.output_size))
+                )
+            else:
+                left = (
+                    int(rng.integers(-cutout.width // 2, 1))
+                    if edge == 2
+                    else int(rng.integers(recipe.output_size - cutout.width, recipe.output_size))
+                )
+                top = int(
+                    rng.integers(-cutout.height // 2, recipe.output_size - cutout.height // 2)
+                )
+            overlap_mask = Image.new("L", canvas.size, 0)
+            overlap_mask.paste(cutout.getchannel("A"), (left, top))
+            overlap = int(
+                np.count_nonzero((np.asarray(overlap_mask) > 0) & (np.asarray(target_mask) > 0))
+            )
+            occlusion = overlap / target_area if is_foreground else 0.0
+            if not is_foreground or occlusion <= recipe.maximum_target_occlusion:
+                selected_position = (left, top)
+                selected_occlusion = occlusion
+                break
+        if selected_position is None:
+            continue
+        item = {
+            "source_sha256": source_sha256,
+            "category_id": int(category_id),
+            "foreground": is_foreground,
+            "position": list(selected_position),
+            "target_occlusion": selected_occlusion,
+        }
+        if is_foreground:
+            foreground.append((cutout, selected_position, item))
+        else:
+            canvas.paste(cutout.convert("RGB"), selected_position, cutout.getchannel("A"))
+        placed.append(item)
+
+    canvas.paste(target.convert("RGB"), (target_left, target_top), target.getchannel("A"))
+    for cutout, position, _ in foreground:
+        canvas.paste(cutout.convert("RGB"), position, cutout.getchannel("A"))
+    jpeg_quality = int(rng.integers(recipe.jpeg_quality_min, recipe.jpeg_quality_max + 1))
+    canvas = _jpeg_roundtrip(canvas, jpeg_quality)
+    return SyntheticSample(
+        image=canvas,
+        bbox_xyxy=target_box,
+        provenance={
+            "schema_version": "1.0",
+            "mode": "target_preserving_multi_object_roi",
+            "target_source_sha256": target_sha256,
+            "target_category_id": int(target_category_id),
+            "distractors": placed,
+            "seed": seed,
+            "recipe_sha256": clutter_roi_recipe_sha256(recipe),
+            "jpeg_quality": jpeg_quality,
+        },
+    )
+
+
+def _transform_clutter_cutout(
+    source: Image.Image,
+    rng: np.random.Generator,
+    *,
+    output_size: int,
+    scale_min: float,
+    scale_max: float,
+    rotation_degrees: float,
+) -> Image.Image:
+    cutout = source.convert("RGBA").crop(_nonempty_alpha_bbox(source.convert("RGBA")))
+    alpha = cutout.getchannel("A")
+    rgb = ImageEnhance.Brightness(cutout.convert("RGB")).enhance(float(rng.uniform(0.82, 1.18)))
+    rgb = ImageEnhance.Contrast(rgb).enhance(float(rng.uniform(0.86, 1.14)))
+    rgb = ImageEnhance.Color(rgb).enhance(float(rng.uniform(0.88, 1.12)))
+    cutout = rgb.convert("RGBA")
+    cutout.putalpha(alpha)
+    if rng.random() < 0.5:
+        cutout = ImageOps.mirror(cutout)
+    cutout = cutout.rotate(
+        float(rng.uniform(-rotation_degrees, rotation_degrees)),
+        resample=Image.Resampling.BICUBIC,
+        expand=True,
+    )
+    cutout = cutout.crop(_nonempty_alpha_bbox(cutout))
+    long_side = max(2, round(output_size * float(rng.uniform(scale_min, scale_max))))
+    ratio = long_side / max(cutout.size)
+    return cutout.resize(
+        (max(2, round(cutout.width * ratio)), max(2, round(cutout.height * ratio))),
+        Image.Resampling.LANCZOS,
+    )
+
+
 def direct_roi_recipe_sha256(recipe: DirectRoiRecipe) -> str:
     recipe.validate()
     return hashlib.sha256(_canonical_json(asdict(recipe)).encode("utf-8")).hexdigest()

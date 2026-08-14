@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0",
+  "component": "classifier",
+  "pipeline_version": "1.0.0",
+  "provenance_mode": "recovered",
+  "recovery_statement": "Reconstructed from immutable checkpoint metadata and existing selection/export/parity artifacts; this is not represented as the original native run record.",
+  "stages": [
+    {
+      "stage": "dataset_audit",
+      "passes": true,
+      "artifact": {
+        "path": "manifests/bread-1.0-a52b4faa3e20/metadata.json",
+        "sha256": "44b15a5376730f6793c6fe4605a3a484ef62704d9b2122b487d23bfec52febc9"
+      }
+    },
+    {
+      "stage": "group_split",
+      "passes": true,
+      "artifact": {
+        "path": "manifests/bread-1.0-a52b4faa3e20/classifier_selection.jsonl",
+        "sha256": "250f318800c194f9fca42eb2c9f0e96946d13419387ffbfe27231281ff84464e"
+      }
+    },
+    {
+      "stage": "train",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-source-single_objects_3-dinov3/prepared/training_features.json",
+        "sha256": "722294fba115df6be6bfcd7e97f2c793d89bc3096ed90db194eb699be2c615ba"
+      }
+    },
+    {
+      "stage": "validation_selection",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-source-single_objects_3-dinov3/classifier/selection.json",
+        "sha256": "43c9689781da9b8ddb382b6b6b401938ea75318710b423445bd98483dd9bb459"
+      }
+    },
+    {
+      "stage": "checkpoint_lock",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-source-single_objects_3-dinov3/classifier/best.pt",
+        "sha256": "1be1781c2ece6e8ac12aa9ac9915fd5f81f115d093f1e08f7c9c3b9622e3b104"
+      }
+    },
+    {
+      "stage": "onnx_export",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-source-single_objects_3-dinov3/reports/staged-export.json",
+        "sha256": "96765210e78ee090c0d5e809b3884b73ce2efdfc55d97e2e20bd2805f34fcf88"
+      }
+    },
+    {
+      "stage": "cpu_cuda_parity",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-source-single_objects_3-dinov3/reports/classifier-cpu-cuda-parity.json",
+        "sha256": "e05ec32de5bae21a447179e6c3b41851f209fbbb7055ebe1a1e6a71e516117ff"
+      }
+    }
+  ]
+}

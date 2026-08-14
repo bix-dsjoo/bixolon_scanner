@@ -1,0 +1,65 @@
+{
+  "schema_version": "1.0",
+  "component": "detector",
+  "pipeline_version": "1.0.0",
+  "provenance_mode": "recovered",
+  "recovery_statement": "Reconstructed from immutable dataset, split, log, checkpoint, ONNX, selection and provider-parity artifacts; this is not represented as the original native run record.",
+  "stages": [
+    {
+      "stage": "dataset_audit",
+      "passes": true,
+      "artifact": {
+        "path": "manifests/bread-1.0.0/metadata.json",
+        "sha256": "6dbb74cf44264ea369f0ac1bb1767d1936099588e32626a853adf429401bf312"
+      }
+    },
+    {
+      "stage": "group_split",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-1.0.0-dfine-n/coco/provenance.json",
+        "sha256": "1ad27f18c686ee912b171e9965940904a21d78429628da65ae36c08464c2a4d1"
+      }
+    },
+    {
+      "stage": "train",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-1.0.0-dfine-n/training/log.txt",
+        "sha256": "360090190c491279e65eb2c9dbb87b76f6a9277b7a6d234e10f8d4505de8b458"
+      }
+    },
+    {
+      "stage": "validation_selection",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-1.0.0-dfine-n/reports/detector-worker1500-cuda.json",
+        "sha256": "e90e8261caeb5814185d1d3dae9207f9946862555bd62556e0d3e2d6e3d764e8"
+      }
+    },
+    {
+      "stage": "checkpoint_lock",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-1.0.0-dfine-n/training/best_stg2.pth",
+        "sha256": "7a6e5d531bb464a985958468e9b36466225eca5b2258230f60c8381de8ac0555"
+      }
+    },
+    {
+      "stage": "onnx_export",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/packages/bread-worker-1.0.0/detector.onnx",
+        "sha256": "f0d2eaf8e67821627957c3eed1462812063c32c4ad17028dda869addc5371b09"
+      }
+    },
+    {
+      "stage": "cpu_cuda_parity",
+      "passes": true,
+      "artifact": {
+        "path": "artifacts/experiments/bread-1.0.0-dfine-n/reports/detector-cpu-cuda-parity.json",
+        "sha256": "2708d4f4fa30ec16773c7560d2458d8feda52602e0415f769e21b3cade84c5b3"
+      }
+    }
+  ]
+}

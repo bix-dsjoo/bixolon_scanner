@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "component": "detector",
+  "requested_pipeline_version": "1.0.0",
+  "lifecycle": "rejected",
+  "candidate": "single_objects_3_12shot_native_rebuild",
+  "reason": "The native 12-shot rebuild failed the locked multi_object_scenes development benchmark and was never promoted.",
+  "artifacts": {
+    "checkpoint": {
+      "path": "artifacts/experiments/bread-detector-1.0.0-rebuild/training/detector-1.0.0-locked.pth",
+      "sha256": "096d2fdc63268c9bd574339d1a25756c5f4e96b4ea9fadeb9afb4fba73151424"
+    },
+    "onnx": {
+      "path": "artifacts/experiments/bread-detector-1.0.0-rebuild/export/detector.onnx",
+      "sha256": "fd1618c71c181e013413928e6f28fc889a95d814b8ccbb0e1cbd999cf1c44365"
+    },
+    "parity": {
+      "path": "artifacts/experiments/bread-detector-1.0.0-rebuild/reports/detector-cpu-cuda-parity.json",
+      "sha256": "21c76fe091e4157af0fa8e47959a7f95a1d731c25dce16ea55e124d92a24396b",
+      "passes": true
+    },
+    "release_gate": {
+      "path": "artifacts/experiments/bread-detector-1.0.0-rebuild/reports/release-gate-multi-cuda.json",
+      "sha256": "012eeaa04c237f31ec2de5dfed07078ecd0a0c0821cef87dbed9d679ca69211e",
+      "passes": false
+    }
+  },
+  "metrics": {
+    "recognition_accuracy": 0.9475177304964539,
+    "approved_misrecognition_rate": 0.03473491773308958,
+    "segmentation_recall_iou50": 0.9780141843971631,
+    "segmentation_precision_iou50": 0.8106995884773662,
+    "image_recapture_rate": 0.02,
+    "mean_latency_ms": 86.59530500027661,
+    "p95_latency_ms": 115.08257999448688
+  },
+  "promotion": {
+    "allowed": false,
+    "threshold_retuning_on_benchmark_allowed": false,
+    "production_artifacts_changed": false
+  }
+}

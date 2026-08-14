@@ -1,0 +1,123 @@
+{
+  "schema_version": "1.1",
+  "component": "detector",
+  "pipeline_version": "1.0.0",
+  "lifecycle": "promoted",
+  "dataset": {
+    "root_path": "datasets/bread_dataset",
+    "metadata_path": "manifests/bread-1.0.0/metadata.json",
+    "manifest_path": "manifests/bread-1.0.0/manifest.jsonl",
+    "evaluation_manifest_path": "manifests/bread-1.0.0/evaluation_manifest.jsonl",
+    "dataset_version": "bread-1.0-17a07d799c4e",
+    "training_directory": "single_objects",
+    "original_image_count": 200,
+    "forbidden_sources": ["multi_object_scenes", "scan_log_samples"]
+  },
+  "pretrained": {
+    "repository": "Peterande/D-FINE",
+    "revision": "267a6da6d04c8ad52e54120692896515b9e55981",
+    "weight_sha256": "70a372e8cbc59b34c5da2943261ecb633faf304a58e7e05461a27bd8d8b7f3d1"
+  },
+  "stages": [
+    "dataset_audit",
+    "group_split",
+    "train",
+    "validation_selection",
+    "checkpoint_lock",
+    "onnx_export",
+    "cpu_cuda_parity"
+  ],
+  "test_access_policy": "forbidden_until_cpu_cuda_parity",
+  "recipe": {
+    "kind": "detector",
+    "architecture": "D-FINE-N HGNetv2",
+    "input_size": [640, 640],
+    "synthetic_image_count": 2000,
+    "synthetic_empty_image_count": 698,
+    "synthetic_annotation_count": 5235,
+    "synthetic_seed": 20260815,
+    "synthetic_metadata": {
+      "path": "artifacts/experiments/bread-1.0.0-rc.5/synthetic_detector/metadata.json",
+      "sha256": "35d070556eb97f9161b34f28f1feedccdb6fdd411005d5df379914a39ebc433c"
+    },
+    "synthetic_manifest": {
+      "path": "artifacts/experiments/bread-1.0.0-rc.5/synthetic_detector/manifest.jsonl",
+      "sha256": "fa1f21044f7e7e08fa4630ec242d8871d8f87ca4888f7eff14aed2627ef1cff2"
+    },
+    "coco_provenance": {
+      "path": "artifacts/experiments/bread-1.0.0-dfine-n/coco/provenance.json",
+      "sha256": "1ad27f18c686ee912b171e9965940904a21d78429628da65ae36c08464c2a4d1"
+    },
+    "coco_train_annotations": {
+      "path": "artifacts/experiments/bread-1.0.0-dfine-n/coco/instances_train.json",
+      "sha256": "79ea366d0fcac28113d763126a13765eadcd94338295a3a0a0c25c1a5a3c0361"
+    },
+    "coco_validation_annotations": {
+      "path": "artifacts/experiments/bread-1.0.0-dfine-n/coco/instances_validation.json",
+      "sha256": "4cef9b3b818678b8f87e0869775bd40bdd16fa9c69491dbe2df3292f5854f8d8"
+    },
+    "training_config": {
+      "path": "configs/training/evidence/detector_1.0.0_recovered_recipe.json",
+      "sha256": "02aaf43ce245556701e029c6c269ed1ae2cc27b38c83bf2fbad1a1486404aa60"
+    },
+    "epochs": 30,
+    "batch_size": 8,
+    "learning_rate": 0.0004,
+    "head_learning_rate_multiplier": 2.0,
+    "weight_decay": 0.0001
+  },
+  "selection": {
+    "kind": "detector",
+    "split": "group_aware_synthetic_validation",
+    "group_key": "source_group",
+    "folds": 3,
+    "validation_fold": 2,
+    "selection_source": "multi_object_scenes_development_threshold",
+    "selection_benchmark_overlap": true,
+    "benchmark_source": "multi_object_scenes",
+    "independent_test_status": "pending_user_images"
+  },
+  "run_evidence": {
+    "path": "configs/training/evidence/detector_1.0.0_recovered.json",
+    "sha256": "73667f756270dd89239287bf5960f680c9198d380fbc7e69c4c2ec3c6dd4320e",
+    "provenance_mode": "recovered"
+  },
+  "smoke": {
+    "kind": "detector",
+    "repository_path": "artifacts/vendor/D-FINE",
+    "config_path": "configs/training/dfine_bread_detector_recovered_1.0.0.yml"
+  },
+  "checkpoint": {
+    "path": "artifacts/experiments/bread-1.0.0-dfine-n/training/best_stg2.pth",
+    "sha256": "7a6e5d531bb464a985958468e9b36466225eca5b2258230f60c8381de8ac0555"
+  },
+  "onnx": {
+    "path": "artifacts/packages/bread-worker-1.0.0/detector.onnx",
+    "sha256": "f0d2eaf8e67821627957c3eed1462812063c32c4ad17028dda869addc5371b09",
+    "inputs": {
+      "pixel_values": ["batch", 3, 640, 640]
+    },
+    "outputs": {
+      "logits": ["batch", "Gatherlogits_dim_1", 20],
+      "pred_boxes": ["batch", "Gatherpred_boxes_dim_1", 4]
+    },
+    "dynamic_batch": true
+  },
+  "parity": {
+    "path": "artifacts/experiments/bread-1.0.0-dfine-n/reports/detector-cpu-cuda-parity.json",
+    "sha256": "2708d4f4fa30ec16773c7560d2458d8feda52602e0415f769e21b3cade84c5b3",
+    "passes_key": "passes"
+  },
+  "package": {
+    "path": "artifacts/packages/bread-worker-1.0.0",
+    "model_filename": "detector.onnx",
+    "model_version": "1.0.0",
+    "schema_policy": "legacy_external_lock"
+  },
+  "output_schema": {
+    "checkpoint": "dfine_pytorch_checkpoint_external_recovered_provenance",
+    "onnx_inputs": ["pixel_values"],
+    "onnx_outputs": ["logits", "pred_boxes"],
+    "box_format": "normalized_cxcywh"
+  }
+}

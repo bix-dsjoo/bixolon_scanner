@@ -215,6 +215,26 @@ def test_adaptation_source_replay_never_enters_heldout_validation(tmp_path):
     assert len(final_training.records) == 16
 
 
+def test_evaluation_mode_reads_training_forbidden_development_records(tmp_path):
+    manifest = tmp_path / "manifest.jsonl"
+    records = [
+        {
+            "record_type": "detection",
+            "split": "development",
+            "fold": 0,
+            "image_id": 1,
+            "image_path": "evaluation.jpg",
+            "exclude_from_detector_training": True,
+            "annotations": [],
+        }
+    ]
+    manifest.write_text(json.dumps(records[0]) + "\n", encoding="utf-8")
+
+    assert not DetectionDataset(manifest, tmp_path, mode="train", fold=1).records
+    evaluation = DetectionDataset(manifest, tmp_path, mode="evaluation", fold=0)
+    assert [record["image_id"] for record in evaluation.records] == [1]
+
+
 def test_classification_heads_only_freezes_base_and_keeps_frozen_bn_in_eval():
     torch = pytest.importorskip("torch")
     model = _tiny_detector(torch)

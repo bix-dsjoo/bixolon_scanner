@@ -1,0 +1,9 @@
+__include__:
+  - ../../artifacts/vendor/D-FINE/configs/dfine/dfine_hgnetv2_n_coco.yml
+
+# Smoke/export reconstruction for the immutable production checkpoint.
+# The original generated training overlay was not retained; the recovered
+# training recipe is locked separately in evidence/detector_1.0.0_recovered_recipe.json.
+num_classes: 20
+remap_mscoco_category: false
+eval_spatial_size: [640, 640]
