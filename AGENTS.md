@@ -6,14 +6,13 @@
 
 이 저장소는 이미지 판정 시스템의 데이터 계약, PyTorch 학습·평가, ONNX export, 그리고 Windows에서 장기 실행되는 Python 추론 Worker를 관리합니다.
 
-운영 Worker는 단일 JPEG/PNG 이미지에서 여러 객체를 판정하고 다음 최상위 상태 중 정확히 하나를 반환합니다.
+운영 Worker는 단일 JPEG/PNG 이미지에서 여러 객체를 판정하고 다음 이미지 상태 중 정확히 하나를 반환합니다.
 
-- `APPROVED`: 검출된 모든 객체가 승인 임계값을 통과한 결과
-- `UNKNOWN`: 하나 이상의 객체가 승인 임계값을 통과하지 못한 결과와 객체별 Top-3 후보
-- `RECAPTURE`: detector 또는 classifier가 촬영 부적합을 판정한 결과
+- `SEGMENTATION`: 하나 이상의 segmentation과 객체별 판정 결과
+- `IMAGE_RECAPTURE`: detector가 이미지 전체의 촬영 부적합을 판정한 결과
 - `ERROR`: 입력, 구성, 모델 또는 시스템 오류
 
-`ERROR`를 `RECAPTURE`로 변환하지 마십시오. 모델 판정과 시스템 장애는 서로 다른 도메인입니다.
+각 segmentation은 `APPROVED`, `UNKNOWN`+Top-3 또는 `SEGMENT_RECAPTURE`입니다. `ERROR`를 재촬영으로 변환하지 마십시오. 모델 판정과 시스템 장애는 서로 다른 도메인입니다.
 
 ## 코드 소유권과 의존 방향
 
@@ -46,7 +45,7 @@ Flutter canonical 코드는 `apps/product_scanner/lib`의 `core/design_system`, 
 - 데이터셋 버전: manifest, label, split과 촬영 provenance
 - Flutter 앱 버전: 작업자 UI와 Windows bundle
 
-한 축의 버전 변경이나 배포가 다른 축의 자동 승격을 의미하지 않습니다. 현재 Python은 `0.2.0`, 운영 모델 package는 `bread-worker-0.1.1`, Flutter 앱은 `1.0.0+1`입니다. Detector `0.2.5`는 `experiment_only`이며 운영 기본값으로 사용하지 마십시오.
+한 축의 버전 변경이나 배포가 다른 축의 자동 승격을 의미하지 않습니다. 정식 Worker, Detector, Classifier 버전은 각각 `1.0.0`부터 시작하고 독립적으로 관리합니다. 이전 `0.x` package와 Detector `0.2.5`는 테스트 계열이며 운영 기본값으로 승격하지 마십시오.
 
 ## 실험 수명주기
 
@@ -66,12 +65,13 @@ Flutter canonical 코드는 `apps/product_scanner/lib`의 `core/design_system`, 
 
 1. 입력 이미지를 검증하고 디코딩합니다.
 2. Detector가 모든 객체 위치 및 프레임 전체 촬영 품질을 판단합니다.
-3. Detector의 hard 품질 조건(무검출, query 포화, 최소 크기, 불확실 독립 후보, 활성화된 count/blur/exposure gate)이 재촬영을 요구하면 classifier를 호출하지 않고 `RECAPTURE`를 반환합니다.
+3. Detector의 hard 품질 조건(무검출, query 포화, 최소 크기, 불확실 독립 후보, 활성화된 count/blur/exposure gate)이 재촬영을 요구하면 classifier를 호출하지 않고 `IMAGE_RECAPTURE`를 반환합니다.
 4. 정상 ROI와 `classifier_confidence` 정책의 경계 접촉 ROI 전체를 하나의 batch로 classifier에 전달합니다.
-5. Classifier가 명시적 품질 클래스를 예측하면 전역 `RECAPTURE`를 반환합니다.
-6. `classifier_confidence` 정책에서 경계 접촉 item의 Top-1 신뢰도가 승인 임계값 미만이면 `DETECTOR_BORDER_CLIPPED` 전역 `RECAPTURE`를 반환합니다. 이 경로는 classifier가 실행된 경로입니다.
-7. 각 일반 객체가 승인 임계값 이상이면 해당 item을 `APPROVED`로 반환합니다.
-8. 임계값 미만 item은 `UNKNOWN`과 점수 내림차순 Top-3를 반환합니다. 모든 item이 승인일 때만 최상위 `APPROVED`, 그 외에는 최상위 `UNKNOWN`입니다.
+5. Classifier가 명시적 품질 클래스를 예측하면 해당 segmentation을 `SEGMENT_RECAPTURE`로 반환합니다.
+6. `classifier_confidence` 정책에서 경계 접촉 segmentation의 Top-1 신뢰도가 승인 임계값 미만이면 해당 segmentation을 `DETECTOR_BORDER_CLIPPED` `SEGMENT_RECAPTURE`로 반환합니다. 이 경로는 classifier가 실행된 경로입니다.
+7. 패키지 메타데이터의 포함 중복 검토 정책이 활성화된 경우, 거의 완전히 포함되고 같은 Top-1을 가진 ROI 쌍에서 detector 점수가 낮은 고신뢰 ROI는 삭제하거나 재촬영하지 않고 `DETECTOR_CONTAINED_DUPLICATE` `UNKNOWN`과 점수 내림차순 Top-3로 반환합니다.
+8. 각 나머지 일반 객체가 승인 임계값 이상이면 해당 segmentation을 `APPROVED`로 반환합니다.
+9. 임계값 미만 segmentation은 `BELOW_APPROVAL_THRESHOLD` `UNKNOWN`과 점수 내림차순 Top-3를 반환합니다. 하나 이상의 segmentation이 있으면 최상위 상태는 `SEGMENTATION`입니다.
 
 이 순서, 상태 우선순위 또는 조기 종료 조건을 변경하려면 README의 계약과 관련 테스트를 같은 변경에서 갱신해야 합니다. 조용한 fallback이나 임의의 기본 승인 결과를 추가하지 마십시오.
 
@@ -79,13 +79,13 @@ Flutter canonical 코드는 `apps/product_scanner/lib`의 `core/design_system`, 
 
 - 기본 endpoint는 `POST /v1/scan`입니다.
 - 요청은 `image` 필드에 JPEG/PNG 한 장을 담은 multipart 형식입니다.
-- 최상위 응답 필드는 `request_id`, `status`, `reason_codes`, `items`, `processing_time_ms`, `model_versions`입니다.
-- 각 `items[]`는 `item_id`, 원본 픽셀 기준 `bbox`, `status`, `reason_codes`, `prediction`, `top3`, `confidence`를 포함합니다.
-- `status`는 `APPROVED`, `UNKNOWN`, `RECAPTURE`, `ERROR` 외 값을 반환할 수 없습니다.
-- item `status`는 `APPROVED`, `UNKNOWN` 외 값을 반환할 수 없습니다.
-- `UNKNOWN` item의 Top-3는 점수 내림차순이어야 합니다.
-- Detector hard gate 조기 종료 시 classifier를 로드했더라도 해당 요청의 `model_versions.classifier`는 실행되지 않았음을 나타내도록 `null`로 반환합니다. `classifier_confidence` 경계 정책에서 분류 후 `DETECTOR_BORDER_CLIPPED`가 반환된 경우에는 실행된 classifier 버전을 반환합니다.
-- `RECAPTURE`와 `ERROR`는 `items`를 빈 배열로 반환합니다.
+- 최상위 응답 필드는 `request_id`, `status`, `reason_codes`, `segmentations`, `processing_time_ms`, `worker_version`, `detector_version`, `classifier_version`입니다.
+- 각 `segmentations[]`는 `segmentation_id`, 원본 픽셀 기준 `bbox`, `status`, `reason_codes`, `prediction`, `top3`, `confidence`를 포함합니다.
+- 이미지 `status`는 `SEGMENTATION`, `IMAGE_RECAPTURE`, `ERROR` 외 값을 반환할 수 없습니다.
+- segmentation `status`는 `APPROVED`, `UNKNOWN`, `SEGMENT_RECAPTURE` 외 값을 반환할 수 없습니다.
+- `UNKNOWN` segmentation의 Top-3는 점수 내림차순이어야 합니다.
+- Detector hard gate 조기 종료 시 classifier를 로드했더라도 해당 요청의 `classifier_version`은 실행되지 않았음을 나타내도록 `null`로 반환합니다.
+- `IMAGE_RECAPTURE`와 `ERROR`는 `segmentations`를 빈 배열로 반환합니다.
 - 입력 오류는 4xx, Worker 또는 모델 장애는 5xx로 매핑하고 가능한 경우 공통 `ERROR` 응답 형식을 유지합니다.
 - API에 raw tensor, 전체 logits, 내부 예외 메시지, 스택 트레이스나 로컬 경로를 노출하지 마십시오.
 
@@ -123,9 +123,11 @@ Flutter canonical 코드는 `apps/product_scanner/lib`의 `core/design_system`, 
 - 입력 부하: 초당 1장 이하, 요청 동시성 1
 - 성능 범위: API 내부 디코딩, 전처리, detector, classifier, 후처리
 - 측정 조건: ONNX Runtime CUDA Execution Provider 및 session warm-up 완료
-- 성능 기준: detector와 classifier가 모두 실행되는 full-path p95 ≤ 100ms
+- 성능 기준: detector와 classifier가 모두 실행되는 full-path 평균 및 p95 ≤ 100ms
 - 정확도 기준: 전체 재촬영 대상 recall ≥ 99%
-- 정확도 기준: `APPROVED` precision ≥ 99.5%
+- 정확도 기준: 전체 인식률 ≥ 99%
+- 정확도 기준: `APPROVED` 오인율 및 단측 95% 상한 ≤ 0.1%
+- 정확도 기준: segmentation IoU@0.5 recall/precision ≥ 99%
 - 정확도 기준: 정답 클래스가 있는 `UNKNOWN` 샘플 Top-3 accuracy ≥ 95%
 - CPU 기준: 결과 계약과 기능 호환 필수, 지연 기준 없음
 
@@ -138,9 +140,10 @@ Flutter canonical 코드는 `apps/product_scanner/lib`의 `core/design_system`, 
 - Detector 조기 종료 시 classifier가 호출되지 않는지 검증
 - `classifier_confidence` 경계 정책에서 높은 신뢰도는 계속 진행하고 낮은 신뢰도만 `DETECTOR_BORDER_CLIPPED`로 재촬영하는지 검증
 - detector 불확실 독립 후보 및 선택적 count verifier의 불일치·저신뢰가 classifier 실행 전 `RECAPTURE`가 되는지 검증
-- Classifier 품질 클래스가 `RECAPTURE`로 변환되는지 검증
+- Classifier 품질 클래스가 해당 `SEGMENT_RECAPTURE`로 변환되는지 검증
 - 임계값 경계의 `APPROVED`/`UNKNOWN` 판정 검증
-- 다중 item 정렬, 최상위 상태 집계, `UNKNOWN` Top-3 정렬과 후보 수 검증
+- 포함 중복 검토 정책이 segmentation을 삭제하거나 `RECAPTURE`하지 않고 낮은 detector 점수의 고신뢰 동종 ROI만 `UNKNOWN`으로 만드는지 검증
+- 다중 segmentation 정렬, `UNKNOWN` Top-3 정렬과 후보 수 검증
 - 네 상태의 응답 필드 및 null/빈 배열 규칙 검증
 - 손상 이미지, 미지원 형식, 누락 multipart 필드의 4xx `ERROR` 검증
 - 모델 로딩, checksum, provider 실행 장애의 5xx `ERROR` 검증

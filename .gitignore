@@ -12,7 +12,7 @@ apps/product_scanner/test/failures/
 datasets/
 artifacts/
 checkpoints/
-models/
+/models/
 *.onnx
 *.pt
 *.pth

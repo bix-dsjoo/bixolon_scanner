@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "release": "bixolon-scanner-1.0.0",
+  "status": "pending_user_images",
+  "immutable_after_result": true,
+  "minimum_zero_error_approved_samples": 2995,
+  "target_misrecognition_rate_upper_95": 0.001,
+  "policy": {
+    "may_tune_release_1_0_0": false,
+    "failure_opens_component_1_1_0_proposal": true,
+    "failed_images_require_new_validation_and_test_if_used_for_training": true
+  }
+}

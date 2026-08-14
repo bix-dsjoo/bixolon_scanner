@@ -1,0 +1,35 @@
+{
+  "schema_version": "1.0",
+  "captured_on": "2026-08-14",
+  "purpose": "pre-hardening immutable binary baseline",
+  "artifacts": {
+    "production_package_metadata": {
+      "path": "artifacts/packages/bread-worker-1.0.0/metadata.json",
+      "sha256": "ebb8376f9b0a543100b20ff2fda426b060b0bbc4d13866e69dd2316f1417e34d"
+    },
+    "production_detector_onnx": {
+      "path": "artifacts/packages/bread-worker-1.0.0/detector.onnx",
+      "sha256": "f0d2eaf8e67821627957c3eed1462812063c32c4ad17028dda869addc5371b09"
+    },
+    "production_classifier_onnx": {
+      "path": "artifacts/packages/bread-worker-1.0.0/classifier.onnx",
+      "sha256": "93a9d92c6fd63f5a6aef65e11e3d0acecfffd7c6cf5ac2bfdba732f4e543ab8f"
+    },
+    "detector_checkpoint": {
+      "path": "artifacts/experiments/bread-1.0.0-dfine-n/training/best_stg2.pth",
+      "sha256": "7a6e5d531bb464a985958468e9b36466225eca5b2258230f60c8381de8ac0555"
+    },
+    "classifier_checkpoint": {
+      "path": "artifacts/experiments/bread-source-single_objects_3-dinov3/classifier/best.pt",
+      "sha256": "1be1781c2ece6e8ac12aa9ac9915fd5f81f115d093f1e08f7c9c3b9622e3b104"
+    },
+    "standalone_worker": {
+      "path": "artifacts/worker/bixolon-worker/bixolon-worker.exe",
+      "sha256": "8cf9cd3c5ddab419badf1afbe61a436c783ab596eab3c915ab1e5acbd2a0b37d"
+    },
+    "windows_app": {
+      "path": "apps/product_scanner/build/windows/x64/runner/Release/product_scanner.exe",
+      "sha256": "a2f72dddd44ebcd7a536e41460a7fee8956511059cdb2f20934ba9c8c42cbb4a"
+    }
+  }
+}

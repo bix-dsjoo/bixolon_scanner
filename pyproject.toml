@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bixolon-scanner"
-version = "0.2.0"
+version = "1.0.0"
 description = "Multi-item bread image decision worker"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -55,6 +55,8 @@ bixolon-evaluate-operational = "bixolon_scanner.evaluation.operational:main"
 bixolon-rpc-data-scale = "bixolon_scanner.experiments.rpc200.data_scale:main"
 bixolon-bread-data-scale = "bixolon_scanner.experiments.bread.data_scale:main"
 bixolon-ten-shot-manifest = "bixolon_scanner.training.ten_shot_manifest:main"
+bixolon-bread-dataset = "bixolon_scanner.training.bread_dataset:main"
+bixolon-synthetic-detector-dataset = "bixolon_scanner.training.synthetic_detector_dataset:main"
 bixolon-bread-10shot = "bixolon_scanner.experiments.bread.ten_shot:main"
 bixolon-detector-target = "bixolon_scanner.experiments.detector.target:main"
 bixolon-ten-shot-package = "bixolon_scanner.training.ten_shot_package:main"
@@ -62,6 +64,7 @@ bixolon-ten-shot-finalize = "bixolon_scanner.training.ten_shot_finalize:main"
 bixolon-compare-difficulty = "bixolon_scanner.evaluation.compare_difficulty:main"
 bixolon-rpc-operational = "bixolon_scanner.experiments.rpc200.operational:main"
 bixolon-benchmark = "bixolon_scanner.evaluation.benchmark:main"
+bixolon-release-gate = "bixolon_scanner.evaluation.release:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bixolon_scanner"]
