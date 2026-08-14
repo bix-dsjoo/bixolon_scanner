@@ -26,6 +26,12 @@ class DetectionResult:
     uncertain_candidate_scores: tuple[float, ...] = ()
 
 
+@dataclass(frozen=True)
+class ClassificationResult:
+    logits: np.ndarray
+    ranking_logits: np.ndarray
+
+
 class Detector(Protocol):
     version: str
 
@@ -37,4 +43,4 @@ class Classifier(Protocol):
 
     def classify(
         self, image: np.ndarray | Image.Image, detections: list[Detection]
-    ) -> np.ndarray: ...
+    ) -> np.ndarray | ClassificationResult: ...

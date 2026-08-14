@@ -18,7 +18,7 @@ from ..contracts import (
 )
 from ..contracts.image import image_original_size
 from ..contracts.model_package import ClassifierMetadata, CountVerifierMetadata, QualityMetadata
-from .ports import Classifier, Detection, DetectionResult, Detector
+from .ports import ClassificationResult, Classifier, Detection, DetectionResult, Detector
 
 LOGGER = logging.getLogger(__name__)
 
@@ -112,6 +112,48 @@ def _border_detection_indices(
     }
 
 
+def _contained_detection_pairs(
+    detections: list[Detection], threshold: float | None
+) -> list[tuple[int, int]]:
+    """Return (lower-score, higher-score) pairs with near-complete box containment."""
+    if threshold is None:
+        return []
+    pairs: list[tuple[int, int]] = []
+    for left_index, left in enumerate(detections):
+        left_area = max(0.0, left.x2 - left.x1) * max(0.0, left.y2 - left.y1)
+        for right_index in range(left_index + 1, len(detections)):
+            right = detections[right_index]
+            right_area = max(0.0, right.x2 - right.x1) * max(0.0, right.y2 - right.y1)
+            smaller_area = min(left_area, right_area)
+            if smaller_area <= 0.0:
+                continue
+            intersection = max(0.0, min(left.x2, right.x2) - max(left.x1, right.x1)) * max(
+                0.0, min(left.y2, right.y2) - max(left.y1, right.y1)
+            )
+            if intersection / smaller_area < threshold:
+                continue
+            if left.score < right.score:
+                pairs.append((left_index, right_index))
+            elif right.score < left.score:
+                pairs.append((right_index, left_index))
+    return pairs
+
+
+def _top3_candidates(
+    metadata: ClassifierMetadata,
+    candidate_indices: np.ndarray,
+    candidate_scores: np.ndarray,
+) -> list[Candidate]:
+    return [
+        Candidate(
+            class_id=metadata.labels[int(candidate_index)].class_id,
+            class_name=metadata.labels[int(candidate_index)].class_name,
+            confidence=float(candidate_scores[int(candidate_index)]),
+        )
+        for candidate_index in candidate_indices[:3]
+    ]
+
+
 class DecisionPipeline:
     def __init__(
         self,
@@ -120,12 +162,15 @@ class DecisionPipeline:
         classifier_metadata: ClassifierMetadata,
         quality_metadata: QualityMetadata,
         count_verifier_metadata: CountVerifierMetadata | None = None,
+        *,
+        worker_version: str = "1.0.0",
     ):
         self.detector = detector
         self.classifier = classifier
         self.classifier_metadata = classifier_metadata
         self.quality_metadata = quality_metadata
         self.count_verifier_metadata = count_verifier_metadata
+        self.worker_version = worker_version
 
     @property
     def versions(self) -> ModelVersions:
@@ -153,11 +198,13 @@ class DecisionPipeline:
         if reasons:
             response = ScanResponse(
                 request_id=request_id,
-                status=Status.RECAPTURE,
+                status=Status.IMAGE_RECAPTURE,
                 reason_codes=reasons,
-                items=[],
+                segmentations=[],
                 processing_time_ms=(time.perf_counter() - started) * 1000.0,
-                model_versions=ModelVersions(detector=self.detector.version, classifier=None),
+                worker_version=self.worker_version,
+                detector_version=self.detector.version,
+                classifier_version=None,
             )
             self._log(response, detector_ms=detector_ms, classifier_ms=0.0)
             return response
@@ -166,51 +213,48 @@ class DecisionPipeline:
             detection_result.detections, key=lambda detection: (detection.y1, detection.x1)
         )
         classifier_started = time.perf_counter()
-        logits = self.classifier.classify(image, ordered)
+        classification = self.classifier.classify(image, ordered)
         classifier_ms = (time.perf_counter() - classifier_started) * 1000.0
+        if isinstance(classification, ClassificationResult):
+            logits = classification.logits
+            ranking_logits = classification.ranking_logits
+        else:
+            logits = classification
+            ranking_logits = classification
         if logits.shape != (len(ordered), len(self.classifier_metadata.labels)):
             raise ValueError("classifier output shape does not match package labels")
+        if ranking_logits.shape != logits.shape:
+            raise ValueError("classifier ranking output shape does not match logits")
         probabilities = _softmax(logits, self.classifier_metadata.temperature)
-        top_indices = np.argsort(-probabilities, axis=1)
+        ranking_probabilities = _softmax(ranking_logits, self.classifier_metadata.temperature)
+        decision_indices = np.argsort(-probabilities, axis=1, kind="stable")
+        ranking_indices = np.argsort(-ranking_probabilities, axis=1, kind="stable")
+        duplicate_review_indices = {
+            lower_index
+            for lower_index, higher_index in _contained_detection_pairs(
+                ordered, self.quality_metadata.duplicate_review_containment_threshold
+            )
+            if decision_indices[lower_index, 0] == decision_indices[higher_index, 0]
+        }
 
         recapture_labels = {
             index for index, label in enumerate(self.classifier_metadata.labels) if label.recapture
         }
-        if any(int(indices[0]) in recapture_labels for indices in top_indices):
-            response = ScanResponse(
-                request_id=request_id,
-                status=Status.RECAPTURE,
-                reason_codes=["CLASSIFIER_QUALITY_CLASS"],
-                items=[],
-                processing_time_ms=(time.perf_counter() - started) * 1000.0,
-                model_versions=self.versions,
-            )
-            self._log(response, detector_ms=detector_ms, classifier_ms=classifier_ms)
-            return response
-
+        border_indices: set[int] = set()
         if self.quality_metadata.border_policy == "classifier_confidence":
             border_indices = _border_detection_indices(image, ordered, self.quality_metadata)
-            low_confidence_border = any(
-                float(probabilities[index, int(top_indices[index][0])])
-                < self.classifier_metadata.approval_threshold
-                for index in border_indices
-            )
-            if low_confidence_border:
-                response = ScanResponse(
-                    request_id=request_id,
-                    status=Status.RECAPTURE,
-                    reason_codes=["DETECTOR_BORDER_CLIPPED"],
-                    items=[],
-                    processing_time_ms=(time.perf_counter() - started) * 1000.0,
-                    model_versions=self.versions,
-                )
-                self._log(response, detector_ms=detector_ms, classifier_ms=classifier_ms)
-                return response
 
         items: list[ScanItem] = []
-        for ordinal, (detection, indices, scores) in enumerate(
-            zip(ordered, top_indices, probabilities), start=1
+        for index, (detection, indices, scores, candidate_indices, candidate_scores) in enumerate(
+            zip(
+                ordered,
+                decision_indices,
+                probabilities,
+                ranking_indices,
+                ranking_probabilities,
+            )
         ):
+            ordinal = index + 1
             top1_index = int(indices[0])
             top1_score = float(scores[top1_index])
             label = self.classifier_metadata.labels[top1_index]
@@ -220,9 +264,47 @@ class DecisionPipeline:
                 width=max(1, int(round(detection.x2 - detection.x1))),
                 height=max(1, int(round(detection.y2 - detection.y1))),
             )
-            if top1_score >= self.classifier_metadata.approval_threshold:
+            if top1_index in recapture_labels:
                 item = ScanItem(
-                    item_id=f"item_{ordinal:03d}",
+                    segmentation_id=f"segmentation_{ordinal:03d}",
+                    bbox=bbox,
+                    status=ItemStatus.SEGMENT_RECAPTURE,
+                    reason_codes=["CLASSIFIER_QUALITY_CLASS"],
+                    prediction=None,
+                    top3=[],
+                    confidence=top1_score,
+                )
+            elif (
+                index in border_indices and top1_score < self.classifier_metadata.approval_threshold
+            ):
+                item = ScanItem(
+                    segmentation_id=f"segmentation_{ordinal:03d}",
+                    bbox=bbox,
+                    status=ItemStatus.SEGMENT_RECAPTURE,
+                    reason_codes=["DETECTOR_BORDER_CLIPPED"],
+                    prediction=None,
+                    top3=[],
+                    confidence=top1_score,
+                )
+            elif (
+                index in duplicate_review_indices
+                and top1_score >= self.classifier_metadata.approval_threshold
+            ):
+                candidates = _top3_candidates(
+                    self.classifier_metadata, candidate_indices, candidate_scores
+                )
+                item = ScanItem(
+                    segmentation_id=f"segmentation_{ordinal:03d}",
+                    bbox=bbox,
+                    status=ItemStatus.UNKNOWN,
+                    reason_codes=["DETECTOR_CONTAINED_DUPLICATE"],
+                    prediction=None,
+                    top3=candidates,
+                    confidence=float(candidate_scores[int(candidate_indices[0])]),
+                )
+            elif top1_score >= self.classifier_metadata.approval_threshold:
+                item = ScanItem(
+                    segmentation_id=f"segmentation_{ordinal:03d}",
                     bbox=bbox,
                     status=ItemStatus.APPROVED,
                     reason_codes=[],
@@ -231,33 +313,36 @@ class DecisionPipeline:
                     confidence=top1_score,
                 )
             else:
-                candidates = [
-                    Candidate(
-                        class_id=self.classifier_metadata.labels[int(index)].class_id,
-                        class_name=self.classifier_metadata.labels[int(index)].class_name,
-                        confidence=float(scores[int(index)]),
-                    )
-                    for index in indices[:3]
-                ]
+                candidates = _top3_candidates(
+                    self.classifier_metadata, candidate_indices, candidate_scores
+                )
                 item = ScanItem(
-                    item_id=f"item_{ordinal:03d}",
+                    segmentation_id=f"segmentation_{ordinal:03d}",
                     bbox=bbox,
                     status=ItemStatus.UNKNOWN,
                     reason_codes=["BELOW_APPROVAL_THRESHOLD"],
                     prediction=None,
                     top3=candidates,
-                    confidence=top1_score,
+                    confidence=float(candidate_scores[int(candidate_indices[0])]),
                 )
             items.append(item)
 
-        has_unknown = any(item.status is ItemStatus.UNKNOWN for item in items)
+        reason_codes: list[str] = []
+        if any("BELOW_APPROVAL_THRESHOLD" in item.reason_codes for item in items):
+            reason_codes.append("SEGMENT_BELOW_APPROVAL_THRESHOLD")
+        if any("DETECTOR_CONTAINED_DUPLICATE" in item.reason_codes for item in items):
+            reason_codes.append("SEGMENT_DUPLICATE_REVIEW_REQUIRED")
+        if any(item.status is ItemStatus.SEGMENT_RECAPTURE for item in items):
+            reason_codes.append("SEGMENT_RECAPTURE_REQUIRED")
         response = ScanResponse(
             request_id=request_id,
-            status=Status.UNKNOWN if has_unknown else Status.APPROVED,
-            reason_codes=["ITEM_BELOW_APPROVAL_THRESHOLD"] if has_unknown else [],
-            items=items,
+            status=Status.SEGMENTATION,
+            reason_codes=reason_codes,
+            segmentations=items,
             processing_time_ms=(time.perf_counter() - started) * 1000.0,
-            model_versions=self.versions,
+            worker_version=self.worker_version,
+            detector_version=self.detector.version,
+            classifier_version=self.classifier.version,
         )
         self._log(response, detector_ms=detector_ms, classifier_ms=classifier_ms)
         return response
@@ -270,11 +355,12 @@ class DecisionPipeline:
                 "request_id": response.request_id,
                 "status": response.status.value,
                 "reason_codes": response.reason_codes,
-                "item_count": len(response.items),
+                "segmentation_count": len(response.segmentations),
                 "detector_ms": round(detector_ms, 3),
                 "classifier_ms": round(classifier_ms, 3),
                 "processing_time_ms": round(response.processing_time_ms, 3),
-                "detector_version": response.model_versions.detector,
-                "classifier_version": response.model_versions.classifier,
+                "worker_version": response.worker_version,
+                "detector_version": response.detector_version,
+                "classifier_version": response.classifier_version,
             },
         )

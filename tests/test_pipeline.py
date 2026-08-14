@@ -6,6 +6,7 @@ from bixolon_scanner.contracts import ItemStatus, Status
 from bixolon_scanner.inference import Detection, DetectionResult
 from bixolon_scanner.package import CountVerifierMetadata
 from bixolon_scanner.pipeline import DecisionPipeline
+from bixolon_scanner.pipeline.ports import ClassificationResult
 
 
 class FakeDetector:
@@ -72,13 +73,35 @@ def test_multiple_items_are_sorted_and_aggregated_unknown(classifier_metadata, q
     )
     response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request02")
     assert response.status is Status.UNKNOWN
-    assert response.reason_codes == ["ITEM_BELOW_APPROVAL_THRESHOLD"]
-    assert [item.item_id for item in response.items] == ["item_001", "item_002"]
+    assert response.reason_codes == ["SEGMENT_BELOW_APPROVAL_THRESHOLD"]
+    assert [item.segmentation_id for item in response.items] == [
+        "segmentation_001",
+        "segmentation_002",
+    ]
     assert [item.bbox.x for item in response.items] == [10, 50]
     assert response.items[0].status is ItemStatus.APPROVED
     assert response.items[1].status is ItemStatus.UNKNOWN
     assert len(response.items[1].top3) == 3
     assert classifier.calls == 1
+
+
+def test_unknown_top3_uses_separate_ranking_logits(classifier_metadata, quality_metadata):
+    classifier = FakeClassifier([[0.4, 0.3, 0.2]])
+    classifier.logits = ClassificationResult(
+        logits=np.asarray([[0.4, 0.3, 0.2]], dtype=np.float32),
+        ranking_logits=np.asarray([[0.1, 0.2, 0.9]], dtype=np.float32),
+    )
+    pipeline = DecisionPipeline(
+        FakeDetector(DetectionResult([Detection(10, 10, 40, 40, 0.95)])),
+        classifier,
+        classifier_metadata,
+        quality_metadata,
+    )
+
+    response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request-ranked")
+
+    assert response.items[0].status is ItemStatus.UNKNOWN
+    assert response.items[0].top3[0].class_id == "bread_03"
 
 
 def test_all_items_approved(classifier_metadata, quality_metadata):
@@ -91,6 +114,52 @@ def test_all_items_approved(classifier_metadata, quality_metadata):
     assert response.status is Status.APPROVED
     assert response.reason_codes == []
     assert response.items[0].prediction.class_id == "bread_01"
+
+
+def test_confident_same_class_contained_duplicate_is_unknown_without_recapture(
+    classifier_metadata, quality_metadata
+):
+    quality_metadata.duplicate_review_containment_threshold = 0.999
+    detections = [
+        Detection(10, 10, 90, 90, 0.90),
+        Detection(20, 20, 80, 80, 0.95),
+    ]
+    classifier = FakeClassifier([[10.0, 0.0, 0.0], [10.0, 0.0, 0.0]])
+    pipeline = DecisionPipeline(
+        FakeDetector(DetectionResult(detections)), classifier, classifier_metadata, quality_metadata
+    )
+
+    response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "duplicate-review")
+
+    assert response.status is Status.SEGMENTATION
+    assert response.reason_codes == ["SEGMENT_DUPLICATE_REVIEW_REQUIRED"]
+    assert len(response.items) == 2
+    assert response.items[0].status is ItemStatus.UNKNOWN
+    assert response.items[0].reason_codes == ["DETECTOR_CONTAINED_DUPLICATE"]
+    assert len(response.items[0].top3) == 3
+    assert response.items[1].status is ItemStatus.APPROVED
+    assert classifier.calls == 1
+
+
+def test_low_confidence_contained_detection_keeps_threshold_unknown_reason(
+    classifier_metadata, quality_metadata
+):
+    quality_metadata.duplicate_review_containment_threshold = 0.999
+    detections = [
+        Detection(10, 10, 90, 90, 0.90),
+        Detection(20, 20, 80, 80, 0.95),
+    ]
+    classifier = FakeClassifier([[0.4, 0.3, 0.2], [10.0, 0.0, 0.0]])
+    pipeline = DecisionPipeline(
+        FakeDetector(DetectionResult(detections)), classifier, classifier_metadata, quality_metadata
+    )
+
+    response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "contained-uncertain")
+
+    assert response.reason_codes == ["SEGMENT_BELOW_APPROVAL_THRESHOLD"]
+    assert response.items[0].status is ItemStatus.UNKNOWN
+    assert response.items[0].reason_codes == ["BELOW_APPROVAL_THRESHOLD"]
+    assert response.items[1].status is ItemStatus.APPROVED
 
 
 def test_capacity_saturation_recaptures(classifier_metadata, quality_metadata):
@@ -135,7 +204,9 @@ def test_confident_border_item_is_approved(classifier_metadata, quality_metadata
     assert classifier.calls == 1
 
 
-def test_uncertain_border_item_recaptures_after_classifier(classifier_metadata, quality_metadata):
+def test_uncertain_border_item_is_segment_recapture_after_classifier(
+    classifier_metadata, quality_metadata
+):
     quality_metadata.border_policy = "classifier_confidence"
     classifier = FakeClassifier([[0.4, 0.3, 0.2]])
     result = DetectionResult([Detection(0, 10, 40, 40, 0.95)])
@@ -145,11 +216,29 @@ def test_uncertain_border_item_recaptures_after_classifier(classifier_metadata, 
 
     response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request07")
 
-    assert response.status is Status.RECAPTURE
-    assert response.reason_codes == ["DETECTOR_BORDER_CLIPPED"]
+    assert response.status is Status.SEGMENTATION
+    assert response.reason_codes == ["SEGMENT_RECAPTURE_REQUIRED"]
     assert response.model_versions.classifier == "1.0.0"
-    assert response.items == []
+    assert response.items[0].status is ItemStatus.SEGMENT_RECAPTURE
+    assert response.items[0].reason_codes == ["DETECTOR_BORDER_CLIPPED"]
     assert classifier.calls == 1
+
+
+def test_classifier_quality_class_is_segment_recapture(classifier_metadata, quality_metadata):
+    classifier_metadata.labels[1].recapture = True
+    classifier = FakeClassifier([[0.0, 10.0, 0.0]])
+    pipeline = DecisionPipeline(
+        FakeDetector(DetectionResult([Detection(10, 10, 40, 40, 0.95)])),
+        classifier,
+        classifier_metadata,
+        quality_metadata,
+    )
+
+    response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request-quality")
+
+    assert response.status is Status.SEGMENTATION
+    assert response.items[0].status is ItemStatus.SEGMENT_RECAPTURE
+    assert response.items[0].reason_codes == ["CLASSIFIER_QUALITY_CLASS"]
 
 
 def _count_metadata(confidence_threshold=0.9):

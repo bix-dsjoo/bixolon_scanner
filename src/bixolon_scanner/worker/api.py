@@ -10,7 +10,8 @@ from fastapi import FastAPI, File, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
-from ..contracts import ModelVersions, ScanResponse, Status
+from .. import __version__
+from ..contracts import ScanResponse, Status
 from ..contracts.errors import MissingImageError, ScannerError
 from ..contracts.model_package import load_model_package
 from ..pipeline import DecisionPipeline
@@ -28,15 +29,22 @@ def _request_id(request: Request | None = None) -> str:
 
 
 def _error_response(
-    request_id: str, reason_code: str, elapsed_ms: float, status_code: int
+    request_id: str,
+    reason_code: str,
+    elapsed_ms: float,
+    status_code: int,
+    *,
+    worker_version: str = __version__,
 ) -> JSONResponse:
     body = ScanResponse(
         request_id=request_id,
         status=Status.ERROR,
         reason_codes=[reason_code],
-        items=[],
+        segmentations=[],
         processing_time_ms=max(0.0, elapsed_ms),
-        model_versions=ModelVersions(detector=None, classifier=None),
+        worker_version=worker_version,
+        detector_version=None,
+        classifier_version=None,
     )
     return JSONResponse(status_code=status_code, content=body.model_dump(mode="json"))
 
@@ -62,6 +70,7 @@ def create_app(
                 model_package.metadata.classifier,
                 model_package.metadata.quality,
                 model_package.metadata.count_verifier,
+                worker_version=model_package.metadata.package_version,
             )
             app.state.provider = provider
             app.state.jpeg_draft_size = model_package.metadata.input.jpeg_draft_size
@@ -69,6 +78,7 @@ def create_app(
             app.state.pipeline = injected_pipeline
             app.state.provider = "injected"
             app.state.jpeg_draft_size = worker_settings.jpeg_draft_size
+        app.state.worker_version = app.state.pipeline.worker_version
         app.state.ready = True
         yield
         app.state.ready = False
@@ -90,14 +100,26 @@ def create_app(
             "request_rejected",
             extra={"request_id": _request_id(request), "reason_code": exc.reason_code},
         )
-        return _error_response(_request_id(request), exc.reason_code, elapsed, exc.http_status)
+        return _error_response(
+            _request_id(request),
+            exc.reason_code,
+            elapsed,
+            exc.http_status,
+            worker_version=getattr(app.state, "worker_version", __version__),
+        )
 
     @app.exception_handler(RequestValidationError)
     async def validation_error_handler(request: Request, exc: RequestValidationError):
         del exc
         elapsed = (time.perf_counter() - request.state.started) * 1000.0
         error = MissingImageError()
-        return _error_response(_request_id(request), error.reason_code, elapsed, error.http_status)
+        return _error_response(
+            _request_id(request),
+            error.reason_code,
+            elapsed,
+            error.http_status,
+            worker_version=getattr(app.state, "worker_version", __version__),
+        )
 
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, exc: Exception):
@@ -106,7 +128,13 @@ def create_app(
             "request_failed",
             extra={"request_id": _request_id(request), "exception_type": type(exc).__name__},
         )
-        return _error_response(_request_id(request), "WORKER_ERROR", elapsed, 500)
+        return _error_response(
+            _request_id(request),
+            "WORKER_ERROR",
+            elapsed,
+            500,
+            worker_version=getattr(app.state, "worker_version", __version__),
+        )
 
     @app.get("/health/live")
     async def live():
@@ -116,7 +144,14 @@ def create_app(
     async def ready():
         if not app.state.ready:
             return JSONResponse(status_code=503, content={"status": "not_ready"})
-        return {"status": "ready", "provider": app.state.provider}
+        versions = app.state.pipeline.versions
+        return {
+            "status": "ready",
+            "provider": app.state.provider,
+            "worker_version": app.state.worker_version,
+            "detector_version": versions.detector,
+            "classifier_version": versions.classifier,
+        }
 
     @app.post("/v1/scan", response_model=ScanResponse)
     async def scan(request: Request, image: UploadFile = File(...)):
@@ -137,17 +172,25 @@ def create_app(
                     )
                     total_ms = (time.perf_counter() - request.state.started) * 1000.0
                     completed = response.model_copy(update={"processing_time_ms": total_ms})
+                    segment_status_counts = {
+                        status: sum(item.status.value == status for item in completed.segmentations)
+                        for status in ("APPROVED", "UNKNOWN", "SEGMENT_RECAPTURE")
+                    }
                     LOGGER.info(
                         "scan_request_complete",
                         extra={
                             "request_id": completed.request_id,
                             "status": completed.status.value,
                             "reason_codes": completed.reason_codes,
-                            "item_count": len(completed.items),
+                            "segmentation_count": len(completed.segmentations),
+                            "approved_count": segment_status_counts["APPROVED"],
+                            "unknown_count": segment_status_counts["UNKNOWN"],
+                            "segment_recapture_count": segment_status_counts["SEGMENT_RECAPTURE"],
                             "decode_ms": round(decode_ms, 3),
                             "processing_time_ms": round(total_ms, 3),
-                            "detector_version": completed.model_versions.detector,
-                            "classifier_version": completed.model_versions.classifier,
+                            "worker_version": completed.worker_version,
+                            "detector_version": completed.detector_version,
+                            "classifier_version": completed.classifier_version,
                         },
                     )
                     return completed

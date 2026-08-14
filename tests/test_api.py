@@ -39,9 +39,29 @@ def test_scan_contract(classifier_metadata, quality_metadata):
         response = client.post("/v1/scan", files={"image": ("scan.jpg", _jpeg(), "image/jpeg")})
     assert response.status_code == 200
     body = response.json()
-    assert body["status"] == "APPROVED"
-    assert body["items"][0]["prediction"]["class_id"] == "bread_01"
+    assert body["status"] == "SEGMENTATION"
+    assert body["segmentations"][0]["prediction"]["class_id"] == "bread_01"
+    assert body["worker_version"] == "1.0.0"
+    assert body["detector_version"] == "1.0.0"
+    assert body["classifier_version"] == "1.0.0"
+    assert "items" not in body
+    assert "model_versions" not in body
     assert "prediction" not in body
+
+
+def test_ready_contract_includes_independent_versions(classifier_metadata, quality_metadata):
+    pipeline = DecisionPipeline(Detector(), Classifier(), classifier_metadata, quality_metadata)
+    app = create_app(settings=WorkerSettings(), pipeline=pipeline)
+    with TestClient(app) as client:
+        response = client.get("/health/ready")
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ready",
+        "provider": "injected",
+        "worker_version": "1.0.0",
+        "detector_version": "1.0.0",
+        "classifier_version": "1.0.0",
+    }
 
 
 def test_missing_image_uses_common_error_response(classifier_metadata, quality_metadata):

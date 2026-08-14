@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://bixolon.local/schemas/scan-response-1.0.json",
+  "$id": "https://bixolon.local/schemas/scan-response-2.0.json",
   "title": "ScanResponse",
   "type": "object",
   "additionalProperties": false,
@@ -8,26 +8,31 @@
     "request_id",
     "status",
     "reason_codes",
-    "items",
+    "segmentations",
     "processing_time_ms",
-    "model_versions"
+    "worker_version",
+    "detector_version",
+    "classifier_version"
   ],
   "properties": {
     "request_id": {"type": "string", "minLength": 8},
     "status": {
       "type": "string",
-      "enum": ["APPROVED", "UNKNOWN", "RECAPTURE", "ERROR"]
+      "enum": ["SEGMENTATION", "IMAGE_RECAPTURE", "ERROR"]
     },
     "reason_codes": {
       "type": "array",
+      "description": "SEGMENTATION aggregate reasons use SEGMENT_BELOW_APPROVAL_THRESHOLD, SEGMENT_DUPLICATE_REVIEW_REQUIRED, and SEGMENT_RECAPTURE_REQUIRED in decision order.",
       "items": {"type": "string"}
     },
-    "items": {
+    "segmentations": {
       "type": "array",
-      "items": {"$ref": "#/$defs/ScanItem"}
+      "items": {"$ref": "#/$defs/Segmentation"}
     },
     "processing_time_ms": {"type": "number", "minimum": 0},
-    "model_versions": {"$ref": "#/$defs/ModelVersions"}
+    "worker_version": {"type": "string", "minLength": 1},
+    "detector_version": {"type": ["string", "null"]},
+    "classifier_version": {"type": ["string", "null"]}
   },
   "$defs": {
     "BoundingBox": {
@@ -60,11 +65,11 @@
         "confidence": {"type": "number", "minimum": 0, "maximum": 1}
       }
     },
-    "ScanItem": {
+    "Segmentation": {
       "type": "object",
       "additionalProperties": false,
       "required": [
-        "item_id",
+        "segmentation_id",
         "bbox",
         "status",
         "reason_codes",
@@ -73,11 +78,18 @@
         "confidence"
       ],
       "properties": {
-        "item_id": {"type": "string", "pattern": "^item_\\d{3,}$"},
+        "segmentation_id": {
+          "type": "string",
+          "pattern": "^segmentation_\\d{3,}$"
+        },
         "bbox": {"$ref": "#/$defs/BoundingBox"},
-        "status": {"type": "string", "enum": ["APPROVED", "UNKNOWN"]},
+        "status": {
+          "type": "string",
+          "enum": ["APPROVED", "UNKNOWN", "SEGMENT_RECAPTURE"]
+        },
         "reason_codes": {
           "type": "array",
+          "description": "UNKNOWN uses exactly one of BELOW_APPROVAL_THRESHOLD or DETECTOR_CONTAINED_DUPLICATE.",
           "items": {"type": "string"}
         },
         "prediction": {
@@ -92,15 +104,6 @@
           "items": {"$ref": "#/$defs/Candidate"}
         },
         "confidence": {"type": "number", "minimum": 0, "maximum": 1}
-      }
-    },
-    "ModelVersions": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["detector", "classifier"],
-      "properties": {
-        "detector": {"type": ["string", "null"]},
-        "classifier": {"type": ["string", "null"]}
       }
     }
   }

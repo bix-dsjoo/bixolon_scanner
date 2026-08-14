@@ -7,7 +7,6 @@ from bixolon_scanner.contracts import (
     BoundingBox,
     Candidate,
     ItemStatus,
-    ModelVersions,
     ScanItem,
     ScanResponse,
     Status,
@@ -30,13 +29,52 @@ def test_unknown_top3_must_be_descending():
         )
 
 
-def test_recapture_requires_empty_items():
+def test_image_recapture_requires_empty_segmentations_and_direct_versions():
     response = ScanResponse(
         request_id="12345678",
-        status=Status.RECAPTURE,
+        status=Status.IMAGE_RECAPTURE,
         reason_codes=["DETECTOR_NO_OBJECT"],
-        items=[],
+        segmentations=[],
         processing_time_ms=1.0,
-        model_versions=ModelVersions(detector="1.0.0", classifier=None),
+        worker_version="1.0.0",
+        detector_version="1.0.0",
+        classifier_version=None,
     )
-    assert response.status is Status.RECAPTURE
+    assert response.status is Status.IMAGE_RECAPTURE
+
+
+def test_contained_duplicate_is_a_valid_unknown_reason():
+    item = ScanItem(
+        segmentation_id="segmentation_001",
+        bbox=BoundingBox(x=1, y=2, width=30, height=40),
+        status=ItemStatus.UNKNOWN,
+        reason_codes=["DETECTOR_CONTAINED_DUPLICATE"],
+        prediction=None,
+        top3=[Candidate(class_id="a", class_name="A", confidence=0.9)],
+        confidence=0.9,
+    )
+    response = ScanResponse(
+        request_id="duplicate-review",
+        status=Status.SEGMENTATION,
+        reason_codes=["SEGMENT_DUPLICATE_REVIEW_REQUIRED"],
+        segmentations=[item],
+        processing_time_ms=1.0,
+        worker_version="1.0.0",
+        detector_version="1.0.0",
+        classifier_version="1.0.0",
+    )
+
+    assert response.segmentations[0].reason_codes == ["DETECTOR_CONTAINED_DUPLICATE"]
+
+
+def test_unknown_rejects_unsupported_reason():
+    with pytest.raises(ValidationError):
+        ScanItem(
+            segmentation_id="segmentation_001",
+            bbox=BoundingBox(x=1, y=2, width=30, height=40),
+            status=ItemStatus.UNKNOWN,
+            reason_codes=["UNSUPPORTED_UNKNOWN_REASON"],
+            prediction=None,
+            top3=[Candidate(class_id="a", class_name="A", confidence=0.9)],
+            confidence=0.9,
+        )

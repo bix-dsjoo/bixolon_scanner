@@ -19,6 +19,7 @@ def _metadata(detector_sha: str, classifier_sha: str):
             "version": "0.1.0",
             "score_threshold": 0.3,
             "nms_iou_threshold": 0.7,
+            "max_object_aspect_ratio": 5.0,
             "max_queries": 300,
         },
         "classifier": {
@@ -54,8 +55,22 @@ def test_package_checksum_validation(tmp_path):
     package = load_model_package(tmp_path)
     assert package.metadata.promotion_status == "development"
     assert package.metadata.sources["classifier"].architecture == "dinov3_convnext_tiny"
+    assert package.metadata.detector.max_object_aspect_ratio == 5.0
 
     detector.write_bytes(b"tampered")
+    with pytest.raises(PackageValidationError):
+        load_model_package(tmp_path)
+
+
+def test_detector_aspect_ratio_policy_must_exceed_one(tmp_path):
+    detector = tmp_path / "detector.onnx"
+    classifier = tmp_path / "classifier.onnx"
+    detector.write_bytes(b"detector")
+    classifier.write_bytes(b"classifier")
+    metadata = _metadata(sha256_file(detector), sha256_file(classifier))
+    metadata["detector"]["max_object_aspect_ratio"] = 1.0
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
     with pytest.raises(PackageValidationError):
         load_model_package(tmp_path)
 
@@ -146,6 +161,29 @@ def test_schema_10_rejects_new_quality_policy(tmp_path):
         load_model_package(tmp_path)
 
 
+def test_contained_duplicate_policy_requires_schema_11_and_unit_interval(tmp_path):
+    detector = tmp_path / "detector.onnx"
+    classifier = tmp_path / "classifier.onnx"
+    detector.write_bytes(b"detector")
+    classifier.write_bytes(b"classifier")
+    metadata = _metadata(sha256_file(detector), sha256_file(classifier))
+    metadata["quality"]["duplicate_review_containment_threshold"] = 0.999
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
+    with pytest.raises(PackageValidationError):
+        load_model_package(tmp_path)
+
+    metadata["schema_version"] = "1.1"
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    package = load_model_package(tmp_path)
+    assert package.metadata.quality.duplicate_review_containment_threshold == 0.999
+
+    metadata["quality"]["duplicate_review_containment_threshold"] = 1.01
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    with pytest.raises(PackageValidationError):
+        load_model_package(tmp_path)
+
+
 def test_schema_10_rejects_uncertainty_area_policy(tmp_path):
     detector = tmp_path / "detector.onnx"
     classifier = tmp_path / "classifier.onnx"
@@ -159,7 +197,7 @@ def test_schema_10_rejects_uncertainty_area_policy(tmp_path):
         load_model_package(tmp_path)
 
 
-def test_detector_target_bundle_requires_one_shared_model_version(tmp_path):
+def test_legacy_detector_target_bundle_accepts_independent_model_versions(tmp_path):
     detector = tmp_path / "detector.onnx"
     classifier = tmp_path / "classifier.onnx"
     detector.write_bytes(b"detector")
@@ -200,5 +238,83 @@ def test_detector_target_bundle_requires_one_shared_model_version(tmp_path):
 
     metadata["classifier"]["version"] = "0.2.4"
     (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    package = load_model_package(tmp_path)
+    assert package.metadata.detector.version == "0.2.5"
+    assert package.metadata.classifier.version == "0.2.4"
+
+
+def test_official_schema_requires_all_versions_to_start_at_one(tmp_path):
+    detector = tmp_path / "detector.onnx"
+    classifier = tmp_path / "classifier.onnx"
+    detector.write_bytes(b"detector")
+    classifier.write_bytes(b"classifier")
+    metadata = _metadata(sha256_file(detector), sha256_file(classifier))
+    metadata["schema_version"] = "2.0"
+    metadata["worker_version"] = "1.0.0"
+    metadata.pop("package_version", None)
+    metadata["detector"]["version"] = "1.0.0"
+    metadata["classifier"]["version"] = "1.0.0"
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
+    assert load_model_package(tmp_path).metadata.worker_version == "1.0.0"
+
+    metadata["classifier"]["version"] = "0.9.0"
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
     with pytest.raises(PackageValidationError):
         load_model_package(tmp_path)
+
+
+def test_model_source_training_pipeline_provenance_is_optional_but_atomic(tmp_path):
+    detector = tmp_path / "detector.onnx"
+    classifier = tmp_path / "classifier.onnx"
+    detector.write_bytes(b"detector")
+    classifier.write_bytes(b"classifier")
+    metadata = _metadata(sha256_file(detector), sha256_file(classifier))
+    source = metadata["sources"]["classifier"]
+    source["training_pipeline_version"] = "1.0.0"
+    source["training_contract_sha256"] = "a" * 64
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
+    loaded = load_model_package(tmp_path)
+    assert loaded.metadata.sources["classifier"].training_pipeline_version == "1.0.0"
+
+    source.pop("training_contract_sha256")
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    with pytest.raises(PackageValidationError):
+        load_model_package(tmp_path)
+
+
+def test_schema_21_requires_both_component_training_contracts(tmp_path):
+    detector = tmp_path / "detector.onnx"
+    classifier = tmp_path / "classifier.onnx"
+    detector.write_bytes(b"detector")
+    classifier.write_bytes(b"classifier")
+    metadata = _metadata(sha256_file(detector), sha256_file(classifier))
+    metadata.update({"schema_version": "2.1", "worker_version": "1.0.0"})
+    metadata.pop("package_version", None)
+    metadata["detector"]["version"] = "1.0.0"
+    metadata["classifier"]["version"] = "1.0.0"
+    metadata["sources"]["detector"] = {
+        "architecture": "D-FINE-N",
+        "revision": "a" * 40,
+        "weight_sha256": "b" * 64,
+        "training_pipeline_version": "1.0.0",
+        "training_contract_sha256": "c" * 64,
+        "training_dataset_version": "bread-test-1",
+        "training_manifest_sha256": "e" * 64,
+    }
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
+    with pytest.raises(PackageValidationError):
+        load_model_package(tmp_path)
+
+    metadata["sources"]["classifier"].update(
+        {
+            "training_pipeline_version": "1.0.0",
+            "training_contract_sha256": "d" * 64,
+            "training_dataset_version": "bread-test-1",
+            "training_manifest_sha256": "f" * 64,
+        }
+    )
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    assert load_model_package(tmp_path).metadata.schema_version == "2.1"

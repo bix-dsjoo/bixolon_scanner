@@ -4,6 +4,7 @@ from .contracts.model_package import (
     BundleProvenance,
     CalibrationMetadata,
     ClassifierMetadata,
+    ClassifierView,
     ClassLabel,
     CountVerifierMetadata,
     DetectorEvaluationMetadata,
@@ -15,6 +16,7 @@ from .contracts.model_package import (
     PromotionMetadata,
     PromotionWaiver,
     QualityMetadata,
+    StagedClassifierMetadata,
     load_model_package,
     sha256_file,
 )
@@ -22,6 +24,7 @@ from .contracts.model_package import (
 __all__ = [
     "BundleProvenance",
     "CalibrationMetadata",
+    "ClassifierView",
     "ClassifierMetadata",
     "ClassLabel",
     "CountVerifierMetadata",
@@ -34,6 +37,7 @@ __all__ = [
     "PromotionMetadata",
     "PromotionWaiver",
     "QualityMetadata",
+    "StagedClassifierMetadata",
     "load_model_package",
     "sha256_file",
 ]

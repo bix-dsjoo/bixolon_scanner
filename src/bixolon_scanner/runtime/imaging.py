@@ -35,7 +35,9 @@ def decode_image(
             if source.format in {"JPEG", "MPO"} and jpeg_draft_size is not None:
                 source.draft("RGB", (jpeg_draft_size, jpeg_draft_size))
             source.load()
-            image = ImageOps.exif_transpose(source).convert("RGB")
+            image = ImageOps.exif_transpose(source)
+            if image.mode != "RGB":
+                image = image.convert("RGB")
             original_size = (height, width) if orientation in {5, 6, 7, 8} else (width, height)
             image.info[ORIGINAL_SIZE_INFO_KEY] = original_size
     except UnsupportedImageFormatError:
