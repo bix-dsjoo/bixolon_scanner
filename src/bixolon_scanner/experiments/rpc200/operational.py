@@ -12,6 +12,7 @@ from typing import Any, Iterable
 
 import numpy as np
 
+from ...contracts import Status
 from ...contracts.model_package import load_model_package, sha256_file
 from ...pipeline import DecisionPipeline, quality_reasons
 from ...runtime.imaging import decode_image
@@ -1334,7 +1335,9 @@ def worker_eval(
             classifier_call_count_violation = classifier_call_delta != (
                 0 if expected_hard_gate else 1
             )
-            response_status_violation = expected_hard_gate and response.status.value != "RECAPTURE"
+            response_status_violation = (
+                expected_hard_gate and response.status is not Status.IMAGE_RECAPTURE
+            )
             classifier_version_violation = (
                 expected_hard_gate and classifier_version_reported is not None
             )

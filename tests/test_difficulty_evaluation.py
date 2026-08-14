@@ -52,7 +52,7 @@ def test_finalize_counts_uses_requested_error_denominators():
             "end_to_end_latency_ms_samples": [50.0, 60.0, 70.0, 80.0, 90.0],
         }
     )
-    counts["response_status"]["RECAPTURE"] = 2
+    counts["response_status"]["IMAGE_RECAPTURE"] = 2
 
     result = _finalize_counts(counts)
 

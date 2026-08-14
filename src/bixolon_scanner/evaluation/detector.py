@@ -5,12 +5,17 @@ import json
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 from ..pipeline.ports import Detection
 from ..runtime.onnx import nms as _nms
 from ..training.data import DetectionDataset
 from ..training.models import require_torch
+
+
+def _open_rgb(path: Path) -> Image.Image:
+    with Image.open(path) as source:
+        return ImageOps.exif_transpose(source).convert("RGB")
 
 
 def _xywh_to_xyxy(box: list[float]) -> np.ndarray:
@@ -28,6 +33,16 @@ def _iou(left: np.ndarray, right: np.ndarray) -> float:
     return intersection / union if union > 0.0 else 0.0
 
 
+def _allowed_aspect_ratio(box: list[float], maximum: float | None) -> bool:
+    if maximum is None:
+        return True
+    width = float(box[2]) - float(box[0])
+    height = float(box[3]) - float(box[1])
+    if width <= 0.0 or height <= 0.0:
+        return False
+    return max(width / height, height / width) <= maximum
+
+
 def _metrics(
     records: list[dict],
     predictions: list[dict],
@@ -36,6 +51,7 @@ def _metrics(
     nms_iou_threshold: float,
     match_iou_threshold: float,
     max_queries: int,
+    max_object_aspect_ratio: float | None = None,
 ) -> dict[str, float | int]:
     matched_total = 0
     gt_total = 0
@@ -46,7 +62,7 @@ def _metrics(
         selected = [
             Detection(*box, score)
             for box, score in zip(prediction["boxes_xyxy"], prediction["scores"])
-            if score >= score_threshold
+            if score >= score_threshold and _allowed_aspect_ratio(box, max_object_aspect_ratio)
         ]
         if len(selected) >= max_queries:
             capacity_saturated += 1
@@ -89,6 +105,7 @@ def _metrics_grid(
     nms_iou_threshold: float,
     match_iou_threshold: float,
     max_queries: int,
+    max_object_aspect_ratio: float | None = None,
 ) -> list[dict[str, float | int]]:
     """Evaluate a score grid with one greedy-NMS pass per image.
 
@@ -117,7 +134,7 @@ def _metrics_grid(
         raw = [
             Detection(*box, score)
             for box, score in zip(prediction["boxes_xyxy"], prediction["scores"])
-            if score >= minimum_threshold
+            if score >= minimum_threshold and _allowed_aspect_ratio(box, max_object_aspect_ratio)
         ]
         nms_survivors = _nms(raw, nms_iou_threshold)
         gt_boxes = [_xywh_to_xyxy(annotation["bbox_xywh"]) for annotation in record["annotations"]]
@@ -161,6 +178,29 @@ def _metrics_grid(
     return results
 
 
+def select_release_threshold_candidate(
+    candidates: list[dict[str, float | int]], target_recall: float
+) -> dict[str, float | int]:
+    eligible = [item for item in candidates if float(item["recall"]) >= target_recall]
+    if eligible:
+        return max(
+            eligible,
+            key=lambda item: (
+                float(item["precision"]),
+                float(item["count_accuracy"]),
+                float(item["score_threshold"]),
+            ),
+        )
+    return max(
+        candidates,
+        key=lambda item: (
+            float(item["recall"]),
+            float(item["precision"]),
+            float(item["count_accuracy"]),
+        ),
+    )
+
+
 def evaluate(args: argparse.Namespace) -> None:
     torch = require_torch()
     from transformers import AutoImageProcessor, RTDetrV2ForObjectDetection
@@ -175,8 +215,7 @@ def evaluate(args: argparse.Namespace) -> None:
         images = []
         sizes = []
         for record in batch_records:
-            with Image.open(args.dataset_root / record["image_path"]) as source:
-                images.append(source.convert("RGB"))
+            images.append(_open_rgb(args.dataset_root / record["image_path"]))
             sizes.append([record["height"], record["width"]])
         inputs = processor(images=images, return_tensors="pt")
         inputs = {key: value.to(device) for key, value in inputs.items()}
@@ -212,18 +251,9 @@ def evaluate(args: argparse.Namespace) -> None:
         nms_iou_threshold=args.nms_threshold,
         match_iou_threshold=args.match_iou_threshold,
         max_queries=int(model.config.num_queries),
+        max_object_aspect_ratio=args.max_object_aspect_ratio,
     )
-    eligible = [item for item in candidates if item["recall"] >= args.target_recall]
-    if eligible:
-        selected = max(
-            eligible,
-            key=lambda item: (item["count_accuracy"], item["precision"], item["score_threshold"]),
-        )
-    else:
-        selected = max(
-            candidates,
-            key=lambda item: (item["recall"], item["count_accuracy"], item["precision"]),
-        )
+    selected = select_release_threshold_candidate(candidates, args.target_recall)
     manifest_metadata = json.loads(
         (args.manifest.parent / "metadata.json").read_text(encoding="utf-8")
     )
@@ -235,10 +265,11 @@ def evaluate(args: argparse.Namespace) -> None:
         "checkpoint": args.checkpoint.name,
         "match_iou_threshold": args.match_iou_threshold,
         "nms_iou_threshold": args.nms_threshold,
+        "max_object_aspect_ratio": args.max_object_aspect_ratio,
         "target_recall": args.target_recall,
         "threshold_policy": "fixed"
         if args.score_threshold is not None
-        else "selected_on_evaluation_set",
+        else "recall_floor_then_precision_on_evaluation_set",
         "selected_score_threshold": selected["score_threshold"],
         "target_recall_satisfied": selected["recall"] >= args.target_recall,
         "metrics": selected,
@@ -259,12 +290,15 @@ def main() -> None:
     parser.add_argument("--model-version", default="0.1.0")
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--dataset-root", type=Path, required=True)
-    parser.add_argument("--mode", choices=("validation", "test"), default="validation")
+    parser.add_argument(
+        "--mode", choices=("validation", "evaluation", "test"), default="validation"
+    )
     parser.add_argument("--fold", type=int, default=0)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--predictions-output", type=Path)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--nms-threshold", type=float, default=0.7)
+    parser.add_argument("--max-object-aspect-ratio", type=float)
     parser.add_argument("--match-iou-threshold", type=float, default=0.5)
     parser.add_argument("--target-recall", type=float, default=0.99)
     parser.add_argument(

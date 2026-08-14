@@ -2,10 +2,21 @@ import json
 from argparse import Namespace
 
 import numpy as np
+from PIL import Image
 
 import bixolon_scanner.training.evaluate_detector as detector_evaluation
+from bixolon_scanner.evaluation.detector import _open_rgb, select_release_threshold_candidate
 from bixolon_scanner.training.aggregate_detector import aggregate
 from bixolon_scanner.training.evaluate_detector import _iou, _metrics, _metrics_grid
+
+
+def test_detector_evaluation_applies_exif_orientation(tmp_path):
+    path = tmp_path / "oriented.jpg"
+    exif = Image.Exif()
+    exif[274] = 6
+    Image.new("RGB", (6, 4), "white").save(path, exif=exif)
+
+    assert _open_rgb(path).size == (4, 6)
 
 
 def test_detector_metrics_match_boxes_and_count():
@@ -35,6 +46,40 @@ def test_detector_metrics_match_boxes_and_count():
     assert result["precision"] == 1.0
     assert result["count_accuracy"] == 1.0
     assert _iou(np.asarray([0, 0, 10, 10]), np.asarray([20, 20, 30, 30])) == 0.0
+
+
+def test_detector_metric_grid_applies_same_aspect_policy_as_runtime():
+    records = [{"annotations": [{"bbox_xywh": [0.0, 0.0, 10.0, 10.0]}]}]
+    predictions = [
+        {
+            "boxes_xyxy": [[0.0, 0.0, 10.0, 10.0], [20.0, 0.0, 21.0, 20.0]],
+            "scores": [0.9, 0.95],
+        }
+    ]
+
+    result = _metrics_grid(
+        records,
+        predictions,
+        score_thresholds=[0.5],
+        nms_iou_threshold=0.7,
+        match_iou_threshold=0.5,
+        max_queries=300,
+        max_object_aspect_ratio=5.0,
+    )[0]
+
+    assert result["recall"] == 1.0
+    assert result["precision"] == 1.0
+    assert result["prediction_count"] == 1
+
+
+def test_release_threshold_selection_contract_prioritizes_precision_after_recall_floor():
+    candidates = [
+        {"recall": 0.995, "precision": 0.98, "count_accuracy": 0.95, "score_threshold": 0.1},
+        {"recall": 0.991, "precision": 0.99, "count_accuracy": 0.90, "score_threshold": 0.2},
+    ]
+    selected = select_release_threshold_candidate(candidates, 0.99)
+
+    assert selected["score_threshold"] == 0.2
 
 
 def _assert_grid_matches_brute_force(records, predictions, thresholds, nms_threshold):

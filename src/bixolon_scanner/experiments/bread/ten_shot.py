@@ -76,8 +76,8 @@ def _load_config(path: Path) -> dict[str, Any]:
     required = ("experiment", "audit", "augmentation", "training", "evaluation")
     if any(not isinstance(config.get(key), dict) for key in required):
         raise ValueError(f"10-shot config requires sections: {', '.join(required)}")
-    if int(config["experiment"].get("shots_per_class", 0)) != 10:
-        raise ValueError("strict registration requires exactly 10 shots per class")
+    if int(config["experiment"].get("shots_per_class", 0)) < 1:
+        raise ValueError("strict registration requires a positive shots_per_class")
     validate_seed_matrix(config["experiment"].get("seeds", []))
     augmentation = config["augmentation"]
     forbidden = {
@@ -216,12 +216,12 @@ def _load_support_records(
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     classes = int(metadata["class_count"])
     shots = int(metadata["shots_per_class"])
-    if shots != 10 or len(records) != classes * shots:
-        raise ValueError("manifest is not an exact class-balanced 10-shot dataset")
+    if shots < 1 or len(records) != classes * shots:
+        raise ValueError("manifest is not an exact class-balanced few-shot dataset")
     if sha256_file(manifest_path) != metadata.get("manifest_sha256"):
-        raise ValueError("10-shot manifest checksum does not match metadata")
+        raise ValueError("few-shot manifest checksum does not match metadata")
     counts = Counter(int(row["category_id"]) for row in records)
-    if counts != Counter({category: 10 for category in range(1, classes + 1)}):
+    if counts != Counter({category: shots for category in range(1, classes + 1)}):
         raise ValueError("manifest is not balanced or has non-contiguous labels")
     if len({str(row["image_sha256"]) for row in records}) != len(records):
         raise ValueError("manifest contains a duplicate source SHA")
@@ -362,6 +362,9 @@ def _classifier_tensor(image: Image.Image, package) -> np.ndarray:
 
 def prepare(args: argparse.Namespace, config: dict[str, Any]) -> None:
     records, metadata = _load_support_records(args.manifest, args.manifest_metadata)
+    configured_shots = int(config["experiment"]["shots_per_class"])
+    if configured_shots != int(metadata["shots_per_class"]):
+        raise ValueError("configured shots_per_class does not match the locked manifest metadata")
     package = load_model_package(args.base_package)
     device = _device(args.cpu)
     backbone = _build_backbone(args, config, int(metadata["class_count"]), device)
@@ -499,6 +502,7 @@ def prepare(args: argparse.Namespace, config: dict[str, Any]) -> None:
         "dataset_version": metadata["dataset_version"],
         "manifest_sha256": metadata["manifest_sha256"],
         "source_sha256_count": len(source_shas),
+        "shots_per_class": configured_shots,
         "feature_cache_sha256": sha256_file(cache_path),
         "feature_cache_fingerprint": feature_cache_fingerprint(
             manifest_sha256=metadata["manifest_sha256"],
@@ -1483,6 +1487,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--cpu", action="store_true")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument("--phase", choices=("all",) + PHASES, default="all")
+    parser.add_argument("--expected-shots-per-class", type=int)
     return parser
 
 
@@ -1490,6 +1495,16 @@ def main() -> None:
     args = _parser().parse_args()
     args.config = resolve_config_path(args.config)
     config = _load_config(args.config)
+    if args.expected_shots_per_class is not None:
+        if args.expected_shots_per_class < 1:
+            raise ValueError("expected shots_per_class must be positive")
+        config = {
+            **config,
+            "experiment": {
+                **config["experiment"],
+                "shots_per_class": args.expected_shots_per_class,
+            },
+        }
     for phase in PHASES if args.phase == "all" else (args.phase,):
         globals()[phase](args, config)
 
