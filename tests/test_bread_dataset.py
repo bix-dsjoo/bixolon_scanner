@@ -35,10 +35,8 @@ def test_canonical_bread_dataset_locks_training_and_evaluation_sources():
     assert metadata["evaluation_sets"]["multi_object_scenes"]["image_count"] == 300
     assert metadata["evaluation_sets"]["multi_object_scenes"]["annotation_count"] == 1410
     assert len(metadata["evaluation_sets"]["multi_object_scenes"]["image_content_sha256"]) == 64
-    assert metadata["evaluation_sets"]["scan_log_samples"]["status_counts"] == {
-        "ANNOTATED": 69,
-        "RECAPTURE": 31,
-    }
+    assert set(metadata["evaluation_sets"]) == {"multi_object_scenes"}
+    assert "operational_collections" not in metadata["evaluation_sets"]
 
 
 @pytest.mark.parametrize(

@@ -58,6 +58,26 @@ def _safe_arguments(args: Namespace) -> dict[str, Any]:
     return result
 
 
+def _manifest_provenance(metadata: dict[str, Any], task: str) -> dict[str, str]:
+    manifest_sha256 = metadata.get("manifest_sha256")
+    if isinstance(manifest_sha256, str):
+        return {
+            "version": str(metadata["dataset_version"]),
+            "manifest_sha256": manifest_sha256,
+        }
+    component = task.removesuffix("_training")
+    component_metadata = metadata.get(component)
+    if not isinstance(component_metadata, dict) or not isinstance(
+        component_metadata.get("manifest_sha256"), str
+    ):
+        raise ValueError(f"metadata has no manifest provenance for {component}")
+    return {
+        "version": str(metadata["dataset_version"]),
+        "manifest_sha256": component_metadata["manifest_sha256"],
+        "manifest_component": component,
+    }
+
+
 def write_run_record(
     output_dir: Path,
     *,
@@ -72,10 +92,7 @@ def write_run_record(
         metadata_path = Path(manifest_path).parent / "metadata.json"
         if metadata_path.is_file():
             metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-            dataset = {
-                "version": metadata["dataset_version"],
-                "manifest_sha256": metadata["manifest_sha256"],
-            }
+            dataset = _manifest_provenance(metadata, task)
     record = {
         "task": task,
         "created_at": datetime.now(UTC).isoformat(),
@@ -106,6 +123,19 @@ def write_run_record(
         record["starting_checkpoint"] = {
             "name": checkpoint_path.name,
             "sha256": _sha256_path(checkpoint_path),
+        }
+    initial_checkpoint = getattr(args, "initial_checkpoint", None)
+    if initial_checkpoint is not None:
+        checkpoint_path = Path(initial_checkpoint).resolve()
+        if not checkpoint_path.exists():
+            raise ValueError("initial checkpoint does not exist")
+        checkpoint_sha256 = _sha256_path(checkpoint_path)
+        expected_sha256 = getattr(args, "initial_checkpoint_sha256", None)
+        if expected_sha256 is not None and str(expected_sha256) != checkpoint_sha256:
+            raise ValueError("initial checkpoint SHA-256 mismatch")
+        record["initial_checkpoint"] = {
+            "name": checkpoint_path.name,
+            "sha256": checkpoint_sha256,
         }
     try:
         import torch

@@ -166,15 +166,15 @@ def audit_bread_dataset(
         raise ValueError(f"dataset root must be a directory named {EXPECTED_ROOT_NAME}")
     if training_source not in TRAINING_SOURCES:
         raise ValueError(f"unsupported bread training source: {training_source}")
-    allowed_top_level = {
+    required_top_level = {
         *TRAINING_SOURCES,
         "multi_object_scenes",
-        "scan_log_samples",
         "annotations",
     }
+    optional_top_level = {"operational_collections"}
     actual_top_level = {path.name for path in root.iterdir()}
-    unexpected = actual_top_level - allowed_top_level
-    missing = allowed_top_level - actual_top_level
+    unexpected = actual_top_level - required_top_level - optional_top_level
+    missing = required_top_level - actual_top_level
     if missing or unexpected:
         raise ValueError(
             "bread_dataset top-level entries mismatch: "
@@ -182,15 +182,8 @@ def audit_bread_dataset(
         )
 
     multi_annotation = root / "annotations" / "multi_object_instances.json"
-    scan_annotation = root / "annotations" / "scan_log_instances.json"
     multi_coco = _load_coco(multi_annotation)
-    scan_coco = _load_coco(scan_annotation)
     labels = _validate_categories(multi_coco)
-    scan_labels = _validate_categories(scan_coco)
-    if [(_["category_id"], _slug(_["class_name"])) for _ in scan_labels] != [
-        (_["category_id"], _slug(_["class_name"])) for _ in labels
-    ]:
-        raise ValueError("multi-object and scan-log category contracts differ")
 
     single_root = root / training_source
     class_directories = sorted(path for path in single_root.iterdir() if path.is_dir())
@@ -273,12 +266,6 @@ def audit_bread_dataset(
             multi_coco,
             expected_parent="multi_object_scenes",
         ),
-        "scan_log_samples": _evaluation_summary(
-            root,
-            scan_annotation,
-            scan_coco,
-            expected_parent="scan_log_samples",
-        ),
     }
     digest_payload = {
         "training": sorted(content_rows, key=lambda row: row["path"]),
@@ -319,7 +306,6 @@ def audit_bread_evaluation_set(dataset_root: Path, name: str) -> dict[str, Any]:
     root = dataset_root.resolve()
     choices = {
         "multi_object_scenes": ("multi_object_instances.json", "multi_object_scenes"),
-        "scan_log_samples": ("scan_log_instances.json", "scan_log_samples"),
     }
     if name not in choices:
         raise ValueError(f"unsupported bread evaluation set: {name}")

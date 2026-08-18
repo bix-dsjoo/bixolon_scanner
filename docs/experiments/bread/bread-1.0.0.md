@@ -3,8 +3,7 @@
 ## 현재 결론
 
 Worker·Detector·Classifier `1.0.0` 운영 패키지를 만들었다. 실제 합격 기준은
-`multi_object_scenes` 300장뿐이며 `scan_log_samples`는 이번 gate에서 읽거나 집계하지
-않는다. point·segmentation·RECAPTURE·속도 KPI는 모두 통과했다. 승인 오인율의 단측
+`multi_object_scenes` 300장이다. point·segmentation·RECAPTURE·속도 KPI는 모두 통과했다. 승인 오인율의 단측
 95% 상한은 표본 부족으로 통과하지 못했지만, 2026-08-14 프로젝트 소유자의 명시적
 지시에 따라 이 gate 하나만 manual waiver로 기록하고 `production`으로 승격했다.
 

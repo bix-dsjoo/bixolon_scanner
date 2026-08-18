@@ -1,0 +1,41 @@
+{
+  "schema_version": "1.0",
+  "dataset_version": "bread-operational-test-2026-08-18-dac22864668b",
+  "lifecycle": "locked_test",
+  "locked_on": "2026-08-18",
+  "dataset_root": "datasets/bread_dataset/operational_collections/2026-08-18",
+  "annotation_file": "annotations/instances.json",
+  "annotation_sha256": "7909a8fdb31850b5af1cb4e95aa007b6b9e3d2ec5da06e6f8c9f74d3ed2bb56f",
+  "image_manifest_sha256": "dac22864668b8ba008db988201f5c851c2d323c798f704c40d3abf10cf243f6e",
+  "image_manifest_hash_contract": "UTF-8 lines sorted by integer image id: {id:04d} {lowercase_sha256} {coco_file_name} followed by LF, then SHA-256",
+  "image_count": 115,
+  "annotation_count": 504,
+  "category_count": 20,
+  "integrity_audit": {
+    "unique_image_id_count": 115,
+    "unique_annotation_id_count": 504,
+    "orphan_annotation_count": 0,
+    "invalid_bbox_count": 0
+  },
+  "development_overlap_audit": {
+    "development_dataset_version": "bread-1.1-fb586306bf10",
+    "development_image_count": 300,
+    "exact_sha256_pair_count": 0,
+    "difference_hash_pair_count_at_distance_le_2": 0,
+    "minimum_cross_set_difference_hash_distance": 19
+  },
+  "access_audit": {
+    "labels_accessed_for_structural_counts_only": true,
+    "candidate_predictions_evaluated_before_lock": false,
+    "candidate_metrics_evaluated_before_lock": false,
+    "final_candidate_id": "bread-zero-error-1.1.0-domain-lda-fixed-four-v2",
+    "final_evaluation_completed_on": "2026-08-18",
+    "final_evaluation_passed": false,
+    "final_evaluation_report": "artifacts/experiments/bread-zero-error-1.1.0/locked-operational-test-v2/report.json"
+  },
+  "policy": {
+    "model_or_threshold_selection_allowed": false,
+    "single_final_candidate_evaluation_only": true,
+    "failed_final_candidate_requires_new_independent_test": true
+  }
+}

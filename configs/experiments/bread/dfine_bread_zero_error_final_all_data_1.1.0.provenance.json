@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "experiment": "bread-zero-error-1.1.0",
+  "purpose": "deployable_single_model_final_fit",
+  "lifecycle": "active",
+  "seed": 20260814,
+  "selection": {
+    "method": "group-aware outer-fold validation before final fit",
+    "outer_fold_best_epoch_indices": [6, 4, 6],
+    "selected_epoch_index": 6,
+    "fit_epoch_count": 7,
+    "checkpoint_policy": "use last.pth only",
+    "monitoring_validation_may_select_checkpoint": false
+  },
+  "fit_data": {
+    "scope": "all development records after group-aware policy selection",
+    "annotation_file": "artifacts/experiments/bread-zero-error-1.1.0/detector/fold0/coco-class-aware/instances_all.json",
+    "annotation_sha256": "3f346fe842b0557509513d72177420eb989cd501698a6fc649d83a23f4af6d85",
+    "image_count": 400,
+    "annotation_count": 1623,
+    "category_count": 20,
+    "held_out_test_set": false
+  },
+  "initial_checkpoint": {
+    "path": "artifacts/experiments/bread-1.0.0-dfine-n/training/best_stg2.pth",
+    "sha256": "7a6e5d531bb464a985958468e9b36466225eca5b2258230f60c8381de8ac0555"
+  },
+  "legacy_test_reuse_audit": {
+    "current_manifest": "manifests/bread-zero-error-1.1/detector_manifest.jsonl",
+    "current_manifest_sha256": "2ffc2b318f20f5195a952b76ed6ac345a73a4f41a7c75e417701cac5c7c6fea0",
+    "legacy_manifest": "manifests/bread-v1/manifest.jsonl",
+    "legacy_manifest_sha256": "2dff5fd9fea05d03c36e9e898a7cac0a70a81cf7faf9abcd0e13b02740252a7d",
+    "legacy_test_image_count": 94,
+    "same_source_image_id_overlap_count": 94,
+    "independent_image_count": 0,
+    "decision": "not eligible as an independent test set"
+  },
+  "claims": {
+    "post_fit_development_evaluation": "resubstitution diagnostic only",
+    "promotion_gate": false,
+    "independent_test_required": true
+  }
+}

@@ -1,0 +1,111 @@
+{
+  "schema_version": "1.0",
+  "experiment": "bread-zero-error-1.1.0",
+  "candidate": "rfdetr-large-2026-class-aware",
+  "lifecycle": "rejected",
+  "architecture": "RF-DETR Large",
+  "implementation": {
+    "package": "rfdetr",
+    "version": "1.8.3",
+    "license": "Apache-2.0",
+    "documentation": "https://rfdetr.roboflow.com/latest/",
+    "source": "https://github.com/roboflow/rf-detr"
+  },
+  "pretraining": {
+    "checkpoint": "artifacts/third_party/rf-detr/rf-detr-large-2026.pth",
+    "sha256": "0f4e20e19a99c0f8a62b5685f57f6c8b5c371c59081feda6752a0561a79ccf38",
+    "size_bytes": 135954129,
+    "source": "official RF-DETR Large 2026 checkpoint registry"
+  },
+  "dataset": {
+    "manifest": "manifests/bread-zero-error-1.1/detector_manifest.jsonl",
+    "manifest_sha256": "2ffc2b318f20f5195a952b76ed6ac345a73a4f41a7c75e417701cac5c7c6fea0",
+    "root": "datasets/bread_dataset",
+    "fold_dataset_template": "artifacts/experiments/bread-zero-error-1.1.0/detector/rfdetr-large/fold{fold}/dataset",
+    "fold_output_template": "artifacts/experiments/bread-zero-error-1.1.0/detector/rfdetr-large/fold{fold}/training",
+    "folds": [0, 1, 2],
+    "group_key": "perceptual_group_id",
+    "group_fold_overlap_allowed": false,
+    "class_mode": "class_aware_20",
+    "held_out_test_set": false
+  },
+  "model": {
+    "resolution": 704,
+    "num_queries": 300,
+    "num_classes": 20,
+    "device": "cuda"
+  },
+  "training": {
+    "epochs": 60,
+    "batch_size": 2,
+    "grad_accum_steps": 8,
+    "learning_rate": 0.0001,
+    "encoder_learning_rate": 0.00001,
+    "weight_decay": 0.0001,
+    "warmup_epochs": 3.0,
+    "learning_rate_drop_epoch": 40,
+    "square_resize_div_64": true,
+    "multi_scale": true,
+    "expanded_scales": false,
+    "use_ema": true,
+    "early_stopping": true,
+    "early_stopping_patience": 12,
+    "evaluation_interval": 1,
+    "num_workers": 2,
+    "seed": 20260818,
+    "run_test": false,
+    "save_dataset_grids": false,
+    "tensorboard": false,
+    "wandb": false
+  },
+  "selection": {
+    "kind": "three-fold group-aware out-of-fold",
+    "primary_metric": "accepted-route FP/FN at IoU 0.5",
+    "threshold_selection_data": "other two development folds only",
+    "full_dataset_recheck_after_each_fold": true,
+    "copy_fold_routing_to_worker": false
+  },
+  "release_gate_scope": {
+    "segmentation_minimum": 0.9,
+    "segmentation_image_false_negative_maximum": 0.001,
+    "segmentation_image_false_positive_maximum": 0.001,
+    "image_recapture_evasion_forbidden": true
+  },
+  "result": {
+    "evaluated_fold": 0,
+    "remaining_folds_trained": false,
+    "early_stop_reason": "held-out fold 0 box coverage cannot satisfy the image FP/FN gates at any evaluated score/NMS policy",
+    "checkpoint": "artifacts/experiments/bread-zero-error-1.1.0/detector/rfdetr-large/fold0/training/checkpoint_best_total.pth",
+    "checkpoint_sha256": "b92ae4e1aa3c3de9af3ae9923a3cf4cb01608dd2eec1c78fbff906af28187420",
+    "raw_predictions": "artifacts/experiments/bread-zero-error-1.1.0/detector/rfdetr-large/fold0/raw-predictions.jsonl",
+    "box_only_grid": "artifacts/experiments/bread-zero-error-1.1.0/detector/rfdetr-large/fold0/box-only-grid.json",
+    "box_only_grid_sha256": "5ea066de3a1b54e3c856713ce82bf7a718d1cfedeadcb152d369a1ed11625a67",
+    "annotated_validation_images": 122,
+    "ground_truth_objects": 535,
+    "score_nms_candidates": 253,
+    "zero_error_candidate_count": 0,
+    "best_total_error": {
+      "score_threshold": 0.4,
+      "nms_iou_threshold": 0.2,
+      "false_positive_count_iou50": 47,
+      "false_negative_count_iou50": 398,
+      "recall": 0.2560747663551402,
+      "precision": 0.7445652173913043
+    },
+    "maximum_recall": {
+      "score_threshold": 0.02,
+      "nms_iou_threshold": 0.7,
+      "false_positive_count_iou50": 7223,
+      "false_negative_count_iou50": 11,
+      "recall": 0.9794392523364486,
+      "precision": 0.06763908609784433
+    },
+    "zero_false_positive": {
+      "score_threshold": 0.8,
+      "nms_iou_threshold": 0.2,
+      "false_negative_count_iou50": 495,
+      "recall": 0.07476635514018691
+    },
+    "verdict": "rejected"
+  }
+}

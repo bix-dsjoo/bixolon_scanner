@@ -147,6 +147,7 @@ def _empty_counts() -> dict[str, Any]:
         "images": 0,
         "response_status": Counter(),
         "recapture_reasons": Counter(),
+        "segment_recapture_reasons": Counter(),
         "ground_truth_boxes": 0,
         "predicted_boxes": 0,
         "matched_boxes": 0,
@@ -165,6 +166,9 @@ def _empty_counts() -> dict[str, Any]:
         "unknown_top3_correct": 0,
         "unknown_top3_missing": 0,
         "unknown_unmatched": 0,
+        "segment_recapture_boxes": 0,
+        "segment_recapture_matched_boxes": 0,
+        "segment_recapture_unmatched_boxes": 0,
         "classified_matched_boxes": 0,
         "top1_correct": 0,
         "recapture_ground_truth_boxes": 0,
@@ -188,7 +192,8 @@ def _finalize_counts(counts: dict[str, Any]) -> dict[str, Any]:
         "top3_candidate": counts["unknown_top3_correct"],
         "candidate_out": counts["unknown_top3_missing"],
         "approved_misclassification": counts["approved_wrong_matched"],
-        "recapture": counts["recapture_ground_truth_boxes"],
+        "recapture": counts["recapture_ground_truth_boxes"]
+        + counts["segment_recapture_matched_boxes"],
         "unblocked_segmentation_missed": counts["unblocked_missed_boxes"],
     }
     if sum(ground_truth_outcome_counts.values()) != counts["ground_truth_boxes"]:
@@ -198,6 +203,7 @@ def _finalize_counts(counts: dict[str, Any]) -> dict[str, Any]:
         for status in (Status.APPROVED, Status.UNKNOWN, Status.RECAPTURE)
     }
     result["recapture_reasons"] = dict(sorted(counts["recapture_reasons"].items()))
+    result["segment_recapture_reasons"] = dict(sorted(counts["segment_recapture_reasons"].items()))
     result["rates"] = {
         "recapture_image_rate": _safe_rate(
             counts["response_status"][Status.RECAPTURE.value], counts["images"]
@@ -222,6 +228,9 @@ def _finalize_counts(counts: dict[str, Any]) -> dict[str, Any]:
         "unknown_top3_accuracy": _safe_rate(
             counts["unknown_top3_correct"], counts["unknown_matched_boxes"]
         ),
+        "segment_recapture_rate_of_matched_detections": _safe_rate(
+            counts["segment_recapture_matched_boxes"], counts["matched_boxes"]
+        ),
         "classifier_top1_accuracy_excluding_recapture": _safe_rate(
             counts["top1_correct"], counts["classified_matched_boxes"]
         ),
@@ -238,7 +247,8 @@ def _finalize_counts(counts: dict[str, Any]) -> dict[str, Any]:
         "e2e_safe_resolution_rate_all_ground_truth": _safe_rate(
             counts["approved_correct"]
             + counts["unknown_top3_correct"]
-            + counts["recapture_ground_truth_boxes"],
+            + counts["recapture_ground_truth_boxes"]
+            + counts["segment_recapture_matched_boxes"],
             counts["ground_truth_boxes"],
         ),
     }
@@ -432,7 +442,39 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
                             "iou": round(overlap, 6),
                         }
                     )
-            else:
+            elif item.status is ItemStatus.SEGMENT_RECAPTURE:
+                for bucket in selected_counts:
+                    bucket["segment_recapture_boxes"] += 1
+                    bucket["segment_recapture_reasons"].update(item.reason_codes)
+                if match is None:
+                    for bucket in selected_counts:
+                        bucket["segment_recapture_unmatched_boxes"] += 1
+                    detail_rows.append(
+                        {
+                            **common,
+                            "reason_codes": "|".join(item.reason_codes),
+                            "error_type": "SEGMENT_RECAPTURE_UNMATCHED",
+                            "item_id": item.item_id,
+                            "item_status": item.status.value,
+                        }
+                    )
+                    continue
+                gt_index, overlap = match
+                expected = f"bread_{int(record['annotations'][gt_index]['category_id']):02d}"
+                for bucket in selected_counts:
+                    bucket["segment_recapture_matched_boxes"] += 1
+                detail_rows.append(
+                    {
+                        **common,
+                        "reason_codes": "|".join(item.reason_codes),
+                        "error_type": "SEGMENT_RECAPTURE",
+                        "item_id": item.item_id,
+                        "item_status": item.status.value,
+                        "expected_class_id": expected,
+                        "iou": round(overlap, 6),
+                    }
+                )
+            elif item.status is ItemStatus.UNKNOWN:
                 for bucket in selected_counts:
                     bucket["unknown_boxes"] += 1
                 if match is None:
@@ -473,6 +515,8 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
                             "iou": round(overlap, 6),
                         }
                     )
+            else:
+                raise RuntimeError(f"unsupported segmentation status: {item.status}")
 
     report = {
         "evaluation": "worker_difficulty_diagnostic",
@@ -486,7 +530,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             "min_area_ratio": package.metadata.detector.uncertainty_min_area_ratio,
             "match_iou_threshold": package.metadata.detector.uncertainty_match_iou_threshold,
         },
-        "classification_policy": "exclude_RECAPTURE; APPROVED wrong includes unmatched; UNKNOWN Top-3 rate uses matched boxes only",
+        "classification_policy": "exclude IMAGE_RECAPTURE and SEGMENT_RECAPTURE from classifier accuracy; APPROVED wrong includes unmatched; UNKNOWN Top-3 rate uses matched UNKNOWN boxes only",
         "difficulty_source": "COCO file_name E/M/H directory or filename _e_/_m_/_h_ token",
         "evaluation_passes_per_image": 1,
         "latency_scope": "single pass per image; decode, preprocess, detector, classifier when executed, and postprocess; file read excluded",

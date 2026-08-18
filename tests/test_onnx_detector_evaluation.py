@@ -28,6 +28,25 @@ def test_explicit_annotation_path_keeps_images_under_dataset_root(tmp_path: Path
     assert records[0]["image_path"] == image.resolve()
 
 
+def test_load_records_normalizes_zero_based_coco_categories(tmp_path: Path):
+    image = tmp_path / "images" / "sample.jpg"
+    image.parent.mkdir()
+    image.write_bytes(b"image")
+    annotation = tmp_path / "validation.json"
+    annotation.write_text(
+        """{
+          "images":[{"id":1,"file_name":"images/sample.jpg"}],
+          "annotations":[{"image_id":1,"bbox":[1,2,3,4],"category_id":0}],
+          "categories":[{"id":0,"name":"bread-0"},{"id":1,"name":"bread-1"}]
+        }""",
+        encoding="utf-8",
+    )
+
+    records = load_records(tmp_path, "unused.json", annotation_path=annotation)
+
+    assert records[0]["annotations"][0]["category_id"] == 1
+
+
 def test_raw_outputs_collapse_classes_and_convert_boxes():
     prediction = raw_outputs_to_prediction(
         np.asarray([[0.0, 2.0], [-2.0, -1.0]], dtype=np.float32),

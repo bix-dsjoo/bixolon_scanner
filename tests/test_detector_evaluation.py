@@ -45,6 +45,9 @@ def test_detector_metrics_match_boxes_and_count():
     assert result["recall"] == 1.0
     assert result["precision"] == 1.0
     assert result["count_accuracy"] == 1.0
+    assert result["false_positive_count"] == 0
+    assert result["false_negative_count"] == 0
+    assert result["exact_image_rate"] == 1.0
     assert _iou(np.asarray([0, 0, 10, 10]), np.asarray([20, 20, 30, 30])) == 0.0
 
 
@@ -338,3 +341,68 @@ def test_oof_aggregation_excludes_quality_only_records(tmp_path):
 
     report = json.loads(output.read_text(encoding="utf-8"))
     assert report["metrics"]["image_count"] == 1
+
+
+def test_oof_aggregation_separates_recapture_and_requires_zero_object_errors(tmp_path):
+    manifest = tmp_path / "manifest.jsonl"
+    (tmp_path / "metadata.json").write_text(
+        json.dumps({"dataset_version": "bread-test"}), encoding="utf-8"
+    )
+    prediction = tmp_path / "fold0.jsonl"
+    output = tmp_path / "report.json"
+    records = [
+        {
+            "record_type": "detection",
+            "split": "development",
+            "image_id": 7,
+            "expected_image_status": "ANNOTATED",
+            "annotations": [{"bbox_xywh": [10.0, 20.0, 30.0, 40.0]}],
+        },
+        {
+            "record_type": "detection",
+            "split": "development",
+            "image_id": 8,
+            "expected_image_status": "RECAPTURE",
+            "annotations": [],
+        },
+    ]
+    predictions = [
+        {
+            "image_id": 7,
+            "boxes_xyxy": [[10.0, 20.0, 40.0, 60.0]],
+            "scores": [0.8],
+        },
+        {
+            "image_id": 8,
+            "boxes_xyxy": [[1.0, 1.0, 2.0, 2.0]],
+            "scores": [0.7],
+        },
+    ]
+    manifest.write_text("".join(json.dumps(record) + "\n" for record in records), encoding="utf-8")
+    prediction.write_text(
+        "".join(json.dumps(item) + "\n" for item in predictions), encoding="utf-8"
+    )
+
+    aggregate(
+        Namespace(
+            manifest=manifest,
+            predictions=[prediction],
+            output=output,
+            nms_threshold=0.7,
+            match_iou_threshold=0.5,
+            target_recall=1.0,
+            score_threshold=0.75,
+            min_score_threshold=0.05,
+            max_score_threshold=0.95,
+            threshold_steps=91,
+            max_queries=300,
+            strict_zero_errors=True,
+            separate_recapture=True,
+        )
+    )
+
+    report = json.loads(output.read_text(encoding="utf-8"))
+    assert report["zero_false_positive_satisfied"] is True
+    assert report["zero_false_negative_satisfied"] is True
+    assert report["metrics"]["image_count"] == 1
+    assert report["expected_recapture_raw_detection_metrics"]["detection_positive_image_count"] == 0

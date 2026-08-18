@@ -1,0 +1,311 @@
+{
+  "experiment": {
+    "name": "bread-zero-error-1.1.0",
+    "lifecycle": "active",
+    "started_on": "2026-08-14",
+    "worker_candidate_version": "1.1.0",
+    "detector_candidate_version": "1.1.0",
+    "classifier_candidate_version": "1.1.0",
+    "manual_waiver_allowed": false
+  },
+  "dataset": {
+    "root": "datasets/bread_dataset",
+    "version": "bread-1.1-fb586306bf10",
+    "metadata": "manifests/bread-zero-error-1.1/metadata.json",
+    "detector_manifest": "manifests/bread-zero-error-1.1/detector_manifest.jsonl",
+    "classifier_manifest": "manifests/bread-zero-error-1.1/classifier_manifest.jsonl",
+    "classifier_source": "single_objects",
+    "forbidden_classifier_sources": [
+      "single_objects_1",
+      "single_objects_2",
+      "single_objects_3"
+    ],
+    "fold_count": 3,
+    "held_out_test_set": false,
+    "near_duplicate_hamming_distance": 2,
+    "same_fold_train_validation_overlap_allowed": false,
+    "promotion_evaluation_scope": {
+      "included_evaluation_sets": ["multi_object_scenes"],
+      "included_difficulties": ["EASY", "MEDIUM", "HARD"],
+      "image_count": 300,
+      "excluded_evaluation_sets": ["scan_log_samples"],
+      "scan_log_reference_only": true
+    }
+  },
+  "detector": {
+    "architecture": "D-FINE-N HGNetv2 B0",
+    "task": "class_aware_transfer_for_object_localization",
+    "input_size": [640, 640],
+    "initial_checkpoint": "artifacts/experiments/bread-1.0.0-dfine-n/training/best_stg2.pth",
+    "initial_checkpoint_sha256": "7a6e5d531bb464a985958468e9b36466225eca5b2258230f60c8381de8ac0555",
+    "epochs": 30,
+    "batch_size": 8,
+    "backbone_learning_rate": 0.000001,
+    "head_learning_rate": 0.00001,
+    "medium_learning_rate_candidate": {
+      "config": "configs/experiments/bread/dfine_bread_zero_error_medium_lr_1.1.0.yml",
+      "backbone_learning_rate": 0.00001,
+      "head_learning_rate": 0.0001,
+      "activation_reason": "low-rate fold-0 loss plateau after augmentation stop"
+    },
+    "weight_decay": 0.0001,
+    "warmup_iterations": 10,
+    "score_thresholds": {
+      "minimum": 0.01,
+      "maximum": 0.99,
+      "steps": 99
+    },
+    "nms_iou_thresholds": [0.3, 0.4, 0.5, 0.6, 0.7],
+    "dfine_s_challenger": {
+      "architecture": "D-FINE-S HGNetv2 B0",
+      "pretrained_checkpoint": "artifacts/third_party/D-FINE/pretrained/dfine_s_coco.pth",
+      "pretrained_checkpoint_sha256": "48a6c8cc43eb57186843f752e2e8461ddd3326e0d3c575e71e6e960844683e89",
+      "source": "https://github.com/Peterande/storage/releases/download/dfinev1.0/dfine_s_coco.pth",
+      "fold_configs": [
+        "configs/experiments/bread/dfine_bread_s_fold0_1.1.0.yml",
+        "configs/experiments/bread/dfine_bread_s_fold1_1.1.0.yml",
+        "configs/experiments/bread/dfine_bread_s_fold2_1.1.0.yml"
+      ],
+      "epochs": 15,
+      "batch_size": 8,
+      "backbone_learning_rate": 0.00001,
+      "head_learning_rate": 0.0001
+    },
+    "rtdetrv2_r18_challenger": {
+      "architecture": "PekingU/rtdetr_v2_r18vd",
+      "config": "configs/experiments/bread/rtdetrv2_bread_zero_error_1.1.0.json",
+      "initialization": "official COCO pretrained weights with a newly initialized one-class head",
+      "input_size": [768, 768],
+      "outer_folds": [0, 1, 2],
+      "epochs": 60,
+      "patience": 15,
+      "base_learning_rate": 0.00001,
+      "head_learning_rate": 0.0001,
+      "class_head_prior_probability": 0.01,
+      "activation_reason": "OOF union oracle count remains at FP 2/FN 4 on touching and overlapping objects",
+      "active_low_prior_probe": {
+        "fold": 1,
+        "output": "artifacts/experiments/bread-zero-error-1.1.0/detector/fold1/training-rtdetrv2-r18-768",
+        "input_size": [768, 768],
+        "head_learning_rate": 0.0001,
+        "class_head_prior_probability": 0.01,
+        "warmup_epochs": 5,
+        "resumed_from_epoch": 12,
+        "stopped_after_epoch": 22,
+        "best_recall": 0.5934065934065934,
+        "reason": "outperformed the prior-0.5 baseline but plateaued after epoch 19"
+      },
+      "active_stage2_finetune": {
+        "config": "configs/experiments/bread/rtdetrv2_bread_stage2_1.1.0.json",
+        "initial_checkpoint": "artifacts/experiments/bread-zero-error-1.1.0/detector/fold1/training-rtdetrv2-r18-768/best",
+        "initial_checkpoint_sha256": "8e4370f8a0e3e04144593be1b80d53e1b44a36e7dcad660f9b638c9e9a742730",
+        "output": "artifacts/experiments/bread-zero-error-1.1.0/detector/fold1/training-rtdetrv2-r18-768-stage2",
+        "head_learning_rate": 0.00001,
+        "activation_reason": "reduce the oscillation observed with the 10x head learning rate",
+        "stopped_after_epoch": 7,
+        "best_recall": 0.6117216117216118,
+        "result": "better than stage 1 but insufficient to challenge the unseen legacy detector"
+      },
+      "inferior_prior_0_5_probe": {
+        "config": "configs/experiments/bread/rtdetrv2_bread_prior_0_5_probe_1.1.0.json",
+        "output": "artifacts/experiments/bread-zero-error-1.1.0/detector/fold1/training-rtdetrv2-r18-640",
+        "stopped_after_epoch": 10,
+        "best_recall": 0.38461538461538464
+      }
+    },
+    "selected_development_policy": {
+      "base_predictions": "outer-fold D-FINE and legacy proposal features",
+      "count_model": "random_forest",
+      "count_model_report": "artifacts/experiments/bread-zero-error-1.1.0/detector/oof-final-selective-rf05-count-search.json",
+      "raw_metrics": {
+        "image_count": 369,
+        "ground_truth_count": 1623,
+        "false_positive_count_iou50": 0,
+        "false_negative_count_iou50": 3
+      },
+      "disagreement_image_recapture_ids": [153, 155, 160, 298],
+      "accepted_after_all_image_gates": {
+        "image_count": 362,
+        "ground_truth_count": 1583,
+        "false_positive_count_iou50": 0,
+        "false_negative_count_iou50": 0,
+        "exact_image_rate": 1.0
+      }
+    }
+  },
+  "classifier": {
+    "architecture": "two DINOv3 ConvNeXt-Tiny classifiers with detector-neighbor ownership masks",
+    "training_source": "single_objects",
+    "mixed_support_sources": false,
+    "candidate_checkpoints": [
+      {
+        "path": "artifacts/experiments/bread-10shot-1.0.0/runs/clutter-v2/best.pt",
+        "sha256": "6c291c26120d985dc75a4231aea81eede48027cffc1170d30435bcc083d9990d",
+        "weight": 0.90
+      },
+      {
+        "path": "artifacts/experiments/bread-10shot-1.0.0/runs/clutter-finetune-v2/best.pt",
+        "sha256": "a1f9384bf11d611d74e043236ccfa2d230467d484bc6a1477ec5c566e2ae991e",
+        "weight": 0.10
+      }
+    ],
+    "unsafe_top3_action": "SEGMENT_RECAPTURE",
+    "top3_policy_selection": "two_checkpoint_neighbor_mask_grouped_oof_no_locked_test",
+    "selected_development_policy": {
+      "report": "artifacts/experiments/bread-zero-error-1.1.0/classifier/grouped-rate-policy.json",
+      "views": [
+        {"name": "clutter_v2", "weight": 0.90},
+        {"name": "clutter_finetune_v2", "weight": 0.10}
+      ],
+      "approval_guard_samples": 2,
+      "top3_guard_samples": 8,
+      "policy": "approval=class_conditional_margin;top3=weighted_reciprocal_rank;safety=inverse_entropy",
+      "no_failure_approval_threshold": 0.98,
+      "package_approval_thresholds": [
+        0.9800000190734863, 0.9800000190734863, 0.9800000190734863,
+        0.9998032450675964, 0.9981681108474731, 0.9992360472679138,
+        0.9984535574913025, 0.9800000190734863, 0.9800000190734863,
+        0.9996997714042664, 0.9800000190734863, 0.9999430179595947,
+        0.9800000190734863, 0.999990701675415, 0.9800000190734863,
+        0.999960720539093, 0.9992694854736328, 0.999901294708252,
+        0.9998908638954163, 0.5081271529197693
+      ],
+      "package_top3_safety_threshold": -2.9602475991540342,
+      "global_ranking_tie_break_bias_span": 0.0002,
+      "evaluation_after_all_image_gates": {
+        "sample_count": 1583,
+        "approved_count": 1426,
+        "approved_rate": 0.9008212255211624,
+        "approved_misrecognition_count": 1,
+        "approved_misrecognition_rate": 0.0006317119393556538,
+        "unknown_count": 94,
+        "unknown_top3_candidate_out_count": 1,
+        "unknown_top3_candidate_out_rate": 0.0006317119393556538,
+        "segment_recapture_count": 63,
+        "segment_recapture_rate": 0.03979785217940619
+      }
+    }
+  },
+  "image_quality": {
+    "selected_development_policy": "reason-specific conjunctions of at most two scalar conditions",
+    "report": "artifacts/experiments/bread-zero-error-1.1.0/detector/image-recapture-selector-search-v4.json",
+    "expected_recapture_count": 31,
+    "caught_expected_recapture_count": 31,
+    "false_recapture_count_on_scan_log_annotated": 3,
+    "false_recapture_image_ids": [1000040, 1000088, 1000090],
+    "pooled_oof_pass": true,
+    "nested_diagnostic_pass": false
+  },
+  "targets": {
+    "release_1_1": {
+      "segmentation_image_rate_minimum": 0.90,
+      "approved_object_rate_minimum": 0.90,
+      "segmentation_image_false_negative_rate_maximum": 0.001,
+      "segmentation_image_false_positive_rate_maximum": 0.001,
+      "approved_object_misrecognition_rate_maximum": 0.001,
+      "unknown_top3_candidate_out_rate_maximum": 0.001,
+      "boundary_policy": "inclusive",
+      "image_denominator": "E/M/H valid requests for SEGMENTATION; final SEGMENTATION images for image-level detector FP/FN, counting an image once when any IoU@0.5 FP or FN exists",
+      "object_denominator": "all judgeable ground-truth objects; IMAGE_RECAPTURE and detector misses remain in the denominator; unmatched detector FP is excluded here and checked by the segmentation-image FP gate",
+      "designated_by_project_owner_on": "2026-08-18"
+    },
+    "detector": {
+      "maximum_segmentation_image_false_positive_rate_iou50": 0.001,
+      "maximum_segmentation_image_false_negative_rate_iou50": 0.001,
+      "report_raw_false_positive_and_false_negative_counts": true
+    },
+    "classifier": {
+      "minimum_approved_rate": 0.90,
+      "maximum_approved_misrecognition_rate": 0.001,
+      "maximum_unknown_top3_candidate_out_rate": 0.001
+    },
+    "image_routing": {
+      "minimum_segmentation_image_rate": 0.90,
+      "prevent_image_recapture_evasion": true
+    },
+    "latency": {
+      "maximum_full_path_p95_ms": 100.0
+    }
+  },
+  "selection": {
+    "detector": "grouped outer-fold base predictions with an all-available OOF count selector and disagreement gate; report raw and accepted-route metrics separately",
+    "classifier": "all-available grouped OOF pooled selection because no test set is locked; require APPROVED >= 90%, APPROVED misrecognition <= 0.1%, and UNKNOWN Top-3 Candidate out <= 0.1% concurrently without increasing IMAGE_RECAPTURE; report UNKNOWN + Top-3 and SEGMENT_RECAPTURE rates as diagnostics only",
+    "final_training": "after OOF policy lock, train one final model on every allowed training row without claiming an independent test result"
+  },
+  "validation": {
+    "official_evaluation_scope": {
+      "evaluation_set": "multi_object_scenes",
+      "difficulties": ["EASY", "MEDIUM", "HARD"],
+      "image_count": 300,
+      "scan_log_excluded": true
+    },
+    "full_development_report": "artifacts/experiments/bread-zero-error-1.1.0/reports/full-development-six-gate-validation.json",
+    "full_development_decisions": "artifacts/experiments/bread-zero-error-1.1.0/reports/full-development-six-gate-decisions.jsonl",
+    "full_development_report_scope": "legacy 400-image diagnostic; not the current promotion denominator",
+    "official_emh_classifier_report": "artifacts/experiments/bread-zero-error-1.1.0/classifier/grouped-rate-policy-emh.json",
+    "finite_development_pipeline_goals_met": true,
+    "raw_detector_aspiration_met": false,
+    "overall_image_recapture_count": 38,
+    "overall_image_recapture_rate": 0.095,
+    "false_annotated_image_recapture_count": 7,
+    "false_annotated_image_recapture_rate": 0.018970189701897018,
+    "classifier_grouped_rate_policy_report": "artifacts/experiments/bread-zero-error-1.1.0/classifier/grouped-rate-policy.json",
+    "cpu_parity_report": "artifacts/experiments/bread-zero-error-1.1.0/classifier/neighbor-mask-export/cpu-final-parity.json",
+    "cuda_parity_report": "artifacts/experiments/bread-zero-error-1.1.0/classifier/neighbor-mask-export/cuda-canonical-final-parity.json",
+    "candidate_worker_report": "artifacts/evaluations/bread_project_2/bread-worker-1.1.0-neighbor-mask-candidate-cuda.json",
+    "candidate_worker_detector_threshold_diagnostic": "artifacts/experiments/bread-zero-error-1.1.0/detector/actual-worker-detector-threshold-grid.json",
+    "detector_1_1_deployment_audit": "artifacts/experiments/bread-zero-error-1.1.0/reports/detector-1.1-deployment-audit.json",
+    "detector_1_1_development_gate_met": true,
+    "detector_1_1_deployable_package_exists": false,
+    "detector_1_1_final_soup_probe": "artifacts/experiments/bread-zero-error-1.1.0/detector/final-soup/count-selector-oof-search.json",
+    "detector_1_1_final_soup_rejected": true,
+    "rfdetr_large_fold0_box_only_grid": "artifacts/experiments/bread-zero-error-1.1.0/detector/rfdetr-large/fold0/box-only-grid.json",
+    "rfdetr_large_rejected": true,
+    "rfdetr_large_rejection_basis": "held-out fold 0 has no zero-error score/NMS candidate; maximum recall is 524/535 with 7223 FP, while the zero-FP policy has 495 FN, so folds 1 and 2 were not trained",
+    "candidate_worker_detector_zero_error_threshold_count": 0,
+    "finite_development_classifier_goals_met": true,
+    "candidate_worker_detector_gate_met": false,
+    "candidate_worker_classifier_gate_met": false,
+    "candidate_worker_classifier_gate_basis": "APPROVED 1168/1400 (83.429%) fails the official 1.1 classifier rate gate; APPROVED misrecognition 0/1400 and Candidate out 1/1400 (0.0714%) pass; UNKNOWN + Top-3 206/1400 and SEGMENT_RECAPTURE 26/1400 are diagnostic only",
+    "candidate_worker_unknown_top3_miss_count": 1,
+    "candidate_worker_unknown_top3_miss_rate": 0.0007142857142857143,
+    "candidate_worker_segment_recapture_count": 26,
+    "candidate_worker_segment_recapture_rate": 0.018571428571428572,
+    "release_1_1_development_gate_summary": {
+      "scope": "multi_object_scenes E/M/H; scan_log_samples excluded",
+      "segmentation": {"numerator": 296, "denominator": 300, "rate": 0.9866666666666667, "met": true},
+      "approved": {"numerator": 1270, "denominator": 1383, "rate": 0.918293564714389, "met": true},
+      "segmentation_image_false_negative": {"numerator": 0, "denominator": 296, "rate": 0.0, "met": true},
+      "segmentation_image_false_positive": {"numerator": 0, "denominator": 296, "rate": 0.0, "met": true},
+      "approved_object_misrecognition": {"numerator": 0, "denominator": 1383, "rate": 0.0, "met": true},
+      "unknown_top3_candidate_out": {"numerator": 1, "denominator": 1383, "rate": 0.0007230657989877079, "met": true},
+      "all_gates_met": true
+    },
+    "release_1_1_candidate_worker_gate_summary": {
+      "segmentation": {"numerator": 300, "denominator": 300, "rate": 1.0, "met": true},
+      "approved": {"numerator": 1168, "denominator": 1400, "rate": 0.8342857142857143, "met": false},
+      "segmentation_image_false_negative": {"numerator": 9, "denominator": 300, "rate": 0.03, "met": false},
+      "segmentation_image_false_positive": {"numerator": 4, "denominator": 300, "rate": 0.013333333333333334, "met": false},
+      "approved_object_misrecognition": {"numerator": 0, "denominator": 1400, "rate": 0.0, "met": true},
+      "unknown_top3_candidate_out": {"numerator": 1, "denominator": 1400, "rate": 0.0007142857142857143, "met": true},
+      "all_gates_met": false,
+      "detector_version": "1.0.0"
+    },
+    "candidate_worker_latency_p95_ms": 90.44675501063466,
+    "runtime_successor_candidate": {
+      "candidate_id": "bread-zero-error-1.1.0-domain-lda-fixed-four-v3",
+      "manifest": "manifests/bread-zero-error-1.1/final_candidate_v3_2026-08-18.json",
+      "development_report": "artifacts/experiments/bread-zero-error-1.1.0/reports/runtime-six-gate-development-v16-area-first-fast-path.json",
+      "rejected_locked_test_reuse_report": "artifacts/experiments/bread-zero-error-1.1.0/reports/runtime-six-gate-rejected-operational-development-v16-area-first-fast-path.json",
+      "all_development_gates_met": true,
+      "final_approved_goal_met_on_development": true,
+      "full_path_mean_and_p95_at_most_100ms": true,
+      "cpu_cuda_runtime_parity_report": "artifacts/experiments/bread-zero-error-1.1.0/reports/runtime-six-gate-development-v16-cpu-cuda-parity.json",
+      "cpu_cuda_runtime_final_decisions_exact": true,
+      "full_repository_regression_passed": true,
+      "independent_successor_test_available": false,
+      "promotion_eligible": false
+    },
+    "promotion_ready": false
+  }
+}

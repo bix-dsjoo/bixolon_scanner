@@ -24,9 +24,8 @@ native run record로 위장하지 않는다. 새 native run은 모든 단계가 
 - Classifier: `manifests/bread-1.0-a52b4faa3e20`, `single_objects_3` 20종×12장, 총 240장
 - release composition 데이터셋: `bread-1.0-a52b4faa3e20`
 
-`multi_object_scenes`와 `scan_log_samples`는 학습에 사용할 수 없다.
-`multi_object_scenes`는 development selection 및 운영 합격 benchmark이고,
-`scan_log_samples`는 참고용이다. 독립 최종 test는 사용자 이미지로 진행하며 아직 pending이다.
+`multi_object_scenes`는 학습에 사용할 수 없으며 development selection 및 운영 합격
+benchmark로만 사용한다. 독립 최종 test는 사용자 이미지로 진행하며 아직 pending이다.
 
 ## 잠긴 단계 순서
 

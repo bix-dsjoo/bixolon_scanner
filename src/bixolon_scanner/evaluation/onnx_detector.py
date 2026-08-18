@@ -79,12 +79,18 @@ def load_records(
     )
     image_base = dataset_root if explicit_annotation else annotation_path.parent
     payload = json.loads(annotation_path.read_text(encoding="utf-8-sig"))
+    declared_category_ids = [int(row["id"]) for row in payload.get("categories", [])]
+    annotation_category_ids = [int(row["category_id"]) for row in payload["annotations"]]
+    category_ids = declared_category_ids or annotation_category_ids
+    # Canonical bread annotations use 1-based IDs, while the generated D-FINE
+    # COCO splits use 0-based IDs. Normalize both inputs to the canonical form.
+    category_id_offset = 1 if category_ids and min(category_ids) == 0 else 0
     annotations: dict[int, list[dict[str, Any]]] = {}
     for row in payload["annotations"]:
         annotations.setdefault(int(row["image_id"]), []).append(
             {
                 "bbox_xywh": [float(value) for value in row["bbox"]],
-                "category_id": int(row["category_id"]),
+                "category_id": int(row["category_id"]) + category_id_offset,
             }
         )
     records = []

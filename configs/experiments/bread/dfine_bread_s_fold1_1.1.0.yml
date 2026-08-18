@@ -1,0 +1,12 @@
+__include__:
+  - ./dfine_bread_s_fold0_1.1.0.yml
+
+output_dir: artifacts/experiments/bread-zero-error-1.1.0/detector/fold1/training-dfine-s
+
+train_dataloader:
+  dataset:
+    ann_file: artifacts/experiments/bread-zero-error-1.1.0/detector/fold1/coco-class-aware/instances_train.json
+
+val_dataloader:
+  dataset:
+    ann_file: artifacts/experiments/bread-zero-error-1.1.0/detector/fold1/coco-class-aware/instances_validation.json

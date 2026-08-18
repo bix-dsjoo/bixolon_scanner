@@ -14,6 +14,7 @@ class Detection:
     x2: float
     y2: float
     score: float
+    class_id: int | None = None
 
 
 @dataclass(frozen=True)
@@ -30,6 +31,8 @@ class DetectionResult:
 class ClassificationResult:
     logits: np.ndarray
     ranking_logits: np.ndarray
+    approval_scores: np.ndarray | None = None
+    top3_safety_scores: np.ndarray | None = None
 
 
 class Detector(Protocol):

@@ -28,6 +28,7 @@ def test_dfine_export_preserves_empty_images_and_separates_validation_fold(tmp_p
     report = export_dfine_coco_splits(manifest, tmp_path / "coco", validation_fold=2)
     training = json.loads((tmp_path / "coco" / "instances_train.json").read_text())
     validation = json.loads((tmp_path / "coco" / "instances_validation.json").read_text())
+    all_records = json.loads((tmp_path / "coco" / "instances_all.json").read_text())
 
     assert report["evaluation_images_used"] is False
     assert len(training["images"]) == 1
@@ -37,3 +38,43 @@ def test_dfine_export_preserves_empty_images_and_separates_validation_fold(tmp_p
     assert validation["categories"][0]["id"] == 0
     assert validation["categories"][-1]["id"] == 19
     assert len(validation["categories"]) == 20
+    assert len(all_records["images"]) == 2
+
+
+def test_dfine_export_can_collapse_bread_labels_for_detection_only(tmp_path):
+    rows = [
+        {
+            "image_id": 1,
+            "image_path": "images/one.jpg",
+            "width": 640,
+            "height": 640,
+            "fold": 0,
+            "annotations": [{"category_id": 20, "bbox_xywh": [1, 2, 3, 4]}],
+        },
+        {
+            "image_id": 2,
+            "image_path": "images/two.jpg",
+            "width": 640,
+            "height": 640,
+            "fold": 1,
+            "annotations": [{"category_id": 4, "bbox_xywh": [5, 6, 7, 8]}],
+        },
+    ]
+    manifest = tmp_path / "manifest.jsonl"
+    manifest.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+
+    report = export_dfine_coco_splits(
+        manifest,
+        tmp_path / "coco",
+        validation_fold=1,
+        class_agnostic=True,
+        evaluation_images_used=True,
+    )
+    training = json.loads((tmp_path / "coco" / "instances_train.json").read_text())
+    validation = json.loads((tmp_path / "coco" / "instances_validation.json").read_text())
+
+    assert report["class_agnostic"] is True
+    assert report["evaluation_images_used"] is True
+    assert training["annotations"][0]["category_id"] == 0
+    assert validation["annotations"][0]["category_id"] == 0
+    assert validation["categories"] == [{"id": 0, "name": "bread_object", "supercategory": "bread"}]

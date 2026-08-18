@@ -1,0 +1,176 @@
+{
+  "schema_version": "1.0",
+  "candidate_id": "bread-zero-error-1.1.0-domain-lda-fixed-four-v1",
+  "lifecycle": "rejected_pre_locked_test",
+  "locked_on": "2026-08-18",
+  "versions": {
+    "worker": "1.1.0",
+    "detector": "1.1.0",
+    "classifier": "1.1.0"
+  },
+  "selection_evidence": {
+    "scope": "multi_object_scenes E/M/H grouped development OOF",
+    "image_count": 300,
+    "judgeable_gt_count": 1410,
+    "segmentation_count": 300,
+    "detector_false_positive_count_iou50": 0,
+    "detector_false_negative_count_iou50": 0,
+    "approved_count": 1402,
+    "approved_rate": 0.9943262411347518,
+    "approved_misrecognition_count": 1,
+    "approved_misrecognition_rate_all_gt": 0.0007092198581560284,
+    "unknown_count": 8,
+    "unknown_top3_candidate_out_count": 1,
+    "unknown_top3_candidate_out_rate_all_gt": 0.0007092198581560284,
+    "nested_threshold_calibration_feasible": false,
+    "independent_evidence": false
+  },
+  "detector": {
+    "models": [
+      {
+        "path": "artifacts/experiments/bread-zero-error-1.1.0/detector/fold0/training-class-aware/best_stg1-640.onnx",
+        "sha256": "a3879b68dfec6bea9a43e6a0378b97ae3c9f1a5db79cd9e5bdc6e1cc82ef14e8"
+      },
+      {
+        "path": "artifacts/experiments/bread-zero-error-1.1.0/detector/fold1/training-class-aware/best_stg1-640.onnx",
+        "sha256": "aed824b7b1544b76dd16704f896e6996d8e71004871026822d6bf2f50f2926a3"
+      },
+      {
+        "path": "artifacts/experiments/bread-zero-error-1.1.0/detector/fold2/training-class-aware/best_stg1-640.onnx",
+        "sha256": "cf5685136023dc31e25f856970510a3af2e9f8cefbe3deee3a1782f11f62e5e2"
+      },
+      {
+        "path": "artifacts/packages/bread-worker-1.0.0/detector.onnx",
+        "sha256": "f0d2eaf8e67821627957c3eed1462812063c32c4ad17028dda869addc5371b09"
+      }
+    ],
+    "input_size": [640, 640],
+    "parallel_execution": true,
+    "fusion": {
+      "model_weights": [1.0, 1.0, 1.0, 1.0],
+      "score_thresholds": [0.02, 0.02, 0.02, 0.02],
+      "pre_nms_iou_threshold": 1.0,
+      "maximum_candidates_per_model": 300,
+      "cluster_iou_threshold": 0.5,
+      "score_mode": "maximum"
+    },
+    "base_selection": {
+      "score_threshold": 0.37,
+      "nms_iou_threshold": 0.5,
+      "containment_threshold": 0.85,
+      "group_minimum": 2
+    },
+    "ambiguity_union": [
+      {
+        "availability_score_threshold": 0.002,
+        "availability_nms_iou_threshold": 0.5,
+        "availability_containment_threshold": 0.9,
+        "availability_group_minimum": 2,
+        "minimum_selected_count": 5,
+        "extra_candidate_count": 1,
+        "extra_count_mode": "at_least",
+        "next_score_threshold_inclusive": 0.05
+      },
+      {
+        "availability_score_threshold": 0.002,
+        "availability_nms_iou_threshold": 0.7,
+        "availability_containment_threshold": 0.95,
+        "availability_group_minimum": 0,
+        "minimum_selected_count": 1,
+        "extra_candidate_count": 1,
+        "extra_count_mode": "at_least",
+        "next_score_threshold_inclusive": 0.5
+      }
+    ],
+    "class_verified_selector": {
+      "candidate_minimum_score": 0.02,
+      "candidate_minimum_support": 3,
+      "candidate_duplicate_iou": 0.9,
+      "base_match_iou": 0.9,
+      "group_relation_iou": 0.3,
+      "group_area_ratio": 0.8,
+      "group_margin_ratio": 1.5,
+      "group_novel_margin": 1500.0,
+      "group_minimum_score": 0.04,
+      "independent_maximum_iou": 0.5,
+      "independent_margin": 4000.0,
+      "independent_minimum_score": 0.05,
+      "unique_class_per_image_contract": true
+    }
+  },
+  "classifier": {
+    "architecture": "DINOv3 ConvNeXt-Tiny adapted features plus full-development LDA",
+    "path": "artifacts/experiments/bread-zero-error-1.1.0/classifier/domain-lda-final/classifier.onnx",
+    "sha256": "8e1fc0f2b3241c771ef2116cb921c346ae80ebb83f1d5467d03ac27b86615a4c",
+    "feature_family": "adapted",
+    "lda_shrinkage": 0.01,
+    "neighbor_mask": {
+      "margin_ratio": 0.05,
+      "distance_bias": 0.0,
+      "shared_scale": false
+    },
+    "approval_metric": "logit_margin",
+    "approval_default_threshold": 0.0,
+    "approval_thresholds": [
+      null,
+      null,
+      null,
+      null,
+      533.1802368164062,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      613.3389892578125,
+      596.0609130859375,
+      null,
+      587.7164306640625,
+      null
+    ],
+    "unknown_ranking": "same_logits_top3_score_descending"
+  },
+  "source_sha256": {
+    "detector_model_ensemble.py": "1a4224a8f34c2340ca73a397de6c410b0ef3b1fe939fe53185d483b03304bf0a",
+    "hierarchical_detector.py": "8e0b6fe0bc99b320ea740dea6363857e082c6bdd0de233ed3fdd6537fa3a6e67",
+    "detector_ambiguity_gate.py": "85b79cd4d8a8a3881cf56958f1eb205e9927667ce98a3048ea0fe594365d5d09",
+    "detector_proposal_class_selector.py": "9d67e442579fef9681bfd32be9a09ee68d9c644f438dc88d4467585307d8bb1a",
+    "domain_lda_classifier_export.py": "df40c89048faeacbbd46f2657d45aab1e9c3c02dda058607d43c3318a56feb41"
+  },
+  "evidence_sha256": {
+    "detector_selection_report": "008ff4865612bd7d4608f4e7fe974f54f7edf510c63b85add830b54476e85c43",
+    "classifier_policy_report": "3004f6d3eeba4d25d9961ae3f5f1e9dc75dda5e64632630e1ff4d51dabfe393a",
+    "classifier_export_report": "c4b6e1d3570dcaef15f1de0889dbc559bbf3f9c8d21e2ff1824c0158e203c76a"
+  },
+  "locked_test": {
+    "dataset_lock": "manifests/bread-zero-error-1.1/locked_operational_test_2026-08-18.json",
+    "dataset_version": "bread-operational-test-2026-08-18-dac22864668b",
+    "candidate_metrics_accessed_before_candidate_lock": false,
+    "single_final_evaluation_authorized": true,
+    "evaluation_attempted": false,
+    "policy_or_threshold_changes_after_evaluation_allowed": false
+  },
+  "rejection": {
+    "rejected_on": "2026-08-18",
+    "locked_test_accessed": false,
+    "reason": "OOF LDA selector의 절대 margin을 전체 development LDA ONNX에 그대로 적용하여 점수 스케일이 일치하지 않았음",
+    "development_reproduction": {
+      "ground_truth_count": 1410,
+      "prediction_count": 1407,
+      "matched_count": 1406,
+      "false_positive_count": 1,
+      "false_negative_count": 4,
+      "exact_image_rate": 0.99,
+      "report": "artifacts/experiments/bread-zero-error-1.1.0/detector/proposal-class-selector/final-model-selection-report.json"
+    }
+  },
+  "promotion_ready": false,
+  "promotion_blockers": [
+    "rejected_pre_locked_test"
+  ]
+}

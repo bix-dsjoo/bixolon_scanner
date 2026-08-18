@@ -1,0 +1,24 @@
+{
+  "detector": {
+    "pretrained_name": "PekingU/rtdetr_v2_r18vd",
+    "image_size": 768,
+    "batch_size": 8,
+    "workers": 4,
+    "epochs": 40,
+    "patience": 15,
+    "learning_rate": 0.00001,
+    "head_lr_multiplier": 1.0,
+    "class_head_prior_probability": 0.01,
+    "warmup_epochs": 0,
+    "weight_decay": 0.0001,
+    "min_score_threshold": 0.01,
+    "max_score_threshold": 0.9,
+    "threshold_steps": 90,
+    "nms_iou_threshold": 0.5,
+    "match_iou_threshold": 0.5,
+    "target_recall": 1.0,
+    "max_queries": 300,
+    "checkpoint_selection_mode": "legacy_object_recall",
+    "seed": 20260814
+  }
+}

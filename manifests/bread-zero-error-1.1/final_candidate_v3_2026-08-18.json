@@ -1,0 +1,135 @@
+{
+  "schema_version": "1.0",
+  "candidate_id": "bread-zero-error-1.1.0-domain-lda-fixed-four-v3",
+  "lifecycle": "active_development",
+  "created_on": "2026-08-18",
+  "predecessor": {
+    "candidate_id": "bread-zero-error-1.1.0-domain-lda-fixed-four-v2",
+    "status": "rejected_locked_test",
+    "manifest": "manifests/bread-zero-error-1.1/final_candidate_v2_2026-08-18.json",
+    "successor_use_of_rejected_test": "development_only"
+  },
+  "versions": {
+    "worker": "1.1.0",
+    "detector": "1.1.0",
+    "classifier": "1.1.0"
+  },
+  "package": {
+    "path": "artifacts/packages/bread-zero-error-1.1.0-candidate",
+    "metadata_sha256": "1eeddde7fa2f4944386d5f75bb6981581cc403f94e4c3828f2b8345487961299",
+    "metadata_template": "manifests/bread-zero-error-1.1/runtime_candidate_v3_metadata.json",
+    "metadata_template_sha256": "1eeddde7fa2f4944386d5f75bb6981581cc403f94e4c3828f2b8345487961299",
+    "promotion_status": "development",
+    "dataset_version": "bread-1.1-development-plus-rejected-operational-v2",
+    "detector_onnx_sha256": [
+      "a3879b68dfec6bea9a43e6a0378b97ae3c9f1a5db79cd9e5bdc6e1cc82ef14e8",
+      "aed824b7b1544b76dd16704f896e6996d8e71004871026822d6bf2f50f2926a3",
+      "cf5685136023dc31e25f856970510a3af2e9f8cefbe3deee3a1782f11f62e5e2",
+      "f0d2eaf8e67821627957c3eed1462812063c32c4ad17028dda869addc5371b09"
+    ],
+    "classifier_onnx_sha256": "8e1fc0f2b3241c771ef2116cb921c346ae80ebb83f1d5467d03ac27b86615a4c"
+  },
+  "package_sources": {
+    "detector-fold0.onnx": "artifacts/experiments/bread-zero-error-1.1.0/detector/fold0/training-class-aware/best_stg1-640.onnx",
+    "detector-fold1.onnx": "artifacts/experiments/bread-zero-error-1.1.0/detector/fold1/training-class-aware/best_stg1-640.onnx",
+    "detector-fold2.onnx": "artifacts/experiments/bread-zero-error-1.1.0/detector/fold2/training-class-aware/best_stg1-640.onnx",
+    "detector-production.onnx": "artifacts/packages/bread-worker-1.0.0/detector.onnx",
+    "classifier.onnx": "artifacts/experiments/bread-zero-error-1.1.0/classifier/domain-lda-final/classifier.onnx"
+  },
+  "runtime_policy": {
+    "jpeg_draft_size": 1000,
+    "refinement_draft_size": 1500,
+    "maximum_box_area_ratio": 0.3,
+    "consensus_ambiguity_bypass": {
+      "maximum_selected_count": 4,
+      "minimum_selected_score": 0.75
+    },
+    "unanimous_ambiguity_bypass": {
+      "maximum_selected_count": 7,
+      "minimum_selected_score": 0.75
+    },
+    "full_resolution_on_selected_count_change": true,
+    "cuda_graph_execution": true,
+    "parallel_execution": false
+  },
+  "development_evidence": {
+    "dataset_version": "bread-1.1-development-emh-300",
+    "annotation_sha256": "bf93b4363029ea5785c50e860406eb4365814e9b6eb5c7271f2a57cdad4afeeb",
+    "report": "artifacts/experiments/bread-zero-error-1.1.0/reports/runtime-six-gate-development-v16-area-first-fast-path.json",
+    "report_sha256": "ecf2142b3ce584d5e210fa57647c31573677e74c385bbceb8d7962a7e7e2862c",
+    "image_count": 300,
+    "judgeable_ground_truth_object_count": 1410,
+    "segmentation_image_count": 300,
+    "approved_count": 1410,
+    "false_negative_count": 0,
+    "false_positive_count": 0,
+    "approved_misrecognition_count": 0,
+    "unknown_top3_candidate_out_count": 0,
+    "mean_ms": 91.71418033338948,
+    "p50_ms": 77.22100000046339,
+    "p95_ms": 90.99182999934783,
+    "p99_ms": 524.5093369992899,
+    "all_operational_gates_met": true,
+    "final_approved_goal_met": true,
+    "latency_gate_met": true,
+    "independent": false
+  },
+  "rejected_locked_test_as_development_evidence": {
+    "dataset_version": "bread-operational-test-2026-08-18-dac22864668b-used-for-successor-development",
+    "annotation_sha256": "7909a8fdb31850b5af1cb4e95aa007b6b9e3d2ec5da06e6f8c9f74d3ed2bb56f",
+    "report": "artifacts/experiments/bread-zero-error-1.1.0/reports/runtime-six-gate-rejected-operational-development-v16-area-first-fast-path.json",
+    "report_sha256": "9920466e850bdde9e399b627233978021b50e2a8db24e46f95ccde7daf157cf3",
+    "image_count": 115,
+    "judgeable_ground_truth_object_count": 504,
+    "segmentation_image_count": 111,
+    "image_recapture_count": 4,
+    "approved_count": 504,
+    "false_negative_count": 0,
+    "false_positive_count": 0,
+    "approved_misrecognition_count": 0,
+    "unknown_top3_candidate_out_count": 0,
+    "mean_ms": 74.32532869573586,
+    "p50_ms": 71.37400000101479,
+    "p95_ms": 87.08696000030614,
+    "p99_ms": 95.11499200030812,
+    "all_operational_gates_met": true,
+    "final_approved_goal_met": true,
+    "latency_gate_met": true,
+    "independent": false
+  },
+  "cpu_cuda_runtime_parity": {
+    "dataset_version": "bread-1.1-development-emh-300",
+    "image_count": 300,
+    "segmentation_count": 1410,
+    "cpu_decision_trace_sha256": "c42eec94614677d4d1ecaebc4a98a7a1ab6d97a301750adb59cb73465c98326c",
+    "cuda_decision_trace_sha256": "c42eec94614677d4d1ecaebc4a98a7a1ab6d97a301750adb59cb73465c98326c",
+    "decision_mismatch_image_count": 0,
+    "bbox_mismatch_image_count": 0,
+    "minimum_observed_bbox_iou": 1.0,
+    "maximum_observed_confidence_error": 0.0,
+    "report": "artifacts/experiments/bread-zero-error-1.1.0/reports/runtime-six-gate-development-v16-cpu-cuda-parity.json",
+    "report_sha256": "2a5188daa05a19a3c2fecd1d18841effada88cfcf18c0faf61a38acaaa05ecfb",
+    "passes": true
+  },
+  "independent_package_reproduction": {
+    "output": "artifacts/packages/bread-zero-error-1.1.0-candidate-reproduced",
+    "report": "artifacts/experiments/bread-zero-error-1.1.0/reports/package-v3-independent-reproduction.json",
+    "report_sha256": "720bb31c2300e8de4930cb515cc7f45fd600ebf9e034e0d08ffe76fce00d9663",
+    "metadata_written": true,
+    "model_files_copied": 5,
+    "package_validation_passed": true
+  },
+  "repository_regression": {
+    "ruff_check": true,
+    "ruff_format_check": true,
+    "full_python_tests": true,
+    "flutter_analyze": true,
+    "flutter_test_count": 164,
+    "flutter_tests_passed": true,
+    "git_diff_check": true
+  },
+  "promotion_ready": false,
+  "promotion_blockers": [
+    "new_independent_locked_test_required"
+  ]
+}

@@ -89,7 +89,7 @@
         },
         "reason_codes": {
           "type": "array",
-          "description": "UNKNOWN uses exactly one of BELOW_APPROVAL_THRESHOLD or DETECTOR_CONTAINED_DUPLICATE.",
+          "description": "UNKNOWN uses exactly one of BELOW_APPROVAL_THRESHOLD or DETECTOR_CONTAINED_DUPLICATE. SEGMENT_RECAPTURE can use CLASSIFIER_QUALITY_CLASS, DETECTOR_BORDER_CLIPPED, or CLASSIFIER_TOP3_UNSAFE.",
           "items": {"type": "string"}
         },
         "prediction": {

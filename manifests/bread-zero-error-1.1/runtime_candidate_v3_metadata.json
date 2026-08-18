@@ -1,0 +1,206 @@
+{
+  "schema_version": "2.0",
+  "worker_version": "1.1.0",
+  "promotion_status": "development",
+  "dataset_version": "bread-1.1-development-plus-rejected-operational-v2",
+  "input": {
+    "jpeg_draft_size": 1000
+  },
+  "detector": {
+    "filename": "detector-fold0.onnx",
+    "version": "1.1.0",
+    "input_name": "pixel_values",
+    "logits_output": "logits",
+    "boxes_output": "pred_boxes",
+    "input_size": [640, 640],
+    "color_order": "RGB",
+    "mean": [0.0, 0.0, 0.0],
+    "std": [1.0, 1.0, 1.0],
+    "score_threshold": 0.37,
+    "nms_iou_threshold": 0.5,
+    "nms_containment_threshold": 0.85,
+    "max_object_aspect_ratio": 5.0,
+    "max_queries": 300,
+    "box_format": "normalized_cxcywh",
+    "resize_reducing_gap": 1.0,
+    "ensemble": {
+      "members": [
+        {"filename": "detector-fold0.onnx", "weight": 1.0, "score_threshold": 0.02},
+        {"filename": "detector-fold1.onnx", "weight": 1.0, "score_threshold": 0.02},
+        {"filename": "detector-fold2.onnx", "weight": 1.0, "score_threshold": 0.02},
+        {"filename": "detector-production.onnx", "weight": 1.0, "score_threshold": 0.02}
+      ],
+      "parallel_execution": false,
+      "cuda_graph_execution": true,
+      "fusion": {
+        "pre_nms_iou_threshold": 1.0,
+        "maximum_candidates_per_model": 100,
+        "cluster_iou_threshold": 0.5,
+        "score_mode": "maximum"
+      },
+      "base_selection": {
+        "score_threshold": 0.37,
+        "nms_iou_threshold": 0.5,
+        "containment_threshold": 0.85,
+        "group_minimum": 2
+      },
+      "policy_consensus": {
+        "policies": [
+          {
+            "member_filename": "detector-fold0.onnx",
+            "score_threshold": 0.2,
+            "nms_iou_threshold": 0.5,
+            "containment_threshold": 0.98,
+            "group_minimum": 2
+          },
+          {
+            "member_filename": "detector-fold1.onnx",
+            "score_threshold": 0.2,
+            "nms_iou_threshold": 0.5,
+            "containment_threshold": 0.95,
+            "group_minimum": 2
+          },
+          {
+            "member_filename": "detector-fold2.onnx",
+            "score_threshold": 0.2,
+            "nms_iou_threshold": 0.5,
+            "containment_threshold": 0.95,
+            "group_minimum": 2
+          }
+        ],
+        "agreement_iou_threshold": 0.4,
+        "minimum_agreeing_policy_count": 2
+      },
+      "draft_refinement": {
+        "draft_size": 1500,
+        "ambiguity_refinement_maximum_selected_count": 6,
+        "maximum_agreeing_policy_count": 2,
+        "minimum_selected_count": 7,
+        "minimum_selected_box_aspect_ratio_extremity": 2.0,
+        "consensus_ambiguity_bypass_maximum_selected_count": 4,
+        "consensus_ambiguity_bypass_minimum_selected_score": 0.75,
+        "unanimous_ambiguity_bypass_maximum_selected_count": 7,
+        "unanimous_ambiguity_bypass_minimum_selected_score": 0.75,
+        "full_resolution_unresolved_ambiguity_maximum_selected_count": 5,
+        "full_resolution_on_selected_count_change": true
+      },
+      "ambiguity_union": [
+        {
+          "availability_score_threshold": 0.002,
+          "availability_nms_iou_threshold": 0.5,
+          "availability_containment_threshold": 0.9,
+          "availability_group_minimum": 2,
+          "minimum_selected_count": 5,
+          "extra_candidate_count": 1,
+          "extra_count_mode": "at_least",
+          "next_score_threshold_inclusive": 0.05
+        },
+        {
+          "availability_score_threshold": 0.002,
+          "availability_nms_iou_threshold": 0.7,
+          "availability_containment_threshold": 0.95,
+          "availability_group_minimum": 0,
+          "minimum_selected_count": 1,
+          "extra_candidate_count": 1,
+          "extra_count_mode": "at_least",
+          "next_score_threshold_inclusive": 0.5
+        }
+      ],
+      "class_verified_selector": {
+        "candidate_minimum_score": 0.02,
+        "candidate_minimum_support": 3,
+        "candidate_duplicate_iou": 0.9,
+        "base_match_iou": 0.9,
+        "group_relation_iou": 0.3,
+        "group_area_ratio": 0.8,
+        "group_margin_ratio": 1.5,
+        "group_novel_margin": 500.0,
+        "group_minimum_score": 0.04,
+        "independent_maximum_iou": 0.5,
+        "independent_margin": 2000.0,
+        "independent_minimum_score": 0.05,
+        "classifier_batch_size": 96,
+        "unique_class_per_image_contract": true
+      },
+      "maximum_box_area_ratio": 0.3
+    }
+  },
+  "classifier": {
+    "filename": "classifier.onnx",
+    "version": "1.1.0",
+    "input_name": "pixel_values",
+    "logits_output": "logits",
+    "input_size": [224, 224],
+    "color_order": "RGB",
+    "mean": [0.485, 0.456, 0.406],
+    "std": [0.229, 0.224, 0.225],
+    "crop_margin_ratio": 0.05,
+    "crop_mode": "box_resize",
+    "approval_threshold": 0.0,
+    "approval_thresholds": [
+      null, null, null, null, 0.028313118431262243,
+      null, null, null, null, null,
+      null, null, null, null, null,
+      0.03760562381187702, 0.06461900583270902, null, 0.08339212440208175, null
+    ],
+    "temperature": 1.0,
+    "labels": [
+      {"class_id": "bread_01", "class_name": "Walnut Donut"},
+      {"class_id": "bread_02", "class_name": "Croffle"},
+      {"class_id": "bread_03", "class_name": "Waffle"},
+      {"class_id": "bread_04", "class_name": "Scon"},
+      {"class_id": "bread_05", "class_name": "Half-moon Croissant"},
+      {"class_id": "bread_06", "class_name": "Croissant"},
+      {"class_id": "bread_07", "class_name": "Flower Bread"},
+      {"class_id": "bread_08", "class_name": "Almond Scon"},
+      {"class_id": "bread_09", "class_name": "Dinner Roll"},
+      {"class_id": "bread_10", "class_name": "Sugar Donut"},
+      {"class_id": "bread_11", "class_name": "Bagel"},
+      {"class_id": "bread_12", "class_name": "Egg Tart"},
+      {"class_id": "bread_13", "class_name": "Muffin"},
+      {"class_id": "bread_14", "class_name": "Burger"},
+      {"class_id": "bread_15", "class_name": "Sandwich"},
+      {"class_id": "bread_16", "class_name": "Grain Campagne"},
+      {"class_id": "bread_17", "class_name": "Almond Campagne"},
+      {"class_id": "bread_18", "class_name": "Mini Bread"},
+      {"class_id": "bread_19", "class_name": "Pastry Bread"},
+      {"class_id": "bread_20", "class_name": "Plain Bread"}
+    ],
+    "resize_reducing_gap": 1.0,
+    "warmup_batch_sizes": [1, 2, 3, 4, 5, 6, 7, 8],
+    "neighbor_mask_inference": {
+      "views": [
+        {"name": "normalized", "distance_bias": 0.0, "weight": 1.0, "shared_scale": false}
+      ],
+      "approval_metric": "l2_normalized_logit_margin",
+      "ranking_aggregation": "weighted_reciprocal_rank",
+      "top3_safety_metric": "inverse_entropy",
+      "top3_safety_threshold": -100.0
+    }
+  },
+  "quality": {
+    "min_object_area_ratio": 0.005,
+    "border_margin_ratio": 0.0,
+    "border_policy": "classifier_confidence"
+  },
+  "checksums": {
+    "detector-fold0.onnx": "a3879b68dfec6bea9a43e6a0378b97ae3c9f1a5db79cd9e5bdc6e1cc82ef14e8",
+    "detector-fold1.onnx": "aed824b7b1544b76dd16704f896e6996d8e71004871026822d6bf2f50f2926a3",
+    "detector-fold2.onnx": "cf5685136023dc31e25f856970510a3af2e9f8cefbe3deee3a1782f11f62e5e2",
+    "detector-production.onnx": "f0d2eaf8e67821627957c3eed1462812063c32c4ad17028dda869addc5371b09",
+    "classifier.onnx": "8e1fc0f2b3241c771ef2116cb921c346ae80ebb83f1d5467d03ac27b86615a4c"
+  },
+  "licenses": {
+    "detector": "Apache-2.0: https://github.com/Peterande/D-FINE",
+    "classifier": "DINOv3 License (authorized by model recipient): https://github.com/facebookresearch/dinov3"
+  },
+  "sources": {
+    "detector": {
+      "architecture": "fixed four-model D-FINE ensemble with class-verified proposal selection"
+    },
+    "classifier": {
+      "architecture": "DINOv3 ConvNeXt-Tiny adapted features plus full-development LDA",
+      "revision": "6876159a11b4df116f30f667f8c9888617df0751"
+    }
+  }
+}

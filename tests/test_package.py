@@ -75,6 +75,135 @@ def test_detector_aspect_ratio_policy_must_exceed_one(tmp_path):
         load_model_package(tmp_path)
 
 
+def test_detector_ensemble_requires_every_member_checksum(tmp_path):
+    detector = tmp_path / "detector.onnx"
+    second = tmp_path / "detector-2.onnx"
+    classifier = tmp_path / "classifier.onnx"
+    detector.write_bytes(b"detector")
+    second.write_bytes(b"detector-2")
+    classifier.write_bytes(b"classifier")
+    metadata = _metadata(sha256_file(detector), sha256_file(classifier))
+    metadata["detector"]["ensemble"] = {
+        "members": [
+            {"filename": "detector.onnx", "score_threshold": 0.02},
+            {"filename": "detector-2.onnx", "score_threshold": 0.02},
+        ],
+        "fusion": {"cluster_iou_threshold": 0.5},
+        "base_selection": {
+            "score_threshold": 0.37,
+            "nms_iou_threshold": 0.5,
+            "containment_threshold": 0.85,
+            "group_minimum": 2,
+        },
+        "ambiguity_union": [
+            {
+                "availability_score_threshold": 0.002,
+                "availability_nms_iou_threshold": 0.5,
+                "availability_containment_threshold": 0.9,
+                "availability_group_minimum": 2,
+                "minimum_selected_count": 5,
+                "extra_candidate_count": 1,
+                "extra_count_mode": "at_least",
+                "next_score_threshold_inclusive": 0.05,
+            }
+        ],
+        "class_verified_selector": {
+            "candidate_minimum_score": 0.02,
+            "candidate_minimum_support": 2,
+            "candidate_duplicate_iou": 0.9,
+            "base_match_iou": 0.9,
+            "group_relation_iou": 0.3,
+            "group_area_ratio": 0.8,
+            "group_margin_ratio": 1.5,
+            "group_novel_margin": 500.0,
+            "group_minimum_score": 0.04,
+            "independent_maximum_iou": 0.5,
+            "independent_margin": 2000.0,
+            "independent_minimum_score": 0.05,
+            "unique_class_per_image_contract": True,
+        },
+        "maximum_box_area_ratio": 0.3,
+    }
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
+    with pytest.raises(PackageValidationError):
+        load_model_package(tmp_path)
+
+    metadata["checksums"]["detector-2.onnx"] = sha256_file(second)
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+    package = load_model_package(tmp_path)
+    assert package.detector_paths == [detector, second]
+
+
+def test_detector_draft_refinement_requires_consensus_policy(tmp_path):
+    detector = tmp_path / "detector.onnx"
+    second = tmp_path / "detector-2.onnx"
+    classifier = tmp_path / "classifier.onnx"
+    detector.write_bytes(b"detector")
+    second.write_bytes(b"detector-2")
+    classifier.write_bytes(b"classifier")
+    metadata = _metadata(sha256_file(detector), sha256_file(classifier))
+    metadata["detector"]["ensemble"] = {
+        "members": [
+            {"filename": "detector.onnx", "score_threshold": 0.02},
+            {"filename": "detector-2.onnx", "score_threshold": 0.02},
+        ],
+        "fusion": {"cluster_iou_threshold": 0.5},
+        "base_selection": {
+            "score_threshold": 0.37,
+            "nms_iou_threshold": 0.5,
+            "containment_threshold": 0.85,
+            "group_minimum": 2,
+        },
+        "draft_refinement": {
+            "draft_size": 1500,
+            "ambiguity_refinement_maximum_selected_count": 6,
+            "maximum_agreeing_policy_count": 2,
+            "minimum_selected_count": 7,
+            "minimum_selected_box_aspect_ratio_extremity": 2.0,
+            "consensus_ambiguity_bypass_maximum_selected_count": 4,
+            "consensus_ambiguity_bypass_minimum_selected_score": 0.75,
+            "unanimous_ambiguity_bypass_maximum_selected_count": 5,
+            "unanimous_ambiguity_bypass_minimum_selected_score": 0.87,
+            "full_resolution_unresolved_ambiguity_maximum_selected_count": 5,
+            "full_resolution_on_selected_count_change": True,
+        },
+        "ambiguity_union": [
+            {
+                "availability_score_threshold": 0.002,
+                "availability_nms_iou_threshold": 0.5,
+                "availability_containment_threshold": 0.9,
+                "availability_group_minimum": 2,
+                "minimum_selected_count": 5,
+                "extra_candidate_count": 1,
+                "extra_count_mode": "at_least",
+                "next_score_threshold_inclusive": 0.05,
+            }
+        ],
+        "class_verified_selector": {
+            "candidate_minimum_score": 0.02,
+            "candidate_minimum_support": 2,
+            "candidate_duplicate_iou": 0.9,
+            "base_match_iou": 0.9,
+            "group_relation_iou": 0.3,
+            "group_area_ratio": 0.8,
+            "group_margin_ratio": 1.5,
+            "group_novel_margin": 500.0,
+            "group_minimum_score": 0.04,
+            "independent_maximum_iou": 0.5,
+            "independent_margin": 2000.0,
+            "independent_minimum_score": 0.05,
+            "unique_class_per_image_contract": True,
+        },
+        "maximum_box_area_ratio": 0.3,
+    }
+    metadata["checksums"]["detector-2.onnx"] = sha256_file(second)
+    (tmp_path / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
+    with pytest.raises(PackageValidationError):
+        load_model_package(tmp_path)
+
+
 def test_production_package_requires_auditable_promotion_record(tmp_path):
     detector = tmp_path / "detector.onnx"
     classifier = tmp_path / "classifier.onnx"

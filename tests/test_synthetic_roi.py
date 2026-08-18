@@ -172,6 +172,10 @@ def test_clutter_roi_is_deterministic_and_preserves_source_provenance():
     assert first.provenance["target_source_sha256"] == "a" * 64
     assert len(first.provenance["distractors"]) == 2
     assert all(row["source_sha256"] == "b" * 64 for row in first.provenance["distractors"])
+    assert all(
+        row["bbox_xyxy"][2] > row["bbox_xyxy"][0] and row["bbox_xyxy"][3] > row["bbox_xyxy"][1]
+        for row in first.provenance["distractors"]
+    )
     assert all(row["target_occlusion"] <= 0.12 for row in first.provenance["distractors"])
     assert first.provenance["recipe_sha256"] == clutter_roi_recipe_sha256(recipe)
 

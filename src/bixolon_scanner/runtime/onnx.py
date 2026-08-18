@@ -39,6 +39,7 @@ def _nms(
     detections: list[Detection],
     threshold: float,
     containment_threshold: float | None = None,
+    class_aware_containment: bool = False,
 ) -> list[Detection]:
     ordered = sorted(detections, key=lambda detection: detection.score, reverse=True)
     kept: list[Detection] = []
@@ -62,6 +63,11 @@ def _nms(
                 containment_threshold is not None
                 and smaller_area > 0.0
                 and intersection / smaller_area >= containment_threshold
+                and (
+                    not class_aware_containment
+                    or current.class_id is not None
+                    and current.class_id == candidate.class_id
+                )
             )
             if (union <= 0.0 or intersection / union <= threshold) and not contained:
                 remaining.append(candidate)
@@ -92,6 +98,9 @@ class OrtRunner:
         model_path: Path,
         provider: Literal["cuda", "cpu"],
         cuda_dll_dir: Path | None = None,
+        *,
+        enable_cuda_graph: bool = False,
+        cuda_graph_output_shapes: dict[str, tuple[int, ...]] | None = None,
     ):
         try:
             import onnxruntime as ort
@@ -141,8 +150,11 @@ class OrtRunner:
                 raise ProviderInitializationError
             options = ort.SessionOptions()
             options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            provider_options = {"use_tf32": "0"}
+            if enable_cuda_graph and provider == "cuda":
+                provider_options["enable_cuda_graph"] = "1"
             providers = (
-                [(provider_name, {"use_tf32": "0"})] if provider == "cuda" else [provider_name]
+                [(provider_name, provider_options)] if provider == "cuda" else [provider_name]
             )
             self.session = ort.InferenceSession(
                 str(model_path), sess_options=options, providers=providers
@@ -150,6 +162,12 @@ class OrtRunner:
             if self.session.get_providers()[0] != provider_name:
                 raise ProviderInitializationError
             self.cuda = provider == "cuda"
+            self.cuda_graph = self.cuda and enable_cuda_graph
+            self.cuda_graph_output_shapes = cuda_graph_output_shapes or {}
+            self._graph_binding = None
+            self._graph_input_values: dict[str, object] = {}
+            self._graph_output_values: list[object] = []
+            self._graph_signature: tuple[tuple[str, tuple[int, ...]], ...] | None = None
         except ProviderInitializationError:
             raise
         except Exception as exc:
@@ -164,6 +182,8 @@ class OrtRunner:
         try:
             if not self.cuda:
                 return self.session.run(output_names, inputs)
+            if self.cuda_graph:
+                return self._run_cuda_graph(output_names, inputs)
             binding = self.session.io_binding()
             for input_name, tensor in inputs.items():
                 binding.bind_cpu_input(input_name, tensor)
@@ -173,6 +193,52 @@ class OrtRunner:
             return binding.copy_outputs_to_cpu()
         except Exception as exc:
             raise ModelExecutionError from exc
+
+    def _run_cuda_graph(
+        self, output_names: list[str], inputs: dict[str, np.ndarray]
+    ) -> list[np.ndarray]:
+        import onnxruntime as ort
+
+        signature = tuple((name, tuple(tensor.shape)) for name, tensor in inputs.items())
+        if self._graph_binding is None:
+            output_metadata = {value.name: value for value in self.session.get_outputs()}
+            if any(
+                name not in output_metadata
+                or (
+                    name not in self.cuda_graph_output_shapes
+                    and any(
+                        not isinstance(dimension, int) for dimension in output_metadata[name].shape
+                    )
+                )
+                for name in output_names
+            ):
+                raise ModelExecutionError
+            self._graph_signature = signature
+            self._graph_binding = self.session.io_binding()
+            for name, tensor in inputs.items():
+                value = ort.OrtValue.ortvalue_from_shape_and_type(
+                    tensor.shape, tensor.dtype, "cuda", 0
+                )
+                self._graph_input_values[name] = value
+                self._graph_binding.bind_ortvalue_input(name, value)
+            for name in output_names:
+                metadata = output_metadata[name]
+                if metadata.type != "tensor(float)":
+                    raise ModelExecutionError
+                value = ort.OrtValue.ortvalue_from_shape_and_type(
+                    self.cuda_graph_output_shapes.get(name, tuple(metadata.shape)),
+                    np.float32,
+                    "cuda",
+                    0,
+                )
+                self._graph_output_values.append(value)
+                self._graph_binding.bind_ortvalue_output(name, value)
+        elif signature != self._graph_signature:
+            raise ModelExecutionError
+        for name, tensor in inputs.items():
+            self._graph_input_values[name].update_inplace(tensor)
+        self.session.run_with_iobinding(self._graph_binding)
+        return [value.numpy() for value in self._graph_output_values]
 
 
 def select_provider(mode: Literal["auto", "cuda", "cpu"]) -> Literal["cuda", "cpu"]:
@@ -205,12 +271,92 @@ def _prepare_rgb(
     )
     tensor = np.asarray(pil, dtype=np.float32)
     tensor /= np.float32(255.0)
-    tensor -= np.asarray(mean, dtype=np.float32)
-    tensor /= np.asarray(std, dtype=np.float32)
+    if any(value != 0.0 for value in mean):
+        tensor -= np.asarray(mean, dtype=np.float32)
+    if any(value != 1.0 for value in std):
+        tensor /= np.asarray(std, dtype=np.float32)
     return np.ascontiguousarray(np.transpose(tensor, (2, 0, 1)))
 
 
 prepare_rgb = _prepare_rgb
+
+
+def classifier_neighbor_ownership_mask(
+    detections: list[Detection],
+    target_index: int,
+    *,
+    image_width: int,
+    image_height: int,
+    output_size: int,
+    margin_ratio: float,
+    distance_bias: float,
+    shared_scale: bool,
+) -> np.ndarray:
+    if not 0 <= target_index < len(detections):
+        raise ValueError("target detection index is outside the detection list")
+    if output_size < 1 or margin_ratio < 0.0 or distance_bias < 0.0:
+        raise ValueError("mask size, margin, and distance bias must be non-negative")
+    target = detections[target_index]
+    target_width = target.x2 - target.x1
+    target_height = target.y2 - target.y1
+    if target_width <= 0.0 or target_height <= 0.0:
+        raise ValueError("target detection box is empty")
+    crop_x1 = max(0.0, target.x1 - target_width * margin_ratio)
+    crop_y1 = max(0.0, target.y1 - target_height * margin_ratio)
+    crop_x2 = min(float(image_width), target.x2 + target_width * margin_ratio)
+    crop_y2 = min(float(image_height), target.y2 + target_height * margin_ratio)
+    x = crop_x1 + (np.arange(output_size) + 0.5) * (crop_x2 - crop_x1) / output_size
+    y = crop_y1 + (np.arange(output_size) + 0.5) * (crop_y2 - crop_y1) / output_size
+    grid_x, grid_y = np.meshgrid(x, y)
+    target_center_x = (target.x1 + target.x2) / 2.0
+    target_center_y = (target.y1 + target.y2) / 2.0
+    target_distance = ((grid_x - target_center_x) / max(target_width / 2.0, 1e-12)) ** 2 + (
+        (grid_y - target_center_y) / max(target_height / 2.0, 1e-12)
+    ) ** 2
+    mask = np.zeros((output_size, output_size), dtype=bool)
+    for index, other in enumerate(detections):
+        if index == target_index:
+            continue
+        other_width = other.x2 - other.x1
+        other_height = other.y2 - other.y1
+        if other_width <= 0.0 or other_height <= 0.0:
+            continue
+        inside = (
+            (grid_x >= other.x1)
+            & (grid_x <= other.x2)
+            & (grid_y >= other.y1)
+            & (grid_y <= other.y2)
+        )
+        width_scale = target_width if shared_scale else other_width
+        height_scale = target_height if shared_scale else other_height
+        other_distance = (
+            (grid_x - (other.x1 + other.x2) / 2.0) / max(width_scale / 2.0, 1e-12)
+        ) ** 2 + ((grid_y - (other.y1 + other.y2) / 2.0) / max(height_scale / 2.0, 1e-12)) ** 2
+        mask |= inside & (other_distance + distance_bias < target_distance)
+    return mask
+
+
+def apply_classifier_background_masks(batch: np.ndarray, masks: np.ndarray) -> np.ndarray:
+    if batch.ndim != 4 or masks.shape != (len(batch), batch.shape[2], batch.shape[3]):
+        raise ValueError("classifier batch and neighbor masks are not aligned")
+    output = batch.copy()
+    borders = np.concatenate(
+        (
+            batch[:, :, 0, :],
+            batch[:, :, -1, :],
+            batch[:, :, 1:-1, 0],
+            batch[:, :, 1:-1, -1],
+        ),
+        axis=2,
+    )
+    background = np.median(borders, axis=2)
+    for channel in range(batch.shape[1]):
+        output[:, channel] = np.where(
+            masks,
+            background[:, channel, None, None],
+            batch[:, channel],
+        )
+    return output
 
 
 def classifier_crop_box(
@@ -310,14 +456,20 @@ class OnnxDetector:
                         > aspect_limit
                     ):
                         continue
-                    converted.append(Detection(x1, y1, x2, y2, float(scores[index])))
+                    class_aware = getattr(self.metadata, "nms_class_aware_containment", False)
+                    class_id = (
+                        int(np.argmax(logits[index])) if class_aware and logits.ndim == 2 else None
+                    )
+                    converted.append(Detection(x1, y1, x2, y2, float(scores[index]), class_id))
             return converted
 
         containment_threshold = getattr(self.metadata, "nms_containment_threshold", None)
+        class_aware_containment = getattr(self.metadata, "nms_class_aware_containment", False)
         detections = _nms(
             convert(selected_indices),
             self.metadata.nms_iou_threshold,
             containment_threshold,
+            class_aware_containment,
         )
         uncertain_candidate_count = 0
         uncertain_candidate_scores: list[float] = []
@@ -327,6 +479,7 @@ class OnnxDetector:
                 convert(shadow_indices),
                 self.metadata.nms_iou_threshold,
                 containment_threshold,
+                class_aware_containment,
             )
             for candidate in shadow:
                 if candidate.score >= self.metadata.score_threshold:
@@ -367,8 +520,11 @@ class OnnxClassifier:
         for batch_size in self.metadata.warmup_batch_sizes:
             dummy = np.zeros((batch_size, 3, height, width), dtype=np.float32)
             staged = self.metadata.staged_inference
+            neighbor_mask = self.metadata.neighbor_mask_inference
             if staged is None:
-                self.runner.run([self.metadata.logits_output], self.metadata.input_name, dummy)
+                multiplier = len(neighbor_mask.views) if neighbor_mask is not None else 1
+                values = np.concatenate([dummy] * multiplier, axis=0)
+                self.runner.run([self.metadata.logits_output], self.metadata.input_name, values)
             else:
                 affine = self._view_affine(staged.first_view, batch_size)
                 self.runner.run_inputs(
@@ -501,6 +657,100 @@ class OnnxClassifier:
             ranking_logits[unknown_indices] = ranking_sum / len(staged.top3_views)
         return ClassificationResult(logits=final_logits, ranking_logits=ranking_logits)
 
+    def _neighbor_mask_classify(
+        self,
+        batch: np.ndarray,
+        detections: list[Detection],
+        *,
+        image_width: int,
+        image_height: int,
+    ) -> ClassificationResult:
+        policy = self.metadata.neighbor_mask_inference
+        if policy is None:
+            raise ModelExecutionError
+        view_batches = []
+        for view in policy.views:
+            masks = np.stack(
+                [
+                    classifier_neighbor_ownership_mask(
+                        detections,
+                        index,
+                        image_width=image_width,
+                        image_height=image_height,
+                        output_size=batch.shape[-1],
+                        margin_ratio=self.metadata.crop_margin_ratio,
+                        distance_bias=view.distance_bias,
+                        shared_scale=view.shared_scale,
+                    )
+                    for index in range(len(detections))
+                ]
+            )
+            view_batches.append(apply_classifier_background_masks(batch, masks))
+        combined = np.concatenate(view_batches, axis=0).astype(np.float32, copy=False)
+        (raw_logits,) = self.runner.run(
+            [self.metadata.logits_output], self.metadata.input_name, combined
+        )
+        values = np.asarray(raw_logits, dtype=np.float32).reshape(
+            len(policy.views), len(detections), -1
+        )
+        if policy.logit_quantum is not None:
+            values = (
+                np.round((values + policy.logit_phase) / policy.logit_quantum)
+                * policy.logit_quantum
+                - policy.logit_phase
+            )
+        if policy.tie_break_bias_span:
+            values = (
+                values
+                + np.linspace(
+                    0.0,
+                    -policy.tie_break_bias_span,
+                    values.shape[2],
+                    dtype=np.float32,
+                )[None, None, :]
+            )
+        weights = np.asarray([view.weight for view in policy.views], dtype=np.float32)
+        logits = np.sum(values * weights[:, None, None], axis=0)
+        orders = np.argsort(-values, axis=2, kind="stable")
+        ranks = np.empty_like(orders)
+        np.put_along_axis(
+            ranks,
+            orders,
+            np.arange(values.shape[2], dtype=orders.dtype)[None, None, :],
+            axis=2,
+        )
+        ranking_logits = np.sum((1.0 / (ranks + 1.0)) * weights[:, None, None], axis=0)
+        view_probabilities = np.stack(
+            [_softmax_rows(view, self.metadata.temperature) for view in values]
+        )
+        ranking_logits += np.sum(view_probabilities * weights[:, None, None], axis=0) * 1e-3
+        ranking_probabilities = _softmax_rows(ranking_logits, self.metadata.temperature)
+        top3_safety_scores = np.sum(
+            ranking_probabilities * np.log(ranking_probabilities.clip(1e-12)), axis=1
+        )
+        if policy.ranking_tie_break_bias_span:
+            ranking_logits += np.linspace(
+                0.0,
+                -policy.ranking_tie_break_bias_span,
+                ranking_logits.shape[1],
+                dtype=np.float32,
+            )[None, :]
+        probabilities = _softmax_rows(logits, self.metadata.temperature)
+        if policy.approval_metric == "l2_normalized_logit_margin":
+            ordered_logits = np.sort(logits, axis=1)
+            approval_scores = (ordered_logits[:, -1] - ordered_logits[:, -2]) / np.linalg.norm(
+                logits, axis=1
+            ).clip(min=1e-12)
+        else:
+            ordered_probabilities = np.sort(probabilities, axis=1)
+            approval_scores = ordered_probabilities[:, -1] - ordered_probabilities[:, -2]
+        return ClassificationResult(
+            logits=logits,
+            ranking_logits=ranking_logits,
+            approval_scores=approval_scores.astype(np.float32),
+            top3_safety_scores=top3_safety_scores.astype(np.float32),
+        )
+
     def classify(
         self, image: np.ndarray | Image.Image, detections: list[Detection]
     ) -> np.ndarray | ClassificationResult:
@@ -545,6 +795,13 @@ class OnnxClassifier:
         batch = np.stack(crops).astype(np.float32, copy=False)
         if self.metadata.staged_inference is not None:
             return self._staged_classify(batch)
+        if self.metadata.neighbor_mask_inference is not None:
+            return self._neighbor_mask_classify(
+                batch,
+                detections,
+                image_width=image_width,
+                image_height=image_height,
+            )
         (logits,) = self.runner.run([self.metadata.logits_output], self.metadata.input_name, batch)
         return np.asarray(logits, dtype=np.float32)
 
@@ -614,18 +871,29 @@ def build_onnx_adapters(
     provider = select_provider(provider_mode)
 
     def create(selected_provider: Literal["cuda", "cpu"]):
-        detector = OnnxDetector(
-            model_package.detector_path,
-            model_package.metadata.detector,
-            selected_provider,
-            cuda_dll_dir,
-        )
         classifier = OnnxClassifier(
             model_package.classifier_path,
             model_package.metadata.classifier,
             selected_provider,
             cuda_dll_dir,
         )
+        if getattr(model_package.metadata.detector, "ensemble", None) is None:
+            detector = OnnxDetector(
+                model_package.detector_path,
+                model_package.metadata.detector,
+                selected_provider,
+                cuda_dll_dir,
+            )
+        else:
+            from .bread_zero_error import BreadZeroErrorDetector
+
+            detector = BreadZeroErrorDetector(
+                model_package.detector_paths,
+                model_package.metadata.detector,
+                classifier,
+                selected_provider,
+                cuda_dll_dir,
+            )
         detector.warmup()
         classifier.warmup()
         count_metadata = getattr(model_package.metadata, "count_verifier", None)

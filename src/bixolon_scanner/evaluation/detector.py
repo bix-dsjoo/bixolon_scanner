@@ -52,21 +52,41 @@ def _metrics(
     match_iou_threshold: float,
     max_queries: int,
     max_object_aspect_ratio: float | None = None,
+    nms_containment_threshold: float | None = None,
+    nms_class_aware_containment: bool = False,
 ) -> dict[str, float | int]:
     matched_total = 0
     gt_total = 0
     predicted_total = 0
     count_correct = 0
+    exact_image_count = 0
     capacity_saturated = 0
     for record, prediction in zip(records, predictions):
         selected = [
-            Detection(*box, score)
-            for box, score in zip(prediction["boxes_xyxy"], prediction["scores"])
+            Detection(
+                *box,
+                score,
+                int(class_id) if nms_class_aware_containment else None,
+            )
+            for box, score, class_id in zip(
+                prediction["boxes_xyxy"],
+                prediction["scores"],
+                prediction.get("class_ids", [None] * len(prediction["scores"])),
+            )
             if score >= score_threshold and _allowed_aspect_ratio(box, max_object_aspect_ratio)
         ]
         if len(selected) >= max_queries:
             capacity_saturated += 1
-        selected = _nms(selected, nms_iou_threshold)
+        selected = (
+            _nms(selected, nms_iou_threshold)
+            if nms_containment_threshold is None
+            else _nms(
+                selected,
+                nms_iou_threshold,
+                nms_containment_threshold,
+                nms_class_aware_containment,
+            )
+        )
         gt_boxes = [_xywh_to_xyxy(annotation["bbox_xywh"]) for annotation in record["annotations"]]
         unmatched = set(range(len(gt_boxes)))
         matched = 0
@@ -83,6 +103,7 @@ def _metrics(
         predicted_total += len(selected)
         matched_total += matched
         count_correct += int(len(selected) == len(gt_boxes))
+        exact_image_count += int(matched == len(gt_boxes) == len(selected))
     precision = matched_total / predicted_total if predicted_total else 0.0
     recall = matched_total / gt_total if gt_total else 0.0
     return {
@@ -90,9 +111,13 @@ def _metrics(
         "ground_truth_count": gt_total,
         "prediction_count": predicted_total,
         "matched_count": matched_total,
+        "false_positive_count": predicted_total - matched_total,
+        "false_negative_count": gt_total - matched_total,
         "recall": recall,
         "precision": precision,
         "count_accuracy": count_correct / len(records) if records else 0.0,
+        "exact_image_count": exact_image_count,
+        "exact_image_rate": exact_image_count / len(records) if records else 0.0,
         "capacity_saturated_images": capacity_saturated,
     }
 
@@ -106,6 +131,8 @@ def _metrics_grid(
     match_iou_threshold: float,
     max_queries: int,
     max_object_aspect_ratio: float | None = None,
+    nms_containment_threshold: float | None = None,
+    nms_class_aware_containment: bool = False,
 ) -> list[dict[str, float | int]]:
     """Evaluate a score grid with one greedy-NMS pass per image.
 
@@ -126,17 +153,35 @@ def _metrics_grid(
             "prediction_count": 0,
             "matched_count": 0,
             "count_correct": 0,
+            "exact_image_count": 0,
             "capacity_saturated_images": 0,
         }
         for _ in thresholds
     ]
     for record, prediction in zip(records, predictions):
         raw = [
-            Detection(*box, score)
-            for box, score in zip(prediction["boxes_xyxy"], prediction["scores"])
+            Detection(
+                *box,
+                score,
+                int(class_id) if nms_class_aware_containment else None,
+            )
+            for box, score, class_id in zip(
+                prediction["boxes_xyxy"],
+                prediction["scores"],
+                prediction.get("class_ids", [None] * len(prediction["scores"])),
+            )
             if score >= minimum_threshold and _allowed_aspect_ratio(box, max_object_aspect_ratio)
         ]
-        nms_survivors = _nms(raw, nms_iou_threshold)
+        nms_survivors = (
+            _nms(raw, nms_iou_threshold)
+            if nms_containment_threshold is None
+            else _nms(
+                raw,
+                nms_iou_threshold,
+                nms_containment_threshold,
+                nms_class_aware_containment,
+            )
+        )
         gt_boxes = [_xywh_to_xyxy(annotation["bbox_xywh"]) for annotation in record["annotations"]]
         for threshold, total in zip(thresholds, totals):
             raw_count = sum(detection.score >= threshold for detection in raw)
@@ -156,6 +201,7 @@ def _metrics_grid(
             total["prediction_count"] += len(selected)
             total["matched_count"] += matched
             total["count_correct"] += int(len(selected) == len(gt_boxes))
+            total["exact_image_count"] += int(matched == len(gt_boxes) == len(selected))
             total["capacity_saturated_images"] += int(raw_count >= max_queries)
     results: list[dict[str, float | int]] = []
     for threshold, total in zip(thresholds, totals):
@@ -168,14 +214,103 @@ def _metrics_grid(
                 "ground_truth_count": gt_total,
                 "prediction_count": predicted_total,
                 "matched_count": matched_total,
+                "false_positive_count": predicted_total - matched_total,
+                "false_negative_count": gt_total - matched_total,
                 "recall": matched_total / gt_total if gt_total else 0.0,
                 "precision": matched_total / predicted_total if predicted_total else 0.0,
                 "count_accuracy": (int(total["count_correct"]) / len(records) if records else 0.0),
+                "exact_image_count": int(total["exact_image_count"]),
+                "exact_image_rate": (
+                    int(total["exact_image_count"]) / len(records) if records else 0.0
+                ),
                 "capacity_saturated_images": int(total["capacity_saturated_images"]),
                 "score_threshold": threshold,
             }
         )
     return results
+
+
+def detection_error_rows(
+    records: list[dict],
+    predictions: list[dict],
+    *,
+    score_threshold: float,
+    nms_iou_threshold: float,
+    match_iou_threshold: float,
+    max_object_aspect_ratio: float | None = None,
+    nms_containment_threshold: float | None = None,
+    nms_class_aware_containment: bool = False,
+) -> list[dict]:
+    """Return auditable per-image IoU matching errors for one locked policy."""
+    rows = []
+    for record, prediction in zip(records, predictions):
+        raw = [
+            Detection(
+                *box,
+                score,
+                int(class_id) if nms_class_aware_containment else None,
+            )
+            for box, score, class_id in zip(
+                prediction["boxes_xyxy"],
+                prediction["scores"],
+                prediction.get("class_ids", [None] * len(prediction["scores"])),
+            )
+            if score >= score_threshold and _allowed_aspect_ratio(box, max_object_aspect_ratio)
+        ]
+        selected = (
+            _nms(raw, nms_iou_threshold)
+            if nms_containment_threshold is None
+            else _nms(
+                raw,
+                nms_iou_threshold,
+                nms_containment_threshold,
+                nms_class_aware_containment,
+            )
+        )
+        gt_boxes = [_xywh_to_xyxy(annotation["bbox_xywh"]) for annotation in record["annotations"]]
+        unmatched_gt = set(range(len(gt_boxes)))
+        unmatched_detection = set(range(len(selected)))
+        for detection_index, detection in enumerate(selected):
+            box = np.asarray([detection.x1, detection.y1, detection.x2, detection.y2])
+            overlaps = [(gt_index, _iou(box, gt_boxes[gt_index])) for gt_index in unmatched_gt]
+            if not overlaps:
+                continue
+            gt_index, overlap = max(overlaps, key=lambda item: item[1])
+            if overlap >= match_iou_threshold:
+                unmatched_gt.remove(gt_index)
+                unmatched_detection.remove(detection_index)
+        if unmatched_gt or unmatched_detection:
+            rows.append(
+                {
+                    "image_id": record.get("image_id"),
+                    "image_path": record.get("image_path"),
+                    "fold": record.get("fold"),
+                    "difficulty": record.get("difficulty"),
+                    "false_positive_count": len(unmatched_detection),
+                    "false_negative_count": len(unmatched_gt),
+                    "false_positives": [
+                        {
+                            "bbox_xyxy": [
+                                selected[index].x1,
+                                selected[index].y1,
+                                selected[index].x2,
+                                selected[index].y2,
+                            ],
+                            "score": selected[index].score,
+                        }
+                        for index in sorted(unmatched_detection)
+                    ],
+                    "false_negatives": [
+                        {
+                            "annotation_id": record["annotations"][index].get("annotation_id"),
+                            "category_id": record["annotations"][index].get("category_id"),
+                            "bbox_xywh": record["annotations"][index]["bbox_xywh"],
+                        }
+                        for index in sorted(unmatched_gt)
+                    ],
+                }
+            )
+    return rows
 
 
 def select_release_threshold_candidate(

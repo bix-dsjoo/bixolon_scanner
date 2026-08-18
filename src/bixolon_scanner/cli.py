@@ -37,6 +37,14 @@ COMMANDS: dict[tuple[str, ...], CommandTarget] = {
     ("evaluate", "worker"): ("bixolon_scanner.evaluation.worker", "main"),
     ("evaluate", "difficulty"): ("bixolon_scanner.evaluation.difficulty", "main"),
     ("evaluate", "operational"): ("bixolon_scanner.evaluation.operational", "main"),
+    ("evaluate", "bread-1.1-runtime"): (
+        "bixolon_scanner.evaluation.bread_runtime_gate",
+        "main",
+    ),
+    ("evaluate", "bread-1.1-runtime-parity"): (
+        "bixolon_scanner.evaluation.bread_runtime_parity",
+        "main",
+    ),
     ("evaluate", "parity"): ("bixolon_scanner.evaluation.parity", "main"),
     ("evaluate", "benchmark"): ("bixolon_scanner.evaluation.benchmark", "main"),
     ("evaluate", "compare-difficulty"): (
@@ -47,6 +55,10 @@ COMMANDS: dict[tuple[str, ...], CommandTarget] = {
     ("model", "promote"): ("bixolon_scanner.training.promote_package", "main"),
     ("model", "ten-shot-package"): ("bixolon_scanner.training.ten_shot_package", "main"),
     ("model", "ten-shot-finalize"): ("bixolon_scanner.training.ten_shot_finalize", "main"),
+    ("model", "bread-1.1-candidate-package"): (
+        "bixolon_scanner.experiments.bread.runtime_candidate_package",
+        "main",
+    ),
     ("experiment", "bread-10shot"): ("bixolon_scanner.experiments.bread.ten_shot", "main"),
     ("experiment", "bread-data-scale"): (
         "bixolon_scanner.experiments.bread.data_scale",

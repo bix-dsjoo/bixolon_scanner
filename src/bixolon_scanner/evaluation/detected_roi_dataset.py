@@ -103,7 +103,11 @@ def _manifest_index(path: Path) -> dict[int, dict[str, Any]]:
 
 
 def prepare(args: argparse.Namespace) -> dict[str, Any]:
-    records = load_records(args.dataset_root.resolve(), args.annotation)
+    records = load_records(
+        args.dataset_root.resolve(),
+        args.annotation,
+        annotation_path=getattr(args, "annotation_path", None),
+    )
     predictions = {
         int(row["image_id"]): row
         for row in (
@@ -116,6 +120,7 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
     output_records: list[dict[str, Any]] = []
     tensors: list[np.ndarray] = []
     per_image: list[dict[str, Any]] = []
+    selected_predictions: list[dict[str, Any]] = []
     class_counts: defaultdict[int, int] = defaultdict(int)
     total_truth = total_predictions = total_matches = 0
     for record in records:
@@ -186,11 +191,23 @@ def prepare(args: argparse.Namespace) -> dict[str, Any]:
                 "matched_count": len(matches),
             }
         )
+        selected_predictions.append(
+            {
+                "image_id": image_id,
+                "boxes_xyxy": [[item.x1, item.y1, item.x2, item.y2] for item in detections],
+                "scores": [item.score for item in detections],
+                "class_ids": [0] * len(detections),
+            }
+        )
 
     args.output_dir.mkdir(parents=True, exist_ok=True)
     np.save(args.output_dir / "evaluation_tensors.npy", np.stack(tensors).astype(np.float32))
     (args.output_dir / "evaluation_records.jsonl").write_text(
         "".join(json.dumps(row, sort_keys=True) + "\n" for row in output_records),
+        encoding="utf-8",
+    )
+    (args.output_dir / "selected_predictions.jsonl").write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in selected_predictions),
         encoding="utf-8",
     )
     report = {
@@ -223,6 +240,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Prepare matched classifier ROIs from detections")
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--annotation", default="multi_object_instances.json")
+    parser.add_argument(
+        "--annotation-path",
+        type=Path,
+        help="Use an explicit COCO annotation while resolving file_name under --dataset-root",
+    )
     parser.add_argument("--predictions", type=Path, required=True)
     parser.add_argument("--evaluation-manifest", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)

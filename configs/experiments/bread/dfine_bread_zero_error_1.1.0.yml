@@ -1,0 +1,54 @@
+__include__:
+  - ../../../artifacts/vendor/D-FINE/configs/dfine/dfine_hgnetv2_n_coco.yml
+
+output_dir: artifacts/experiments/bread-zero-error-1.1.0/detector/fold0/training
+num_classes: 20
+remap_mscoco_category: false
+eval_spatial_size: [640, 640]
+epochs: 30
+checkpoint_freq: 5
+
+lr_warmup_scheduler:
+  type: LinearWarmup
+  warmup_duration: 10
+
+ema:
+  type: ModelEMA
+  decay: 0.9999
+  warmups: 20
+  start: 0
+
+optimizer:
+  type: AdamW
+  params:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.000001
+    - params: '^(?=.*backbone)(?=.*norm|bn).*$'
+      lr: 0.000001
+      weight_decay: 0.0
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.0
+  lr: 0.00001
+  betas: [0.9, 0.999]
+  weight_decay: 0.0001
+
+train_dataloader:
+  total_batch_size: 8
+  num_workers: 4
+  dataset:
+    img_folder: datasets/bread_dataset
+    ann_file: artifacts/experiments/bread-zero-error-1.1.0/detector/fold0/coco-class-aware/instances_train.json
+    transforms:
+      policy:
+        epoch: 8
+  collate_fn:
+    stop_epoch: 8
+    ema_restart_decay: 0.9999
+    base_size_repeat: null
+
+val_dataloader:
+  total_batch_size: 8
+  num_workers: 4
+  dataset:
+    img_folder: datasets/bread_dataset
+    ann_file: artifacts/experiments/bread-zero-error-1.1.0/detector/fold0/coco-class-aware/instances_validation.json

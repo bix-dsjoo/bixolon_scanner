@@ -252,6 +252,12 @@ def augment_clutter_roi(
             "category_id": int(category_id),
             "foreground": is_foreground,
             "position": list(selected_position),
+            "bbox_xyxy": [
+                selected_position[0],
+                selected_position[1],
+                selected_position[0] + cutout.width,
+                selected_position[1] + cutout.height,
+            ],
             "target_occlusion": selected_occlusion,
         }
         if is_foreground:

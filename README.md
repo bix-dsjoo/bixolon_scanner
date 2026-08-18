@@ -28,7 +28,7 @@ Worker는 이미지에 정확히 하나의 최상위 상태를 반환합니다.
 - `IMAGE_RECAPTURE`: detector hard gate로 이미지 전체 재촬영 필요
 - `ERROR`: 입력, 구성, 모델 또는 시스템 오류
 
-각 segmentation 상태는 `APPROVED`, `UNKNOWN`+Top-3 또는 `SEGMENT_RECAPTURE`입니다. Classifier 품질 클래스와 낮은 신뢰도의 경계 접촉 ROI는 해당 segmentation만 `SEGMENT_RECAPTURE`로 만들며 다른 객체를 버리지 않습니다. 패키지에서 포함 중복 검토 정책을 활성화하면, 거의 완전히 포함된 두 ROI가 같은 Top-1을 갖는 경우 detector 점수가 낮은 고신뢰 ROI만 `DETECTOR_CONTAINED_DUPLICATE` `UNKNOWN`+Top-3로 보존합니다. 이 정책은 segmentation을 삭제하거나 `RECAPTURE`를 만들지 않습니다. `ERROR`는 재촬영으로 변환하지 않습니다. 실행 버전은 최상위 `worker_version`, `detector_version`, `classifier_version`으로 반환하고, classifier 조기 종료 시 `classifier_version=null`입니다.
+각 segmentation 상태는 `APPROVED`, `UNKNOWN`+Top-3 또는 `SEGMENT_RECAPTURE`입니다. Classifier 품질 클래스, 낮은 신뢰도의 경계 접촉 ROI, 그리고 활성화된 선택적 분류 정책이 안전한 Top-3를 제공하지 못한 ROI(`CLASSIFIER_TOP3_UNSAFE`)는 해당 segmentation만 `SEGMENT_RECAPTURE`로 만들며 다른 객체를 버리지 않습니다. 패키지에서 포함 중복 검토 정책을 활성화하면, 거의 완전히 포함된 두 ROI가 같은 Top-1을 갖는 경우 detector 점수가 낮은 고신뢰 ROI만 `DETECTOR_CONTAINED_DUPLICATE` `UNKNOWN`+Top-3로 보존합니다. 이 정책은 segmentation을 삭제하거나 `RECAPTURE`를 만들지 않습니다. `ERROR`는 재촬영으로 변환하지 않습니다. 실행 버전은 최상위 `worker_version`, `detector_version`, `classifier_version`으로 반환하고, classifier 조기 종료 시 `classifier_version=null`입니다.
 
 ```mermaid
 flowchart LR
@@ -98,6 +98,9 @@ bixolon data manifest --help
 bixolon train detector --help
 bixolon train verify-pipeline --help
 bixolon evaluate worker --help
+bixolon evaluate bread-1.1-runtime --help
+bixolon evaluate bread-1.1-runtime-parity --help
+bixolon model bread-1.1-candidate-package --help
 bixolon model export --help
 bixolon experiment detector-target --help
 bixolon operations ingest-logs --help
@@ -152,7 +155,43 @@ GitHub Actions는 Windows의 Python `3.11`·`3.13` CPU 테스트와 Flutter `3.4
 
 release composition 데이터 계약은 `manifests/bread-1.0-a52b4faa3e20`이며 Detector 학습 provenance는 과거 10장 계약 `manifests/bread-1.0.0`에 별도로 잠깁니다. Detector와 Classifier 학습 파이프라인은 통합 버전 없이 각각 `1.0.0`으로 관리합니다. schema 2.1 package는 구성요소별 학습 데이터셋·manifest와 파이프라인 계약 SHA를 모두 기록합니다. 계약, 검증 명령과 버전 상승 규칙은 [학습 파이프라인 1.0.0 가이드](docs/guides/training-pipeline-1.0.0.md)를 따릅니다.
 
+Bread 1.1의 schema 2.0 development package는 `detector.ensemble`에 member checksum,
+fusion, base selection, policy consensus, ambiguity union, class-verified selector와 선택적
+`draft_refinement`를 기록합니다. 단계별 draft 크기, consensus/unanimous fast path 경계와 최대
+box 면적은 모두 metadata 값이며 runtime에 하드코딩하지 않습니다. Classifier의 normalized
+margin 정책도 `neighbor_mask_inference.approval_metric`과 class별 `approval_thresholds`로
+직렬화합니다. ensemble member 누락·checksum 불일치, consensus가 참조하지 않는 member,
+CUDA graph의 병렬 실행 조합은 package 시작 오류입니다.
+
 정식 1.0 gate는 인식률 ≥99%, 승인 오인율 ≤0.1% 및 그 95% 상한 ≤0.1%, segmentation IoU@0.5 recall/precision ≥99%, 이미지 RECAPTURE recall ≥99%, 정상 이미지/segment의 불필요 RECAPTURE ≤1%, CUDA 평균/P95 ≤100ms입니다. 재촬영률은 기준보다 증가할 수 없습니다. 오인 0건으로 0.1% 상한을 입증하려면 최소 2,995개의 독립 승인 표본이 필요합니다. 현재 1,121개 승인 표본의 상한은 0.2669%이며, 이번 운영 승격은 프로젝트 소유자의 명시적 지시에 따른 이 gate 하나의 예외입니다.
+
+Bread `1.1.0`은 2026-08-18 지정된 version-specific end-to-end 목표를 사용합니다. 최종 목표는
+전체 판정 가능 이미지의 모든 GT 객체 대비 `APPROVED ≥99%`입니다. 운영 기준은
+`SEGMENTATION ≥90%`, end-to-end `APPROVED ≥90%`, `SEGMENTATION` 이미지 FP/FN·승인 오인·
+Candidate out은 각각 ≤0.1%입니다. `UNKNOWN + Top-3` 비율과 `SEGMENT_RECAPTURE` 비율은
+진단용으로만 보고하고 승격 gate에는 포함하지 않습니다. 분모와 현재 판정은
+[Bread zero-error 1.1.0 실험 문서](docs/experiments/bread/bread-zero-error-1.1.0.md)를 따릅니다.
+1.1의 공식 승격 평가 범위는 `multi_object_scenes`의 EASY/MEDIUM/HARD 300장뿐입니다.
+`scan_log_samples`는 참고 진단용이며 모델·정책 선택, gate 분모와 승격 판정에서 제외합니다.
+먼저 각 이미지를 최종 `SEGMENTATION`/`IMAGE_RECAPTURE`로 나눈 뒤, FP/FN은 최종
+`SEGMENTATION` 이미지 중 IoU@0.5 FP/FN이 하나라도 있는 이미지의 비율로 계산합니다.
+End-to-end `APPROVED` 분모에는 정답상 객체 판정 대상 이미지의 모든 GT를 포함하므로, 예측
+`IMAGE_RECAPTURE` 또는 detector FN으로 classifier에 도달하지 못한 GT도 미승인으로 남습니다.
+정답상 이미지 전체 재촬영 대상은 객체 분모에서 제외하고 recapture recall로 별도 평가합니다.
+99% 최종 목표 달성과 여섯 운영 기준 통과는 별도로 보고합니다.
+
+Bread 1.1 실행 패키지 평가는 `bixolon evaluate bread-1.1-runtime`으로 수행합니다. 평가기는
+공식 all-GT 분모, 여섯 gate, 최종 99% 목표와 decode부터 최종 결정까지의 p50/p95/p99를 한
+보고서에 기록합니다. `--decision-trace-output`으로 request ID와 처리시간을 제외한 공개 판정을
+JSONL로 고정한 뒤 `bixolon evaluate bread-1.1-runtime-parity`로 CPU/CUDA 최종 상태·클래스·
+Top-3 순위와 bbox/confidence 허용 오차를 비교할 수 있습니다. `--evidence-role independent`는
+후보 선택에 사용하지 않은 잠금 데이터에만 지정하십시오.
+
+v3 development package는
+`bixolon model bread-1.1-candidate-package --output-dir <새 경로> --report <보고서>`로
+재조립합니다. 명령은 versioned manifest와 metadata template의 checksum을 먼저 검증하고,
+네 Detector와 Classifier ONNX가 고정 checksum과 일치할 때만 package를 만듭니다. 이미 존재하는
+파일은 checksum이 같을 때만 재사용하며 다른 파일을 덮어쓰지 않습니다.
 
 모델 승격 순서는 다음과 같습니다.
 

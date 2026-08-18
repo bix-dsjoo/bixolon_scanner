@@ -101,6 +101,33 @@ def test_finalize_counts_uses_requested_error_denominators():
     }
 
 
+def test_finalize_counts_treats_segment_recapture_as_recapture_not_candidate_out():
+    counts = _empty_counts()
+    counts.update(
+        {
+            "images": 2,
+            "ground_truth_boxes": 3,
+            "predicted_boxes": 2,
+            "matched_boxes": 2,
+            "segment_recapture_boxes": 2,
+            "segment_recapture_matched_boxes": 2,
+            "recapture_ground_truth_boxes": 1,
+            "end_to_end_latency_ms_samples": [1.0, 1.0],
+        }
+    )
+    counts["response_status"]["SEGMENTATION"] = 1
+    counts["response_status"]["IMAGE_RECAPTURE"] = 1
+    counts["segment_recapture_reasons"]["CLASSIFIER_TOP3_UNSAFE"] = 2
+
+    result = _finalize_counts(counts)
+
+    assert result["unknown_top3_missing"] == 0
+    assert result["all_ground_truth_box_outcomes"]["counts"]["candidate_out"] == 0
+    assert result["all_ground_truth_box_outcomes"]["counts"]["recapture"] == 3
+    assert result["rates"]["segment_recapture_rate_of_matched_detections"] == 1.0
+    assert result["segment_recapture_reasons"] == {"CLASSIFIER_TOP3_UNSAFE": 2}
+
+
 def test_load_records_supports_root_coco_with_difficulty_directories(tmp_path):
     (tmp_path / "annotations").mkdir()
     (tmp_path / "E").mkdir()

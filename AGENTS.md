@@ -131,6 +131,39 @@ Flutter canonical 코드는 `apps/product_scanner/lib`의 `core/design_system`, 
 - 정확도 기준: 정답 클래스가 있는 `UNKNOWN` 샘플 Top-3 accuracy ≥ 95%
 - CPU 기준: 결과 계약과 기능 호환 필수, 지연 기준 없음
 
+### Bread 1.1 전용 최종 목표와 운영 기준
+
+`bread-zero-error-1.1.0`과 그 Worker·Detector·Classifier `1.1.0` 후보에는 프로젝트 소유자가
+2026-08-18 지정한 다음 end-to-end 최종 목표와 운영 gate를 적용합니다. 이 기준은 위 1.0 정확도 gate를
+1.1 후보에 그대로 중복 적용하지 않는 version-specific override입니다. 단, 승격 순서,
+group-aware 분할, 잠긴 test, parity, 성능 및 package 검증 의무는 그대로 유지합니다.
+
+- 장기 개선 최종 목표: 전체 판정 가능 GT 객체 대비 최종 `APPROVED` 비율 ≥ 99%
+
+운영 승격 기준은 다음 여섯 가지입니다.
+
+- `SEGMENTATION` 이미지 비율 ≥ 90%
+- 전체 판정 가능 GT 객체 대비 최종 `APPROVED` 비율 ≥ 90%
+- `SEGMENTATION` 이미지 중 IoU@0.5 FN 포함 이미지 비율 ≤ 0.1%
+- `SEGMENTATION` 이미지 중 IoU@0.5 FP 포함 이미지 비율 ≤ 0.1%
+- 전체 판정 가능 GT 객체 대비 `APPROVED` 객체 오인율 ≤ 0.1%
+- 전체 판정 가능 GT 객체 대비 `UNKNOWN` Top-3 Candidate out 비율 ≤ 0.1%
+
+`판정 가능 GT 객체`는 정답 상태가 객체 판정 대상인 이미지의 모든 GT를 뜻합니다. 예측 결과가
+`IMAGE_RECAPTURE`이거나 detector가 GT를 놓쳤더라도 분모에서 제외하지 않습니다. 정답상 이미지
+전체 재촬영 대상은 이 객체 분모에서 제외하고 별도의 recapture recall로 평가합니다. 따라서
+`APPROVED` 99% 목표를 detector 오류나 불필요한 이미지 재촬영으로 우회할 수 없습니다.
+
+모든 비교는 경계를 포함합니다. 99% 최종 목표의 달성 여부와 여섯 운영 gate의 통과 여부를
+분리해 보고하십시오. 99% 미달만으로 운영 gate 실패로 판정하지 말고, 운영 gate 통과만으로
+장기 개선 목표를 달성했다고 선언하지 마십시오. `UNKNOWN + Top-3` 비율과
+`SEGMENT_RECAPTURE` 비율은 원인
+분석용으로 계속 집계하지만 1.1 승격 합격 여부에는 사용하지 않습니다. unmatched detector FP는
+객체 분모에서 제외한 뒤 이미지 FP gate로 검출합니다.
+`SEGMENTATION` 최소 비율과 기존 `IMAGE_RECAPTURE` 비회귀를 함께 확인하여 detector 오류를
+이미지 재촬영으로 우회하지 마십시오. 공식 정의와 현재 재판정은
+`docs/experiments/bread/bread-zero-error-1.1.0.md`를 따릅니다.
+
 평균 지연만 보고하지 마십시오. p50, p95, p99와 표본 수를 함께 기록하고 detector 조기 종료와 full-path를 구분하십시오. 벤치마크 결과에는 모델·데이터셋·ONNX Runtime·CUDA·드라이버 버전, 하드웨어와 warm-up 조건을 포함하십시오.
 
 ## 테스트 요구사항

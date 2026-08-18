@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 from argparse import Namespace
 from pathlib import Path
@@ -56,3 +57,61 @@ def test_run_record_includes_component_training_pipeline_lock(tmp_path):
     assert record["training_pipeline"]["component"] == "classifier"
     assert record["training_pipeline"]["version"] == "1.0.0"
     assert len(record["training_pipeline"]["contract_sha256"]) == 64
+
+
+def test_run_record_reads_component_manifest_provenance(tmp_path):
+    manifest = tmp_path / "detector_manifest.jsonl"
+    manifest.write_text("{}\n", encoding="utf-8")
+    (tmp_path / "metadata.json").write_text(
+        json.dumps(
+            {
+                "dataset_version": "bread-1.1-example",
+                "detector": {"manifest_sha256": "d" * 64},
+                "classifier": {"manifest_sha256": "c" * 64},
+            }
+        ),
+        encoding="utf-8",
+    )
+    args = Namespace(manifest=manifest, output_dir=tmp_path)
+
+    write_run_record(
+        tmp_path,
+        task="detector_training",
+        args=args,
+        device="cpu",
+        dataset_sizes={"train": 2, "validation": 1},
+    )
+
+    record = json.loads((tmp_path / "run.json").read_text(encoding="utf-8"))
+    assert record["dataset"] == {
+        "version": "bread-1.1-example",
+        "manifest_sha256": "d" * 64,
+        "manifest_component": "detector",
+    }
+
+
+def test_run_record_locks_initial_checkpoint_directory(tmp_path):
+    checkpoint = tmp_path / "best"
+    checkpoint.mkdir()
+    (checkpoint / "weights.bin").write_bytes(b"weights")
+    expected = hashlib.sha256(b"weights.binweights").hexdigest()
+    args = Namespace(
+        manifest=None,
+        output_dir=tmp_path,
+        initial_checkpoint=checkpoint,
+        initial_checkpoint_sha256=expected,
+    )
+
+    write_run_record(
+        tmp_path,
+        task="detector_training",
+        args=args,
+        device="cpu",
+        dataset_sizes={"train": 2, "validation": 1},
+    )
+
+    record = json.loads((tmp_path / "run.json").read_text(encoding="utf-8"))
+    assert record["initial_checkpoint"] == {
+        "name": "best",
+        "sha256": expected,
+    }

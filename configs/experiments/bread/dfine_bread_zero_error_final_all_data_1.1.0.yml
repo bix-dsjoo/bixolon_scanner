@@ -1,0 +1,19 @@
+__include__:
+  - ./dfine_bread_zero_error_1.1.0.yml
+
+# The outer-fold validation runs selected epoch index 6 before this fit.
+# Train exactly epochs 0..6 on all development images and consume last.pth;
+# do not select best_stg*.pth from the monitoring evaluation below.
+output_dir: artifacts/experiments/bread-zero-error-1.1.0/detector/final-all-data-fixed-epoch-v1/training
+epochs: 7
+checkpoint_freq: 1
+
+train_dataloader:
+  dataset:
+    ann_file: artifacts/experiments/bread-zero-error-1.1.0/detector/fold0/coco-class-aware/instances_all.json
+
+# D-FINE requires a validation loader during training. Reusing the all-data
+# annotation is monitoring-only and must not be treated as an independent KPI.
+val_dataloader:
+  dataset:
+    ann_file: artifacts/experiments/bread-zero-error-1.1.0/detector/fold0/coco-class-aware/instances_all.json

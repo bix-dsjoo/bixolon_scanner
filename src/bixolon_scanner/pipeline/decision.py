@@ -218,9 +218,13 @@ class DecisionPipeline:
         if isinstance(classification, ClassificationResult):
             logits = classification.logits
             ranking_logits = classification.ranking_logits
+            approval_scores = classification.approval_scores
+            top3_safety_scores = classification.top3_safety_scores
         else:
             logits = classification
             ranking_logits = classification
+            approval_scores = None
+            top3_safety_scores = None
         if logits.shape != (len(ordered), len(self.classifier_metadata.labels)):
             raise ValueError("classifier output shape does not match package labels")
         if ranking_logits.shape != logits.shape:
@@ -229,6 +233,34 @@ class DecisionPipeline:
         ranking_probabilities = _softmax(ranking_logits, self.classifier_metadata.temperature)
         decision_indices = np.argsort(-probabilities, axis=1, kind="stable")
         ranking_indices = np.argsort(-ranking_probabilities, axis=1, kind="stable")
+        if approval_scores is None:
+            approval_scores = probabilities.max(axis=1)
+        if approval_scores.shape != (len(ordered),):
+            raise ValueError("classifier approval scores do not match detections")
+        if top3_safety_scores is not None and top3_safety_scores.shape != (len(ordered),):
+            raise ValueError("classifier Top-3 safety scores do not match detections")
+        configured_thresholds = self.classifier_metadata.approval_thresholds
+        if configured_thresholds is None:
+            approval_thresholds = np.full(
+                len(ordered), self.classifier_metadata.approval_threshold, dtype=np.float32
+            )
+        else:
+            approval_thresholds = np.asarray(
+                [
+                    self.classifier_metadata.approval_threshold
+                    if configured_thresholds[int(indices[0])] is None
+                    else configured_thresholds[int(indices[0])]
+                    for indices in decision_indices
+                ],
+                dtype=np.float32,
+            )
+        approved = approval_scores >= approval_thresholds
+        mask_policy = self.classifier_metadata.neighbor_mask_inference
+        top3_unsafe = (
+            np.zeros(len(ordered), dtype=bool)
+            if top3_safety_scores is None or mask_policy is None
+            else top3_safety_scores < mask_policy.top3_safety_threshold
+        )
         duplicate_review_indices = {
             lower_index
             for lower_index, higher_index in _contained_detection_pairs(
@@ -274,9 +306,7 @@ class DecisionPipeline:
                     top3=[],
                     confidence=top1_score,
                 )
-            elif (
-                index in border_indices and top1_score < self.classifier_metadata.approval_threshold
-            ):
+            elif index in border_indices and not approved[index]:
                 item = ScanItem(
                     segmentation_id=f"segmentation_{ordinal:03d}",
                     bbox=bbox,
@@ -286,10 +316,7 @@ class DecisionPipeline:
                     top3=[],
                     confidence=top1_score,
                 )
-            elif (
-                index in duplicate_review_indices
-                and top1_score >= self.classifier_metadata.approval_threshold
-            ):
+            elif index in duplicate_review_indices and approved[index]:
                 candidates = _top3_candidates(
                     self.classifier_metadata, candidate_indices, candidate_scores
                 )
@@ -302,7 +329,7 @@ class DecisionPipeline:
                     top3=candidates,
                     confidence=float(candidate_scores[int(candidate_indices[0])]),
                 )
-            elif top1_score >= self.classifier_metadata.approval_threshold:
+            elif approved[index]:
                 item = ScanItem(
                     segmentation_id=f"segmentation_{ordinal:03d}",
                     bbox=bbox,
@@ -311,6 +338,16 @@ class DecisionPipeline:
                     prediction=Prediction(class_id=label.class_id, class_name=label.class_name),
                     top3=[],
                     confidence=top1_score,
+                )
+            elif top3_unsafe[index]:
+                item = ScanItem(
+                    segmentation_id=f"segmentation_{ordinal:03d}",
+                    bbox=bbox,
+                    status=ItemStatus.SEGMENT_RECAPTURE,
+                    reason_codes=["CLASSIFIER_TOP3_UNSAFE"],
+                    prediction=None,
+                    top3=[],
+                    confidence=float(candidate_scores[int(candidate_indices[0])]),
                 )
             else:
                 candidates = _top3_candidates(

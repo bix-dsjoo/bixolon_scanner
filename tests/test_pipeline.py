@@ -4,7 +4,11 @@ import numpy as np
 
 from bixolon_scanner.contracts import ItemStatus, Status
 from bixolon_scanner.inference import Detection, DetectionResult
-from bixolon_scanner.package import CountVerifierMetadata
+from bixolon_scanner.package import (
+    CountVerifierMetadata,
+    NeighborMaskClassifierMetadata,
+    NeighborMaskClassifierView,
+)
 from bixolon_scanner.pipeline import DecisionPipeline
 from bixolon_scanner.pipeline.ports import ClassificationResult
 
@@ -102,6 +106,83 @@ def test_unknown_top3_uses_separate_ranking_logits(classifier_metadata, quality_
 
     assert response.items[0].status is ItemStatus.UNKNOWN
     assert response.items[0].top3[0].class_id == "bread_03"
+
+
+def test_unsafe_classifier_top3_becomes_segment_recapture(classifier_metadata, quality_metadata):
+    classifier_metadata.approval_threshold = 0.9
+    classifier_metadata.neighbor_mask_inference = NeighborMaskClassifierMetadata(
+        views=[NeighborMaskClassifierView(name="mask", distance_bias=0.0, weight=1.0)],
+        top3_safety_threshold=-2.96,
+    )
+    classifier = FakeClassifier([[0.4, 0.3, 0.2]])
+    classifier.logits = ClassificationResult(
+        logits=np.asarray([[0.4, 0.3, 0.2]], dtype=np.float32),
+        ranking_logits=np.asarray([[0.5, 0.4, 0.3]], dtype=np.float32),
+        approval_scores=np.asarray([0.1], dtype=np.float32),
+        top3_safety_scores=np.asarray([-3.0], dtype=np.float32),
+    )
+    pipeline = DecisionPipeline(
+        FakeDetector(DetectionResult([Detection(10, 10, 40, 40, 0.95)])),
+        classifier,
+        classifier_metadata,
+        quality_metadata,
+    )
+
+    response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "unsafe-top3")
+
+    assert response.items[0].status is ItemStatus.SEGMENT_RECAPTURE
+    assert response.items[0].reason_codes == ["CLASSIFIER_TOP3_UNSAFE"]
+    assert response.reason_codes == ["SEGMENT_RECAPTURE_REQUIRED"]
+
+
+def test_safe_classifier_top3_remains_unknown(classifier_metadata, quality_metadata):
+    classifier_metadata.approval_threshold = 0.9
+    classifier_metadata.neighbor_mask_inference = NeighborMaskClassifierMetadata(
+        views=[NeighborMaskClassifierView(name="mask", distance_bias=0.0, weight=1.0)],
+        top3_safety_threshold=-2.96,
+    )
+    classifier = FakeClassifier([[0.4, 0.3, 0.2]])
+    classifier.logits = ClassificationResult(
+        logits=np.asarray([[0.4, 0.3, 0.2]], dtype=np.float32),
+        ranking_logits=np.asarray([[0.5, 0.4, 0.3]], dtype=np.float32),
+        approval_scores=np.asarray([0.1], dtype=np.float32),
+        top3_safety_scores=np.asarray([-2.9], dtype=np.float32),
+    )
+    pipeline = DecisionPipeline(
+        FakeDetector(DetectionResult([Detection(10, 10, 40, 40, 0.95)])),
+        classifier,
+        classifier_metadata,
+        quality_metadata,
+    )
+
+    response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "safe-top3")
+
+    assert response.items[0].status is ItemStatus.UNKNOWN
+    assert response.items[0].reason_codes == ["BELOW_APPROVAL_THRESHOLD"]
+
+
+def test_per_class_approval_threshold_uses_predicted_class(classifier_metadata, quality_metadata):
+    classifier_metadata.approval_threshold = 0.1
+    classifier_metadata.approval_thresholds = [0.3, None, None]
+    classifier = FakeClassifier([])
+    classifier.logits = ClassificationResult(
+        logits=np.asarray([[3.0, 1.0, 0.0], [1.0, 3.0, 0.0]], dtype=np.float32),
+        ranking_logits=np.asarray([[3.0, 1.0, 0.0], [1.0, 3.0, 0.0]], dtype=np.float32),
+        approval_scores=np.asarray([0.2, 0.2], dtype=np.float32),
+    )
+    pipeline = DecisionPipeline(
+        FakeDetector(
+            DetectionResult([Detection(10, 10, 30, 30, 0.9), Detection(40, 40, 60, 60, 0.8)])
+        ),
+        classifier,
+        classifier_metadata,
+        quality_metadata,
+    )
+
+    response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "per-class")
+
+    assert response.items[0].status is ItemStatus.UNKNOWN
+    assert response.items[1].status is ItemStatus.APPROVED
 
 
 def test_all_items_approved(classifier_metadata, quality_metadata):

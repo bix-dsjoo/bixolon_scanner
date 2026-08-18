@@ -5,7 +5,12 @@ import pytest
 
 from bixolon_scanner import inference
 from bixolon_scanner.errors import ProviderInitializationError
-from bixolon_scanner.package import ClassifierView, StagedClassifierMetadata
+from bixolon_scanner.package import (
+    ClassifierView,
+    NeighborMaskClassifierMetadata,
+    NeighborMaskClassifierView,
+    StagedClassifierMetadata,
+)
 from bixolon_scanner.pipeline.ports import Detection
 
 
@@ -60,6 +65,143 @@ def test_classifier_warms_configured_dynamic_batch_sizes(classifier_metadata):
     adapter.runner = Runner()
     adapter.warmup()
     assert [shape[0] for shape in shapes] == [1, 3, 7]
+
+
+def test_neighbor_mask_classifier_warmup_includes_every_view(classifier_metadata):
+    shapes = []
+
+    class Runner:
+        def run(self, output_names, input_name, tensor):
+            del output_names, input_name
+            shapes.append(tensor.shape)
+            return [None]
+
+    classifier_metadata.warmup_batch_sizes = [1, 3]
+    classifier_metadata.neighbor_mask_inference = NeighborMaskClassifierMetadata(
+        views=[
+            NeighborMaskClassifierView(name="strict", distance_bias=0.0, weight=0.75),
+            NeighborMaskClassifierView(name="guarded", distance_bias=0.25, weight=0.25),
+        ],
+        top3_safety_threshold=-2.96,
+    )
+    adapter = inference.OnnxClassifier.__new__(inference.OnnxClassifier)
+    adapter.metadata = classifier_metadata
+    adapter.runner = Runner()
+
+    adapter.warmup()
+
+    assert [shape[0] for shape in shapes] == [2, 6]
+
+
+def test_neighbor_mask_classifier_returns_weighted_decision_and_safety_scores(
+    classifier_metadata,
+):
+    classifier_metadata.neighbor_mask_inference = NeighborMaskClassifierMetadata(
+        views=[
+            NeighborMaskClassifierView(name="strict", distance_bias=0.0, weight=0.75),
+            NeighborMaskClassifierView(name="guarded", distance_bias=0.25, weight=0.25),
+        ],
+        top3_safety_threshold=-2.96,
+    )
+    calls = []
+
+    class Runner:
+        def run(self, output_names, input_name, tensor):
+            del output_names, input_name
+            calls.append(tensor.shape)
+            return [
+                np.asarray(
+                    [
+                        [4.0, 1.0, 0.0],
+                        [1.0, 3.0, 0.0],
+                        [2.0, 0.0, 1.0],
+                        [0.0, 2.0, 1.0],
+                    ],
+                    dtype=np.float32,
+                )
+            ]
+
+    adapter = inference.OnnxClassifier.__new__(inference.OnnxClassifier)
+    adapter.metadata = classifier_metadata
+    adapter.runner = Runner()
+    detections = [
+        Detection(0.0, 0.0, 40.0, 40.0, 0.9),
+        Detection(30.0, 0.0, 70.0, 40.0, 0.8),
+    ]
+
+    result = adapter._neighbor_mask_classify(
+        np.zeros((2, 3, 224, 224), dtype=np.float32),
+        detections,
+        image_width=100,
+        image_height=100,
+    )
+
+    assert calls == [(4, 3, 224, 224)]
+    np.testing.assert_allclose(result.logits[0], [3.5, 0.75, 0.25])
+    assert result.approval_scores.shape == (2,)
+    assert result.top3_safety_scores.shape == (2,)
+    assert np.all(result.top3_safety_scores <= 0.0)
+
+
+def test_neighbor_mask_classifier_returns_l2_normalized_logit_margin(
+    classifier_metadata,
+):
+    classifier_metadata.neighbor_mask_inference = NeighborMaskClassifierMetadata(
+        views=[NeighborMaskClassifierView(name="mask", distance_bias=0.0, weight=1.0)],
+        approval_metric="l2_normalized_logit_margin",
+        top3_safety_threshold=-2.96,
+    )
+
+    class Runner:
+        def run(self, output_names, input_name, tensor):
+            del output_names, input_name, tensor
+            return [np.asarray([[3.0, 2.0, -1.0]], dtype=np.float32)]
+
+    adapter = inference.OnnxClassifier.__new__(inference.OnnxClassifier)
+    adapter.metadata = classifier_metadata
+    adapter.runner = Runner()
+    result = adapter._neighbor_mask_classify(
+        np.zeros((1, 3, 224, 224), dtype=np.float32),
+        [Detection(0.0, 0.0, 40.0, 40.0, 0.9)],
+        image_width=100,
+        image_height=100,
+    )
+
+    assert result.approval_scores[0] == pytest.approx(1.0 / np.sqrt(14.0))
+
+
+def test_neighbor_mask_classifier_uses_global_rank_tie_break(classifier_metadata):
+    classifier_metadata.neighbor_mask_inference = NeighborMaskClassifierMetadata(
+        views=[
+            NeighborMaskClassifierView(name="left", distance_bias=0.0, weight=0.5),
+            NeighborMaskClassifierView(name="right", distance_bias=0.25, weight=0.5),
+        ],
+        top3_safety_threshold=-2.96,
+        ranking_tie_break_bias_span=0.002,
+    )
+
+    class Runner:
+        def run(self, output_names, input_name, tensor):
+            del output_names, input_name, tensor
+            return [
+                np.asarray(
+                    [[4.0, 3.0, 2.0], [4.0, 2.0, 3.0]],
+                    dtype=np.float32,
+                )
+            ]
+
+    adapter = inference.OnnxClassifier.__new__(inference.OnnxClassifier)
+    adapter.metadata = classifier_metadata
+    adapter.runner = Runner()
+
+    result = adapter._neighbor_mask_classify(
+        np.zeros((1, 3, 224, 224), dtype=np.float32),
+        [Detection(0.0, 0.0, 40.0, 40.0, 0.9)],
+        image_width=100,
+        image_height=100,
+    )
+
+    assert result.ranking_logits[0, 1] - result.ranking_logits[0, 2] == pytest.approx(0.001)
 
 
 def test_staged_classifier_batches_only_ambiguous_and_unknown_views(classifier_metadata):
@@ -234,6 +376,18 @@ def test_containment_nms_suppresses_nested_duplicate_with_low_iou():
 
     assert inference.nms([outer, inner], 0.7) == [outer, inner]
     assert inference.nms([outer, inner], 0.7, 0.7) == [outer]
+
+
+def test_containment_nms_can_require_same_detector_class():
+    outer = Detection(0.0, 0.0, 20.0, 20.0, 0.9, class_id=1)
+    same_class_inner = Detection(5.0, 5.0, 15.0, 15.0, 0.8, class_id=1)
+    different_class_inner = Detection(5.0, 5.0, 15.0, 15.0, 0.8, class_id=2)
+
+    assert inference.nms([outer, same_class_inner], 0.7, 0.7, True) == [outer]
+    assert inference.nms([outer, different_class_inner], 0.7, 0.7, True) == [
+        outer,
+        different_class_inner,
+    ]
 
 
 def test_count_verifier_returns_label_and_confidence():
