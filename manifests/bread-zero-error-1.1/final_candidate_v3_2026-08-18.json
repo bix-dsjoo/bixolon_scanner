@@ -119,6 +119,25 @@
     "model_files_copied": 5,
     "package_validation_passed": true
   },
+  "independent_preflight": {
+    "fixed_git_commit": "adfae95",
+    "required_source_manifests": [
+      {
+        "path": "manifests/bread-zero-error-1.1/detector_manifest.jsonl",
+        "sha256": "2ffc2b318f20f5195a952b76ed6ac345a73a4f41a7c75e417701cac5c7c6fea0"
+      },
+      {
+        "path": "manifests/bread-zero-error-1.1/classifier_manifest.jsonl",
+        "sha256": "afe4b679c806847267e8dc8c9a2c89a48de479ec1c66e455333e757a304f4ddd"
+      },
+      {
+        "path": "manifests/bread-zero-error-1.1/rejected_operational_v3_development_identity.jsonl",
+        "sha256": "b978a82daa0b3b1ece4ad941d2abcbda21159bf34fa952d9ef0a27a124c96e23"
+      }
+    ],
+    "complete_development_lineage_required": true,
+    "runtime_independent_evaluation_requires_eligible_preflight": true
+  },
   "repository_regression": {
     "ruff_check": true,
     "ruff_format_check": true,
@@ -131,7 +150,7 @@
   "independent_data_inventory": {
     "eligible_local_multi_object_dataset_count": 0,
     "inventory": "manifests/bread-zero-error-1.1/raw_data_independent_inventory_2026-08-18.json",
-    "inventory_sha256": "5312b215bf65940a207f8253f75ca2afa64cc2f31e1b74760fc3797a4fa25ca6",
+    "inventory_sha256": "faa10daff08c66b06e0a62bc2cc15ac9c93e0c5bebe313629d87f5fc7c3ada63",
     "bread_project_4_rejection": "manifests/bread-zero-error-1.1/rejected_independent_preflight_bread_project_4_2026-08-18.json",
     "bread_project_4_rejection_sha256": "426055ae3b92af567acd73e08f5af5055af3f9afc83e6a4b0e44a7b834d1d2fa",
     "model_inference_executed": false

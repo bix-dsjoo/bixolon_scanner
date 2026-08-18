@@ -1,13 +1,25 @@
 {
   "schema_version": "1.0",
   "audit": "bread_1_1_local_independent_data_inventory",
-  "audited_on": "2026-08-18",
+  "audited_on": "2026-08-19",
   "candidate": {
     "candidate_id": "bread-zero-error-1.1.0-domain-lda-fixed-four-v3",
     "git_commit": "adfae95",
     "candidate_fixed_and_pushed_before_audit": true
   },
   "locations": [
+    {
+      "name": "datasets/bread_dataset/operational_collections/2026-08-18",
+      "role": "v2 locked test opened once, then permanently reused as v3 development_only",
+      "image_count": 115,
+      "annotation_count": 504,
+      "exact_v3_development_overlap_count": 115,
+      "annotation_sha256": "7909a8fdb31850b5af1cb4e95aa007b6b9e3d2ec5da06e6f8c9f74d3ed2bb56f",
+      "image_manifest_sha256": "dac22864668b8ba008db988201f5c851c2d323c798f704c40d3abf10cf243f6e",
+      "development_identity_manifest": "manifests/bread-zero-error-1.1/rejected_operational_v3_development_identity.jsonl",
+      "eligible_for_independent_lock": false,
+      "reason": "v3 policy was selected after v2 results on this exact dataset were disclosed"
+    },
     {
       "name": "bread_project_4",
       "role": "scan-log review export",
@@ -48,5 +60,5 @@
   ],
   "eligible_local_multi_object_dataset_count": 0,
   "model_inference_executed_during_inventory": false,
-  "conclusion": "A new capture session with finalized COCO ground truth and complete capture-session provenance is required."
+  "conclusion": "A new capture session that is disjoint from the complete v3 development lineage, with finalized COCO ground truth and complete capture-session provenance, is required."
 }

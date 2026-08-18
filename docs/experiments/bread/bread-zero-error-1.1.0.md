@@ -530,3 +530,31 @@ Detector/Classifier manifest의 exact SHA 및 dHash≤2 중복을 검사하는
 검증할 수 없다. 따라서 현재 로컬의 적격 multi-object 독립 데이터는 0개이며 새 촬영 세션이
 필요하다는 결론은 유지한다. 전체 inventory는
 `manifests/bread-zero-error-1.1/raw_data_independent_inventory_2026-08-18.json`에 고정한다.
+
+## 2026-08-19 사용자 지정 operational collection 재검증
+
+사용자가 `datasets/bread_dataset/operational_collections/2026-08-18`을 추가 평가 대상으로
+지정했다. 현재 annotation SHA-256
+`7909a8fdb31850b5af1cb4e95aa007b6b9e3d2ec5da06e6f8c9f74d3ed2bb56f`와 115장 image
+manifest SHA-256 `dac22864668b8ba008db988201f5c851c2d323c798f704c40d3abf10cf243f6e`는
+기존 v2 locked test와 정확히 같다. v2 실패 결과가 공개된 뒤 v3의 FP 제거와 fast path를
+선택할 때 사용했으므로 이 데이터의 영구 역할은 `development_only`다.
+
+현재 v3 CUDA package를 다시 실행한 결과 `SEGMENTATION` 111/115(96.522%), 빈 tray
+`IMAGE_RECAPTURE` 4/115, all-GT `APPROVED` 504/504(100%), FN·FP·승인 오인·Candidate out
+각 0건이었다. 평균/p50/p95/p99는 75.67/73.09/88.48/92.15ms로 정확도·성능 재현에
+성공했다. report SHA-256은
+`99d048600edf9e911ccc8efdc8780a7fcf8d60e64bfd5734d182f0fcdf2229d7`이며 보고서의
+`promotion_eligible`은 의도대로 `false`다.
+
+후속 후보가 본 반려 test를 독립성 검사에서 빠뜨리지 않도록 115장 identity manifest
+`rejected_operational_v3_development_identity.jsonl`을 추가했다. 전체 v3 source 715행으로
+preflight한 결과 115/115 exact SHA 중복을 검출해 독립 잠금을 거부했다. 지정 경로에는 별도
+review metadata와 per-image capture-session manifest도 없다. 반려 보고서 SHA-256은
+`aabecff19033729f5c9c816fcd18592f193304496020851daff583b259f2589e`이다.
+
+Runtime gate의 `independent` 역할은 이제 적격 preflight와 candidate manifest를 필수로 받고,
+annotation·image manifest·candidate commit·전체 source lineage·package metadata checksum을
+모두 재검증한 뒤에만 ONNX session을 만든다. 이 operational collection을 independent로 실행한
+부정 테스트는 `independent evidence rejected before model inference`로 종료됐고 출력 report를
+생성하지 않았다. 따라서 개발 재현 증거는 강화됐지만 새 독립 test blocker는 해소되지 않았다.

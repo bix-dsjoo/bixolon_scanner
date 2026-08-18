@@ -101,6 +101,7 @@ bixolon evaluate worker --help
 bixolon evaluate bread-1.1-runtime --help
 bixolon evaluate bread-1.1-runtime-parity --help
 bixolon evaluate bread-1.1-independent-preflight --help
+bixolon experiment bread-1.1-development-identity --help
 bixolon model bread-1.1-candidate-package --help
 bixolon model export --help
 bixolon experiment detector-target --help
@@ -172,7 +173,8 @@ Bread `1.1.0`은 2026-08-18 지정된 version-specific end-to-end 목표를 사�
 Candidate out은 각각 ≤0.1%입니다. `UNKNOWN + Top-3` 비율과 `SEGMENT_RECAPTURE` 비율은
 진단용으로만 보고하고 승격 gate에는 포함하지 않습니다. 분모와 현재 판정은
 [Bread zero-error 1.1.0 실험 문서](docs/experiments/bread/bread-zero-error-1.1.0.md)를 따릅니다.
-1.1의 공식 승격 평가 범위는 `multi_object_scenes`의 EASY/MEDIUM/HARD 300장뿐입니다.
+1.1의 개발 평가 범위는 `multi_object_scenes`의 EASY/MEDIUM/HARD 300장이며, 승격에는 후보가
+보지 않은 새 독립 촬영 세션의 잠금 평가가 추가로 필요합니다.
 `scan_log_samples`는 참고 진단용이며 모델·정책 선택, gate 분모와 승격 판정에서 제외합니다.
 먼저 각 이미지를 최종 `SEGMENTATION`/`IMAGE_RECAPTURE`로 나눈 뒤, FP/FN은 최종
 `SEGMENTATION` 이미지 중 IoU@0.5 FP/FN이 하나라도 있는 이미지의 비율로 계산합니다.
@@ -190,9 +192,13 @@ Top-3 순위와 bbox/confidence 허용 오차를 비교할 수 있습니다. `--
 
 새 독립 데이터는 모델을 실행하기 전에 `bixolon evaluate bread-1.1-independent-preflight`로
 검사합니다. 이 명령은 COCO 무결성, 이미지 SHA-256, 크기, annotation review 완료,
-capture-session provenance, 기존 Detector/Classifier manifest와의 exact 및 dHash≤2 중복을
-검사하고 model inference를 수행하지 않습니다. 하나라도 실패한 데이터는 잠그거나
-`--evidence-role independent`로 평가하지 마십시오.
+capture-session provenance, 후보 manifest가 고정한 전체 개발 계보와의 exact 및 dHash≤2 중복을
+검사하고 model inference를 수행하지 않습니다. 반려 locked test를 후속 후보 개발에 사용했다면
+`bixolon experiment bread-1.1-development-identity`로 그 이미지 계보도 source manifest에
+포함해야 합니다. 하나라도 실패한 데이터는 잠그거나 `--evidence-role independent`로 평가하지
+마십시오. Runtime 평가기의 `--evidence-role independent`는 적격 `--preflight-report`와
+`--candidate-manifest`가 현재 annotation·이미지·package 및 전체 source 계보와 일치할 때만
+ONNX session을 생성합니다.
 
 v3 development package는
 `bixolon model bread-1.1-candidate-package --output-dir <새 경로> --report <보고서>`로

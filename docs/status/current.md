@@ -1,6 +1,6 @@
 # 현재 운영·릴리스 상태
 
-기준일: 2026-08-18
+기준일: 2026-08-19
 
 | 축 | 버전/후보 | 상태 |
 |---|---|---|
@@ -45,6 +45,13 @@ E/M/H 300장의 CPU/CUDA 공개 decision trace는 SHA-256이 모두
 `bread_project/group` 299장은 기존 E/M/H 개발 이미지와 dHash≤2 중복이었다. model inference는
 실행하지 않았다. 새 촬영 세션은 review 완료 COCO GT와 capture-session provenance를 갖추고
 independent preflight를 통과한 뒤에만 단 한 번 평가한다.
+
+사용자가 지정한 `operational_collections/2026-08-18`도 확인했다. 이 115장/504 GT는 기존 v2
+locked test와 SHA-256이 정확히 같고 v2 결과를 본 뒤 v3 개발에 재사용한 세트다. 2026-08-19
+CUDA 재실행에서 `APPROVED` 504/504, 네 오류 0건, `SEGMENTATION` 96.522%, 평균/P95
+75.67/88.48ms를 재현했지만 독립 승격 증거는 아니다. 전체 개발 계보 preflight는 115/115 exact
+중복으로 거부했고, Runtime gate도 부적격 데이터를 `independent`로 지정하면 모델 실행 전에
+실패하도록 강화했다.
 
 이전에 검토한 all-data D-FINE final-soup와 RF-DETR Large 후보는 모두 반려됐다. RF-DETR
 Large는 group-held-out fold 0의 최대 recall이 97.944%(524/535)에 그쳤고 그 설정에서 FP가

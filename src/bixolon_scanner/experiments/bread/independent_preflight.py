@@ -1,17 +1,18 @@
 from __future__ import annotations
 
 import argparse
-import hashlib
 import json
 import re
 from collections import defaultdict
 from pathlib import Path
 from typing import Any
 
-from PIL import Image, ImageOps
-
 from ...contracts.model_package import sha256_file
-from ...training.bread_cv import difference_hash, hamming_distance
+from ...evaluation.bread_dataset_identity import (
+    identity_manifest_sha256,
+    load_coco_image_identities,
+)
+from ...training.bread_cv import hamming_distance
 
 _FINAL_REVIEW_STATUSES = {"approved", "finalized", "locked", "user_review_complete"}
 
@@ -20,17 +21,29 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
 
 
-def _resolve_image(dataset_root: Path, annotation_path: Path, file_name: str) -> Path:
-    candidates = (
-        dataset_root / file_name,
-        dataset_root / "images" / file_name,
-        annotation_path.parent / file_name,
-    )
-    for candidate in candidates:
-        resolved = candidate.resolve()
-        if resolved.is_relative_to(dataset_root) and resolved.is_file():
-            return resolved
-    raise FileNotFoundError(file_name)
+def _candidate_source_scope(
+    candidate_manifest_path: Path,
+    *,
+    candidate_id: str,
+    candidate_commit: str,
+    source_manifest_paths: list[Path],
+) -> tuple[dict[str, Any], bool]:
+    manifest = json.loads(candidate_manifest_path.resolve().read_text(encoding="utf-8"))
+    if manifest.get("candidate_id") != candidate_id:
+        raise ValueError("candidate manifest ID does not match --candidate-id")
+    contract = manifest.get("independent_preflight")
+    if not isinstance(contract, dict):
+        raise ValueError("candidate manifest does not declare independent_preflight")
+    if contract.get("fixed_git_commit") != candidate_commit:
+        raise ValueError("candidate manifest fixed commit does not match --candidate-commit")
+    required = {
+        (Path(str(row["path"])).name, str(row["sha256"]).lower())
+        for row in contract.get("required_source_manifests", [])
+    }
+    supplied = {
+        (path.resolve().name, sha256_file(path.resolve()).lower()) for path in source_manifest_paths
+    }
+    return manifest, bool(required) and supplied == required
 
 
 def _structural_audit(payload: dict[str, Any]) -> dict[str, int]:
@@ -79,9 +92,10 @@ def audit_independent_dataset(
     *,
     dataset_root: Path,
     annotation_path: Path,
-    metadata_path: Path,
-    record_manifest_path: Path,
+    metadata_path: Path | None,
+    record_manifest_path: Path | None,
     source_manifest_paths: list[Path],
+    candidate_manifest_path: Path,
     dataset_version: str,
     candidate_id: str,
     candidate_commit: str,
@@ -89,15 +103,27 @@ def audit_independent_dataset(
 ) -> dict[str, Any]:
     dataset_root = dataset_root.resolve()
     annotation_path = annotation_path.resolve()
-    metadata_path = metadata_path.resolve()
-    record_manifest_path = record_manifest_path.resolve()
+    metadata_path = metadata_path.resolve() if metadata_path is not None else None
+    record_manifest_path = (
+        record_manifest_path.resolve() if record_manifest_path is not None else None
+    )
     if maximum_hamming_distance < 0:
         raise ValueError("maximum Hamming distance must be non-negative")
     if not re.fullmatch(r"[0-9a-f]{7,40}", candidate_commit):
         raise ValueError("candidate commit must be a lowercase Git object id")
+    candidate_manifest, candidate_source_scope_complete = _candidate_source_scope(
+        candidate_manifest_path,
+        candidate_id=candidate_id,
+        candidate_commit=candidate_commit,
+        source_manifest_paths=source_manifest_paths,
+    )
     payload = json.loads(annotation_path.read_text(encoding="utf-8-sig"))
-    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
-    records = _read_jsonl(record_manifest_path)
+    identities = load_coco_image_identities(dataset_root, annotation_path)
+    identity_by_id = {int(row["image_id"]): row for row in identities}
+    metadata = (
+        json.loads(metadata_path.read_text(encoding="utf-8")) if metadata_path is not None else {}
+    )
+    records = _read_jsonl(record_manifest_path) if record_manifest_path is not None else []
     record_by_id = {int(row["image_id"]): row for row in records}
     source_rows = [row for path in source_manifest_paths for row in _read_jsonl(path.resolve())]
     known_by_sha: defaultdict[str, list[dict[str, Any]]] = defaultdict(list)
@@ -117,23 +143,20 @@ def audit_independent_dataset(
     missing_capture_session_count = 0
     image_identity_mismatch_count = 0
     image_dimension_mismatch_count = 0
-    image_manifest_lines: list[str] = []
     for image in sorted(payload["images"], key=lambda row: int(row["id"])):
         image_id = int(image["id"])
         file_name = str(image["file_name"])
-        path = _resolve_image(dataset_root, annotation_path, file_name)
-        image_sha = sha256_file(path).lower()
+        identity = identity_by_id[image_id]
+        image_sha = str(identity["image_sha256"])
         declared_sha = image.get("exported_image_sha256") or image.get("image_sha256")
         image_identity_mismatch_count += bool(
             declared_sha is not None and str(declared_sha).lower() != image_sha
         )
-        with Image.open(path) as source:
-            image_dimension_mismatch_count += ImageOps.exif_transpose(source).size != (
-                int(image["width"]),
-                int(image["height"]),
-            )
-        perceptual_hash = difference_hash(path)
-        image_manifest_lines.append(f"{image_id:06d} {image_sha} {file_name}\n")
+        image_dimension_mismatch_count += (
+            int(identity["actual_width"]),
+            int(identity["actual_height"]),
+        ) != (int(image["width"]), int(image["height"]))
+        perceptual_hash = int(identity["perceptual_hash"])
         exact_rows = known_by_sha.get(image_sha, [])
         if exact_rows:
             exact_overlap_image_ids.append(image_id)
@@ -169,6 +192,7 @@ def audit_independent_dataset(
         record = record_by_id.get(image_id)
         if record is None:
             missing_record_count += 1
+            missing_capture_session_count += 1
         else:
             pending_record_review_count += (
                 str(record.get("annotation_review_status", "")).lower()
@@ -176,15 +200,14 @@ def audit_independent_dataset(
             )
             missing_capture_session_count += not bool(record.get("capture_session_id"))
 
-    image_manifest_sha256 = hashlib.sha256(
-        "".join(image_manifest_lines).encode("utf-8")
-    ).hexdigest()
+    image_manifest_sha256 = identity_manifest_sha256(identities)
     structural = _structural_audit(payload)
     dataset_review_status = str(metadata.get("annotation_review_status", "")).lower()
     dataset_review_final = dataset_review_status in _FINAL_REVIEW_STATUSES
     failure_reasons = []
     checks = {
         "candidate_fixed_before_preflight": True,
+        "candidate_source_scope_complete": candidate_source_scope_complete,
         "dataset_review_final": dataset_review_final,
         "record_manifest_complete": missing_record_count == 0,
         "record_reviews_final": pending_record_review_count == 0,
@@ -205,6 +228,9 @@ def audit_independent_dataset(
         "no_near_development_overlap": not near_overlap_image_ids,
     }
     labels = {
+        "candidate_source_scope_complete": (
+            "source manifests do not cover the candidate's complete development lineage"
+        ),
         "dataset_review_final": "annotation review is not finalized",
         "record_manifest_complete": "record manifest does not cover every COCO image",
         "record_reviews_final": "one or more image annotations remain pending review",
@@ -224,12 +250,19 @@ def audit_independent_dataset(
         "evaluation": "bread_1_1_independent_dataset_preflight",
         "dataset_version": dataset_version,
         "candidate": {"candidate_id": candidate_id, "git_commit": candidate_commit},
+        "candidate_manifest": {
+            "name": candidate_manifest_path.resolve().name,
+            "sha256": sha256_file(candidate_manifest_path.resolve()),
+            "lifecycle": candidate_manifest.get("lifecycle"),
+        },
         "dataset": {
             "directory_name": dataset_root.name,
             "annotation_file": annotation_path.name,
             "annotation_sha256": sha256_file(annotation_path),
-            "metadata_sha256": sha256_file(metadata_path),
-            "record_manifest_sha256": sha256_file(record_manifest_path),
+            "metadata_sha256": sha256_file(metadata_path) if metadata_path is not None else None,
+            "record_manifest_sha256": (
+                sha256_file(record_manifest_path) if record_manifest_path is not None else None
+            ),
             "image_manifest_sha256": image_manifest_sha256,
             "annotation_review_status": dataset_review_status,
         },
@@ -267,9 +300,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Audit a Bread 1.1 dataset before locking it")
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--annotation", type=Path, required=True)
-    parser.add_argument("--metadata", type=Path, required=True)
-    parser.add_argument("--record-manifest", type=Path, required=True)
+    parser.add_argument("--metadata", type=Path)
+    parser.add_argument("--record-manifest", type=Path)
     parser.add_argument("--source-manifest", type=Path, nargs="+", required=True)
+    parser.add_argument("--candidate-manifest", type=Path, required=True)
     parser.add_argument("--dataset-version", required=True)
     parser.add_argument("--candidate-id", required=True)
     parser.add_argument("--candidate-commit", required=True)
@@ -282,6 +316,7 @@ def main() -> None:
         metadata_path=args.metadata,
         record_manifest_path=args.record_manifest,
         source_manifest_paths=args.source_manifest,
+        candidate_manifest_path=args.candidate_manifest,
         dataset_version=args.dataset_version,
         candidate_id=args.candidate_id,
         candidate_commit=args.candidate_commit,
@@ -289,7 +324,9 @@ def main() -> None:
     )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(
-        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

@@ -71,12 +71,29 @@ def _fixture(tmp_path: Path, *, same_as_source: bool, review_status: str) -> dic
         + "\n",
         encoding="utf-8",
     )
+    candidate_manifest = tmp_path / "candidate.json"
+    candidate_manifest.write_text(
+        json.dumps(
+            {
+                "candidate_id": "candidate-v3",
+                "lifecycle": "active_development",
+                "independent_preflight": {
+                    "fixed_git_commit": "adfae95",
+                    "required_source_manifests": [
+                        {"path": "source.jsonl", "sha256": _sha(source_manifest)}
+                    ],
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
     return {
         "dataset_root": dataset,
         "annotation_path": annotation,
         "metadata_path": metadata,
         "record_manifest_path": record_manifest,
         "source_manifest_paths": [source_manifest],
+        "candidate_manifest_path": candidate_manifest,
         "dataset_version": "independent-v1",
         "candidate_id": "candidate-v3",
         "candidate_commit": "adfae95",
@@ -102,3 +119,18 @@ def test_independent_preflight_rejects_overlap_and_pending_review(tmp_path: Path
     assert report["development_overlap_audit"]["exact_overlap_image_count"] == 1
     assert report["checks"]["dataset_review_final"] is False
     assert report["checks"]["record_reviews_final"] is False
+
+
+def test_independent_preflight_rejects_incomplete_candidate_lineage(tmp_path: Path) -> None:
+    fixture = _fixture(tmp_path, same_as_source=False, review_status="finalized")
+    candidate_path = fixture["candidate_manifest_path"]
+    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+    candidate["independent_preflight"]["required_source_manifests"].append(
+        {"path": "missing-development.jsonl", "sha256": "0" * 64}
+    )
+    candidate_path.write_text(json.dumps(candidate), encoding="utf-8")
+
+    report = audit_independent_dataset(**fixture)
+
+    assert report["eligible_for_independent_lock"] is False
+    assert report["checks"]["candidate_source_scope_complete"] is False

@@ -14,6 +14,7 @@ from ..contracts.model_package import load_model_package, sha256_file
 from ..pipeline import DecisionPipeline
 from ..runtime.imaging import decode_image
 from ..runtime.onnx import build_onnx_adapters
+from .bread_dataset_identity import identity_manifest_sha256, load_coco_image_identities
 from .onnx_detector import load_records
 from .release import RecordingClassifier, RecordingDetector, _match
 
@@ -39,6 +40,113 @@ def _decision_trace(image_id: int | str, response: Any) -> dict[str, Any]:
     payload.pop("request_id", None)
     payload.pop("processing_time_ms", None)
     return {"image_id": image_id, **payload}
+
+
+def _validate_independent_preflight(
+    args: argparse.Namespace,
+    annotation_path: Path,
+) -> dict[str, Any] | None:
+    if args.evidence_role != "independent":
+        return None
+    preflight_path = getattr(args, "preflight_report", None)
+    candidate_path = getattr(args, "candidate_manifest", None)
+    if preflight_path is None or candidate_path is None:
+        raise ValueError(
+            "independent evaluation requires --preflight-report and --candidate-manifest"
+        )
+    preflight_path = preflight_path.resolve()
+    candidate_path = candidate_path.resolve()
+    preflight = json.loads(preflight_path.read_text(encoding="utf-8"))
+    candidate = json.loads(candidate_path.read_text(encoding="utf-8"))
+    identities = load_coco_image_identities(args.dataset_root.resolve(), annotation_path)
+    checks = preflight.get("checks", {})
+    failures: list[str] = []
+
+    def require(condition: bool, message: str) -> None:
+        if not condition:
+            failures.append(message)
+
+    require(
+        preflight.get("evaluation") == "bread_1_1_independent_dataset_preflight",
+        "preflight report type is invalid",
+    )
+    require(
+        preflight.get("eligible_for_independent_lock") is True,
+        "dataset did not pass independent lock preflight",
+    )
+    require(
+        preflight.get("promotion_evidence_allowed") is True,
+        "preflight does not allow promotion evidence",
+    )
+    require(
+        preflight.get("model_inference_executed") is False,
+        "preflight was not model-free",
+    )
+    require(
+        checks.get("candidate_source_scope_complete") is True,
+        "candidate development lineage is incomplete",
+    )
+    require(all(value is True for value in checks.values()), "one or more preflight checks failed")
+    require(
+        preflight.get("dataset_version") == args.dataset_version,
+        "dataset version differs from preflight",
+    )
+    dataset = preflight.get("dataset", {})
+    require(
+        dataset.get("annotation_sha256") == sha256_file(annotation_path),
+        "annotation SHA-256 differs from preflight",
+    )
+    require(
+        dataset.get("image_manifest_sha256") == identity_manifest_sha256(identities),
+        "image identity manifest differs from preflight",
+    )
+    require(
+        preflight.get("integrity", {}).get("image_count") == len(identities),
+        "image count differs from preflight",
+    )
+    require(
+        preflight.get("candidate", {}).get("candidate_id") == candidate.get("candidate_id"),
+        "candidate ID differs from preflight",
+    )
+    contract = candidate.get("independent_preflight", {})
+    require(
+        preflight.get("candidate", {}).get("git_commit") == contract.get("fixed_git_commit"),
+        "candidate fixed commit differs from preflight",
+    )
+    require(
+        preflight.get("candidate_manifest", {}).get("sha256") == sha256_file(candidate_path),
+        "candidate manifest differs from preflight",
+    )
+    required_sources = {
+        (Path(str(row["path"])).name, str(row["sha256"]).lower())
+        for row in contract.get("required_source_manifests", [])
+    }
+    preflight_sources = {
+        (str(row.get("name")), str(row.get("sha256", "")).lower())
+        for row in preflight.get("source_manifests", [])
+    }
+    require(
+        bool(required_sources) and preflight_sources == required_sources,
+        "preflight source manifests do not match the candidate development lineage",
+    )
+    package_metadata_path = args.package_dir.resolve() / "metadata.json"
+    require(
+        candidate.get("package", {}).get("metadata_sha256") == sha256_file(package_metadata_path),
+        "runtime package metadata differs from the candidate manifest",
+    )
+    if failures:
+        raise ValueError(
+            "independent evidence rejected before model inference: " + "; ".join(failures)
+        )
+    return {
+        "report": preflight_path.as_posix(),
+        "report_sha256": sha256_file(preflight_path),
+        "candidate_manifest": candidate_path.as_posix(),
+        "candidate_manifest_sha256": sha256_file(candidate_path),
+        "candidate_id": candidate["candidate_id"],
+        "candidate_fixed_git_commit": contract["fixed_git_commit"],
+        "dataset_image_manifest_sha256": dataset["image_manifest_sha256"],
+    }
 
 
 @dataclass
@@ -118,6 +226,7 @@ def build_runtime_gate_metrics(counts: RuntimeGateCounts) -> dict[str, Any]:
 def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     dataset_root = args.dataset_root.resolve()
     annotation_path = dataset_root / "annotations" / args.annotation_name
+    independent_preflight = _validate_independent_preflight(args, annotation_path)
     records = load_records(dataset_root, args.annotation_name)
     package = load_model_package(args.package_dir)
     detector, classifier, provider = build_onnx_adapters(
@@ -285,7 +394,8 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             "provider_performance_requirement_met": performance_requirement_met,
         },
         "development_requirements_met": development_requirements_met,
-        "promotion_eligible": args.evidence_role == "independent" and development_requirements_met,
+        "promotion_eligible": independent_preflight is not None and development_requirements_met,
+        "independent_preflight": independent_preflight,
         "limitations": {
             "development_evidence_is_not_independent_promotion_evidence": (
                 args.evidence_role == "development"
@@ -310,6 +420,8 @@ def main() -> None:
     parser.add_argument("--dataset-version", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--evidence-role", choices=("development", "independent"), required=True)
+    parser.add_argument("--preflight-report", type=Path)
+    parser.add_argument("--candidate-manifest", type=Path)
     parser.add_argument("--provider", choices=("auto", "cuda", "cpu"), default="cuda")
     parser.add_argument("--cuda-dll-dir", type=Path)
     parser.add_argument("--match-iou-threshold", type=float, default=0.5)

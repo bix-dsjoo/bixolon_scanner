@@ -1,0 +1,341 @@
+{
+  "schema_version": "1.0",
+  "evaluation": "bread_1_1_independent_dataset_preflight",
+  "dataset_version": "bread-operational-test-2026-08-18-dac22864668b",
+  "candidate": {
+    "candidate_id": "bread-zero-error-1.1.0-domain-lda-fixed-four-v3",
+    "git_commit": "adfae95"
+  },
+  "candidate_manifest": {
+    "name": "final_candidate_v3_2026-08-18.json",
+    "sha256": "ef0e86e1c751f9fb6686ca5331d0a8290d5a2fe0723bb3b51cb274e075607c14",
+    "lifecycle": "active_development"
+  },
+  "dataset": {
+    "directory_name": "2026-08-18",
+    "annotation_file": "instances.json",
+    "annotation_sha256": "7909a8fdb31850b5af1cb4e95aa007b6b9e3d2ec5da06e6f8c9f74d3ed2bb56f",
+    "metadata_sha256": null,
+    "record_manifest_sha256": null,
+    "image_manifest_sha256": "e34d5ba03d316395291cd3d04c8b3c7fd85cf6fa517683960e2554461207bcce",
+    "annotation_review_status": ""
+  },
+  "source_manifests": [
+    {
+      "name": "detector_manifest.jsonl",
+      "sha256": "2ffc2b318f20f5195a952b76ed6ac345a73a4f41a7c75e417701cac5c7c6fea0"
+    },
+    {
+      "name": "classifier_manifest.jsonl",
+      "sha256": "afe4b679c806847267e8dc8c9a2c89a48de479ec1c66e455333e757a304f4ddd"
+    },
+    {
+      "name": "rejected_operational_v3_development_identity.jsonl",
+      "sha256": "b978a82daa0b3b1ece4ad941d2abcbda21159bf34fa952d9ef0a27a124c96e23"
+    }
+  ],
+  "integrity": {
+    "image_count": 115,
+    "annotation_count": 504,
+    "category_count": 20,
+    "duplicate_image_id_count": 0,
+    "duplicate_annotation_id_count": 0,
+    "orphan_annotation_count": 0,
+    "invalid_bbox_count": 0,
+    "unknown_category_count": 0,
+    "missing_record_count": 115,
+    "pending_record_review_count": 0,
+    "missing_capture_session_count": 115,
+    "image_identity_mismatch_count": 0,
+    "image_dimension_mismatch_count": 0
+  },
+  "development_overlap_audit": {
+    "known_source_row_count": 715,
+    "exact_overlap_image_count": 115,
+    "near_overlap_image_count": 0,
+    "maximum_hamming_distance": 2,
+    "minimum_cross_set_hamming_distance": 0,
+    "exact_overlap_image_ids": [
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63,
+      64,
+      65,
+      66,
+      67,
+      68,
+      69,
+      70,
+      71,
+      72,
+      73,
+      74,
+      75,
+      76,
+      77,
+      78,
+      79,
+      80,
+      81,
+      82,
+      83,
+      84,
+      85,
+      86,
+      87,
+      88,
+      89,
+      90,
+      91,
+      92,
+      93,
+      94,
+      95,
+      96,
+      97,
+      98,
+      99,
+      100,
+      101,
+      102,
+      103,
+      104,
+      105,
+      106,
+      107,
+      108,
+      109,
+      110,
+      111,
+      112,
+      113,
+      114,
+      115
+    ],
+    "near_overlap_image_ids": [],
+    "examples": [
+      {
+        "image_id": 1,
+        "file_name": "../images/001_8eb4a5d2605b4b159e3b8476cd3d7f45.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/001_8eb4a5d2605b4b159e3b8476cd3d7f45.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 2,
+        "file_name": "../images/002_4bae2ac84c7742a480303665df41481c.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/002_4bae2ac84c7742a480303665df41481c.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 3,
+        "file_name": "../images/003_1da5cd6e4cbb40369375e67e7a87a057.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/003_1da5cd6e4cbb40369375e67e7a87a057.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 4,
+        "file_name": "../images/004_ec2a9efedfe942fc88deadde2107bf5b.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/004_ec2a9efedfe942fc88deadde2107bf5b.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 5,
+        "file_name": "../images/005_ba93756849a54f1da181d2ebf7348d37.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/005_ba93756849a54f1da181d2ebf7348d37.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 6,
+        "file_name": "../images/006_f31040793a734858aef82f4837261d97.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/006_f31040793a734858aef82f4837261d97.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 7,
+        "file_name": "../images/007_97c4b055af32456fb58227b0e2656058.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/007_97c4b055af32456fb58227b0e2656058.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 8,
+        "file_name": "../images/008_88356d84b3cb4e319988f1c43b40b6a5.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/008_88356d84b3cb4e319988f1c43b40b6a5.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 9,
+        "file_name": "../images/009_52105357879d4fa39eae993158808ec8.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/009_52105357879d4fa39eae993158808ec8.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 10,
+        "file_name": "../images/010_b35b1561d0fc422da9f3ea10b56a2f4b.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/010_b35b1561d0fc422da9f3ea10b56a2f4b.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 11,
+        "file_name": "../images/011_b805d9ee05e74b58bcbc621154bc2747.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/011_b805d9ee05e74b58bcbc621154bc2747.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 12,
+        "file_name": "../images/012_e8f49d911f81415f9f5bed0d17c68b64.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/012_e8f49d911f81415f9f5bed0d17c68b64.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 13,
+        "file_name": "../images/013_76a95b6711aa4996a91ad8c44836893f.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/013_76a95b6711aa4996a91ad8c44836893f.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 14,
+        "file_name": "../images/014_99430732fea34e64a3e2db3ed711cb37.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/014_99430732fea34e64a3e2db3ed711cb37.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 15,
+        "file_name": "../images/015_0ffe81376ef64398ab40da14e2aabe6d.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/015_0ffe81376ef64398ab40da14e2aabe6d.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 16,
+        "file_name": "../images/016_70d872278fab4862ad1905cf4f546cd8.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/016_70d872278fab4862ad1905cf4f546cd8.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 17,
+        "file_name": "../images/017_f20ba79eb27d4f908d687e20baa90ae0.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/017_f20ba79eb27d4f908d687e20baa90ae0.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 18,
+        "file_name": "../images/018_013662c3459d4b9bb5a328250f92bf64.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/018_013662c3459d4b9bb5a328250f92bf64.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 19,
+        "file_name": "../images/019_72bd05d1d0634bc4b782e50d2e1d0f2a.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/019_72bd05d1d0634bc4b782e50d2e1d0f2a.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      },
+      {
+        "image_id": 20,
+        "file_name": "../images/020_9d8ce9ba964c45049b70a431b387b4a1.jpg",
+        "overlap_type": "exact_sha256",
+        "source_image_path": "../images/020_9d8ce9ba964c45049b70a431b387b4a1.jpg",
+        "source_evaluation_set": "rejected_locked_test_as_v3_development"
+      }
+    ]
+  },
+  "checks": {
+    "candidate_fixed_before_preflight": true,
+    "candidate_source_scope_complete": true,
+    "dataset_review_final": false,
+    "record_manifest_complete": false,
+    "record_reviews_final": true,
+    "capture_session_provenance_complete": false,
+    "image_identity_valid": true,
+    "image_dimensions_valid": true,
+    "coco_structure_valid": true,
+    "no_exact_development_overlap": false,
+    "no_near_development_overlap": true
+  },
+  "eligible_for_independent_lock": false,
+  "promotion_evidence_allowed": false,
+  "failure_reasons": [
+    "annotation review is not finalized",
+    "record manifest does not cover every COCO image",
+    "capture session provenance is incomplete",
+    "images exactly overlap candidate development data"
+  ],
+  "model_inference_executed": false
+}
