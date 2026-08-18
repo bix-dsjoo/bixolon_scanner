@@ -164,6 +164,22 @@ group-aware 분할, 잠긴 test, parity, 성능 및 package 검증 의무는 그
 이미지 재촬영으로 우회하지 마십시오. 공식 정의와 현재 재판정은
 `docs/experiments/bread/bread-zero-error-1.1.0.md`를 따릅니다.
 
+### Bread 1.1.0 소유자 승인 예외와 1.1.1 이후 계약
+
+프로젝트 소유자는 2026-08-19 `bread-zero-error-1.1.0-domain-lda-fixed-four-v3`를 Worker·
+Detector·Classifier `1.1.0` 운영 기준선으로 명시적으로 승인했습니다. 이 결정은 최종 LDA head가
+`single_objects` 200장 외의 E/M/H ROI 1,410개로 fit됐고 새 독립 잠금 test가 없다는 두 실패를
+감사 가능한 `manual_waiver`로 남기는 1.1.0 한정 예외입니다. E/M/H와 반려 운영 115장을 독립
+증거로 재분류하거나, 1.1.0 개발 수치를 독립 일반화 성능으로 표현하지 마십시오.
+
+이 예외는 `1.1.1` 이상에 상속되지 않습니다. 1.1.1부터 Classifier의 모든 학습 가능한 파라미터,
+feature/head fitting, normalization statistic, calibration, 승인 threshold, Top-3 ranking과 TTA
+선택은 `manifests/bread-zero-error-1.1/classifier_manifest.jsonl`의 `single_objects` 200장과 그
+결정적 파생 입력만 사용해야 합니다. E/M/H, scan log, operational collection, GT crop과 detector
+ROI는 Classifier 학습·fitting에 사용할 수 없습니다. successor의 독립 승격에는 새 촬영 세션의
+잠금 test가 다시 필요합니다. 버전별 반복과 종료 조건은
+`docs/experiments/bread/bread-classifier-200-only-1.1.1-plan.md`를 따릅니다.
+
 평균 지연만 보고하지 마십시오. p50, p95, p99와 표본 수를 함께 기록하고 detector 조기 종료와 full-path를 구분하십시오. 벤치마크 결과에는 모델·데이터셋·ONNX Runtime·CUDA·드라이버 버전, 하드웨어와 warm-up 조건을 포함하십시오.
 
 ## 테스트 요구사항

@@ -7,18 +7,19 @@
 | 구분 | 현재 값 | 의미 |
 |---|---|---|
 | Python 배포 | `bixolon-scanner 1.0.0` | 정식 Worker API 코드와 CLI 배포 버전 |
-| 운영 Worker | `1.0.0` | Detector/Classifier 조합 버전, `production` |
-| 운영 Detector | `1.0.0` | D-FINE-N 640, 독립 버전 |
-| 운영 Classifier | `1.0.0` | DINOv3 ConvNeXt-Tiny staged TTA, 독립 버전 |
+| 운영 Worker | `1.1.0` | 고정 4-model Detector와 domain LDA 조합, owner-waiver `production` |
+| 운영 Detector | `1.1.0` | D-FINE-N 4-model ensemble, 독립 버전 |
+| 운영 Classifier | `1.1.0` | DINOv3 ConvNeXt-Tiny + domain LDA, 독립 버전 |
 | Detector 학습 파이프라인 | `1.0.0` | D-FINE-N 학습·선택·export 계약, 독립 버전 |
 | Classifier 학습 파이프라인 | `1.0.0` | DINOv3 학습·선택·staged TTA export 계약, 독립 버전 |
-| 데이터셋 | `bread-1.0-a52b4faa3e20` | `single_objects_3` 종류별 12장과 평가 이미지 SHA-256 잠금 |
-| Flutter 앱 | `1.0.0+2` | Worker 1.0.0 연동 작업자 앱 버전 |
-| 이전 운영 package | `bread-worker-0.1.1` | 테스트 계열 rollback 기준 |
+| 데이터셋 | `bread-1.1-development-plus-rejected-operational-v2` | 1.1.0 bridge release 계보와 두 owner waiver 보존 |
+| Flutter 앱 | `1.0.0+3` | Worker·Detector·Classifier 1.1.0 readiness 확인 |
+| 이전 운영 package | `bread-worker-1.0.0` | 1.1.0 장애 시 첫 rollback 기준 |
+| 비상 rollback package | `bread-worker-0.1.1` | 테스트 계열 최종 수동 복구 기준 |
 
 `0.x` Worker/Detector/Classifier는 모두 테스트 계열이며 `bread-worker-0.1.1`은 rollback용으로만 유지합니다. 이전 `0.2.4` classifier는 자연 장면 Top-1 94.98%, 오인 위험 상한 1.92%, P95 110.95ms로 실패했고, detector `0.2.5`도 hard·독립성·risk gate에 실패했습니다.
 
-운영 `bread-worker-1.0.0`은 `multi_object_scenes`에서 인식률 99.0780%, 승인 오인율 0%(0/1,121), segmentation recall/precision 99.2908%/99.7151%, 평균/P95 77.79/96.01ms를 기록했고 RECAPTURE는 0건입니다. 프로젝트 소유자의 명시적 지시에 따라 운영 승격했으며, 표본 부족으로 단측 95% 오인율 상한이 0.2669%라는 잔여 위험과 독립 이미지 사후 검증 의무를 package promotion record에 보존합니다.
+운영 `bread-worker-1.1.0`은 E/M/H 개발 300장에서 `APPROVED` 1,410/1,410, 이미지 FP/FN·승인 오인·Candidate out 0건, CUDA 평균/P95 91.71/90.99ms를 기록했습니다. 프로젝트 소유자는 2026-08-19 이 후보를 bridge release로 명시적으로 승인했습니다. 최종 LDA가 E/M/H ROI 1,410개로 학습됐고 새 독립 test가 없다는 두 실패는 package의 `manual_waiver`에서 제거하지 않습니다. `1.1.1`부터는 Classifier 학습·fitting을 `single_objects` 200장으로만 제한합니다.
 
 ## 판정 계약
 
@@ -70,7 +71,7 @@ Python `3.11` 이상 `3.14` 미만을 지원합니다.
 ```powershell
 python -m pip install -e ".[cuda]"
 
-$env:BIXOLON_PACKAGE_DIR = "artifacts\packages\bread-worker-1.0.0"
+$env:BIXOLON_PACKAGE_DIR = "artifacts\packages\bread-worker-1.1.0"
 $env:BIXOLON_PROVIDER = "cuda"
 $env:BIXOLON_CUDA_DLL_DIR = "C:\path\to\CUDA-and-cuDNN-bin"
 bixolon worker
@@ -84,7 +85,7 @@ bixolon worker
 
 `/health/ready`의 준비 완료 응답에는 실행 중인 `provider`와 독립적인
 `worker_version`, `detector_version`, `classifier_version`이 포함됩니다. BIXOLON SCANNER
-`1.0.0+2`는 스캔 전에 Worker 계약 버전 `1.0.0`을 확인합니다.
+`1.0.0+3`은 스캔 전에 Worker·Detector·Classifier 계약 버전 `1.1.0`을 확인합니다.
 
 CUDA 강제 모드는 초기화 실패 시 시작을 실패시키며 CPU로 조용히 전환하지 않습니다. `auto`에서만 두 ONNX session을 함께 CPU로 다시 생성합니다.
 
@@ -153,9 +154,9 @@ GitHub Actions는 Windows의 Python `3.11`·`3.13` CPU 테스트와 Flutter `3.4
 
 ## 데이터와 모델
 
-원본·증강 이미지, checkpoint, ONNX, benchmark artifact는 Git에 커밋하지 않습니다. 이 제품의 데이터는 `datasets/bread_dataset`만 허용합니다. `single_objects` 10장, `single_objects_1` 7장, `single_objects_2` 10장, `single_objects_3` 12장은 서로 섞지 않고 독립 학습·비교합니다. 현재 운영 Detector는 `single_objects` 10장, Classifier는 `single_objects_3` 12장의 recovered provenance를 사용합니다. 실제 합격 기준은 `multi_object_scenes` 300장이며 `scan_log_samples`는 참고용으로만 유지하고 합격 판정에는 포함하지 않습니다. 각 manifest와 Detector 합성 학습 데이터는 선택한 원본의 SHA-256 provenance를 보존해야 합니다.
+원본·증강 이미지, checkpoint, ONNX, benchmark artifact는 Git에 커밋하지 않습니다. 이 제품의 데이터는 `datasets/bread_dataset`만 허용합니다. `single_objects` 10장, `single_objects_1` 7장, `single_objects_2` 10장, `single_objects_3` 12장은 서로 섞지 않고 독립 학습·비교합니다. 운영 1.1.0은 DINOv3 기반 feature에 E/M/H ROI로 fit한 LDA를 사용한다는 owner-waiver 계보를 보존합니다. 1.1.1부터 Classifier의 파라미터·fitted statistic·calibration·threshold는 `single_objects` 종류별 10장, 총 200장만 사용합니다. E/M/H와 운영 수집본은 개발 회귀 전용이고 `scan_log_samples`는 Detector 참고용입니다.
 
-release composition 데이터 계약은 `manifests/bread-1.0-a52b4faa3e20`이며 Detector 학습 provenance는 과거 10장 계약 `manifests/bread-1.0.0`에 별도로 잠깁니다. Detector와 Classifier 학습 파이프라인은 통합 버전 없이 각각 `1.0.0`으로 관리합니다. schema 2.1 package는 구성요소별 학습 데이터셋·manifest와 파이프라인 계약 SHA를 모두 기록합니다. 계약, 검증 명령과 버전 상승 규칙은 [학습 파이프라인 1.0.0 가이드](docs/guides/training-pipeline-1.0.0.md)를 따릅니다.
+과거 1.0 release composition 데이터 계약은 `manifests/bread-1.0-a52b4faa3e20`이며 Detector 학습 provenance는 10장 계약 `manifests/bread-1.0.0`에 별도로 잠깁니다. 현재 1.1.0의 owner-waiver 계보는 `configs/releases/bread_1.1.0_owner_waiver.json`, 1.1.1+의 200장 허용 목록은 `manifests/bread-zero-error-1.1/classifier_manifest.jsonl`이 소유합니다. 기존 1.0 계약과 검증 명령은 [학습 파이프라인 1.0.0 가이드](docs/guides/training-pipeline-1.0.0.md), successor 계획은 [Classifier 200장 전용 1.1.1+ 계획](docs/experiments/bread/bread-classifier-200-only-1.1.1-plan.md)을 따릅니다.
 
 Bread 1.1의 schema 2.0 development package는 `detector.ensemble`에 member checksum,
 fusion, base selection, policy consensus, ambiguity union, class-verified selector와 선택적
@@ -173,8 +174,9 @@ Bread `1.1.0`은 2026-08-18 지정된 version-specific end-to-end 목표를 사�
 Candidate out은 각각 ≤0.1%입니다. `UNKNOWN + Top-3` 비율과 `SEGMENT_RECAPTURE` 비율은
 진단용으로만 보고하고 승격 gate에는 포함하지 않습니다. 분모와 현재 판정은
 [Bread zero-error 1.1.0 실험 문서](docs/experiments/bread/bread-zero-error-1.1.0.md)를 따릅니다.
-1.1의 개발 평가 범위는 `multi_object_scenes`의 EASY/MEDIUM/HARD 300장이며, 승격에는 후보가
-보지 않은 새 독립 촬영 세션의 잠금 평가가 추가로 필요합니다.
+1.1의 개발 평가 범위는 `multi_object_scenes`의 EASY/MEDIUM/HARD 300장입니다. 1.1.0은 소유자
+승인 예외로 운영 기준선이지만 이 범위를 독립 test로 해석하지 않습니다. 200장 전용 1.1.1+
+successor의 정상 승격에는 후보가 보지 않은 새 독립 촬영 세션의 잠금 평가가 필요합니다.
 `scan_log_samples`는 참고 진단용이며 모델·정책 선택, gate 분모와 승격 판정에서 제외합니다.
 먼저 각 이미지를 최종 `SEGMENTATION`/`IMAGE_RECAPTURE`로 나눈 뒤, FP/FN은 최종
 `SEGMENTATION` 이미지 중 IoU@0.5 FP/FN이 하나라도 있는 이미지의 비율로 계산합니다.

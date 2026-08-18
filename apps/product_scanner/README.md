@@ -76,7 +76,7 @@ flutter build windows --release
 대표 운영 상태는 `test/goldens` 이미지로도 회귀 검증합니다. 골든은 시각 비평 후 의도한 변경일 때만 `flutter test test/scanner_screen_test.dart --update-goldens`로 갱신합니다.
 
 Release 결과는 `build\windows\x64\runner\Release`에 생성됩니다.
-운영 모델 패키지와 기대 버전은 release composition manifest에서 읽는다. Release 빌드는 composition, Worker, Detector, Classifier 또는 CUDA runtime 파일이 하나라도 없으면 실패하며 전체 bundle file manifest를 생성한다. 앱 `1.0.0+2`는 `/health/ready`에서 Worker·Detector·Classifier 세 버전을 모두 검사하고, `DETECTOR_CONTAINED_DUPLICATE`를 재촬영으로 바꾸지 않은 채 중복 박스와 Top-3 검토로 안내한다. 모델 바이너리는 Git에 커밋하지 않는다.
+운영 모델 패키지와 기대 버전은 release composition manifest에서 읽는다. Release 빌드는 composition, Worker, Detector, Classifier 또는 CUDA runtime 파일이 하나라도 없으면 실패하며 전체 bundle file manifest를 생성한다. 앱 `1.0.0+3`은 `/health/ready`에서 Worker·Detector·Classifier `1.1.0`을 모두 검사하고, `DETECTOR_CONTAINED_DUPLICATE`를 재촬영으로 바꾸지 않은 채 중복 박스와 Top-3 검토로 안내한다. 모델 바이너리는 Git에 커밋하지 않는다.
 
 ## 로컬 데이터
 

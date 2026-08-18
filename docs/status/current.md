@@ -5,17 +5,19 @@
 | 축 | 버전/후보 | 상태 |
 |---|---|---|
 | Python | `1.0.0` | 정식 API 계약 코드 |
-| 현재 운영 package | `bread-worker-1.0.0` | schema 1.1 production, 바이너리 불변 |
+| 현재 운영 package | `bread-worker-1.1.0` | schema 2.0 owner-waiver production |
 | schema 2.1 hardening 후보 | `bread-worker-1.0.0-hardened-candidate-recovered` | `not_promoted`, 개선 후 재검증 |
-| Worker / Detector / Classifier | `1.0.0` | 독립 버전 |
+| Worker / Detector / Classifier | `1.1.0` | 고정 4-model Detector + domain LDA bridge release |
 | Detector 학습 파이프라인 | `1.0.0` | recovered 10-shot provenance |
 | Classifier 학습 파이프라인 | `1.0.0` | recovered 12-shot provenance |
-| Active 1.1 목표 | `bread-zero-error-1.1.0-domain-lda-fixed-four-v3` | 개발 정확도·CUDA 성능 통과, `promotion_ready=false` |
-| release 데이터셋 | `bread-1.0-a52b4faa3e20` | `single_objects_3`, 종류별 12장 |
-| Flutter | `1.0.0+2` | Worker·Detector·Classifier readiness 확인 |
-| 사용자 독립 test | pending | 1.0.0 조정에 사용하지 않음 |
+| 승격 원본 | `bread-zero-error-1.1.0-domain-lda-fixed-four-v3` | 두 알려진 제한을 waiver로 보존 |
+| release 데이터셋 | `bread-1.1-development-plus-rejected-operational-v2` | E/M/H LDA fit과 반려 운영본 재사용 계보 |
+| Flutter | `1.0.0+3` | Worker·Detector·Classifier 1.1.0 readiness 확인 |
+| 다음 Classifier | `1.1.1+` | `single_objects` 200장 전용 계획 |
+| 사용자 독립 test | pending | 1.1.1+ successor 승격용 새 세션 필요 |
 | 이전 Detector 후보 | `0.2.5` | `experiment_only`, 미승격 |
-| Rollback package | `bread-worker-0.1.1` | 장애 시 수동 복구용 |
+| Rollback package | `bread-worker-1.0.0` | 1.1.0 장애 시 첫 수동 복구용 |
+| 비상 rollback package | `bread-worker-0.1.1` | 테스트 계열 최종 복구용 |
 
 `bread-zero-error-1.1.0`의 공식 gate는 `SEGMENTATION ≥90%`, 전체 판정 가능 GT 대비
 end-to-end `APPROVED ≥90%`, 그리고 `SEGMENTATION` 이미지 FP/FN·승인 오인·Candidate out
@@ -34,11 +36,14 @@ E/M/H 300장의 CPU/CUDA 공개 decision trace는 SHA-256이 모두
 진단일 뿐 승격 지연 gate가 아니다.
 
 이 결과는 개발 목표와 CUDA 성능·provider parity 통과이지 독립 일반화 증거가 아니다. v2 운영
-수집본을 본 뒤 v3 정책을 선택했으므로 새 촬영 세션의 잠금 test가 필요하다. Ruff lint/format,
-전체 Python, Flutter analyze와 164개 Flutter test, diff check는 통과했다. 따라서 v3는
-`active_development`, `promotion_eligible=false`이고 운영
-기본 package는 계속 `bread-worker-1.0.0`이다. 분모와 최신 재판정은
-[1.1.0 실험 문서](../experiments/bread/bread-zero-error-1.1.0.md)를 따른다.
+수집본을 본 뒤 v3 정책을 선택했고 최종 LDA도 E/M/H ROI 1,410개로 fit됐다. 프로젝트 소유자는
+2026-08-19 두 제한을 숨기지 않는 `manual_waiver`로 v3를 `bread-worker-1.1.0` 운영 기준선에
+승격했다. waiver는 `configs/releases/bread_1.1.0_owner_waiver.json`에 고정한다.
+
+이 예외는 1.1.0에만 적용된다. 1.1.1부터 Classifier의 파라미터, head/statistic fitting,
+calibration과 threshold는 `single_objects` 200장만 사용한다. E/M/H와 운영 115장은 개발 회귀
+전용이며, successor 승격에는 새 촬영 세션의 잠금 test가 다시 필요하다. 세부 반복 계획은
+[200장 전용 1.1.1+ 계획](../experiments/bread/bread-classifier-200-only-1.1.1-plan.md)을 따른다.
 
 추가 raw storage preflight에서도 적격 독립 데이터는 0개였다. `bread_project_4` 100장은 모두
 기존 `scan_log_samples`와 exact SHA 중복이고 review가 미완료였으며,

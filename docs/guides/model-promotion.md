@@ -69,4 +69,11 @@ RTX 5080 full-path 성능 gate는 생략하지 않는다.
 
 schema 2.1 hardening package도 동일한 통계 gate를 새로 우회하지 않는다. 모델 바이너리가 같더라도 새 production 디렉터리 생성에는 명시적 통계 위험 승인이 필요하며, 승인 전 후보는 `development`로 유지한다. 승격은 같은 볼륨의 임시 디렉터리에서 검증한 뒤 rename하고 이미 존재하는 version 디렉터리는 덮어쓰지 않는다.
 
+2026-08-19 프로젝트 소유자는 Bread 1.1.0 v3를 bridge release로 별도 승인했다. 이 package는
+Classifier 최종 LDA가 `single_objects` 200장 외의 E/M/H ROI 1,410개로 fit된 점과 새 독립
+잠금 test가 없다는 점을 각각 `classifier_training_source_restriction`,
+`evaluation_set_independence` waiver로 기록한다. 두 개발 세트를 독립 증거로 바꾸지 않으며 이
+예외는 1.1.1 이상에 상속되지 않는다. 승격 입력은
+`configs/releases/bread_1.1.0_owner_waiver.json`이다.
+
 원본 데이터, checkpoint, ONNX와 benchmark artifact는 Git에 넣지 않습니다. 결과 문서에는 모델·데이터셋·ONNX Runtime·CUDA·driver·hardware·warm-up과 표본 수를 기록합니다.

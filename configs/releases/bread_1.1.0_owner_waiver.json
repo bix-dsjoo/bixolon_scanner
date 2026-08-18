@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.0",
+  "release": "bread-worker-1.1.0",
+  "promotion_method": "owner_approved_known_limitations",
+  "decided_on": "2026-08-19",
+  "source_candidate_id": "bread-zero-error-1.1.0-domain-lda-fixed-four-v3",
+  "source_candidate_metadata_sha256": "1eeddde7fa2f4944386d5f75bb6981581cc403f94e4c3828f2b8345487961299",
+  "production_metadata_sha256": "21ffe8af662f85a4715f4508e10ab085512c4211185d8a34f0ebdfe51d9865e9",
+  "production_package": {
+    "path": "artifacts/packages/bread-worker-1.1.0",
+    "sha256_directory": "6bf60e950f2678f7de603054af07e54131cffa815fa97669d4e2e6897c1b508d"
+  },
+  "dataset_version": "bread-1.1-development-plus-rejected-operational-v2",
+  "versions": {
+    "worker_version": "1.1.0",
+    "detector_version": "1.1.0",
+    "classifier_version": "1.1.0"
+  },
+  "checks": {
+    "six_operational_gates": true,
+    "final_approved_goal": true,
+    "full_path_mean_and_p95_latency": true,
+    "cpu_cuda_runtime_parity": true,
+    "package_reproduction": true,
+    "repository_regression": true,
+    "classifier_training_source_restriction": false,
+    "evaluation_set_independence": false
+  },
+  "failures": [
+    "classifier_training_source_restriction",
+    "evaluation_set_independence"
+  ],
+  "waivers": [
+    {
+      "gate": "classifier_training_source_restriction",
+      "observed": 1.0,
+      "target": 0.0,
+      "sample_count": 1410,
+      "correct_count": 0,
+      "reason": "The project owner explicitly approved Worker 1.1.0 as a bridge release even though the final LDA classifier head was fit on 1,410 E/M/H development ROIs instead of only the single_objects 200-image source. This exception does not apply to 1.1.1 or later."
+    },
+    {
+      "gate": "evaluation_set_independence",
+      "observed": 0.0,
+      "target": 1.0,
+      "sample_count": 300,
+      "correct_count": 0,
+      "reason": "The project owner explicitly approved Worker 1.1.0 without a new unseen locked test. E/M/H and the rejected 115-image operational collection remain development evidence and are not relabeled as independent."
+    }
+  ],
+  "remaining_limitations": [
+    "The production classifier LDA head was trained on all 1,410 E/M/H development ROIs; its 1,410/1,410 result is not independent validation.",
+    "The 115-image operational collection was opened for the rejected v2 candidate and then used to tune v3, so it remains development_only.",
+    "Worker 1.1.1 and later must train every classifier parameter, fitted statistic, calibration value, approval threshold, and ranking policy only from the frozen single_objects 200-image manifest and deterministic derivatives of those images.",
+    "A new capture session that passes identity and provenance preflight is still required for independent promotion evidence for the 200-image-only successor."
+  ],
+  "evidence": {
+    "candidate_manifest": "manifests/bread-zero-error-1.1/final_candidate_v3_2026-08-18.json",
+    "development_report": "artifacts/experiments/bread-zero-error-1.1.0/reports/runtime-six-gate-development-v16-area-first-fast-path.json",
+    "operational_development_report": "artifacts/experiments/bread-zero-error-1.1.0/reports/runtime-six-gate-rejected-operational-development-v16-area-first-fast-path.json",
+    "cpu_cuda_parity_report": "artifacts/experiments/bread-zero-error-1.1.0/reports/runtime-six-gate-development-v16-cpu-cuda-parity.json",
+    "package_reproduction_report": "artifacts/experiments/bread-zero-error-1.1.0/reports/package-v3-independent-reproduction.json"
+  },
+  "successor": {
+    "first_version": "1.1.1",
+    "plan": "docs/experiments/bread/bread-classifier-200-only-1.1.1-plan.md"
+  }
+}

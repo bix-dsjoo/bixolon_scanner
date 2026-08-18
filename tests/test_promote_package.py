@@ -1,10 +1,18 @@
 from __future__ import annotations
 
 import copy
+import hashlib
+import json
+from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
-from bixolon_scanner.training.promote_package import production_metadata, promote_package
+from bixolon_scanner.training.promote_package import (
+    owner_waiver_metadata,
+    production_metadata,
+    promote_package,
+)
 
 
 def _candidate() -> dict:
@@ -103,3 +111,158 @@ def test_promotion_never_overwrites_an_existing_version_directory(tmp_path):
         )
 
     assert marker.read_text(encoding="utf-8") == "existing"
+
+
+def test_owner_approved_bread_1_1_bridge_records_both_known_limitations():
+    candidate = _candidate()
+    candidate["worker_version"] = "1.1.0"
+    candidate["detector"]["version"] = "1.1.0"
+    candidate["classifier"]["version"] = "1.1.0"
+    report = {
+        "promotion_method": "owner_approved_known_limitations",
+        "source_candidate_id": "bread-zero-error-1.1.0-domain-lda-fixed-four-v3",
+        "dataset_version": "bread-v1",
+        "versions": {
+            "worker_version": "1.1.0",
+            "detector_version": "1.1.0",
+            "classifier_version": "1.1.0",
+        },
+        "checks": {
+            "six_operational_gates": True,
+            "latency": True,
+            "cpu_cuda_parity": True,
+            "classifier_training_source_restriction": False,
+            "evaluation_set_independence": False,
+        },
+        "failures": [
+            "classifier_training_source_restriction",
+            "evaluation_set_independence",
+        ],
+        "waivers": [
+            {
+                "gate": "classifier_training_source_restriction",
+                "observed": 1.0,
+                "target": 0.0,
+                "sample_count": 1410,
+                "correct_count": 0,
+                "reason": "The final LDA head used same-domain development ROIs.",
+            },
+            {
+                "gate": "evaluation_set_independence",
+                "observed": 0.0,
+                "target": 1.0,
+                "sample_count": 300,
+                "correct_count": 0,
+                "reason": "No unseen locked test is available for this bridge release.",
+            },
+        ],
+        "remaining_limitations": ["Replace the classifier in Worker 1.1.1."],
+    }
+
+    metadata = owner_waiver_metadata(candidate, report, decided_on="2026-08-19")
+
+    assert metadata["promotion_status"] == "production"
+    assert {row["gate"] for row in metadata["promotion"]["waivers"]} == {
+        "classifier_training_source_restriction",
+        "evaluation_set_independence",
+    }
+    assert metadata["promotion"]["remaining_limitations"] == [
+        "Replace the classifier in Worker 1.1.1."
+    ]
+
+
+def test_owner_waiver_promotion_copies_every_detector_ensemble_member(tmp_path: Path, monkeypatch):
+    candidate_dir = tmp_path / "candidate"
+    candidate_dir.mkdir()
+    detector_paths = [candidate_dir / f"detector-{index}.onnx" for index in range(4)]
+    classifier_path = candidate_dir / "classifier.onnx"
+    for index, path in enumerate(detector_paths):
+        path.write_bytes(f"detector-{index}".encode())
+    classifier_path.write_bytes(b"classifier")
+    candidate_metadata = {
+        "schema_version": "2.0",
+        "promotion_status": "development",
+        "worker_version": "1.1.0",
+        "dataset_version": "bread-v1",
+        "detector": {"version": "1.1.0"},
+        "classifier": {"version": "1.1.0"},
+    }
+    metadata_path = candidate_dir / "metadata.json"
+    metadata_path.write_text(json.dumps(candidate_metadata) + "\n", encoding="utf-8")
+    metadata_sha256 = hashlib.sha256(metadata_path.read_bytes()).hexdigest()
+    report = {
+        "promotion_method": "owner_approved_known_limitations",
+        "source_candidate_id": "bread-zero-error-1.1.0-domain-lda-fixed-four-v3",
+        "source_candidate_metadata_sha256": metadata_sha256,
+        "dataset_version": "bread-v1",
+        "versions": {
+            "worker_version": "1.1.0",
+            "detector_version": "1.1.0",
+            "classifier_version": "1.1.0",
+        },
+        "checks": {
+            "classifier_training_source_restriction": False,
+            "evaluation_set_independence": False,
+            "six_operational_gates": True,
+        },
+        "failures": [
+            "classifier_training_source_restriction",
+            "evaluation_set_independence",
+        ],
+        "waivers": [
+            {
+                "gate": "classifier_training_source_restriction",
+                "observed": 1.0,
+                "target": 0.0,
+                "sample_count": 1410,
+                "correct_count": 0,
+                "reason": "Bridge release classifier source exception.",
+            },
+            {
+                "gate": "evaluation_set_independence",
+                "observed": 0.0,
+                "target": 1.0,
+                "sample_count": 300,
+                "correct_count": 0,
+                "reason": "Bridge release independent test exception.",
+            },
+        ],
+        "remaining_limitations": ["Replace the classifier in 1.1.1."],
+    }
+    report_path = tmp_path / "report.json"
+    report_path.write_text(json.dumps(report) + "\n", encoding="utf-8")
+    package_metadata = SimpleNamespace(
+        promotion_status="production",
+        worker_version="1.1.0",
+        detector=SimpleNamespace(version="1.1.0"),
+        classifier=SimpleNamespace(version="1.1.0"),
+        dataset_version="bread-v1",
+    )
+    candidate = SimpleNamespace(
+        detector_paths=detector_paths,
+        classifier_path=classifier_path,
+        count_verifier_path=None,
+    )
+
+    def fake_load(path: Path):
+        if path.resolve() == candidate_dir.resolve():
+            return candidate
+        return SimpleNamespace(metadata=package_metadata)
+
+    monkeypatch.setattr("bixolon_scanner.training.promote_package.load_model_package", fake_load)
+    output_dir = tmp_path / "bread-worker-1.1.0"
+
+    result = promote_package(
+        candidate_dir,
+        report_path,
+        output_dir,
+        decided_on="2026-08-19",
+        approve_statistical_risk=False,
+        approve_known_limitations=True,
+    )
+
+    assert result["promotion_status"] == "production"
+    assert {path.name for path in output_dir.glob("*.onnx")} == {
+        *(path.name for path in detector_paths),
+        classifier_path.name,
+    }

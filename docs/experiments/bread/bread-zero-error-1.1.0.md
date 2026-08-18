@@ -558,3 +558,30 @@ annotation·image manifest·candidate commit·전체 source lineage·package met
 모두 재검증한 뒤에만 ONNX session을 만든다. 이 operational collection을 independent로 실행한
 부정 테스트는 `independent evidence rejected before model inference`로 종료됐고 출력 report를
 생성하지 않았다. 따라서 개발 재현 증거는 강화됐지만 새 독립 test blocker는 해소되지 않았다.
+
+## 2026-08-19 1.1.0 소유자 승인 승격
+
+프로젝트 소유자는 Classifier 데이터 계보와 독립 test 부재를 확인한 뒤에도 현재 v3를
+Worker·Detector·Classifier `1.1.0` 운영 기준선으로 우선 승격하도록 명시적으로 지시했다. 이에
+다음 두 실패를 제거하거나 통과로 바꾸지 않고 production package의 `manual_waiver`로 기록한다.
+
+- 최종 LDA head가 `single_objects` 200장만 사용하지 않고 E/M/H ROI 1,410개 전체로 fit됐다.
+- v3가 보지 않은 새 독립 잠금 test가 없다.
+
+승격 package는 `artifacts/packages/bread-worker-1.1.0`, 입력 결정은
+`configs/releases/bread_1.1.0_owner_waiver.json`이다. E/M/H 1,410/1,410과 운영 재사용본
+504/504는 계속 개발 결과이며 독립 성능으로 재분류하지 않는다.
+
+이 예외는 1.1.0 한정이다. 1.1.1부터 Classifier의 모든 파라미터, fitted statistic,
+calibration, threshold와 ranking/TTA 선택은 `single_objects` 200장과 그 결정적 파생 입력만
+사용한다. 버전별 최소 실험과 종료 조건은
+[Classifier 200장 전용 1.1.1+ 계획](bread-classifier-200-only-1.1.1-plan.md)에 고정한다.
+
+```powershell
+bixolon model promote `
+  --candidate-dir artifacts/packages/bread-zero-error-1.1.0-candidate `
+  --release-report configs/releases/bread_1.1.0_owner_waiver.json `
+  --output-dir artifacts/packages/bread-worker-1.1.0 `
+  --decided-on 2026-08-19 `
+  --approve-known-limitations
+```

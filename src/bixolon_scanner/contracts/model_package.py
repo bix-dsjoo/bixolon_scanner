@@ -508,6 +508,7 @@ class PromotionWaiver(BaseModel):
         "unknown_top3_accuracy",
         "evaluation_set_independence",
         "approved_misrecognition_rate_upper_95",
+        "classifier_training_source_restriction",
     ]
     observed: float = Field(ge=0.0, le=1.0)
     target: float = Field(ge=0.0, le=1.0)

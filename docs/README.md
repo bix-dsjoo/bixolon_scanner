@@ -9,6 +9,7 @@
 - [개발 가이드](guides/development.md): 설치, CLI, 설정, 검증 절차
 - [모델 승격 가이드](guides/model-promotion.md): 실험 수명주기와 수동 gate
 - [학습 파이프라인 1.0.0](guides/training-pipeline-1.0.0.md): Detector·Classifier 독립 계약, 검증과 버전 정책
+- [Bread Classifier 200장 전용 1.1.1+ 계획](experiments/bread/bread-classifier-200-only-1.1.1-plan.md): 허용 데이터, patch 반복과 종료 조건
 - [현재 상태](status/current.md): 운영·실험 버전과 승격 여부
 
 ## 실험 기록
