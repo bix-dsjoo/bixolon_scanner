@@ -45,6 +45,10 @@ COMMANDS: dict[tuple[str, ...], CommandTarget] = {
         "bixolon_scanner.evaluation.bread_runtime_parity",
         "main",
     ),
+    ("evaluate", "bread-1.1-independent-preflight"): (
+        "bixolon_scanner.experiments.bread.independent_preflight",
+        "main",
+    ),
     ("evaluate", "parity"): ("bixolon_scanner.evaluation.parity", "main"),
     ("evaluate", "benchmark"): ("bixolon_scanner.evaluation.benchmark", "main"),
     ("evaluate", "compare-difficulty"): (

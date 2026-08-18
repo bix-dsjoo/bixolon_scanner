@@ -509,3 +509,24 @@ bixolon model bread-1.1-candidate-package `
 `flutter analyze`, Flutter 164개 전체 테스트와 `git diff --check`를 모두 통과했다. 따라서
 코드·package·provider·회귀 측면의 개발 검증은 끝났고, 남은 단일 blocker는 v3가 보지 않은 새
 독립 촬영 세션의 잠금 평가다.
+
+## 2026-08-18 추가 로컬 독립 데이터 preflight
+
+v3 commit `adfae95`를 push한 뒤 로컬 raw storage를 다시 전수 조사했다. 모델 inference 전에
+COCO 구조, 실제 이미지 SHA-256과 크기, review 완료 여부, capture-session provenance, 기존
+Detector/Classifier manifest의 exact SHA 및 dHash≤2 중복을 검사하는
+`bixolon evaluate bread-1.1-independent-preflight`를 추가했다.
+
+`bread_project_4`의 100장은 모두 기존 `scan_log_samples` 개발 manifest와 exact SHA가
+일치했다. 100장 모두 `pending_user_review`이고 72장은 capture-session ID가 없었다. 따라서
+구조적으로 유효한 100장/213 annotation이더라도 독립 잠금과 승격 증거로 사용하는 것을
+거부했다. 기계 판독 결과는
+`manifests/bread-zero-error-1.1/rejected_independent_preflight_bread_project_4_2026-08-18.json`이다.
+
+`bread_project/group`의 299장도 E/M/H 개발 이미지와 nearest dHash 거리가 모두 2 이하였고,
+269장은 dHash가 완전히 같았다. `bread_project_2`는 이미 사용한 E/M/H export,
+`bread_project_3`은 canonical dataset source와 review archive다. `train`, `train2`, `train3`,
+`train4`는 단일 객체 분류 자료라 end-to-end multi-object segmentation/FN/FP/재촬영 gate를
+검증할 수 없다. 따라서 현재 로컬의 적격 multi-object 독립 데이터는 0개이며 새 촬영 세션이
+필요하다는 결론은 유지한다. 전체 inventory는
+`manifests/bread-zero-error-1.1/raw_data_independent_inventory_2026-08-18.json`에 고정한다.

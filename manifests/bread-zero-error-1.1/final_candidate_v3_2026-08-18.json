@@ -128,6 +128,14 @@
     "flutter_tests_passed": true,
     "git_diff_check": true
   },
+  "independent_data_inventory": {
+    "eligible_local_multi_object_dataset_count": 0,
+    "inventory": "manifests/bread-zero-error-1.1/raw_data_independent_inventory_2026-08-18.json",
+    "inventory_sha256": "5312b215bf65940a207f8253f75ca2afa64cc2f31e1b74760fc3797a4fa25ca6",
+    "bread_project_4_rejection": "manifests/bread-zero-error-1.1/rejected_independent_preflight_bread_project_4_2026-08-18.json",
+    "bread_project_4_rejection_sha256": "426055ae3b92af567acd73e08f5af5055af3f9afc83e6a4b0e44a7b834d1d2fa",
+    "model_inference_executed": false
+  },
   "promotion_ready": false,
   "promotion_blockers": [
     "new_independent_locked_test_required"

@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "audit": "bread_1_1_local_independent_data_inventory",
+  "audited_on": "2026-08-18",
+  "candidate": {
+    "candidate_id": "bread-zero-error-1.1.0-domain-lda-fixed-four-v3",
+    "git_commit": "adfae95",
+    "candidate_fixed_and_pushed_before_audit": true
+  },
+  "locations": [
+    {
+      "name": "bread_project_4",
+      "role": "scan-log review export",
+      "image_count": 100,
+      "annotation_count": 213,
+      "exact_candidate_development_overlap_count": 100,
+      "pending_review_image_count": 100,
+      "missing_capture_session_count": 72,
+      "eligible_for_independent_lock": false,
+      "evidence": "manifests/bread-zero-error-1.1/rejected_independent_preflight_bread_project_4_2026-08-18.json"
+    },
+    {
+      "name": "bread_project/group",
+      "role": "pre-normalization source of the E/M/H multi-object development dataset",
+      "image_count": 299,
+      "annotation_count": 1406,
+      "nearest_candidate_development_dhash_distance_at_most_2_count": 299,
+      "nearest_candidate_development_dhash_distance_zero_count": 269,
+      "maximum_nearest_candidate_development_dhash_distance": 2,
+      "eligible_for_independent_lock": false
+    },
+    {
+      "name": "bread_project_2",
+      "role": "E/M/H development export already represented by multi_object_scenes",
+      "eligible_for_independent_lock": false
+    },
+    {
+      "name": "bread_project_3",
+      "role": "canonical bread_dataset source plus archived review derivatives",
+      "eligible_for_independent_lock": false
+    },
+    {
+      "name": "bread_project/train, train2, train3, train4",
+      "role": "single-object classification material",
+      "end_to_end_multi_object_gate_coverage": false,
+      "eligible_for_independent_lock": false
+    }
+  ],
+  "eligible_local_multi_object_dataset_count": 0,
+  "model_inference_executed_during_inventory": false,
+  "conclusion": "A new capture session with finalized COCO ground truth and complete capture-session provenance is required."
+}

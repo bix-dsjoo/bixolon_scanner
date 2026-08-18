@@ -100,6 +100,7 @@ bixolon train verify-pipeline --help
 bixolon evaluate worker --help
 bixolon evaluate bread-1.1-runtime --help
 bixolon evaluate bread-1.1-runtime-parity --help
+bixolon evaluate bread-1.1-independent-preflight --help
 bixolon model bread-1.1-candidate-package --help
 bixolon model export --help
 bixolon experiment detector-target --help
@@ -186,6 +187,12 @@ Bread 1.1 실행 패키지 평가는 `bixolon evaluate bread-1.1-runtime`으로 
 JSONL로 고정한 뒤 `bixolon evaluate bread-1.1-runtime-parity`로 CPU/CUDA 최종 상태·클래스·
 Top-3 순위와 bbox/confidence 허용 오차를 비교할 수 있습니다. `--evidence-role independent`는
 후보 선택에 사용하지 않은 잠금 데이터에만 지정하십시오.
+
+새 독립 데이터는 모델을 실행하기 전에 `bixolon evaluate bread-1.1-independent-preflight`로
+검사합니다. 이 명령은 COCO 무결성, 이미지 SHA-256, 크기, annotation review 완료,
+capture-session provenance, 기존 Detector/Classifier manifest와의 exact 및 dHash≤2 중복을
+검사하고 model inference를 수행하지 않습니다. 하나라도 실패한 데이터는 잠그거나
+`--evidence-role independent`로 평가하지 마십시오.
 
 v3 development package는
 `bixolon model bread-1.1-candidate-package --output-dir <새 경로> --report <보고서>`로

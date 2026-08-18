@@ -40,6 +40,12 @@ E/M/H 300장의 CPU/CUDA 공개 decision trace는 SHA-256이 모두
 기본 package는 계속 `bread-worker-1.0.0`이다. 분모와 최신 재판정은
 [1.1.0 실험 문서](../experiments/bread/bread-zero-error-1.1.0.md)를 따른다.
 
+추가 raw storage preflight에서도 적격 독립 데이터는 0개였다. `bread_project_4` 100장은 모두
+기존 `scan_log_samples`와 exact SHA 중복이고 review가 미완료였으며,
+`bread_project/group` 299장은 기존 E/M/H 개발 이미지와 dHash≤2 중복이었다. model inference는
+실행하지 않았다. 새 촬영 세션은 review 완료 COCO GT와 capture-session provenance를 갖추고
+independent preflight를 통과한 뒤에만 단 한 번 평가한다.
+
 이전에 검토한 all-data D-FINE final-soup와 RF-DETR Large 후보는 모두 반려됐다. RF-DETR
 Large는 group-held-out fold 0의 최대 recall이 97.944%(524/535)에 그쳤고 그 설정에서 FP가
 7,223건이어서 남은 fold 학습을 중단했다. 실패 기록은 v3의 same-domain LDA와 선택적
