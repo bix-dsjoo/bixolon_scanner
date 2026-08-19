@@ -1,0 +1,33 @@
+{
+  "schema_version": "1.1",
+  "release": "bread-worker-1.1.0",
+  "lifecycle": "attested",
+  "versions": {
+    "python": "1.0.0",
+    "worker": "1.1.0",
+    "detector": "1.1.0",
+    "classifier": "1.1.0",
+    "detector_training_pipeline": null,
+    "classifier_training_pipeline": null,
+    "dataset": "bread-1.1-development-plus-rejected-operational-v2",
+    "app": "1.0.0+3"
+  },
+  "model_package": {
+    "path": "artifacts/packages/bread-worker-1.1.0",
+    "sha256": "6bf60e950f2678f7de603054af07e54131cffa815fa97669d4e2e6897c1b508d"
+  },
+  "model_package_metadata": {
+    "path": "artifacts/packages/bread-worker-1.1.0/metadata.json",
+    "sha256": "21ffe8af662f85a4715f4508e10ab085512c4211185d8a34f0ebdfe51d9865e9"
+  },
+  "training_contracts": null,
+  "manual_waiver": {
+    "path": "configs/releases/bread_1.1.0_owner_waiver.json",
+    "sha256": "b76e3cc80d91b8a72918e207a5e7cc2bece963da6714c4eb42190993b8599c9b"
+  },
+  "windows_bundle_manifest": {
+    "path": "artifacts/releases/bixolon-scanner-1.0.0+3/bundle-manifest.json",
+    "sha256": "f4c621e6fde3c481522e87abae0d42ed9c20a4ab550dea113829bc8ead79ff67"
+  },
+  "independent_test_status": "pending_user_images"
+}

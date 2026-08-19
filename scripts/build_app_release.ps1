@@ -1,5 +1,5 @@
 param(
-    [string]$Composition = "configs/releases/bixolon_scanner_1.0.0.json",
+    [string]$Composition = "configs/releases/bixolon_scanner_1.1.0.json",
     [string]$FlutterExecutable = "C:/Users/OMEN/development/flutter/bin/flutter.bat",
     [string]$PythonExecutable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$CudaRuntimeDirectory = $env:BIXOLON_CUDA_DLL_DIR,
@@ -7,6 +7,25 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+function Get-RelativeReleasePath {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$BasePath,
+        [Parameter(Mandatory = $true)]
+        [string]$TargetPath
+    )
+
+    $baseFullPath = [System.IO.Path]::GetFullPath($BasePath).TrimEnd("\") + "\"
+    $targetFullPath = [System.IO.Path]::GetFullPath($TargetPath)
+    if (-not $targetFullPath.StartsWith(
+            $baseFullPath,
+            [System.StringComparison]::OrdinalIgnoreCase)) {
+        throw "Release path is outside its expected root: $targetFullPath"
+    }
+    return $targetFullPath.Substring($baseFullPath.Length).Replace("\", "/")
+}
+
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $compositionPath = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot $Composition))
 $compositionValue = Get-Content -Raw -LiteralPath $compositionPath | ConvertFrom-Json
@@ -78,7 +97,7 @@ try {
         Sort-Object FullName |
         ForEach-Object {
             [ordered]@{
-                path = [System.IO.Path]::GetRelativePath($temporaryBundle, $_.FullName).Replace("\", "/")
+                path = Get-RelativeReleasePath -BasePath $temporaryBundle -TargetPath $_.FullName
                 size_bytes = $_.Length
                 sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
             }
@@ -87,7 +106,7 @@ try {
         schema_version = "1.0"
         release = $releaseName
         app_version = $appVersion
-        composition_path = [System.IO.Path]::GetRelativePath($repositoryRoot, $compositionPath).Replace("\", "/")
+        composition_path = Get-RelativeReleasePath -BasePath $repositoryRoot -TargetPath $compositionPath
         file_count = @($files).Count
         files = @($files)
     }

@@ -55,8 +55,11 @@ flutter analyze
 flutter test
 cd ..\..
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_worker.ps1
-cd apps\product_scanner
-flutter build windows --release
+$cudaRuntime = "C:\path\to\CUDA-13-cuDNN-9-runtime"
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\build_app_release.ps1 `
+  -Composition configs\releases\bixolon_scanner_1.1.0.json `
+  -CudaRuntimeDirectory $cudaRuntime
 ```
 
 `build_worker.ps1`은 학습용 PyTorch를 제외하고 FastAPI와 ONNX Runtime만 포함한
@@ -67,16 +70,20 @@ flutter build windows --release
 CUDA 13·cuDNN 9 기반 ONNX Runtime GPU Release를 만들 때는 재배포 가능한 DLL 디렉터리를 CMake cache 또는 환경 변수로 지정한 뒤 빌드합니다. 해당 디렉터리는 `cublas64_13.dll`, `cublasLt64_13.dll`, `cudart64_13.dll`, cuDNN 9 component DLL, `cufft64_12.dll`, `nvJitLink_130_0.dll`, `nvrtc64_130_0.dll`, `nvrtc-builtins64_130.dll`, `zlibwapi.dll`을 포함해야 합니다.
 
 ```powershell
-$env:BIXOLON_CUDA_DLL_DIR = "C:\path\to\CUDA-13-cuDNN-9-runtime"
-flutter build windows --release
+$cudaRuntime = "C:\path\to\CUDA-13-cuDNN-9-runtime"
+powershell.exe -NoProfile -ExecutionPolicy Bypass `
+  -File .\scripts\build_app_release.ps1 `
+  -CudaRuntimeDirectory $cudaRuntime
 ```
 
 성공한 Release는 `worker\bixolon-worker.exe`, `worker\model-package`, `worker\cuda-runtime`을 포함하고 `/health/ready`의 `provider`가 `cuda`여야 합니다. CUDA DLL이 불완전하면 readiness를 열지 않으며 CPU full-path로 조용히 실행하지 않습니다.
 
 대표 운영 상태는 `test/goldens` 이미지로도 회귀 검증합니다. 골든은 시각 비평 후 의도한 변경일 때만 `flutter test test/scanner_screen_test.dart --update-goldens`로 갱신합니다.
 
-Release 결과는 `build\windows\x64\runner\Release`에 생성됩니다.
+Flutter 원본 Release 결과는 `build\windows\x64\runner\Release`, 전체 파일 manifest로 잠긴 배포본은
+`artifacts\releases\bixolon-scanner-1.0.0+3`에 생성됩니다.
 운영 모델 패키지와 기대 버전은 release composition manifest에서 읽는다. Release 빌드는 composition, Worker, Detector, Classifier 또는 CUDA runtime 파일이 하나라도 없으면 실패하며 전체 bundle file manifest를 생성한다. 앱 `1.0.0+3`은 `/health/ready`에서 Worker·Detector·Classifier `1.1.0`을 모두 검사하고, `DETECTOR_CONTAINED_DUPLICATE`를 재촬영으로 바꾸지 않은 채 중복 박스와 Top-3 검토로 안내한다. 모델 바이너리는 Git에 커밋하지 않는다.
+재현 입력은 `configs\releases\bixolon_scanner_1.1.0.json`, 생성된 bundle manifest까지 잠근 검증 계약은 `configs\releases\bixolon_scanner_1.1.0_attested.json`이다.
 
 ## 로컬 데이터
 

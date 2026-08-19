@@ -170,6 +170,81 @@ def test_release_composition_rejects_app_version_drift(tmp_path: Path) -> None:
         verify_release_composition(composition, repository_root=tmp_path)
 
 
+def test_release_composition_verifies_manual_waiver_provenance(tmp_path: Path) -> None:
+    composition = _repository(tmp_path)
+    package = tmp_path / "artifacts" / "packages" / "worker"
+    metadata_path = package / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    waiver_row = {
+        "gate": "evaluation_set_independence",
+        "observed": 0.0,
+        "target": 1.0,
+        "sample_count": 10,
+        "correct_count": 0,
+        "reason": "Owner accepted a bridge release pending an independent test.",
+    }
+    metadata["promotion"] = {
+        "decision": "approved",
+        "method": "manual_waiver",
+        "decided_on": "2026-08-19",
+        "waivers": [waiver_row],
+    }
+    _write(metadata_path, metadata)
+    waiver_path = tmp_path / "configs" / "releases" / "owner-waiver.json"
+    _write(
+        waiver_path,
+        {
+            "release": composition.release,
+            "promotion_method": "owner_approved_known_limitations",
+            "dataset_version": "bread-test",
+            "production_metadata_sha256": _sha(metadata_path),
+            "production_package": {
+                "path": "artifacts/packages/worker",
+                "sha256_directory": sha256_directory(package),
+            },
+            "versions": {
+                "worker_version": "1.0.0",
+                "detector_version": "1.0.0",
+                "classifier_version": "1.0.0",
+            },
+            "checks": {"evaluation_set_independence": False},
+            "failures": ["evaluation_set_independence"],
+            "waivers": [waiver_row],
+        },
+    )
+    payload = composition.model_dump(mode="json")
+    payload["schema_version"] = "1.1"
+    payload["versions"]["detector_training_pipeline"] = None
+    payload["versions"]["classifier_training_pipeline"] = None
+    payload["model_package"]["sha256"] = sha256_directory(package)
+    payload["model_package_metadata"]["sha256"] = _sha(metadata_path)
+    payload["training_contracts"] = None
+    payload["manual_waiver"] = {
+        "path": "configs/releases/owner-waiver.json",
+        "sha256": _sha(waiver_path),
+    }
+    composition = ReleaseComposition.model_validate(payload)
+
+    result = verify_release_composition(composition, repository_root=tmp_path)
+
+    assert result["provenance"]["mode"] == "manual_waiver"
+    assert result["provenance"]["waived_gates"] == ["evaluation_set_independence"]
+
+
+def test_release_composition_rejects_partial_pipeline_versions(tmp_path: Path) -> None:
+    payload = _repository(tmp_path).model_dump(mode="json")
+    payload["schema_version"] = "1.1"
+    payload["versions"]["detector_training_pipeline"] = None
+    payload["training_contracts"] = None
+    payload["manual_waiver"] = {
+        "path": "configs/releases/owner-waiver.json",
+        "sha256": "0" * 64,
+    }
+
+    with pytest.raises(ValueError, match="pipeline versions"):
+        ReleaseComposition.model_validate(payload)
+
+
 def test_release_composition_verifies_every_windows_bundle_file(tmp_path: Path) -> None:
     composition = _repository(tmp_path)
     bundle = tmp_path / "artifacts" / "releases" / "app"
