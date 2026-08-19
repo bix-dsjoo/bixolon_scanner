@@ -101,7 +101,6 @@ python -m bixolon_scanner.evaluation.release `
   --output artifacts/experiments/bread-source-single_objects_3-dinov3/reports/release-gate-multi-cuda-production.json `
   --details artifacts/experiments/bread-source-single_objects_3-dinov3/reports/release-errors-multi-cuda-production.csv `
   --provider cuda `
-  --gate-dataset multi_object_scenes `
   --cuda-dll-dir C:/workspace/bixolon_scanner/apps/product_scanner/build/windows/x64/runner/Release/worker/cuda-runtime `
   --warmup-count 10
 ```

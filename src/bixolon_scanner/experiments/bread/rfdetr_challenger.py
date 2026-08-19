@@ -65,7 +65,7 @@ def validate_inputs(config: dict[str, Any], repository_root: Path, fold: int) ->
         raise ValueError("RF-DETR fold dataset provenance mismatch")
     if int(dataset_report["group_fold_overlap_count"]) != 0:
         raise ValueError("RF-DETR fold dataset contains group leakage")
-    if dataset_report["source_manifest_sha256"] != config["dataset"]["manifest_sha256"]:
+    if dataset_report["source_manifest_sha256"] != config["dataset"]["historical_manifest_sha256"]:
         raise ValueError("RF-DETR fold dataset manifest checksum mismatch")
     output = _resolve_repository_path(
         repository_root, config["dataset"]["fold_output_template"].format(fold=fold)
@@ -119,7 +119,7 @@ def run(config_path: Path, repository_root: Path, fold: int, epochs: int | None)
         "experiment": config["experiment"],
         "candidate": config["candidate"],
         "fold": fold,
-        "manifest_sha256": config["dataset"]["manifest_sha256"],
+        "manifest_sha256": config["dataset"]["historical_manifest_sha256"],
         "pretrained_sha256": config["pretraining"]["sha256"],
         "group_aware": True,
         "held_out_test_set": False,

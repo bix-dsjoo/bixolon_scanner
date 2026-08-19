@@ -10,7 +10,7 @@
   },
   "dataset": {
     "root": "datasets/bread_dataset",
-    "version": "bread-1.1-fb586306bf10",
+    "version": "bread-1.1-171f25171307",
     "metadata": "manifests/bread-zero-error-1.1/metadata.json",
     "detector_manifest": "manifests/bread-zero-error-1.1/detector_manifest.jsonl",
     "classifier_manifest": "manifests/bread-zero-error-1.1/classifier_manifest.jsonl",
@@ -27,9 +27,7 @@
     "promotion_evaluation_scope": {
       "included_evaluation_sets": ["multi_object_scenes"],
       "included_difficulties": ["EASY", "MEDIUM", "HARD"],
-      "image_count": 300,
-      "excluded_evaluation_sets": ["scan_log_samples"],
-      "scan_log_reference_only": true
+      "image_count": 300
     }
   },
   "detector": {
@@ -112,25 +110,6 @@
         "stopped_after_epoch": 10,
         "best_recall": 0.38461538461538464
       }
-    },
-    "selected_development_policy": {
-      "base_predictions": "outer-fold D-FINE and legacy proposal features",
-      "count_model": "random_forest",
-      "count_model_report": "artifacts/experiments/bread-zero-error-1.1.0/detector/oof-final-selective-rf05-count-search.json",
-      "raw_metrics": {
-        "image_count": 369,
-        "ground_truth_count": 1623,
-        "false_positive_count_iou50": 0,
-        "false_negative_count_iou50": 3
-      },
-      "disagreement_image_recapture_ids": [153, 155, 160, 298],
-      "accepted_after_all_image_gates": {
-        "image_count": 362,
-        "ground_truth_count": 1583,
-        "false_positive_count_iou50": 0,
-        "false_negative_count_iou50": 0,
-        "exact_image_rate": 1.0
-      }
     }
   },
   "classifier": {
@@ -149,52 +128,7 @@
         "weight": 0.10
       }
     ],
-    "unsafe_top3_action": "SEGMENT_RECAPTURE",
-    "top3_policy_selection": "two_checkpoint_neighbor_mask_grouped_oof_no_locked_test",
-    "selected_development_policy": {
-      "report": "artifacts/experiments/bread-zero-error-1.1.0/classifier/grouped-rate-policy.json",
-      "views": [
-        {"name": "clutter_v2", "weight": 0.90},
-        {"name": "clutter_finetune_v2", "weight": 0.10}
-      ],
-      "approval_guard_samples": 2,
-      "top3_guard_samples": 8,
-      "policy": "approval=class_conditional_margin;top3=weighted_reciprocal_rank;safety=inverse_entropy",
-      "no_failure_approval_threshold": 0.98,
-      "package_approval_thresholds": [
-        0.9800000190734863, 0.9800000190734863, 0.9800000190734863,
-        0.9998032450675964, 0.9981681108474731, 0.9992360472679138,
-        0.9984535574913025, 0.9800000190734863, 0.9800000190734863,
-        0.9996997714042664, 0.9800000190734863, 0.9999430179595947,
-        0.9800000190734863, 0.999990701675415, 0.9800000190734863,
-        0.999960720539093, 0.9992694854736328, 0.999901294708252,
-        0.9998908638954163, 0.5081271529197693
-      ],
-      "package_top3_safety_threshold": -2.9602475991540342,
-      "global_ranking_tie_break_bias_span": 0.0002,
-      "evaluation_after_all_image_gates": {
-        "sample_count": 1583,
-        "approved_count": 1426,
-        "approved_rate": 0.9008212255211624,
-        "approved_misrecognition_count": 1,
-        "approved_misrecognition_rate": 0.0006317119393556538,
-        "unknown_count": 94,
-        "unknown_top3_candidate_out_count": 1,
-        "unknown_top3_candidate_out_rate": 0.0006317119393556538,
-        "segment_recapture_count": 63,
-        "segment_recapture_rate": 0.03979785217940619
-      }
-    }
-  },
-  "image_quality": {
-    "selected_development_policy": "reason-specific conjunctions of at most two scalar conditions",
-    "report": "artifacts/experiments/bread-zero-error-1.1.0/detector/image-recapture-selector-search-v4.json",
-    "expected_recapture_count": 31,
-    "caught_expected_recapture_count": 31,
-    "false_recapture_count_on_scan_log_annotated": 3,
-    "false_recapture_image_ids": [1000040, 1000088, 1000090],
-    "pooled_oof_pass": true,
-    "nested_diagnostic_pass": false
+    "unsafe_top3_action": "SEGMENT_RECAPTURE"
   },
   "targets": {
     "release_1_1": {
@@ -236,20 +170,11 @@
     "official_evaluation_scope": {
       "evaluation_set": "multi_object_scenes",
       "difficulties": ["EASY", "MEDIUM", "HARD"],
-      "image_count": 300,
-      "scan_log_excluded": true
+      "image_count": 300
     },
-    "full_development_report": "artifacts/experiments/bread-zero-error-1.1.0/reports/full-development-six-gate-validation.json",
-    "full_development_decisions": "artifacts/experiments/bread-zero-error-1.1.0/reports/full-development-six-gate-decisions.jsonl",
-    "full_development_report_scope": "legacy 400-image diagnostic; not the current promotion denominator",
     "official_emh_classifier_report": "artifacts/experiments/bread-zero-error-1.1.0/classifier/grouped-rate-policy-emh.json",
     "finite_development_pipeline_goals_met": true,
     "raw_detector_aspiration_met": false,
-    "overall_image_recapture_count": 38,
-    "overall_image_recapture_rate": 0.095,
-    "false_annotated_image_recapture_count": 7,
-    "false_annotated_image_recapture_rate": 0.018970189701897018,
-    "classifier_grouped_rate_policy_report": "artifacts/experiments/bread-zero-error-1.1.0/classifier/grouped-rate-policy.json",
     "cpu_parity_report": "artifacts/experiments/bread-zero-error-1.1.0/classifier/neighbor-mask-export/cpu-final-parity.json",
     "cuda_parity_report": "artifacts/experiments/bread-zero-error-1.1.0/classifier/neighbor-mask-export/cuda-canonical-final-parity.json",
     "candidate_worker_report": "artifacts/evaluations/bread_project_2/bread-worker-1.1.0-neighbor-mask-candidate-cuda.json",
@@ -272,7 +197,7 @@
     "candidate_worker_segment_recapture_count": 26,
     "candidate_worker_segment_recapture_rate": 0.018571428571428572,
     "release_1_1_development_gate_summary": {
-      "scope": "multi_object_scenes E/M/H; scan_log_samples excluded",
+      "scope": "multi_object_scenes E/M/H 300 images",
       "segmentation": {"numerator": 296, "denominator": 300, "rate": 0.9866666666666667, "met": true},
       "approved": {"numerator": 1270, "denominator": 1383, "rate": 0.918293564714389, "met": true},
       "segmentation_image_false_negative": {"numerator": 0, "denominator": 296, "rate": 0.0, "met": true},

@@ -1,7 +1,7 @@
 {
   "schema_version": "1.1",
-  "dataset_version": "bread-1.1-fb586306bf10",
-  "dataset_digest_sha256": "fb586306bf103058ac1a56f7eb7272700d721e61c7a7eb1fab816e9c8ce8c207",
+  "dataset_version": "bread-1.1-171f25171307",
+  "dataset_digest_sha256": "171f251713074d2de18b842d5f3467da863fb878435d67a9d4a97f0f2f99dcb6",
   "classifier": {
     "selected_source": "single_objects",
     "allowed_sources": [
@@ -14,7 +14,7 @@
       "single_objects_2",
       "single_objects_3"
     ],
-    "source_dataset_version": "bread-1.0-17a07d799c4e",
+    "source_dataset_version": "bread-1.0-0631f549bbf6",
     "image_count": 200,
     "duplicate_audit": {
       "image_count": 200,
@@ -26,37 +26,36 @@
     "manifest_sha256": "afe4b679c806847267e8dc8c9a2c89a48de479ec1c66e455333e757a304f4ddd"
   },
   "detector": {
-    "image_count": 400,
-    "annotated_image_count": 369,
-    "expected_recapture_image_count": 31,
-    "annotation_count": 1623,
+    "image_count": 300,
+    "annotated_image_count": 300,
+    "expected_recapture_image_count": 0,
+    "annotation_count": 1410,
     "sources": [
-      "multi_object_scenes",
-      "scan_log_samples"
+      "multi_object_scenes"
     ],
     "all_images_participate_in_cross_validation": true,
     "duplicate_audit": {
-      "image_count": 400,
-      "group_count": 397,
+      "image_count": 300,
+      "group_count": 300,
       "exact_duplicate_group_count": 0,
-      "near_duplicate_group_count": 3,
+      "near_duplicate_group_count": 0,
       "maximum_hamming_distance": 2
     },
     "folds": {
       "fold_count": 3,
       "image_counts": [
-        133,
-        134,
-        133
+        100,
+        101,
+        99
       ],
       "group_counts": [
-        131,
-        134,
-        132
+        100,
+        101,
+        99
       ],
       "assignment_key": "perceptual_group_id"
     },
-    "manifest_sha256": "2ffc2b318f20f5195a952b76ed6ac345a73a4f41a7c75e417701cac5c7c6fea0"
+    "manifest_sha256": "309a7b8a3f5072ced17106f26f1a5004b13218ed310b6bd012b5c29b6fcce406"
   },
   "evaluation_policy": {
     "held_out_test_set": false,

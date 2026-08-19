@@ -540,7 +540,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             maximum_false_recapture_rate=args.maximum_false_recapture_rate,
         ),
         "limitations": [
-            "The scan-log evaluation labels were inspected, so these rules cannot be promoted.",
+            "The development evaluation labels were inspected, so these rules cannot be promoted.",
             "The diagnostic estimates separability only and is not an independent test result.",
         ],
     }
@@ -555,7 +555,7 @@ def main() -> None:
         description="Diagnose recapture separability without promotion"
     )
     parser.add_argument("--dataset-root", type=Path, required=True)
-    parser.add_argument("--annotation", default="scan_log_instances.json")
+    parser.add_argument("--annotation", required=True)
     parser.add_argument("--predictions", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--maximum-false-recapture-rate", type=float, default=0.01)

@@ -33,10 +33,7 @@ def _evaluation_samples(
     root: Path,
     evaluation_sets: tuple[str, ...] = ("multi_object_scenes",),
 ) -> Iterator[tuple[Image.Image, int, str]]:
-    available = {
-        "multi_object_scenes": "multi_object_instances.json",
-        "scan_log_samples": "scan_log_instances.json",
-    }
+    available = {"multi_object_scenes": "multi_object_instances.json"}
     for dataset_name in evaluation_sets:
         annotation_name = available[dataset_name]
         annotation_path = root / "annotations" / annotation_name
@@ -243,7 +240,7 @@ def main() -> None:
     parser.add_argument(
         "--evaluation-set",
         action="append",
-        choices=("multi_object_scenes", "scan_log_samples"),
+        choices=("multi_object_scenes",),
         default=None,
     )
     args = parser.parse_args()

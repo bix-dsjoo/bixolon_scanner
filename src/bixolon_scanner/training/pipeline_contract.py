@@ -55,13 +55,13 @@ class DatasetLock(BaseModel):
     dataset_version: str = Field(min_length=1)
     training_directory: str = Field(min_length=1)
     original_image_count: int = Field(gt=0)
-    forbidden_sources: list[Literal["multi_object_scenes", "scan_log_samples"]]
+    forbidden_sources: list[Literal["multi_object_scenes"]]
 
     @field_validator("forbidden_sources")
     @classmethod
     def validate_forbidden_sources(cls, value: list[str]) -> list[str]:
-        if set(value) != {"multi_object_scenes", "scan_log_samples"}:
-            raise ValueError("both evaluation sources must be forbidden from training")
+        if value != ["multi_object_scenes"]:
+            raise ValueError("multi_object_scenes must be forbidden from training")
         return value
 
 

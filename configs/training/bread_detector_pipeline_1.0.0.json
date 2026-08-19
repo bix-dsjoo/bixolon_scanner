@@ -11,7 +11,7 @@
     "dataset_version": "bread-1.0-17a07d799c4e",
     "training_directory": "single_objects",
     "original_image_count": 200,
-    "forbidden_sources": ["multi_object_scenes", "scan_log_samples"]
+    "forbidden_sources": ["multi_object_scenes"]
   },
   "pretrained": {
     "repository": "Peterande/D-FINE",

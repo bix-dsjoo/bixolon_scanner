@@ -102,6 +102,6 @@
     "classifier_tolerance": 0.01,
     "cross_provider_tolerance": 0.02,
     "lock_before_test": true,
-    "regression_sets": ["canonical_scan_log_samples"]
+    "regression_sets": ["multi_object_scenes"]
   }
 }

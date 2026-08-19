@@ -75,15 +75,9 @@ def ensemble_predictions(
 
 
 def evaluate(args: argparse.Namespace) -> dict[str, Any]:
-    multi_records = load_records(args.dataset_root, "multi_object_instances.json")
-    scan_records = [
-        record
-        for record in load_records(args.dataset_root, "scan_log_instances.json")
-        if record["expected_image_status"] == "ANNOTATED"
-    ]
-    records = multi_records + scan_records
-    primary = _read_jsonl(args.primary_multi) + _read_jsonl(args.primary_scan)
-    recovery = _read_jsonl(args.recovery_multi) + _read_jsonl(args.recovery_scan)
+    records = load_records(args.dataset_root, "multi_object_instances.json")
+    primary = _read_jsonl(args.primary_multi)
+    recovery = _read_jsonl(args.recovery_multi)
     candidates = []
     singleton_values = np.linspace(
         args.primary_threshold, args.maximum_primary_singleton_threshold, args.singleton_steps
@@ -126,7 +120,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     )
     report = {
         "evaluation": "detector_ensemble_diagnostic_only",
-        "selection_set": "multi_development_plus_non_independent_scan_annotated",
+        "selection_set": "multi_object_development",
         "candidate_count": len(candidates),
         "target_recall": args.target_recall,
         "target_recall_satisfied": selected["recall"] >= args.target_recall,
@@ -145,9 +139,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Probe D-FINE/RT-DETR box-level complementarity")
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--primary-multi", type=Path, required=True)
-    parser.add_argument("--primary-scan", type=Path, required=True)
     parser.add_argument("--recovery-multi", type=Path, required=True)
-    parser.add_argument("--recovery-scan", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--primary-threshold", type=float, default=0.485)
     parser.add_argument("--maximum-primary-singleton-threshold", type=float, default=0.95)

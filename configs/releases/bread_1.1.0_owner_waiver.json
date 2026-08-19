@@ -54,6 +54,14 @@
     "Worker 1.1.1 and later must train every classifier parameter, fitted statistic, calibration value, approval threshold, and ranking policy only from the frozen single_objects 200-image manifest and deterministic derivatives of those images.",
     "A new capture session that passes identity and provenance preflight is still required for independent promotion evidence for the 200-image-only successor."
   ],
+  "post_promotion_registry_cleanup": {
+    "completed_on": "2026-08-19",
+    "canonical_detector_registry_version": "bread-1.1-171f25171307",
+    "image_count": 300,
+    "annotation_count": 1410,
+    "production_models_retrained": false,
+    "note": "References to an unavailable legacy development source were removed. The production 1.1.0 binaries remain unchanged, and the canonical registry now contains only E/M/H records."
+  },
   "evidence": {
     "candidate_manifest": "manifests/bread-zero-error-1.1/final_candidate_v3_2026-08-18.json",
     "development_report": "artifacts/experiments/bread-zero-error-1.1.0/reports/runtime-six-gate-development-v16-area-first-fast-path.json",

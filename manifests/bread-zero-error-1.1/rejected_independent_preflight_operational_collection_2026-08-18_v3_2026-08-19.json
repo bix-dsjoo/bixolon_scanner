@@ -8,7 +8,7 @@
   },
   "candidate_manifest": {
     "name": "final_candidate_v3_2026-08-18.json",
-    "sha256": "ef0e86e1c751f9fb6686ca5331d0a8290d5a2fe0723bb3b51cb274e075607c14",
+    "sha256": "6a83fcc7525bf7c07a7bfcee4d708068dae42bc6473bddee7bed4f911ca9cb16",
     "lifecycle": "active_development"
   },
   "dataset": {
@@ -23,7 +23,7 @@
   "source_manifests": [
     {
       "name": "detector_manifest.jsonl",
-      "sha256": "2ffc2b318f20f5195a952b76ed6ac345a73a4f41a7c75e417701cac5c7c6fea0"
+      "sha256": "309a7b8a3f5072ced17106f26f1a5004b13218ed310b6bd012b5c29b6fcce406"
     },
     {
       "name": "classifier_manifest.jsonl",
@@ -50,7 +50,7 @@
     "image_dimension_mismatch_count": 0
   },
   "development_overlap_audit": {
-    "known_source_row_count": 715,
+    "known_source_row_count": 615,
     "exact_overlap_image_count": 115,
     "near_overlap_image_count": 0,
     "maximum_hamming_distance": 2,

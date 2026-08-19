@@ -124,7 +124,7 @@
     "required_source_manifests": [
       {
         "path": "manifests/bread-zero-error-1.1/detector_manifest.jsonl",
-        "sha256": "2ffc2b318f20f5195a952b76ed6ac345a73a4f41a7c75e417701cac5c7c6fea0"
+        "sha256": "309a7b8a3f5072ced17106f26f1a5004b13218ed310b6bd012b5c29b6fcce406"
       },
       {
         "path": "manifests/bread-zero-error-1.1/classifier_manifest.jsonl",
@@ -150,9 +150,7 @@
   "independent_data_inventory": {
     "eligible_local_multi_object_dataset_count": 0,
     "inventory": "manifests/bread-zero-error-1.1/raw_data_independent_inventory_2026-08-18.json",
-    "inventory_sha256": "faa10daff08c66b06e0a62bc2cc15ac9c93e0c5bebe313629d87f5fc7c3ada63",
-    "bread_project_4_rejection": "manifests/bread-zero-error-1.1/rejected_independent_preflight_bread_project_4_2026-08-18.json",
-    "bread_project_4_rejection_sha256": "426055ae3b92af567acd73e08f5af5055af3f9afc83e6a4b0e44a7b834d1d2fa",
+    "inventory_sha256": "9eb2273edeacb85b9b8e78d7d84dce170869700666550693e0c038619c9d9fa5",
     "model_inference_executed": false
   },
   "promotion_ready": false,

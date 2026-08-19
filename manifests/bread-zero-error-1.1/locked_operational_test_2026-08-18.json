@@ -18,7 +18,7 @@
     "invalid_bbox_count": 0
   },
   "development_overlap_audit": {
-    "development_dataset_version": "bread-1.1-fb586306bf10",
+    "development_dataset_version": "bread-1.1-171f25171307",
     "development_image_count": 300,
     "exact_sha256_pair_count": 0,
     "difference_hash_pair_count_at_distance_le_2": 0,

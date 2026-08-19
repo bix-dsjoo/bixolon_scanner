@@ -92,11 +92,7 @@ def _load_coco_records(
         image_path = (annotation_path.parent / str(image["file_name"])).resolve()
         image_path.relative_to(root)
         relative = image_path.relative_to(root)
-        difficulty = (
-            relative.parts[1].upper()
-            if dataset_name == "multi_object_scenes" and len(relative.parts) > 1
-            else "SCAN_LOG"
-        )
+        difficulty = relative.parts[1].upper() if len(relative.parts) > 1 else "UNKNOWN"
         records.append(
             {
                 "dataset": dataset_name,
@@ -223,9 +219,9 @@ def minimum_zero_error_samples(maximum_rate: float, confidence_level: float = 0.
 
 def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     dataset_root = args.dataset_root.resolve()
-    gate_dataset = getattr(args, "gate_dataset", "all_annotated")
+    gate_dataset = "multi_object_scenes"
     dataset_metadata_path = getattr(args, "dataset_metadata", None)
-    if gate_dataset == "multi_object_scenes" and dataset_metadata_path is not None:
+    if dataset_metadata_path is not None:
         dataset_metadata = json.loads(dataset_metadata_path.read_text(encoding="utf-8"))
         expected = dataset_metadata["evaluation_sets"]["multi_object_scenes"]
         actual = audit_bread_evaluation_set(dataset_root, "multi_object_scenes")
@@ -266,15 +262,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         "multi_object_instances.json",
         dataset_name="multi_object_scenes",
     )
-    if gate_dataset == "multi_object_scenes":
-        records = multi_records
-    else:
-        scan_records = _load_coco_records(
-            dataset_root,
-            "scan_log_instances.json",
-            dataset_name="scan_log_samples",
-        )
-        records = multi_records + scan_records
+    records = multi_records
     if records and args.warmup_count:
         warmup_encoded = records[0]["image_path"].read_bytes()
         warmup_image = decode_image(
@@ -298,8 +286,6 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     recapture_expected = 0
     recapture_detected = 0
     recapture_by_reason: dict[str, dict[str, int]] = {}
-    annotated_scan_images = 0
-    annotated_scan_recaptured = 0
     details: list[dict[str, Any]] = []
 
     for ordinal, record in enumerate(records, start=1):
@@ -362,19 +348,11 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             )
             continue
 
-        if record["dataset"] == "scan_log_samples":
-            annotated_scan_images += 1
-            annotated_scan_recaptured += int(is_image_recapture)
-        selected = [buckets["ALL_ANNOTATED"]]
-        if record["dataset"] == "multi_object_scenes":
-            selected.extend(
-                [
-                    buckets["MULTI_ALL"],
-                    buckets.setdefault(f"MULTI_{record['difficulty']}", Counts()),
-                ]
-            )
-        else:
-            selected.append(buckets.setdefault("SCAN_LOG_ANNOTATED", Counts()))
+        selected = [
+            buckets["ALL_ANNOTATED"],
+            buckets["MULTI_ALL"],
+            buckets.setdefault(f"MULTI_{record['difficulty']}", Counts()),
+        ]
 
         detections = sorted(result.detections, key=lambda value: (value.y1, value.x1))
         matches, missed = _match(detections, record["annotations"], args.match_iou_threshold)
@@ -554,11 +532,9 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             )
 
     metrics = {name: _metrics(counts) for name, counts in sorted(buckets.items())}
-    overall = metrics["MULTI_ALL" if gate_dataset == "multi_object_scenes" else "ALL_ANNOTATED"]
+    overall = metrics["MULTI_ALL"]
     recapture_recall = _rate(recapture_detected, recapture_expected)
-    false_image_recapture_rate = _rate(annotated_scan_recaptured, annotated_scan_images)
-    if gate_dataset == "multi_object_scenes":
-        false_image_recapture_rate = overall["image_recapture_rate"]
+    false_image_recapture_rate = overall["image_recapture_rate"]
     performance = {
         "warmup_count": args.warmup_count,
         "scope": "decode+preprocess+detector+classifier+postprocess+decision",
@@ -596,8 +572,6 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         "p95_latency": float(performance["all_images"]["p95"] or float("inf"))
         <= args.maximum_latency_ms,
     }
-    if gate_dataset != "multi_object_scenes":
-        checks["recapture_recall"] = float(recapture_recall or 0.0) >= args.minimum_recapture_recall
     baseline_report = None
     if args.baseline_report is not None:
         baseline_report = json.loads(args.baseline_report.read_text(encoding="utf-8"))
@@ -634,12 +608,12 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         "metrics": metrics,
         "performance": performance,
         "recapture": {
-            "gate_applied_to_recall": gate_dataset != "multi_object_scenes",
+            "gate_applied_to_recall": False,
             "expected_image_recapture_count": recapture_expected,
             "detected_image_recapture_count": recapture_detected,
             "recapture_recall": recapture_recall,
-            "annotated_scan_image_count": annotated_scan_images,
-            "false_image_recapture_count": annotated_scan_recaptured,
+            "annotated_image_count": overall["image_count"],
+            "false_image_recapture_count": overall["image_recapture_count"],
             "false_image_recapture_rate": false_image_recapture_rate,
             "by_expected_reason": {
                 reason: counts
@@ -664,7 +638,6 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         "promotion_status": "production" if all(checks.values()) else "experiment_only",
         "limitations": {
             "multi_object_scenes_derived_from_training_originals": True,
-            "scan_logs_used_by_previous_experiments": True,
             "independent_test_set_available": False,
             "baseline_report": str(args.baseline_report) if baseline_report else None,
         },
@@ -709,11 +682,6 @@ def main() -> None:
     parser.add_argument("--details", type=Path)
     parser.add_argument("--baseline-report", type=Path)
     parser.add_argument("--provider", choices=("auto", "cuda", "cpu"), default="cuda")
-    parser.add_argument(
-        "--gate-dataset",
-        choices=("all_annotated", "multi_object_scenes"),
-        default="all_annotated",
-    )
     parser.add_argument("--cuda-dll-dir", type=Path)
     parser.add_argument("--match-iou-threshold", type=float, default=0.5)
     parser.add_argument("--warmup-count", type=int, default=20)

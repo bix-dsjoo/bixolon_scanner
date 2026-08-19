@@ -64,24 +64,14 @@ Classifier 지원 원본은 과거 같은 조건의 비교에서 `single_objects
 `multi_object_scenes` E/M/H 300장만 사용한다.
 
 canonical registry는 `manifests/bread-zero-error-1.1`이며 데이터셋 버전은
-`bread-1.1-fb586306bf10`이다. 64-bit dHash Hamming distance 2 이하를 근접 중복으로 묶은 뒤
-그룹 단위로 fold를 배정했다. Detector fold는 133/134/133장이고 발견된 근접 중복 3쌍은
-같은 fold에 있다. 각 outer fold에서는 해당 fold를 학습에 사용하지 않는다. 모든 400장은
+`bread-1.1-171f25171307`이다. 64-bit dHash Hamming distance 2 이하를 근접 중복으로 묶은 뒤
+그룹 단위로 fold를 배정했다. Detector fold는 100/101/99장이고 근접 중복 그룹은 없다.
+각 outer fold에서는 해당 fold를 학습에 사용하지 않는다. 모든 300장은
 정확히 한 번 OOF 검증 대상이 되며, 나머지 두 fold의 학습 대상이 된다.
 
 단일 객체 원본은 클래스마다 동일 물리 대상을 여러 각도에서 촬영한 자료라 물리 대상 수준의
 완전 독립 분할은 불가능하다. 파일 SHA와 근접 중복 누수는 차단하지만 이 제한은 최종 보고서에
 계속 남긴다.
-
-## 기준선 실패 분석
-
-운영 `bread-worker-1.0.0`을 CUDA EP로 전체 400장에 실행한 결과, annotated 369장·GT
-1,623개에서 Detector FP 17/FN 24였다. 승인 오인은 0/1,245였지만 `UNKNOWN` Top-3 누락은
-5건이었다. 기대 `IMAGE_RECAPTURE` 31장 중 3장만 잡았고, `SEGMENT_RECAPTURE`는 5건이었다.
-
-raw query sweep에서는 score `0.042`로 recall 100%를 만들 수 있었지만 NMS 0.5에서
-precision은 56.39%뿐이었다. 따라서 threshold/NMS 조정만으로 FP/FN 0을 만족할 수 없으며
-실제 이미지 학습이 필요하다.
 
 ## 모델 선택
 
@@ -129,7 +119,7 @@ OOF 검증을 대체하지 않으며 독립 test 통과로 표시하지 않는�
 4. augmentation, class-agnostic head, 해상도 또는 DEIMv2 challenger를 한 번에 하나씩 바꾼다.
 5. Classifier nested 진단과 pooled OOF를 모두 기록하고, 승인 0오류와 Top-3 0누락을 만족하는
    최소 recapture 개발 정책을 고른다.
-6. PyTorch/CPU ONNX/CUDA ONNX parity, Worker 전체 400장, RTX 5080 p95를 검증한다.
+6. PyTorch/CPU ONNX/CUDA ONNX parity, Worker E/M/H 300장, RTX 5080 p95를 검증한다.
 
 ### 반복 1 메모
 
@@ -143,89 +133,6 @@ epoch 1 AP50이 1.97%에 머물렀다. 이 경로는 중단했다. 두 번째 �
 20-class head와 localization 가중치를 모두 보존하고, 실제 이미지에 backbone `1e-6`, 나머지
 `1e-5`, warm-up 10 iteration, 10 epoch로 보수적으로 미세조정하는 것이다. Detector의 class
 출력은 최종 품목 확정에 사용하지 않고 기존처럼 object score에만 사용한다.
-
-## 2026-08-14 반복 실행 기록
-
-운영 `1.0.0` package의 400장 전체 기준선은 annotation이 있는 369장에서 GT 1,623개 중
-1,599개를 matching했고 FP 17건, FN 24건이었다. detector raw query를 동일한 IoU 0.5
-count 기준으로 다시 선택하면 최저 총 오류 지점은 FP 18건, FN 13건이었다. score threshold와
-일반 NMS만으로 0/0을 만들 수 없었다.
-
-fold 0 class-agnostic D-FINE은 기존 20-class score head와 shape가 달라 random head로
-초기화됐다. 기본 500-iteration warm-up 실행은 epoch 0 AP50 0.36%, warm-up 50 실행은
-epoch 1 AP50 1.97%에 그쳐 모두 중단했다. 다음 class-aware transfer는 운영 checkpoint의
-localization과 20-class head를 보존하고 backbone `1e-6`, 나머지 `1e-5`로 학습했다.
-640px validation에서 recall 1.0 지점은 FP 15건/FN 0건이었고, 일반 NMS의 최저 총 오류는
-FP 4건/FN 2건이었다.
-
-대칭 containment는 FP를 0건으로 만들었지만 실제로 겹친 서로 다른 두 객체 중 하나를
-삭제해 FP 0건/FN 1건이었다. 계층형 containment는 fragment와 여러 객체를 한꺼번에 감싼
-group box만 억제해 FP 1건/FN 1건으로 줄였다. 남은 `medium_058.jpg`는 640px 최고점
-query의 box가 부정확하고 더 낮은 점수 query가 정답에 가까운 query 선택 오류였다.
-
-640px 계층형 후보 수를 고정하고, 같은 class이며 score 0.45 이상, 640px 후보와 IoU 0.45
-이상인 768px 최고점 후보의 box geometry만 대체한 fold 0 결과는 535 GT에서 FP 0건,
-FN 0건, 122/122 exact image였다. 검색한 540개 조합 중 132개가 0/0이었다. 이 정책은
-fold 0에서 탐색한 개발 결과이므로 folds 1·2 OOF 검증 전에는 잠그거나 승격하지 않는다.
-
-저학습률을 30 epoch까지 연장한 실행은 내장 best가 epoch 12에서 멈추고 loss가 약
-35~37에 머물러 실패로 판정했다. backbone `1e-5`, 나머지 `1e-4` 중간 학습률 후보는
-epoch 4에서 recall 1.0을 맞출 때 FP 402건이 발생했고, 계층형 최저도 FP 3건/FN 16건이라
-중단했다. 두 실패 checkpoint와 report는 Git 제외 artifact 경로에 보존한다.
-
-Classifier는 `single_objects`만 사용한 DINOv3 ConvNeXt-Tiny soup 한 개를 선택했다.
-1,374개 matched multi-object ROI에서 875개 selective policy를 비교했고, guard 123을 둔
-`greedy5:approval=margin:top3=reciprocal_rank:safety=inverse_entropy`가 grouped OOF
-`APPROVED` 오인 0건, `UNKNOWN` Top-3 누락 0건을 만족했다. `SEGMENT_RECAPTURE`는
-132/1,374, 즉 9.607%이고 non-recapture coverage는 90.393%다. 이는 아직 detector가
-match한 multi-object ROI 범위의 중간 결과다.
-
-## 2026-08-18 전체 개발 end-to-end 검증
-
-3-fold base prediction, pooled count selector, 이미지 품질 gate, class-conditional classifier
-정책을 동일한 400장 라우팅으로 합성했다. 재현 명령은 다음과 같다.
-
-```powershell
-python -m bixolon_scanner.experiments.bread.full_validation_report `
-  --metadata manifests/bread-zero-error-1.1/metadata.json `
-  --detector-manifest manifests/bread-zero-error-1.1/detector_manifest.jsonl `
-  --detector-report artifacts/experiments/bread-zero-error-1.1.0/detector/oof-final-selective-rf05-count-search.json `
-  --detector-predictions artifacts/experiments/bread-zero-error-1.1.0/detector/oof-final-selective-rf05-count-predictions.jsonl `
-  --image-quality-report artifacts/experiments/bread-zero-error-1.1.0/detector/image-recapture-selector-search-v4.json `
-  --classifier-report artifacts/experiments/bread-zero-error-1.1.0/classifier/grouped-rate-policy.json `
-  --output artifacts/experiments/bread-zero-error-1.1.0/reports/full-development-six-gate-validation.json `
-  --decisions-output artifacts/experiments/bread-zero-error-1.1.0/reports/full-development-six-gate-decisions.jsonl
-```
-
-결과는 다음과 같다.
-
-| 지표 | 결과 | gate |
-| --- | ---: | ---: |
-| `SEGMENTATION` | 362/400 (90.500%) | ≥ 90% |
-| end-to-end `APPROVED` | 1,426/1,623 (87.862%) | 운영 ≥ 90%, 목표 ≥ 99% |
-| `SEGMENTATION` 이미지 FN | 0/362 (0%) | ≤ 0.1% |
-| `SEGMENTATION` 이미지 FP | 0/362 (0%) | ≤ 0.1% |
-| `APPROVED` 객체 오인 | 1/1,623 (0.0616%) | ≤ 0.1% |
-| `UNKNOWN` Top-3 Candidate out | 1/1,623 (0.0616%) | ≤ 0.1% |
-
-따라서 주어진 유한 개발 OOF는 일부 오류 gate를 통과하지만 end-to-end `APPROVED` 운영 기준과
-99% 목표에 모두 미달한다. accepted matched ROI 진단 지표는 `UNKNOWN`
-94/1,583(5.938%), `SEGMENT_RECAPTURE` 63/1,583(3.980%)다. 이미지 재촬영은 기존
-38/400에서 증가하지 않았다.
-
-동시에 raw detector는 369장·1,623 GT에서 FP 0/FN 3이다. 이미지 153, 155, 298의 누락과
-추가 후보가 있는 이미지 160을 함께 detector 불일치 gate로 격리해 수용 경로 0/0을 만든다.
-따라서 raw 0/0은 달성했다고 표시하지 않는다.
-
-이미지 품질 reason별 pooled 정책은 정답 품질 재촬영 31/31을 잡았지만 nested 진단은
-16/31에 그쳤다. Classifier threshold는 각 held-out fold 밖의 두
-fold에서만 보정했지만 결합 weight와 공통 floor는 같은 grouped OOF 결과로 선택했다. 별도
-test를 잠그지 않았기 때문에 이는 유한 개발 선택 결과로는 사용하지만 독립 일반화 증거 또는
-운영 승격 근거로 사용하지 않는다.
-
-수명주기는 계속 `active`다. 운영 승격 전 남은 gate는 두 Classifier와 Detector 1.1 정책의
-versioned ONNX Worker 통합, 잠긴 test, 최종 CPU/CUDA 상태 parity, RTX 5080 full-path
-p50/p95/p99, 전체 Python/Flutter 검증이다.
 
 ## 2026-08-18 bread_project_2 난이도별 승격 검토
 
@@ -260,151 +167,9 @@ production Worker 1.0.0 CUDA로 직접 실행한 비교 기준은 다음과 같�
 | P95 | 80.07ms | 87.89ms | 88.23ms |
 
 승격 요청은 기록했지만 수명주기는 `active`로 유지한다. `bread-worker-1.1.0` 패키지 생성,
-count model과 image-quality 정책의 Worker 통합, 최종 모델 직렬화, CPU/CUDA 상태 parity,
+runtime 정책의 Worker 통합, 최종 모델 직렬화, CPU/CUDA 상태 parity,
 1.1.0 E/M/H latency가 끝나지 않아 `promotion_ready=false`다. 세부 기계 판독 보고서는
 `artifacts/evaluations/bread_project_2/bread-zero-error-1.1.0-oof-difficulty.json`이다.
-
-## 2026-08-18 neighbor-ownership classifier 반복
-
-기존 재촬영의 주원인은 detector box 안에 인접한 다른 제품 픽셀이 함께 들어와 두 view의
-Top-3가 불안정해지는 경우였다. 평가 이미지 ID나 정답을 사용하지 않고, 한 이미지의 detector
-box 중심들에 대한 거리 기반 ownership mask를 각 ROI에 적용했다. 엄격 mask와 완화 mask를
-각각 `0.75/0.25`로 결합하고 두 view를 하나의 `2N` ONNX batch로 실행한다. 승인은 결합
-확률 margin, Top-3는 weighted reciprocal rank, Top-3 안전성은 inverse entropy를 사용한다.
-provider 동률은 모든 클래스에 동일한 순번 기반 미세 bias를 적용해 결정론적으로 해소한다.
-
-Classifier 학습 원본은 계속 `single_objects`만 사용했고 `single_objects_2` 또는 다른 지원
-원본을 혼용하지 않았다. classifier manifest의 group fold 중복은 0건이다. 현재 400장에는
-별도 locked test가 없으므로 아래 결과는 grouped 개발 선택 결과이며 독립 일반화 결과가 아니다.
-
-| 구간 | 기존 `SEGMENT_RECAPTURE` | neighbor mask | 개선 |
-| --- | ---: | ---: | ---: |
-| 전체 수용 ROI | 144/1,583 (9.097%) | 29/1,583 (1.832%) | -7.265%p |
-| E | 14/410 (3.415%) | 0/410 (0%) | -3.415%p |
-| M | 26/480 (5.417%) | 3/480 (0.625%) | -4.792%p |
-| H | 66/493 (13.387%) | 16/493 (3.245%) | -10.142%p |
-
-같은 개발 조합에서 `APPROVED` 오인은 0/1,316, `UNKNOWN` Top-3 누락은 0/238이다.
-Detector 및 image gate는 바꾸지 않았으므로 `IMAGE_RECAPTURE`는 38/400으로 증가하지 않았고,
-수용 경로 Detector IoU@0.5 FP/FN도 0/0을 유지한다. 재현 보고서는
-`classifier/geometry-mask-final-policy.json`이다.
-
-canonical PyTorch CPU와 ONNX CPU/CUDA를 1,596 ROI 전체에서 비교했다. CPU와 CUDA 모두
-Top-1, Top-3, 최종 상태가 전부 일치했고 최대 logit 차이는 각각 `8.49e-5`, `8.08e-5`였다.
-ONNX CPU/CUDA끼리도 Top-1, Top-3와 상태가 전부 같았다. 보고서는
-`classifier/neighbor-mask-export/cpu-final-parity.json`과
-`cuda-canonical-final-parity.json`이다.
-
-개발 package `bread-worker-1.1.0-neighbor-mask-candidate`는 기존 Detector 1.0.0을 상속한다.
-이 package를 E/M/H 300장에 실제 CUDA Worker로 실행한 full-path p95는 `90.45ms`로 성능
-gate를 통과했다. 재실행 p95는 `79.30ms`였으며 gate 판정에는 두 실행 중 더 보수적인
-`90.45ms`를 사용했다. 그러나 packaged Detector는 개발 OOF 합성 정책과 동등하지 않아
-FP 4/FN 10이 발생했다. 최초 집계의 `UNKNOWN` Candidate out 27건은 evaluator가 26개의
-`SEGMENT_RECAPTURE`를 `UNKNOWN`으로 처리한 오류였다. 상태 분기를 수정한 실제 Worker의
-matched classifier 결과는 `APPROVED` 오인 0건, Candidate out 1/1,400(0.0714%),
-`SEGMENT_RECAPTURE` 26/1,400(1.857%)이다. 난이도별 `SEGMENT_RECAPTURE`는 E 0/410,
-M 5/494(1.012%), H 21/496(4.234%)로 모두 5% 이하다. 이 Worker 실행에서는
-`IMAGE_RECAPTURE`가 0건이라 classifier 개선을 이미지 재촬영으로 우회하지 않았다.
-
-### 2026-08-18 Classifier 정책
-
-변경된 공식 gate에 맞춰 `single_objects`로만 학습한 `clutter-v2`와
-`clutter-finetune-v2` checkpoint를 다시 비교했다. 0.10~0.95의 사전 정의된 결합 weight를
-grouped OOF에서 평가했고 0.90/0.10을 선택했다. 승인은 예측 클래스별 margin threshold,
-Top-3는 weighted reciprocal rank, 안전성은 inverse entropy를 사용한다. 각 held-out fold의
-threshold는 나머지 두 fold에서만 보정했고 group 중복은 0건이다. 오류가 관측되지 않은 예측
-클래스에는 공통 0.98 floor를 적용하며 특정 이미지 ID·정답별 예외는 없다.
-
-```powershell
-python -m bixolon_scanner.experiments.bread.classifier_rate_policy `
-  --logits artifacts/experiments/bread-zero-error-1.1.0/classifier/geometry-mask-cross-checkpoint-logits.npz `
-  --records artifacts/experiments/bread-zero-error-1.1.0/classifier/selective-detector-rois/evaluation_records.jsonl `
-  --source-dataset single_objects `
-  --first-view-weights 0.10 0.20 0.30 0.40 0.50 0.60 0.70 0.80 0.85 0.90 0.95 `
-  --approval-guard-samples 2 --safety-guard-samples 8 `
-  --no-failure-approval-threshold 0.98 `
-  --ranking-tie-break-bias-span 0.0002 `
-  --evaluation-exclude-image-ids 1000040 1000088 1000090 `
-  --output artifacts/experiments/bread-zero-error-1.1.0/classifier/grouped-rate-policy.json `
-  --decisions-output artifacts/experiments/bread-zero-error-1.1.0/classifier/grouped-rate-policy-decisions.npz
-```
-
-| Classifier 로컬 지표 | grouped OOF 결과 | 용도 |
-| --- | ---: | ---: |
-| accepted matched `APPROVED` | 1,426/1,583 (90.082%) | classifier 정책 선택 진단 |
-| `APPROVED` 객체 오인 | 1/1,583 (0.063%) | classifier 정책 선택 진단 |
-| `UNKNOWN` Top-3 Candidate out | 1/1,583 (0.063%) | classifier 정책 선택 진단 |
-| `UNKNOWN` | 94/1,583 (5.938%, 진단) | gate 아님 |
-| `SEGMENT_RECAPTURE` | 63/1,583 (3.980%, 진단) | gate 아님 |
-
-Detector·이미지 routing과 합친 전체 개발 결과는 `SEGMENTATION` 362/400(90.5%), 이미지
-FN/FP 0/362지만 end-to-end `APPROVED`는 1,426/1,623(87.862%)이므로 운영 기준과 99% 목표에
-실패한다. accepted matched Classifier 지표만으로 파이프라인 목표 통과를 선언하지 않는다. 결과는
-`classifier/grouped-rate-policy.json`과
-`reports/full-development-six-gate-validation.json`에 보존한다. 같은 개발 데이터를
-hyperparameter 선택에 사용했으므로 독립 test 결과가 아니며, full-development calibration
-threshold는 package 생성용일 뿐 grouped OOF 수치를 대체하지 않는다.
-
-Candidate out 1건은 별도 예외가 아니라 공식 gate `1/1,400=0.0714% ≤ 0.1%`를 통과한다. 이 1건을 없애는
-전역 class-index bias 범위가 개발 진단에서 발견되었지만, 정답을 확인한 뒤 선택한 큰 prior라
-일반화 근거가 없고 평가 정답 hardcoding 위험이 있어 채택하지 않았다. 실제 Worker는 아직
-새 2-checkpoint 정책을 포함하지 않아 `APPROVED` 비율을 실패하고, Worker 전체 정확도 gate도
-Detector FP/FN 때문에 실패다. 이전 zero-error 정책의 0/1,316 승인 오류 단측 95% 상한
-`0.2274%`는 1.1 공식 point-rate gate와 분리한 통계 위험 진단으로 계속 기록한다.
-
-실제 Worker의 `jpeg_draft_size=1050`까지 고정해 Detector 원시 query를 재현하고, score
-0.01~0.99의 981개 값과 NMS IoU 0.5/0.6/0.7/0.8/0.9를 전수 진단했다. 기존 0.49/0.7은
-FP 4/FN 10으로 Worker 결과와 일치했고, 최선도 0.406/0.5의 FP 5/FN 5였다. FP/FN 0 후보는
-없었다. 이 진단은 정답을 본 평가 세트에서 수행했으므로 정책 선택에는 사용할 수 없으며,
-단순 임계값·NMS 조정으로 detector gate를 해결할 수 없다는 배제 근거로만 사용한다. 원시
-결과는 `detector/actual-worker-detector-threshold-grid.json`에 보존한다. shadow uncertainty로
-오류 이미지를 `IMAGE_RECAPTURE`로 보내는 방법은 E/M/H의 기존 0건을 증가시키는 우회이므로
-채택하지 않았다.
-
-수명주기는 계속 `active`다. deploy 가능한 Detector 1.1/count·image-quality 정책, 독립 잠금
-test, 승인 위험 상한 표본을 확보하고 실제 Worker 전체 정확도를 재검증하기 전에는 1.1.0을
-승격하지 않는다.
-
-## Detector 1.1 개발 통과와 운영 artifact 구분
-
-Detector 1.1의 `FP 0/FN 0`은 3-fold OOF에서 각 이미지를 해당 perceptual group을 학습하지
-않은 fold 모델로 라우팅하고, fold별 random-forest count 예측과 disagreement gate를 적용한
-수용 경로 결과다. raw 결과는 FP 0/FN 3이고 4장을 `IMAGE_RECAPTURE`로 격리한 뒤 수용
-365장·1,596 GT가 FP 0/FN 0이다. 따라서 **개발 수용 경로 gate는 통과**했다.
-
-all-data `final-soup` checkpoint와 ONNX는 이후 생성했지만 배포 probe에서 실패했다. 369장
-group-aware count 정확도는 342/369(92.68%)이고 최선 공통 후처리도 FP 15/FN 28이다. 정답
-count를 직접 주는 비배포 oracle조차 FP 7/FN 14여서 count selector만으로 복구할 수 없다.
-수용 경로 FP/FN 0을 만들려면 229/369장을 `IMAGE_RECAPTURE`로 보내야 하므로
-`SEGMENTATION ≥90%`를 위반한다. 따라서 이 final-soup는 `rejected`이며 final count selector
-직렬화와 Detector 1.1 Worker metadata도 만들지 않는다. 선택된 image-quality 정책의 nested
-outer-fold 진단도 실패했다. 실제 neighbor-mask candidate package의 detector는 여전히 버전
-`1.0.0`, ONNX SHA-256
-`f0d2eaf8e67821627957c3eed1462812063c32c4ad17028dda869addc5371b09`다.
-
-따라서 OOF 이미지 ID/fold를 Worker 라우팅에 복사해 Detector 1.1이라고 표시해서는 안 된다.
-그 방식은 group-aware 검증을 운영 hardcoding으로 바꾸기 때문이다. Detector 1.1의 현재
-정확한 상태는 `development gate passed / deployable package missing`이다. 기계 판독 근거는
-`reports/detector-1.1-deployment-audit.json`에 기록한다.
-
-## RF-DETR Large 후보 반려
-
-기존 D-FINE 계열의 배포 분포 문제를 다른 DETR 계열로 해결할 수 있는지 확인하기 위해
-Apache-2.0 `rfdetr 1.8.3`의 RF-DETR Large 2026 모델을 704px, class-aware 20개 클래스로
-학습했다. detector manifest의 `perceptual_group_id`를 기준으로 train/validation을 분리했고
-fold 0의 group overlap은 0이었다. 공식 사전학습 checkpoint와 학습·예측·평가 artifact의
-checksum을 `rfdetr_large_bread_1.1.0.json`에 고정했다.
-
-held-out fold 0의 annotation 122장·535개 객체에서 score 23개와 NMS IoU 11개, 총 253개
-후처리 조합을 class-agnostic IoU@0.5로 전수 평가했다. FP/FN 0 조합은 없었다. 총 오류가 가장
-적은 조합도 FP 47/FN 398이었다. 최대 recall 조합은 524/535(97.944%)였지만 FP 7,223건이었고,
-FP 0 조합은 FN 495건이었다. 최대 recall조차 1.1의 이미지 FN ≤0.1%에 미달하므로 score/NMS나
-선택기의 문제가 아니라 proposal coverage 자체가 부족하다.
-
-따라서 RF-DETR Large 후보는 `rejected`이며 fold 1·2는 학습하지 않았다. 부분 fold의 낮은
-결과를 최종 gate로 오인하지 않되, 필수 gate에 필요한 raw coverage의 상한에도 미달한 후보에
-GPU 시간을 추가 투입하지 않는 사전 중단 조건을 적용했다. 보고서는
-`detector/rfdetr-large/fold0/box-only-grid.json`에 보존한다.
 
 ## 2026-08-18 실행 패키지 v16 개발 통과
 
@@ -516,12 +281,6 @@ v3 commit `adfae95`를 push한 뒤 로컬 raw storage를 다시 전수 조사했
 COCO 구조, 실제 이미지 SHA-256과 크기, review 완료 여부, capture-session provenance, 기존
 Detector/Classifier manifest의 exact SHA 및 dHash≤2 중복을 검사하는
 `bixolon evaluate bread-1.1-independent-preflight`를 추가했다.
-
-`bread_project_4`의 100장은 모두 기존 `scan_log_samples` 개발 manifest와 exact SHA가
-일치했다. 100장 모두 `pending_user_review`이고 72장은 capture-session ID가 없었다. 따라서
-구조적으로 유효한 100장/213 annotation이더라도 독립 잠금과 승격 증거로 사용하는 것을
-거부했다. 기계 판독 결과는
-`manifests/bread-zero-error-1.1/rejected_independent_preflight_bread_project_4_2026-08-18.json`이다.
 
 `bread_project/group`의 299장도 E/M/H 개발 이미지와 nearest dHash 거리가 모두 2 이하였고,
 269장은 dHash가 완전히 같았다. `bread_project_2`는 이미 사용한 E/M/H export,

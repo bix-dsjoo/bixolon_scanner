@@ -134,19 +134,6 @@
         "medium": 100
       },
       "training_allowed": false
-    },
-    "scan_log_samples": {
-      "annotation_file": "annotations/scan_log_instances.json",
-      "annotation_sha256": "1a8fab56976a329745d6be30d78b7ede2fc1a8990e0010c9e0f9491985d0db92",
-      "image_content_sha256": "8a6d19c353be7f34cf0a5fbd569ab2948be9b2ef8f1d773746e5429b3d6a35de",
-      "image_count": 100,
-      "annotation_count": 213,
-      "status_counts": {
-        "ANNOTATED": 69,
-        "RECAPTURE": 31
-      },
-      "difficulty_counts": {},
-      "training_allowed": false
     }
   },
   "manifest_sha256": "f6987c4bb1e7fea586855081a2575ebe47cb32b6fe8e9515a750e5c497f002a9"

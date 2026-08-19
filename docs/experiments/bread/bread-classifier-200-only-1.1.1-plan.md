@@ -27,7 +27,7 @@ all-GT `APPROVED ≥99%` 장기 목표까지 patch version을 순차적으로 �
 
 금지 범위는 다음과 같다.
 
-- `multi_object_scenes`, `scan_log_samples`, `operational_collections`, GT crop과 detector ROI를
+- `multi_object_scenes`, `operational_collections`, GT crop과 detector ROI를
   loss, head fitting, prototype, normalization, calibration 또는 threshold 선택에 사용하지 않는다.
 - 기존 `domain-lda-final` feature cache와 E/M/H logits를 successor 학습에 재사용하지 않는다.
 - 평가 결과를 보고 같은 version의 threshold를 다시 맞추지 않는다. 새 가설은 다음 patch
@@ -44,7 +44,6 @@ all-GT `APPROVED ≥99%` 장기 목표까지 patch version을 순차적으로 �
 | `single_objects` 200장 | 내부 train/calibration/nested validation | 허용 |
 | E/M/H 300장·GT 1,410개 | 고정 end-to-end 개발 회귀와 버전 판정 | 금지 |
 | 운영 수집본 115장·GT 504개 | 이미 공개된 운영 분포 개발 회귀 | 금지 |
-| `scan_log_samples` 100장 | Detector/recapture 회귀 참고 | Classifier에는 금지 |
 | 새 촬영 세션 | 후보를 잠근 뒤 단 한 번 독립 test | 금지 |
 
 E/M/H 또는 운영 수집본 실패를 분석해 새 가설을 만들 수는 있지만, 그 변경은 반드시 다음 patch

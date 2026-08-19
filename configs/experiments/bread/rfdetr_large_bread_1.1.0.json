@@ -18,8 +18,8 @@
     "source": "official RF-DETR Large 2026 checkpoint registry"
   },
   "dataset": {
-    "manifest": "manifests/bread-zero-error-1.1/detector_manifest.jsonl",
-    "manifest_sha256": "2ffc2b318f20f5195a952b76ed6ac345a73a4f41a7c75e417701cac5c7c6fea0",
+    "historical_manifest_sha256": "2ffc2b318f20f5195a952b76ed6ac345a73a4f41a7c75e417701cac5c7c6fea0",
+    "source_registry_status": "removed_from_current_registry",
     "root": "datasets/bread_dataset",
     "fold_dataset_template": "artifacts/experiments/bread-zero-error-1.1.0/detector/rfdetr-large/fold{fold}/dataset",
     "fold_output_template": "artifacts/experiments/bread-zero-error-1.1.0/detector/rfdetr-large/fold{fold}/training",

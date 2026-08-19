@@ -27,9 +27,11 @@ def lower_tail_threshold(values: np.ndarray, maximum_false_rate: float) -> float
     return threshold
 
 
-def _records(dataset_root: Path) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def _records(
+    dataset_root: Path, challenge_annotation: str
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     groups = []
-    for annotation_name in ("multi_object_instances.json", "scan_log_instances.json"):
+    for annotation_name in ("multi_object_instances.json", challenge_annotation):
         annotation_path = dataset_root / "annotations" / annotation_name
         payload = json.loads(annotation_path.read_text(encoding="utf-8-sig"))
         rows = []
@@ -160,7 +162,7 @@ def _flag_metrics(flags: np.ndarray, records: list[dict[str, Any]]) -> dict[str,
 
 def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     root = args.dataset_root.resolve()
-    development_records, scan_records = _records(root)
+    development_records, scan_records = _records(root, args.challenge_annotation)
     torch = require_torch()
     device = torch.device("cpu" if args.cpu else "cuda")
     model = build_dino_classifier(
@@ -242,7 +244,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         },
         "limitations": [
             "The multi-object development set is used only for threshold selection, not fitting weights.",
-            "The scan log is evaluated once by the probe and is not an independent locked test.",
+            "The challenge set is evaluated once by the probe and is not an independent locked test.",
             "This probe has no ONNX export, provider parity or Worker latency evidence.",
         ],
     }
@@ -255,6 +257,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Probe pretrained full-image quality signals")
     parser.add_argument("--dataset-root", type=Path, required=True)
+    parser.add_argument("--challenge-annotation", required=True)
     parser.add_argument("--weights", type=Path, required=True)
     parser.add_argument("--training-features", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)

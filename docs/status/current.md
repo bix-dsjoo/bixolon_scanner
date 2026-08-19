@@ -45,9 +45,8 @@ calibration과 threshold는 `single_objects` 200장만 사용한다. E/M/H와 �
 전용이며, successor 승격에는 새 촬영 세션의 잠금 test가 다시 필요하다. 세부 반복 계획은
 [200장 전용 1.1.1+ 계획](../experiments/bread/bread-classifier-200-only-1.1.1-plan.md)을 따른다.
 
-추가 raw storage preflight에서도 적격 독립 데이터는 0개였다. `bread_project_4` 100장은 모두
-기존 `scan_log_samples`와 exact SHA 중복이고 review가 미완료였으며,
-`bread_project/group` 299장은 기존 E/M/H 개발 이미지와 dHash≤2 중복이었다. model inference는
+추가 raw storage preflight에서도 적격 독립 데이터는 0개였다. `bread_project/group` 299장은
+기존 E/M/H 개발 이미지와 dHash≤2 중복이었다. model inference는
 실행하지 않았다. 새 촬영 세션은 review 완료 COCO GT와 capture-session provenance를 갖추고
 independent preflight를 통과한 뒤에만 단 한 번 평가한다.
 

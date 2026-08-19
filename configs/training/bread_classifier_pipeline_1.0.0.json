@@ -11,10 +11,7 @@
     "dataset_version": "bread-1.0-a52b4faa3e20",
     "training_directory": "single_objects_3",
     "original_image_count": 240,
-    "forbidden_sources": [
-      "multi_object_scenes",
-      "scan_log_samples"
-    ]
+    "forbidden_sources": ["multi_object_scenes"]
   },
   "pretrained": {
     "repository": "facebookresearch/dinov3",

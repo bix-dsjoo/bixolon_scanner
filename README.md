@@ -154,7 +154,7 @@ GitHub Actions는 Windows의 Python `3.11`·`3.13` CPU 테스트와 Flutter `3.4
 
 ## 데이터와 모델
 
-원본·증강 이미지, checkpoint, ONNX, benchmark artifact는 Git에 커밋하지 않습니다. 이 제품의 데이터는 `datasets/bread_dataset`만 허용합니다. `single_objects` 10장, `single_objects_1` 7장, `single_objects_2` 10장, `single_objects_3` 12장은 서로 섞지 않고 독립 학습·비교합니다. 운영 1.1.0은 DINOv3 기반 feature에 E/M/H ROI로 fit한 LDA를 사용한다는 owner-waiver 계보를 보존합니다. 1.1.1부터 Classifier의 파라미터·fitted statistic·calibration·threshold는 `single_objects` 종류별 10장, 총 200장만 사용합니다. E/M/H와 운영 수집본은 개발 회귀 전용이고 `scan_log_samples`는 Detector 참고용입니다.
+원본·증강 이미지, checkpoint, ONNX, benchmark artifact는 Git에 커밋하지 않습니다. 이 제품의 데이터는 `datasets/bread_dataset`만 허용합니다. `single_objects` 10장, `single_objects_1` 7장, `single_objects_2` 10장, `single_objects_3` 12장은 서로 섞지 않고 독립 학습·비교합니다. 운영 1.1.0은 DINOv3 기반 feature에 E/M/H ROI로 fit한 LDA를 사용한다는 owner-waiver 계보를 보존합니다. 1.1.1부터 Classifier의 파라미터·fitted statistic·calibration·threshold는 `single_objects` 종류별 10장, 총 200장만 사용합니다. E/M/H 300장은 Detector 개발과 end-to-end 회귀에 사용하고 운영 수집본은 개발 회귀 전용입니다.
 
 과거 1.0 release composition 데이터 계약은 `manifests/bread-1.0-a52b4faa3e20`이며 Detector 학습 provenance는 10장 계약 `manifests/bread-1.0.0`에 별도로 잠깁니다. 현재 1.1.0의 owner-waiver 계보는 `configs/releases/bread_1.1.0_owner_waiver.json`, 1.1.1+의 200장 허용 목록은 `manifests/bread-zero-error-1.1/classifier_manifest.jsonl`이 소유합니다. 기존 1.0 계약과 검증 명령은 [학습 파이프라인 1.0.0 가이드](docs/guides/training-pipeline-1.0.0.md), successor 계획은 [Classifier 200장 전용 1.1.1+ 계획](docs/experiments/bread/bread-classifier-200-only-1.1.1-plan.md)을 따릅니다.
 
@@ -177,7 +177,6 @@ Candidate out은 각각 ≤0.1%입니다. `UNKNOWN + Top-3` 비율과 `SEGMENT_R
 1.1의 개발 평가 범위는 `multi_object_scenes`의 EASY/MEDIUM/HARD 300장입니다. 1.1.0은 소유자
 승인 예외로 운영 기준선이지만 이 범위를 독립 test로 해석하지 않습니다. 200장 전용 1.1.1+
 successor의 정상 승격에는 후보가 보지 않은 새 독립 촬영 세션의 잠금 평가가 필요합니다.
-`scan_log_samples`는 참고 진단용이며 모델·정책 선택, gate 분모와 승격 판정에서 제외합니다.
 먼저 각 이미지를 최종 `SEGMENTATION`/`IMAGE_RECAPTURE`로 나눈 뒤, FP/FN은 최종
 `SEGMENTATION` 이미지 중 IoU@0.5 FP/FN이 하나라도 있는 이미지의 비율로 계산합니다.
 End-to-end `APPROVED` 분모에는 정답상 객체 판정 대상 이미지의 모든 GT를 포함하므로, 예측

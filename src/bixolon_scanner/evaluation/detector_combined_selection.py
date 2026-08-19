@@ -17,12 +17,8 @@ def _read_jsonl(path: Path) -> list[dict[str, Any]]:
 
 def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     root = args.dataset_root.resolve()
-    records = load_records(root, "multi_object_instances.json") + [
-        row
-        for row in load_records(root, "scan_log_instances.json")
-        if row["expected_image_status"] == "ANNOTATED"
-    ]
-    predictions = _read_jsonl(args.multi_predictions) + _read_jsonl(args.scan_predictions)
+    records = load_records(root, "multi_object_instances.json")
+    predictions = _read_jsonl(args.multi_predictions)
     candidates = _metrics_grid(
         records,
         predictions,
@@ -37,8 +33,8 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     selected = select_release_threshold_candidate(candidates, args.target_recall)
     report = {
         "evaluation": "combined_annotated_detector_threshold_selection",
-        "selection_set": "multi_development_plus_non_independent_scan_annotated",
-        "threshold_policy": "recall_floor_then_precision_on_combined_non_independent_set",
+        "selection_set": "multi_object_development",
+        "threshold_policy": "recall_floor_then_precision_on_development_set",
         "target_recall": args.target_recall,
         "target_recall_satisfied": selected["recall"] >= args.target_recall,
         "selected_score_threshold": selected["score_threshold"],
@@ -54,7 +50,6 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Select a combined annotated detector threshold")
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--multi-predictions", type=Path, required=True)
-    parser.add_argument("--scan-predictions", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--nms-threshold", type=float, default=0.7)
     parser.add_argument("--match-iou-threshold", type=float, default=0.5)

@@ -88,10 +88,7 @@ def _repository(tmp_path: Path, component: str) -> tuple[dict[str, object], dict
     manifest.write_text("".join(json.dumps(row) + "\n" for row in training_rows), encoding="utf-8")
     evaluation = manifest_dir / "evaluation_manifest.jsonl"
     evaluation.write_text(
-        "".join(
-            json.dumps({"image_path": f"{source}/x.jpg", "training_allowed": False}) + "\n"
-            for source in ("multi_object_scenes", "scan_log_samples")
-        ),
+        json.dumps({"image_path": "multi_object_scenes/x.jpg", "training_allowed": False}) + "\n",
         encoding="utf-8",
     )
     _json(
@@ -106,7 +103,6 @@ def _repository(tmp_path: Path, component: str) -> tuple[dict[str, object], dict
             },
             "evaluation_sets": {
                 "multi_object_scenes": {"training_allowed": False},
-                "scan_log_samples": {"training_allowed": False},
             },
         },
     )
@@ -236,7 +232,7 @@ def _repository(tmp_path: Path, component: str) -> tuple[dict[str, object], dict
             "dataset_version": "bread-test-1",
             "training_directory": "single_objects_3",
             "original_image_count": 2,
-            "forbidden_sources": ["multi_object_scenes", "scan_log_samples"],
+            "forbidden_sources": ["multi_object_scenes"],
         },
         "pretrained": {
             "repository": "test/repository",

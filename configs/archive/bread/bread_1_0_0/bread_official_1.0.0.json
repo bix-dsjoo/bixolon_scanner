@@ -26,7 +26,6 @@
     "originals_per_class": 12,
     "training_original_count": 240,
     "multi_object_scenes_are_evaluation_only": true,
-    "scan_log_samples_are_reference_only": true,
     "detector_synthetic_images": 1600,
     "detector_synthetic_empty_images": 383,
     "detector_synthetic_recipe_sha256": "3e8eb5916cd30570c9106c5af58ffe4e05656291e75fe785a37927f1d03aaccf"

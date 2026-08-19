@@ -26,8 +26,8 @@
     "sha256": "7a6e5d531bb464a985958468e9b36466225eca5b2258230f60c8381de8ac0555"
   },
   "legacy_test_reuse_audit": {
-    "current_manifest": "manifests/bread-zero-error-1.1/detector_manifest.jsonl",
-    "current_manifest_sha256": "2ffc2b318f20f5195a952b76ed6ac345a73a4f41a7c75e417701cac5c7c6fea0",
+    "historical_source_manifest_sha256": "2ffc2b318f20f5195a952b76ed6ac345a73a4f41a7c75e417701cac5c7c6fea0",
+    "source_registry_status": "removed_from_current_registry",
     "legacy_manifest": "manifests/bread-v1/manifest.jsonl",
     "legacy_manifest_sha256": "2dff5fd9fea05d03c36e9e898a7cac0a70a81cf7faf9abcd0e13b02740252a7d",
     "legacy_test_image_count": 94,

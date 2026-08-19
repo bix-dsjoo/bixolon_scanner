@@ -21,17 +21,6 @@
       "reason": "v3 policy was selected after v2 results on this exact dataset were disclosed"
     },
     {
-      "name": "bread_project_4",
-      "role": "scan-log review export",
-      "image_count": 100,
-      "annotation_count": 213,
-      "exact_candidate_development_overlap_count": 100,
-      "pending_review_image_count": 100,
-      "missing_capture_session_count": 72,
-      "eligible_for_independent_lock": false,
-      "evidence": "manifests/bread-zero-error-1.1/rejected_independent_preflight_bread_project_4_2026-08-18.json"
-    },
-    {
       "name": "bread_project/group",
       "role": "pre-normalization source of the E/M/H multi-object development dataset",
       "image_count": 299,

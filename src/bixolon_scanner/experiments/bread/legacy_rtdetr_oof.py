@@ -18,8 +18,6 @@ from ...training.models import require_torch
 def checkpoint_route(
     record: dict[str, Any], old_records_by_id: dict[int, dict[str, Any]]
 ) -> tuple[str, str]:
-    if record.get("evaluation_set") == "scan_log_samples":
-        return "final", "new_scan_log_unseen_by_final_training"
     source_id = record.get("source_image_id")
     old = old_records_by_id.get(int(source_id)) if source_id is not None else None
     if old is not None and old["split"] == "development":
@@ -32,11 +30,6 @@ def checkpoint_route(
 def unseen_checkpoint_routes(
     record: dict[str, Any], old_records_by_id: dict[int, dict[str, Any]]
 ) -> tuple[tuple[str, ...], str]:
-    if record.get("evaluation_set") == "scan_log_samples":
-        return (
-            ("fold0", "fold1", "fold2", "final"),
-            "new_scan_log_unseen_by_every_legacy_checkpoint",
-        )
     source_id = record.get("source_image_id")
     old = old_records_by_id.get(int(source_id)) if source_id is not None else None
     if old is not None and old["split"] == "development":
