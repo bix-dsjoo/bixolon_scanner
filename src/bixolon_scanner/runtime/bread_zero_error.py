@@ -588,9 +588,11 @@ class BreadZeroErrorDetector:
     ):
         if metadata.ensemble is None:
             raise ValueError("Bread zero-error detector requires ensemble metadata")
-        if classifier.metadata.neighbor_mask_inference is None:
-            raise ValueError("proposal verification requires neighbor-mask classifier metadata")
-        if len(classifier.metadata.neighbor_mask_inference.views) != 1:
+        neighbor_mask = classifier.metadata.neighbor_mask_inference
+        staged = classifier.metadata.staged_inference
+        if neighbor_mask is None and staged is None:
+            raise ValueError("proposal verification requires a configured classifier policy")
+        if neighbor_mask is not None and len(neighbor_mask.views) != 1:
             raise ValueError("proposal verification requires exactly one neighbor-mask view")
         self.metadata = metadata
         self.ensemble = metadata.ensemble
@@ -668,7 +670,8 @@ class BreadZeroErrorDetector:
         base_boxes = np.asarray(base["boxes_xyxy"], dtype=np.float32)
         policy = self.ensemble.class_verified_selector
         classifier_metadata = self.classifier.metadata
-        view = classifier_metadata.neighbor_mask_inference.views[0]
+        neighbor_mask = classifier_metadata.neighbor_mask_inference
+        view = None if neighbor_mask is None else neighbor_mask.views[0]
         try:
             for index in indices:
                 box = np.asarray(raw["boxes_xyxy"][index], dtype=np.float32)
@@ -702,31 +705,45 @@ class BreadZeroErrorDetector:
                 mask_boxes, target_index = _candidate_context(
                     base_boxes, box, duplicate_iou=policy.candidate_duplicate_iou
                 )
-                masks.append(
-                    classifier_neighbor_ownership_mask(
-                        [Detection(*values, 1.0) for values in mask_boxes],
-                        target_index,
-                        image_width=image_width,
-                        image_height=image_height,
-                        output_size=classifier_metadata.input_size[0],
-                        margin_ratio=classifier_metadata.crop_margin_ratio,
-                        distance_bias=view.distance_bias,
-                        shared_scale=view.shared_scale,
+                if view is not None:
+                    masks.append(
+                        classifier_neighbor_ownership_mask(
+                            [Detection(*values, 1.0) for values in mask_boxes],
+                            target_index,
+                            image_width=image_width,
+                            image_height=image_height,
+                            output_size=classifier_metadata.input_size[0],
+                            margin_ratio=classifier_metadata.crop_margin_ratio,
+                            distance_bias=view.distance_bias,
+                            shared_scale=view.shared_scale,
+                        )
                     )
-                )
         finally:
             if pil_image is not image:
                 pil_image.close()
-        batch = apply_classifier_background_masks(
-            np.stack(tensors).astype(np.float32), np.stack(masks)
-        )
+        batch = np.stack(tensors).astype(np.float32)
+        if view is not None:
+            batch = apply_classifier_background_masks(batch, np.stack(masks))
         parts = []
         for start in range(0, len(batch), policy.classifier_batch_size):
-            (scores,) = self.classifier.runner.run(
-                [classifier_metadata.logits_output],
-                classifier_metadata.input_name,
-                batch[start : start + policy.classifier_batch_size],
-            )
+            values = batch[start : start + policy.classifier_batch_size]
+            if classifier_metadata.staged_inference is None:
+                (scores,) = self.classifier.runner.run(
+                    [classifier_metadata.logits_output],
+                    classifier_metadata.input_name,
+                    values,
+                )
+            else:
+                staged = classifier_metadata.staged_inference
+                (scores,) = self.classifier.runner.run_inputs(
+                    [classifier_metadata.logits_output],
+                    {
+                        classifier_metadata.input_name: values,
+                        staged.affine_input_name: self.classifier._view_affine(
+                            staged.first_view, len(values)
+                        ),
+                    },
+                )
             parts.append(np.asarray(scores, dtype=np.float32))
         return np.concatenate(parts)
 

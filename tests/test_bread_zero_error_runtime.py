@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import numpy as np
 
+from bixolon_scanner.package import ClassifierView, StagedClassifierMetadata
 from bixolon_scanner.runtime.bread_zero_error import (
+    BreadZeroErrorDetector,
     _filter_prediction_by_area,
     _group_suppress,
     _maximum_aspect_ratio_extremity,
@@ -12,6 +16,7 @@ from bixolon_scanner.runtime.bread_zero_error import (
     detector_output_to_prediction,
     fuse_prediction_rows,
 )
+from bixolon_scanner.runtime.onnx import OnnxClassifier
 
 
 def test_aspect_ratio_extremity_is_orientation_invariant() -> None:
@@ -167,3 +172,51 @@ def test_group_suppression_counts_only_distinct_inner_candidates() -> None:
 
     assert any(candidate is outer for candidate in duplicate_only)
     assert all(candidate is not outer for candidate in distinct)
+
+
+def test_proposal_selector_can_use_staged_classifier(classifier_metadata) -> None:
+    classifier_metadata.staged_inference = StagedClassifierMetadata(
+        center_crop_scale=0.855,
+        views=[ClassifierView(name="base", affine=((1, 0, 0), (0, 1, 0)))],
+        first_view="base",
+        early_approval_threshold=1.0,
+        final_views=["base"],
+        top3_views=["base"],
+    )
+    calls = []
+
+    class Runner:
+        def run_inputs(self, output_names, inputs):
+            del output_names
+            calls.append(inputs)
+            return [np.asarray([[3.0, 2.0, 1.0]], dtype=np.float32)]
+
+    classifier = OnnxClassifier.__new__(OnnxClassifier)
+    classifier.metadata = classifier_metadata
+    classifier.runner = Runner()
+    detector = BreadZeroErrorDetector.__new__(BreadZeroErrorDetector)
+    detector.classifier = classifier
+    detector.ensemble = SimpleNamespace(
+        class_verified_selector=SimpleNamespace(
+            candidate_duplicate_iou=0.9,
+            classifier_batch_size=96,
+        )
+    )
+    proposals = {
+        "boxes_xyxy": [[10.0, 10.0, 40.0, 40.0]],
+        "scores": [0.9],
+        "class_ids": [0],
+    }
+
+    scores = detector._proposal_scores(
+        np.full((100, 100, 3), 128, dtype=np.uint8),
+        proposals,
+        proposals,
+        [0],
+        image_width=100,
+        image_height=100,
+    )
+
+    np.testing.assert_allclose(scores, [[3.0, 2.0, 1.0]])
+    assert set(calls[0]) == {"pixel_values", "view_affine"}
+    np.testing.assert_allclose(calls[0]["view_affine"], [[[1, 0, 0], [0, 1, 0]]])

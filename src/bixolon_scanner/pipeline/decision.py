@@ -241,9 +241,13 @@ class DecisionPipeline:
             raise ValueError("classifier Top-3 safety scores do not match detections")
         configured_thresholds = self.classifier_metadata.approval_thresholds
         if configured_thresholds is None:
-            approval_thresholds = np.full(
-                len(ordered), self.classifier_metadata.approval_threshold, dtype=np.float32
+            staged_policy = self.classifier_metadata.staged_inference
+            default_threshold = (
+                self.classifier_metadata.approval_threshold
+                if staged_policy is None or staged_policy.approval_threshold is None
+                else staged_policy.approval_threshold
             )
+            approval_thresholds = np.full(len(ordered), default_threshold, dtype=np.float32)
         else:
             approval_thresholds = np.asarray(
                 [
@@ -256,10 +260,16 @@ class DecisionPipeline:
             )
         approved = approval_scores >= approval_thresholds
         mask_policy = self.classifier_metadata.neighbor_mask_inference
+        staged_policy = self.classifier_metadata.staged_inference
+        top3_safety_threshold = (
+            mask_policy.top3_safety_threshold
+            if mask_policy is not None
+            else (staged_policy.top3_safety_threshold if staged_policy is not None else None)
+        )
         top3_unsafe = (
             np.zeros(len(ordered), dtype=bool)
-            if top3_safety_scores is None or mask_policy is None
-            else top3_safety_scores < mask_policy.top3_safety_threshold
+            if top3_safety_scores is None or top3_safety_threshold is None
+            else top3_safety_scores < top3_safety_threshold
         )
         duplicate_review_indices = {
             lower_index

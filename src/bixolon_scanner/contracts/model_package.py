@@ -226,6 +226,8 @@ class StagedClassifierMetadata(BaseModel):
     early_approval_threshold: float = Field(ge=0.0, le=1.0)
     final_views: list[str] = Field(min_length=1)
     top3_views: list[str] = Field(min_length=1)
+    approval_metric: Literal["top1_probability", "inverse_entropy"] = "top1_probability"
+    approval_threshold: float | None = None
     ranking_aggregation: Literal[
         "mean_logits",
         "mean_probability",
@@ -233,6 +235,8 @@ class StagedClassifierMetadata(BaseModel):
         "reciprocal_rank",
         "top3_vote",
     ] = "mean_logits"
+    top3_safety_metric: Literal["inverse_entropy"] | None = None
+    top3_safety_threshold: float | None = Field(default=None, le=0.0)
 
     @model_validator(mode="after")
     def validate_view_policy(self) -> "StagedClassifierMetadata":
@@ -254,6 +258,17 @@ class StagedClassifierMetadata(BaseModel):
             set(self.top3_views)
         ):
             raise ValueError("staged classifier view lists must not contain duplicates")
+        if self.approval_threshold is not None:
+            if self.approval_metric == "top1_probability" and not (
+                0.0 <= self.approval_threshold <= 1.0
+            ):
+                raise ValueError("staged probability threshold must be in [0, 1]")
+            if self.approval_metric == "inverse_entropy" and self.approval_threshold > 0.0:
+                raise ValueError("staged inverse-entropy threshold must not be positive")
+        if self.approval_metric != "top1_probability" and self.early_approval_threshold < 1.0:
+            raise ValueError("non-probability staged approval requires disabled early approval")
+        if (self.top3_safety_metric is None) != (self.top3_safety_threshold is None):
+            raise ValueError("staged Top-3 safety metric and threshold must be configured together")
         return self
 
 
@@ -330,11 +345,17 @@ class ClassifierMetadata(BaseModel):
         ids = [label.class_id for label in self.labels]
         if len(ids) != len(set(ids)):
             raise ValueError("classifier label IDs must be unique")
-        if (
-            self.staged_inference is not None
-            and self.staged_inference.early_approval_threshold < self.approval_threshold
-        ):
-            raise ValueError("staged early threshold must not be below approval threshold")
+        if self.staged_inference is not None:
+            staged_threshold = (
+                self.approval_threshold
+                if self.staged_inference.approval_threshold is None
+                else self.staged_inference.approval_threshold
+            )
+            if (
+                self.staged_inference.approval_metric == "top1_probability"
+                and self.staged_inference.early_approval_threshold < staged_threshold
+            ):
+                raise ValueError("staged early threshold must not be below approval threshold")
         if self.staged_inference is not None and self.neighbor_mask_inference is not None:
             raise ValueError("staged and neighbor-mask classifier inference are mutually exclusive")
         if self.approval_thresholds is not None:

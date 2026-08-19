@@ -618,9 +618,18 @@ class OnnxClassifier:
                 final_logits[ambiguous_indices] = final_sum / len(staged.final_views)
 
         final_probabilities = _softmax_rows(final_logits, self.metadata.temperature)
-        unknown_indices = np.flatnonzero(
-            final_probabilities.max(axis=1) < self.metadata.approval_threshold
+        if staged.approval_metric == "inverse_entropy":
+            approval_scores = np.sum(
+                final_probabilities * np.log(final_probabilities.clip(1e-12)), axis=1
+            )
+        else:
+            approval_scores = final_probabilities.max(axis=1)
+        approval_threshold = (
+            self.metadata.approval_threshold
+            if staged.approval_threshold is None
+            else staged.approval_threshold
         )
+        unknown_indices = np.flatnonzero(approval_scores < approval_threshold)
         ranking_logits = final_logits.copy()
         if len(unknown_indices) and staged.ranking_aggregation != "mean_logits":
             cached_views = {
@@ -649,13 +658,31 @@ class OnnxClassifier:
                 ranking_views,
                 staged.ranking_aggregation,
             )
-            return ClassificationResult(logits=final_logits, ranking_logits=ranking_logits)
         missing_top3_views = [name for name in staged.top3_views if name not in staged.final_views]
-        if len(unknown_indices) and missing_top3_views:
+        if (
+            len(unknown_indices)
+            and staged.ranking_aggregation == "mean_logits"
+            and missing_top3_views
+        ):
             ranking_sum = final_logits[unknown_indices] * len(staged.final_views)
             ranking_sum += self._run_views(batch, unknown_indices, missing_top3_views).sum(axis=0)
             ranking_logits[unknown_indices] = ranking_sum / len(staged.top3_views)
-        return ClassificationResult(logits=final_logits, ranking_logits=ranking_logits)
+        top3_safety_scores = None
+        if staged.top3_safety_metric is not None:
+            top3_safety_scores = np.zeros(len(batch), dtype=np.float32)
+            if len(unknown_indices):
+                ranking_probabilities = _softmax_rows(
+                    ranking_logits[unknown_indices], self.metadata.temperature
+                )
+                top3_safety_scores[unknown_indices] = np.sum(
+                    ranking_probabilities * np.log(ranking_probabilities.clip(1e-12)), axis=1
+                )
+        return ClassificationResult(
+            logits=final_logits,
+            ranking_logits=ranking_logits,
+            approval_scores=approval_scores.astype(np.float32),
+            top3_safety_scores=top3_safety_scores,
+        )
 
     def _neighbor_mask_classify(
         self,

@@ -282,6 +282,49 @@ def test_staged_classifier_supports_top3_vote_ranking(classifier_metadata):
     assert set(np.argsort(-result.ranking_logits[0])[:3]) == {0, 1, 2}
 
 
+def test_staged_classifier_returns_inverse_entropy_approval_and_top3_safety(
+    classifier_metadata,
+):
+    classifier_metadata.approval_threshold = 0.0
+    classifier_metadata.staged_inference = StagedClassifierMetadata(
+        center_crop_scale=0.855,
+        views=[
+            ClassifierView(name="base", affine=((1, 0, 0), (0, 1, 0))),
+            ClassifierView(name="hflip", affine=((-1, 0, 0), (0, 1, 0))),
+        ],
+        first_view="base",
+        early_approval_threshold=1.0,
+        final_views=["base", "hflip"],
+        top3_views=["base", "hflip"],
+        approval_metric="inverse_entropy",
+        approval_threshold=-0.1,
+        ranking_aggregation="reciprocal_rank",
+        top3_safety_metric="inverse_entropy",
+        top3_safety_threshold=-1.0,
+    )
+
+    class Runner:
+        def run_inputs(self, output_names, inputs):
+            del output_names, inputs
+            return [
+                np.asarray(
+                    [[8.0, 0.0, -1.0], [7.0, 1.0, -1.0]],
+                    dtype=np.float32,
+                )
+            ]
+
+    adapter = inference.OnnxClassifier.__new__(inference.OnnxClassifier)
+    adapter.metadata = classifier_metadata
+    adapter.runner = Runner()
+
+    result = adapter._staged_classify(np.zeros((1, 3, 224, 224), dtype=np.float32))
+
+    assert result.approval_scores.shape == (1,)
+    assert result.approval_scores[0] <= 0.0
+    assert result.top3_safety_scores.shape == (1,)
+    assert result.top3_safety_scores[0] <= 0.0
+
+
 def test_staged_classifier_batches_all_final_views_when_early_exit_is_disabled(
     classifier_metadata,
 ):
