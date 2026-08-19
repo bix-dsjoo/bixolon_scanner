@@ -75,7 +75,13 @@ def main() -> None:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--provider", choices=("cuda", "cpu"), default="cuda")
+    parser.add_argument(
+        "--provider",
+        choices=("tensorrt", "tensorrt-detector", "tensorrt-classifier", "cuda", "cpu"),
+        default="cuda",
+    )
+    parser.add_argument("--detector-engine", type=Path)
+    parser.add_argument("--classifier-engine", type=Path)
     parser.add_argument("--cuda-dll-dir", type=Path)
     parser.add_argument("--warmup", type=int, default=30)
     parser.add_argument("--images-per-level", type=int, default=200)
@@ -104,9 +110,22 @@ def main() -> None:
     }
 
     package = load_model_package(args.package_dir)
-    detector_adapter, classifier_adapter, provider = build_onnx_adapters(
-        package, args.provider, cuda_dll_dir=args.cuda_dll_dir
-    )
+    if args.provider.startswith("tensorrt"):
+        detector_engine = args.detector_engine if args.provider != "tensorrt-classifier" else None
+        classifier_engine = args.classifier_engine if args.provider != "tensorrt-detector" else None
+        if args.provider != "tensorrt-classifier" and detector_engine is None:
+            parser.error("--detector-engine is required for this TensorRT mode")
+        if args.provider != "tensorrt-detector" and classifier_engine is None:
+            parser.error("--classifier-engine is required for this TensorRT mode")
+        from .tensorrt_native import build_tensorrt_adapters
+
+        detector_adapter, classifier_adapter, provider = build_tensorrt_adapters(
+            package, detector_engine, classifier_engine
+        )
+    else:
+        detector_adapter, classifier_adapter, provider = build_onnx_adapters(
+            package, args.provider, cuda_dll_dir=args.cuda_dll_dir
+        )
     detector = _CaptureDetector(detector_adapter)
     classifier = _CaptureClassifier(classifier_adapter)
     pipeline = DecisionPipeline(
