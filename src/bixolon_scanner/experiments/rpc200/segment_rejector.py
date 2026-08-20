@@ -8,6 +8,7 @@ from typing import Any
 
 import numpy as np
 
+from ...configuration import load_json_config
 from ...training.models import require_torch
 from .data_scale import (
     RpcCachedDataset,
@@ -160,7 +161,7 @@ def main() -> None:
     parser.add_argument("--epochs", type=int, default=30)
     args = parser.parse_args()
     torch = require_torch()
-    config = json.loads(args.config.read_text(encoding="utf-8"))
+    config = load_json_config(args.config)
     training = config["training"]
     run_dir = args.output_dir / "runs" / "full" / f"seed{args.seed}"
     records = _read_jsonl(args.output_dir / "prepared" / "cache" / "records.jsonl")

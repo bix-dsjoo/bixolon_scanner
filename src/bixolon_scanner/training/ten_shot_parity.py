@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 
+from ..configuration import load_json_config
 from ..inference import OrtRunner
 from ..package import load_model_package, sha256_file
 from .fewshot_adapter import (
@@ -128,7 +129,7 @@ def run_locked_parity(args: argparse.Namespace) -> dict[str, Any]:
     )
     torch = require_torch()
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=False)
-    config = json.loads(args.config.read_text(encoding="utf-8"))
+    config = load_json_config(args.config)
     calibration = json.loads(args.calibration.read_text(encoding="utf-8"))
     package = load_model_package(args.package_dir)
     spec = adapter_spec_from_dict(checkpoint["adapter_spec"])

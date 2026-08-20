@@ -37,7 +37,10 @@ def test_config_redirect_rejects_cycles_and_missing_targets(tmp_path) -> None:
 
 
 def test_repository_legacy_config_redirects_are_valid() -> None:
+    config_root = (ROOT / "configs").resolve()
     for path in (ROOT / "configs").glob("*.json"):
         value = load_json_config(path)
+        canonical = resolve_config_path(path)
         assert value, path.name
-        assert resolve_config_path(path) != path.resolve()
+        assert canonical != path.resolve()
+        assert canonical.is_relative_to(config_root), path.name

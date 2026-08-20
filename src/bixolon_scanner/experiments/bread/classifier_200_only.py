@@ -12,6 +12,7 @@ from typing import Any
 import numpy as np
 from PIL import Image, ImageOps
 
+from ...configuration import load_json_config
 from ...contracts.model_package import load_model_package
 from ...pipeline.ports import Detection
 from ...runtime.onnx import (
@@ -48,7 +49,7 @@ def _write_json(path: Path, value: Any) -> None:
 
 
 def _load_config(path: Path) -> dict[str, Any]:
-    config = json.loads(path.read_text(encoding="utf-8"))
+    config = load_json_config(path)
     version = config.get("experiment", {}).get("candidate_version")
     if version not in {"1.1.1", "1.1.2", "1.1.3"}:
         raise ValueError("200-only classifier config must target version 1.1.1 through 1.1.3")

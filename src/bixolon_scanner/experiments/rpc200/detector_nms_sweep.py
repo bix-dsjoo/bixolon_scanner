@@ -7,6 +7,7 @@ from typing import Any
 
 import numpy as np
 
+from ...configuration import load_json_config
 from ...evaluation.detector import _metrics
 from .data_scale import LEVELS
 
@@ -21,7 +22,7 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--write-json", type=Path)
     args = parser.parse_args()
-    config = json.loads(args.config.read_text(encoding="utf-8"))
+    config = load_json_config(args.config)
     options = config["detector"]
     detector_dir = args.output_dir / "detector"
     score_threshold = float(

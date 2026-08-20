@@ -7,6 +7,7 @@ from pathlib import Path
 import numpy as np
 from PIL import Image, ImageDraw
 
+from ...configuration import load_json_config
 from ...training.calibration import softmax
 from .worker_gate import _iou, postprocess_worker_gate
 
@@ -18,7 +19,7 @@ def main() -> None:
     parser.add_argument("--dataset-root", type=Path)
     parser.add_argument("--contact-sheet", type=Path)
     args = parser.parse_args()
-    config = json.loads(args.config.read_text(encoding="utf-8"))
+    config = load_json_config(args.config)
     run_dir = args.output_dir / "runs" / "full" / f"seed{config['experiment']['seeds'][0]}"
     calibration = json.loads((run_dir / "calibration.json").read_text(encoding="utf-8"))
     archive = np.load(run_dir / "selection_predictions.npz")

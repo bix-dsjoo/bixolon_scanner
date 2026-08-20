@@ -9,6 +9,7 @@ from typing import Any
 import numpy as np
 import onnxruntime as ort
 
+from ...configuration import load_json_config
 from ...pipeline.ports import Detection
 from ...training.calibration import softmax
 from .context_rejector import _feature_matrix, _geometry_features, _read_jsonl
@@ -478,7 +479,7 @@ def main() -> None:
             parser.error(f"invalid --assignment-mutual-pair: {error}")
         if any(len(pair) != 2 or pair[0] == pair[1] for pair in mutual_pairs):
             parser.error("--assignment-mutual-pair requires two different classes")
-    config = json.loads(args.config.read_text(encoding="utf-8"))
+    config = load_json_config(args.config)
     root = args.output_dir
     run_dir = root / "runs" / "full" / f"seed{args.seed}"
     detector_dir = root / "detector"
