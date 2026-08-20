@@ -112,3 +112,40 @@ checkpoint hash, 보고서와 원인을 `rejected`로 보존하고 다음 patch�
 - E/M/H·운영 수집본 end-to-end 여섯 gate와 오류 행
 - CPU/CUDA parity, RTX 5080 p50/p95/p99와 표본 수
 - `promoted` 또는 `rejected` 결정 및 다음 patch 가설
+
+## 2026-08-19 실행 상태
+
+`1.1.1` 정직한 기준선은 DINOv3 ConvNeXt-Tiny 공개 사전학습 가중치에서 시작해 backbone을
+고정하고, `single_objects` 200장의 원본과 결정적 파생 입력만으로 regularized linear head와
+승인·Top-3 안전 threshold를 선택했다. 실제 읽은 200개 SHA 집합은 잠긴 allowlist와 정확히
+일치했고 E/M/H, 운영 수집본, GT crop, detector ROI는 fitting 전에 접근하지 않았다.
+
+200장 내부 nested OOF 파생 입력 600개에서 Top-1 95.667%, Top-3 98.333%, 승인 오인 0건을
+유지한 승인 coverage는 83.667%였다. 후보를 잠근 뒤 E/M/H와 반려 운영 수집본을 각각 한 번
+실행했다.
+
+| `1.1.1` 지표 | E/M/H 300장 | 반려 운영 개발 115장 | gate |
+| --- | ---: | ---: | ---: |
+| `SEGMENTATION` | 300/300 (100%) | 111/115 (96.522%) | ≥90% |
+| all-GT `APPROVED` | 942/1,410 (66.809%) | 293/504 (58.135%) | ≥90% |
+| `SEGMENTATION` 이미지 FN | 5/300 (1.667%) | 1/111 (0.901%) | ≤0.1% |
+| `SEGMENTATION` 이미지 FP | 2/300 (0.667%) | 0/111 | ≤0.1% |
+| `APPROVED` 오인 | 1/1,410 (0.0709%) | 0/504 | ≤0.1% |
+| Candidate out | 0/1,410 | 0/504 | ≤0.1% |
+| CUDA 평균 / p95 | 95.63 / 93.44ms | 77.33 / 89.38ms | 각각 ≤100ms |
+
+따라서 `1.1.1`은 `rejected`다. proposal class verifier도 같은 Classifier를 사용하므로 교체만으로
+E/M/H 오류 이미지 `153, 155, 204, 259, 296, 298`과 운영 오류 이미지 `60`이 생겼다.
+고정 판정과 checksum은
+`manifests/bread-zero-error-1.1/classifier_200_only_1.1.1_rejected_2026-08-19.json`에 보존한다.
+
+`1.1.2`는 head family와 backbone을 그대로 두고 augmentation 가설 하나만 바꾼다. 200장
+foreground와 절차적 배경으로 detector box의 경계 이웃 clutter를 만들고 운영
+neighbor-ownership mask를 동일하게 적용한다. E/M/H와 운영 수집본은 후보를 다시 잠근 뒤에만
+한 번 평가하며 fitting에는 계속 사용하지 않는다.
+
+`1.1.2` 실행 결과 내부 OOF Top-1/Top-3는 96.167%/99.333%로 개선됐지만 무오류 승인
+coverage는 78.667%로 낮아졌다. 잠긴 end-to-end 결과도 E/M/H `APPROVED` 873/1,410
+(61.915%), 운영 개발 재사용본 288/504(57.143%)로 `1.1.1`보다 낮았다. E/M/H FN/FP 포함
+이미지는 각각 5/300, 1/300이고 운영 FN 포함 이미지는 1/111이었다. 따라서 `1.1.2`도
+`rejected`로 고정하고 `1.1.3`에서는 입력 recipe를 유지한 채 소표본 head family만 비교한다.

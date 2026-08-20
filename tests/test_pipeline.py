@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import numpy as np
+import pytest
 
 from bixolon_scanner.contracts import ItemStatus, Status
 from bixolon_scanner.inference import Detection, DetectionResult
@@ -108,6 +109,36 @@ def test_unknown_top3_uses_separate_ranking_logits(classifier_metadata, quality_
     assert response.items[0].top3[0].class_id == "bread_03"
 
 
+def test_2_0_direct_ranking_scores_and_catalog_reason(classifier_metadata, quality_metadata):
+    classifier = FakeClassifier([[0.0, 0.0, 0.0]])
+    classifier.logits = ClassificationResult(
+        logits=np.asarray([[0.0, 0.0, 0.0]], dtype=np.float32),
+        ranking_logits=np.asarray([[0.0, 0.0, 0.0]], dtype=np.float32),
+        approval_scores=np.asarray([0.42], dtype=np.float32),
+        ranking_scores=np.asarray([[0.91, 0.88, 0.1]], dtype=np.float32),
+        unknown_reasons=("CLASSIFIER_CATALOG_CONFLICT",),
+        approval_blocked=np.asarray([True]),
+    )
+    pipeline = DecisionPipeline(
+        FakeDetector(DetectionResult([Detection(10, 10, 40, 40, 0.95)])),
+        classifier,
+        classifier_metadata,
+        quality_metadata,
+        worker_version="2.0.0-rc.2",
+        embedder_version="2.0.0-rc.2",
+        classifier_policy_version="2.0.0-rc.2",
+        catalog_version="2.0.0",
+    )
+
+    response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request-v2")
+
+    assert response.items[0].status is ItemStatus.UNKNOWN
+    assert response.items[0].reason_codes == ["CLASSIFIER_CATALOG_CONFLICT"]
+    assert response.items[0].confidence == pytest.approx(0.42)
+    assert response.items[0].top3[0].confidence == pytest.approx(0.91)
+    assert response.catalog_version == "2.0.0"
+
+
 def test_unsafe_classifier_top3_becomes_segment_recapture(classifier_metadata, quality_metadata):
     classifier_metadata.approval_threshold = 0.9
     classifier_metadata.neighbor_mask_inference = NeighborMaskClassifierMetadata(
@@ -159,6 +190,33 @@ def test_safe_classifier_top3_remains_unknown(classifier_metadata, quality_metad
 
     assert response.items[0].status is ItemStatus.UNKNOWN
     assert response.items[0].reason_codes == ["BELOW_APPROVAL_THRESHOLD"]
+
+
+def test_approved_classifier_is_not_rejected_by_unknown_top3_safety(
+    classifier_metadata, quality_metadata
+):
+    classifier_metadata.approval_threshold = 0.9
+    classifier_metadata.neighbor_mask_inference = NeighborMaskClassifierMetadata(
+        views=[NeighborMaskClassifierView(name="mask", distance_bias=0.0, weight=1.0)],
+        top3_safety_threshold=-2.96,
+    )
+    classifier = FakeClassifier([])
+    classifier.logits = ClassificationResult(
+        logits=np.asarray([[4.0, 0.3, 0.2]], dtype=np.float32),
+        ranking_logits=np.asarray([[1.0, 0.5, 0.25]], dtype=np.float32),
+        approval_scores=np.asarray([1.0], dtype=np.float32),
+        top3_safety_scores=np.asarray([-3.0], dtype=np.float32),
+    )
+    pipeline = DecisionPipeline(
+        FakeDetector(DetectionResult([Detection(10, 10, 40, 40, 0.95)])),
+        classifier,
+        classifier_metadata,
+        quality_metadata,
+    )
+
+    response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "approved-top3")
+
+    assert response.items[0].status is ItemStatus.APPROVED
 
 
 def test_unsafe_staged_classifier_top3_becomes_segment_recapture(

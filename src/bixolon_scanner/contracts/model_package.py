@@ -9,6 +9,7 @@ from typing import Literal
 from pydantic import AliasChoices, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .errors import PackageValidationError
+from .package_files import resolve_package_file, validate_package_filename
 
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$")
 
@@ -19,6 +20,8 @@ class DetectorEnsembleMember(BaseModel):
     filename: str = Field(min_length=1)
     weight: float = Field(default=1.0, gt=0.0)
     score_threshold: float = Field(ge=0.0, le=1.0)
+
+    _validate_filename = field_validator("filename")(validate_package_filename)
 
 
 class DetectorFusionMetadata(BaseModel):
@@ -47,6 +50,8 @@ class DetectorConsensusPolicyMetadata(BaseModel):
     nms_iou_threshold: float = Field(ge=0.0, le=1.0)
     containment_threshold: float = Field(gt=0.0, le=1.0)
     group_minimum: int = Field(ge=2)
+
+    _validate_member_filename = field_validator("member_filename")(validate_package_filename)
 
 
 class DetectorPolicyConsensusMetadata(BaseModel):
@@ -176,6 +181,8 @@ class DetectorMetadata(BaseModel):
     box_format: Literal["normalized_cxcywh"] = "normalized_cxcywh"
     resize_reducing_gap: float | None = Field(default=None, ge=1.0)
     ensemble: DetectorEnsembleMetadata | None = None
+
+    _validate_filename = field_validator("filename")(validate_package_filename)
 
     @field_validator("version")
     @classmethod
@@ -326,6 +333,8 @@ class ClassifierMetadata(BaseModel):
     staged_inference: StagedClassifierMetadata | None = None
     neighbor_mask_inference: NeighborMaskClassifierMetadata | None = None
 
+    _validate_filename = field_validator("filename")(validate_package_filename)
+
     @field_validator("warmup_batch_sizes")
     @classmethod
     def validate_warmup_batch_sizes(cls, value: list[int]) -> list[int]:
@@ -386,6 +395,8 @@ class CountVerifierMetadata(BaseModel):
     confidence_threshold: float = Field(ge=0.0, le=1.0)
     temperature: float = Field(default=1.0, gt=0.0)
     resize_reducing_gap: float | None = Field(default=None, ge=1.0)
+
+    _validate_filename = field_validator("filename")(validate_package_filename)
 
     @field_validator("version")
     @classmethod
@@ -667,14 +678,9 @@ def sha256_file(path: Path) -> str:
 
 
 def _resolve_package_file(root: Path, filename: str) -> Path:
-    candidate = (root / filename).resolve()
-    try:
-        candidate.relative_to(root)
-    except ValueError as exc:
-        raise PackageValidationError from exc
-    if not candidate.is_file():
-        raise PackageValidationError
-    return candidate
+    """Compatibility wrapper for the shared package path validator."""
+
+    return resolve_package_file(root, filename)
 
 
 def load_model_package(package_dir: Path) -> ModelPackage:

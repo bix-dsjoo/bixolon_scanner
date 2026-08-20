@@ -30,6 +30,17 @@ $sourceDirectory = Join-Path $repositoryRoot "src"
     --exclude-module matplotlib `
     --exclude-module pytest `
     --exclude-module scipy `
+    --exclude-module psutil `
+    --exclude-module rich `
+    --exclude-module pygments `
+    --exclude-module charset_normalizer `
+    --exclude-module websockets `
+    --exclude-module watchfiles `
+    --exclude-module httptools `
+    --exclude-module uvloop `
+    --exclude-module yaml `
+    --exclude-module markupsafe `
+    --exclude-module werkzeug `
     --exclude-module pkg_resources `
     --exclude-module setuptools `
     --hidden-import uvicorn.logging `
@@ -37,8 +48,6 @@ $sourceDirectory = Join-Path $repositoryRoot "src"
     --hidden-import uvicorn.loops.asyncio `
     --hidden-import uvicorn.protocols.http.auto `
     --hidden-import uvicorn.protocols.http.h11_impl `
-    --hidden-import uvicorn.protocols.websockets.auto `
-    --hidden-import uvicorn.protocols.websockets.websockets_impl `
     --hidden-import uvicorn.lifespan.on `
     --hidden-import numpy._core._exceptions `
     $entryPoint

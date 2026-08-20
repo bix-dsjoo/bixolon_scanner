@@ -1,23 +1,55 @@
 # 현재 운영·릴리스 상태
 
-기준일: 2026-08-19
+기준일: 2026-08-20
 
 | 축 | 버전/후보 | 상태 |
 |---|---|---|
 | Python | `1.0.0` | 정식 API 계약 코드 |
-| 현재 운영 package | `bread-worker-1.1.0` | schema 2.0 owner-waiver production |
+| 현재 운영 release | `scanner-2.0.0` | RC.8 고정 산출물의 owner-waiver production |
 | schema 2.1 hardening 후보 | `bread-worker-1.0.0-hardened-candidate-recovered` | `not_promoted`, 개선 후 재검증 |
-| Worker / Detector / Classifier | `1.1.0` | 고정 4-model Detector + domain LDA bridge release |
+| Worker / Detector / Classifier | `2.0.0` | 고정 4-model Detector + frozen DINOv2 + Store Catalog ridge |
+| Catalog | `2.0.0` | 영구 무키 `CHECKSUM-SHA256`, 독립 서명 없음 |
 | Detector 학습 파이프라인 | `1.0.0` | recovered 10-shot provenance |
 | Classifier 학습 파이프라인 | `1.0.0` | recovered 12-shot provenance |
 | 승격 원본 | `bread-zero-error-1.1.0-domain-lda-fixed-four-v3` | 두 알려진 제한을 waiver로 보존 |
-| release 데이터셋 | `bread-1.1-development-plus-rejected-operational-v2` | E/M/H LDA fit과 반려 운영본 재사용 계보 |
-| Flutter | `1.0.0+3` | Worker·Detector·Classifier 1.1.0 readiness 확인 |
+| release 데이터셋 | `bread-scanner-2.0.0-development-415-rc.8` | 300장+115장 개발 계보, 독립 인증 아님 |
+| Flutter | `2.0.0+4` | Worker·Detector·Classifier 2.0.0 readiness 확인 |
 | 다음 Classifier | `1.1.1+` | `single_objects` 200장 전용 계획 |
 | 사용자 독립 test | pending | 1.1.1+ successor 승격용 새 세션 필요 |
+| Scanner 2.0 | `2.0.0` | `production`, `independent_certified=false` |
 | 이전 Detector 후보 | `0.2.5` | `experiment_only`, 미승격 |
-| Rollback package | `bread-worker-1.0.0` | 1.1.0 장애 시 첫 수동 복구용 |
+| Rollback package | `bread-worker-1.1.0` | 2.0.0 장애 시 첫 수동 복구용 |
 | 비상 rollback package | `bread-worker-0.1.1` | 테스트 계열 최종 복구용 |
+
+Scanner 2.0은 fixed four-model D-FINE Detector, frozen DINOv2 Base Embedder와 SKU별 10장
+Store Catalog ridge adapter 조합이다. 300장과 2026-08-18 운영 수집본 115장을 ambiguity·OOD
+정책 선택과 회귀에 함께 사용했다. 따라서 415장은 모두 개발 계보이고 독립 승격 증거가 아니다.
+
+RC.8은 Top-2 pair probability, Ridge·retrieval 불일치와 retrieval OOD gate를 추가했다. 300장
+개발 회귀에서 `SEGMENTATION` 294/300, `APPROVED` 1,269/1,410, `UNKNOWN` 98/1,410,
+`SEGMENT_RECAPTURE` 8/1,410, 이미지 FN/FP와 승인 오인 각각 0건, Candidate out 1/1,410을
+기록했다. CUDA full-path 평균/P95/P99는 85.44/98.10/105.34ms다. CPU/CUDA 300장 최종 판정과
+class rank는 완전히 같고 bbox mismatch도 없다.
+
+115장에서는 `SEGMENTATION` 110/115, `APPROVED` 468/504, `UNKNOWN` 26/504,
+`SEGMENT_RECAPTURE` 4/504, 이미지 FN/FP·승인 오인·Candidate out 0건을 기록했다. RC.7의
+`bread_02 → bread_03` 승인 오인 두 건은 모두 정답 `bread_02`를 포함한 `UNKNOWN` Top-3로
+바뀌었다. 상세 계약은 [Scanner 2.0 설계](../architecture/scanner-2.0.0.md),
+[300장 평가](../experiments/bread/scanner-2.0.0-development-300.md)와
+[115장 개발 평가](../experiments/bread/scanner-2.0.0-operational-2026-08-18-115.md)를 따른다.
+
+프로젝트 소유자는 2026-08-20 새 owner-private locked test와 Catalog HMAC을 사용하지 않는 예외를
+승인하고, model graph·weight·decision policy가 같은 RC.8을 `2.0.0` production으로 승격했다.
+Catalog는 지속적으로 키·key ID·서명 없이 파일별 SHA-256과 source manifest 정합성만 검증한다.
+고객 onboarding에는 다중 상품 승격 사진이나 키를 요구하지 않는다. 이 결정은 독립 인증을 대신하지
+않으며 `independent_certified=false`다. release lock SHA-256은
+`564d804a598e4a749a5b02c29007f9fea059808411e20cdb864ab2e28205f4cf`, production attestation
+SHA-256은 `33a44cf270bc83cc339c1c68128d8c9445d3ef05f559193e1200de67819714ee`다.
+
+standalone Worker는 key, key ID와 store ID 환경변수 없이 CPU·CUDA readiness, 정상 scan과 오류
+smoke를 통과했다. Windows 앱 `2.0.0+4` release bundle은 production Runtime, checksum-only Catalog,
+Worker와 CUDA runtime 177개 파일을 포함하며 manifest SHA-256은
+`f522b0c292e34d56054ed48e07c446d8fc417a3a923581542b4be50af7d15ff1`이다.
 
 `bread-zero-error-1.1.0`의 공식 gate는 `SEGMENTATION ≥90%`, 전체 판정 가능 GT 대비
 end-to-end `APPROVED ≥90%`, 그리고 `SEGMENTATION` 이미지 FP/FN·승인 오인·Candidate out

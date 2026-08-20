@@ -120,11 +120,19 @@ void mainOfficialContractTests() {
       'worker_version': '1.0.0',
       'detector_version': '1.0.0',
       'classifier_version': '1.0.0',
+      'embedder_version': '2.0.0-rc.2',
+      'detector_policy_version': '2.0.0-rc.2',
+      'classifier_policy_version': '2.0.0-rc.2',
+      'catalog_version': '2.0.0-rc.2',
     });
 
     expect(response.status, ScanStatus.unknown);
     expect(response.items.single.status, ItemStatus.segmentRecapture);
     expect(response.modelVersions.worker, '1.0.0');
+    expect(response.modelVersions.embedder, '2.0.0-rc.2');
+    expect(response.modelVersions.detectorPolicy, '2.0.0-rc.2');
+    expect(response.modelVersions.classifierPolicy, '2.0.0-rc.2');
+    expect(response.modelVersions.catalog, '2.0.0-rc.2');
   });
 
   test(

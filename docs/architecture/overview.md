@@ -21,6 +21,7 @@ flowchart LR
 - `worker`는 `training`, `evaluation`, `experiments`, PyTorch를 import하지 않습니다.
 - 상태 결정은 `pipeline` 한 곳에서 수행합니다. HTTP 계층과 ONNX adapter가 판정 우선순위를 복제하지 않습니다.
 - 운영 추론은 ONNX Runtime만 사용합니다. `runtime`에 PyTorch 의존성을 추가하지 않습니다.
+- `evaluation`은 재사용 가능한 측정만 소유하고, 실험별 조립은 `experiments`가 소유합니다.
 - 공용 image/NMS 함수는 `runtime`의 명시적 내부 공용 API를 사용합니다.
 - 루트의 과거 모듈은 호환 re-export입니다. 새 구현의 소유권은 canonical 하위 패키지에 있습니다.
 
@@ -44,12 +45,12 @@ Flutter 앱은 feature-first 구조를 사용합니다.
 ```text
 lib/
   core/design_system/       token, theme, copy, 공통 component
-  shared/                   공용 model과 catalog
+  shared/                   공용 model, catalog, logging, presentation policy
   features/scanner/         domain/application/data/presentation
   features/activity/        domain/data/presentation
 ```
 
-`features`끼리 화면 구현을 직접 참조하지 않습니다. 공유 계약은 `shared`, 시각 토큰과 재사용 UI는 `core/design_system`에 둡니다. 과거 경로의 Dart 파일은 기존 import를 위한 export 계층입니다.
+`features`끼리 화면 구현을 직접 참조하지 않습니다. 앱 조립 계층이 화면 builder를 주입하며, 공유 계약·로그 저장소·공통 표시 정책은 `shared`, 시각 토큰과 재사용 UI는 `core/design_system`에 둡니다. 과거 경로의 Dart 파일은 기존 import를 위한 export 계층입니다.
 
 ## 호환성 정책
 

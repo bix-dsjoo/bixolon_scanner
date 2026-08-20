@@ -25,14 +25,20 @@ class DetectionResult:
     count_confidence: float | None = None
     uncertain_candidate_count: int = 0
     uncertain_candidate_scores: tuple[float, ...] = ()
+    refinement_executed: bool = False
 
 
 @dataclass(frozen=True)
 class ClassificationResult:
     logits: np.ndarray
     ranking_logits: np.ndarray
+    retrieval_logits: np.ndarray | None = None
     approval_scores: np.ndarray | None = None
     top3_safety_scores: np.ndarray | None = None
+    ranking_scores: np.ndarray | None = None
+    segment_recapture_reasons: tuple[str | None, ...] | None = None
+    unknown_reasons: tuple[str | None, ...] | None = None
+    approval_blocked: np.ndarray | None = None
 
 
 class Detector(Protocol):

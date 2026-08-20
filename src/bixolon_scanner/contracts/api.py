@@ -73,6 +73,8 @@ class ScanItem(BaseModel):
                 raise ValueError("UNKNOWN segmentation requires null prediction and non-empty top3")
             allowed_reasons = {
                 "BELOW_APPROVAL_THRESHOLD",
+                "CLASSIFIER_AMBIGUOUS_TOP2",
+                "CLASSIFIER_CATALOG_CONFLICT",
                 "DETECTOR_CONTAINED_DUPLICATE",
             }
             if len(self.reason_codes) != 1 or self.reason_codes[0] not in allowed_reasons:
@@ -80,8 +82,6 @@ class ScanItem(BaseModel):
             scores = [candidate.confidence for candidate in self.top3]
             if scores != sorted(scores, reverse=True):
                 raise ValueError("top3 must be sorted by descending confidence")
-            if abs(self.confidence - scores[0]) > 1e-6:
-                raise ValueError("UNKNOWN confidence must equal Top-1 confidence")
         elif self.prediction is not None or self.top3 or not self.reason_codes:
             raise ValueError("SEGMENT_RECAPTURE requires reasons and no prediction or candidates")
         return self
@@ -107,6 +107,10 @@ class ScanResponse(BaseModel):
     worker_version: str
     detector_version: str | None
     classifier_version: str | None
+    embedder_version: str | None = None
+    detector_policy_version: str | None = None
+    classifier_policy_version: str | None = None
+    catalog_version: str | None = None
 
     @property
     def items(self) -> list[ScanItem]:
@@ -132,8 +136,10 @@ class ScanResponse(BaseModel):
             raise ValueError("SEGMENTATION response requires segmentations")
         if self.detector_version is None or self.classifier_version is None:
             raise ValueError("SEGMENTATION requires executed detector and classifier versions")
-        has_below_threshold = any(
-            "BELOW_APPROVAL_THRESHOLD" in item.reason_codes for item in self.segmentations
+        has_classification_review = any(
+            item.status is ItemStatus.UNKNOWN
+            and item.reason_codes != ["DETECTOR_CONTAINED_DUPLICATE"]
+            for item in self.segmentations
         )
         has_duplicate_review = any(
             "DETECTOR_CONTAINED_DUPLICATE" in item.reason_codes for item in self.segmentations
@@ -142,7 +148,7 @@ class ScanResponse(BaseModel):
             item.status is ItemStatus.SEGMENT_RECAPTURE for item in self.segmentations
         )
         expected_reasons = []
-        if has_below_threshold:
+        if has_classification_review:
             expected_reasons.append("SEGMENT_BELOW_APPROVAL_THRESHOLD")
         if has_duplicate_review:
             expected_reasons.append("SEGMENT_DUPLICATE_REVIEW_REQUIRED")

@@ -7,19 +7,44 @@
 | 구분 | 현재 값 | 의미 |
 |---|---|---|
 | Python 배포 | `bixolon-scanner 1.0.0` | 정식 Worker API 코드와 CLI 배포 버전 |
-| 운영 Worker | `1.1.0` | 고정 4-model Detector와 domain LDA 조합, owner-waiver `production` |
-| 운영 Detector | `1.1.0` | D-FINE-N 4-model ensemble, 독립 버전 |
-| 운영 Classifier | `1.1.0` | DINOv3 ConvNeXt-Tiny + domain LDA, 독립 버전 |
+| 운영 Worker | `2.0.0` | RC.8 고정 정책을 소유자 예외로 승격한 `production` |
+| 운영 Detector | `2.0.0` | D-FINE-N 고정 4-model ensemble, 독립 버전 |
+| 운영 Classifier | `2.0.0` | frozen DINOv2 Embedder + Store Catalog ridge 정책 |
+| 운영 Catalog | `2.0.0` | 키 없이 파일별 SHA-256을 검증하는 `CHECKSUM-SHA256` package |
 | Detector 학습 파이프라인 | `1.0.0` | D-FINE-N 학습·선택·export 계약, 독립 버전 |
 | Classifier 학습 파이프라인 | `1.0.0` | DINOv3 학습·선택·staged TTA export 계약, 독립 버전 |
-| 데이터셋 | `bread-1.1-development-plus-rejected-operational-v2` | 1.1.0 bridge release 계보와 두 owner waiver 보존 |
-| Flutter 앱 | `1.0.0+3` | Worker·Detector·Classifier 1.1.0 readiness 확인 |
-| 이전 운영 package | `bread-worker-1.0.0` | 1.1.0 장애 시 첫 rollback 기준 |
+| 데이터셋 | `bread-scanner-2.0.0-development-415-rc.8` | 300장+115장 개발 계보; 독립 인증 자료가 아님 |
+| Flutter 앱 | `2.0.0+4` | Worker·Detector·Classifier 2.0.0 readiness 확인 |
+| 이전 운영 package | `bread-worker-1.1.0` | 2.0.0 장애 시 첫 rollback 기준 |
 | 비상 rollback package | `bread-worker-0.1.1` | 테스트 계열 최종 수동 복구 기준 |
 
 `0.x` Worker/Detector/Classifier는 모두 테스트 계열이며 `bread-worker-0.1.1`은 rollback용으로만 유지합니다. 이전 `0.2.4` classifier는 자연 장면 Top-1 94.98%, 오인 위험 상한 1.92%, P95 110.95ms로 실패했고, detector `0.2.5`도 hard·독립성·risk gate에 실패했습니다.
 
 운영 `bread-worker-1.1.0`은 E/M/H 개발 300장에서 `APPROVED` 1,410/1,410, 이미지 FP/FN·승인 오인·Candidate out 0건, CUDA 평균/P95 91.71/90.99ms를 기록했습니다. 프로젝트 소유자는 2026-08-19 이 후보를 bridge release로 명시적으로 승인했습니다. 최종 LDA가 E/M/H ROI 1,410개로 학습됐고 새 독립 test가 없다는 두 실패는 package의 `manual_waiver`에서 제거하지 않습니다. `1.1.1`부터는 Classifier 학습·fitting을 `single_objects` 200장으로만 제한합니다.
+
+Scanner 2.0은 공용 Detector와 frozen DINOv2 Embedder, 상품별 10장으로 자동 생성하는 Store
+Catalog/ridge adapter를 사용합니다. 고객은 SKU별 유효 사진 10장만 등록하며 다중 상품 승격 사진을
+제출하지 않습니다. Catalog는 운영 키나 서명을 사용하지 않고 파일별 SHA-256과 source manifest
+정합성을 시작 시 검증합니다. 이는 우발적 손상·파일 변조 탐지 계약이며, 비밀 키 기반 발행자 인증은
+제공하지 않습니다.
+
+RC.8은 Top-1/Top-2 Ridge logit gap의 pair probability, Ridge·retrieval 불일치와 retrieval OOD
+경계를 일반 정책으로 추가했습니다. 300장에서는 `SEGMENTATION` 98.0000%, `APPROVED` 90.0000%,
+이미지 FN/FP와 승인 오인 0%, Candidate out 0.0709%, CUDA full-path 평균/P95/P99
+85.44/98.10/105.34ms입니다. 115장에서는 `APPROVED` 92.8571%, 승인 오인과 Candidate out 0%이며,
+기존 두 오인은 정답을 포함한 `UNKNOWN` Top-3로 전환됐습니다. 소유자는 2026-08-20 새 비공개
+locked test와 Catalog HMAC을 사용하지 않는 두 예외를 명시적으로 승인하고 정확히 같은 RC.8
+model graph·weight·decision policy를 `2.0.0` production으로 승격했습니다. 따라서 415장 결과는
+계속 개발 지표이고 독립 일반화 성능으로 표현하지 않으며, 장기 `APPROVED ≥99%` 목표도 아직
+달성하지 못했습니다. 승격 기록은 `configs/releases/scanner_2.0.0.json`과 production
+attestation에 고정합니다. 자세한 분모와 evidence는
+[Scanner 2.0.0 300장 개발 평가](docs/experiments/bread/scanner-2.0.0-development-300.md)와
+[운영 수집본 115장 개발 평가](docs/experiments/bread/scanner-2.0.0-operational-2026-08-18-115.md)를
+따릅니다.
+
+Windows release `artifacts/releases/bixolon-scanner-2.0.0+4`에는 production Runtime, 무키 Catalog,
+standalone Worker와 CUDA runtime이 포함됩니다. Worker는 key, key ID와 store ID 환경변수 없이
+CPU·CUDA smoke를 통과했습니다.
 
 ## 판정 계약
 
@@ -29,7 +54,7 @@ Worker는 이미지에 정확히 하나의 최상위 상태를 반환합니다.
 - `IMAGE_RECAPTURE`: detector hard gate로 이미지 전체 재촬영 필요
 - `ERROR`: 입력, 구성, 모델 또는 시스템 오류
 
-각 segmentation 상태는 `APPROVED`, `UNKNOWN`+Top-3 또는 `SEGMENT_RECAPTURE`입니다. Classifier 품질 클래스, 낮은 신뢰도의 경계 접촉 ROI, 그리고 활성화된 선택적 분류 정책이 안전한 Top-3를 제공하지 못한 ROI(`CLASSIFIER_TOP3_UNSAFE`)는 해당 segmentation만 `SEGMENT_RECAPTURE`로 만들며 다른 객체를 버리지 않습니다. 패키지에서 포함 중복 검토 정책을 활성화하면, 거의 완전히 포함된 두 ROI가 같은 Top-1을 갖는 경우 detector 점수가 낮은 고신뢰 ROI만 `DETECTOR_CONTAINED_DUPLICATE` `UNKNOWN`+Top-3로 보존합니다. 이 정책은 segmentation을 삭제하거나 `RECAPTURE`를 만들지 않습니다. `ERROR`는 재촬영으로 변환하지 않습니다. 실행 버전은 최상위 `worker_version`, `detector_version`, `classifier_version`으로 반환하고, classifier 조기 종료 시 `classifier_version=null`입니다.
+각 segmentation 상태는 `APPROVED`, `UNKNOWN`+Top-3 또는 `SEGMENT_RECAPTURE`입니다. Classifier 품질 클래스, 낮은 신뢰도의 경계 접촉 ROI와 retrieval OOD 객체는 해당 segmentation만 `SEGMENT_RECAPTURE`로 만들며 다른 객체를 버리지 않습니다. Top-1과 Top-2가 애매하거나 Ridge와 retrieval이 충돌하면 `UNKNOWN`+Top-3로 방어합니다. 패키지에서 포함 중복 검토 정책을 활성화하면, 거의 완전히 포함된 두 ROI가 같은 Top-1을 갖는 경우 detector 점수가 낮은 고신뢰 ROI만 `DETECTOR_CONTAINED_DUPLICATE` `UNKNOWN`+Top-3로 보존합니다. 이 정책은 segmentation을 삭제하거나 `RECAPTURE`를 만들지 않습니다. `ERROR`는 재촬영으로 변환하지 않습니다. 실행 버전은 최상위 `worker_version`, `detector_version`, `classifier_version`으로 반환하고, 2.0은 `embedder_version`, `detector_policy_version`, `classifier_policy_version`, `catalog_version`도 반환합니다. Detector 조기 종료 시 실행하지 않은 classifier와 Catalog 계열 version은 `null`입니다.
 
 ```mermaid
 flowchart LR
@@ -77,6 +102,16 @@ $env:BIXOLON_CUDA_DLL_DIR = "C:\path\to\CUDA-and-cuDNN-bin"
 bixolon worker
 ```
 
+2.0 Runtime은 Store Catalog를 함께 지정합니다. Scanner 2.x의 기본 운영 계약은 영구 무키이며,
+key·key ID·서명 환경 변수가 필요하지 않습니다.
+
+```powershell
+$env:BIXOLON_PACKAGE_DIR = "artifacts\releases\scanner-2.0.0-production\runtime"
+$env:BIXOLON_CATALOG_DIR = "artifacts\releases\scanner-2.0.0-production\catalog"
+$env:BIXOLON_CATALOG_STORE_ID = "bread-project-2"
+bixolon worker
+```
+
 기존 `bixolon-worker` 명령도 동일하게 동작합니다. 기본 endpoint는 다음과 같습니다.
 
 - `POST /v1/scan`
@@ -85,7 +120,7 @@ bixolon worker
 
 `/health/ready`의 준비 완료 응답에는 실행 중인 `provider`와 독립적인
 `worker_version`, `detector_version`, `classifier_version`이 포함됩니다. BIXOLON SCANNER
-`1.0.0+3`은 스캔 전에 Worker·Detector·Classifier 계약 버전 `1.1.0`을 확인합니다.
+`2.0.0+4`는 스캔 전에 Worker·Detector·Classifier 계약 버전 `2.0.0`을 확인합니다.
 
 CUDA 강제 모드는 초기화 실패 시 시작을 실패시키며 CPU로 조용히 전환하지 않습니다. `auto`에서만 두 ONNX session을 함께 CPU로 다시 생성합니다.
 
@@ -104,6 +139,18 @@ bixolon evaluate bread-1.1-runtime-parity --help
 bixolon evaluate bread-1.1-independent-preflight --help
 bixolon experiment bread-1.1-development-identity --help
 bixolon model bread-1.1-candidate-package --help
+bixolon evaluate scanner-2.0 --help
+bixolon evaluate scanner-2.0-parity --help
+bixolon evaluate scanner-2.0-embedder-parity --help
+bixolon evaluate scanner-2.0-packaged-worker-smoke --help
+bixolon evaluate scanner-2.0-private-preflight --help
+bixolon evaluate scanner-2.0-private --help
+bixolon release lock-scanner-2.0 --help
+bixolon release promote-scanner-2.0 --help
+bixolon release promote-scanner-2.0-owner-waiver --help
+bixolon model export-dinov2-embedder --help
+bixolon model bread-2.0-runtime --help
+bixolon catalog activate --help
 bixolon model export --help
 bixolon experiment detector-target --help
 bixolon operations ingest-logs --help
@@ -226,6 +273,10 @@ PyTorch checkpoint
 
 - [문서 인덱스](docs/README.md)
 - [아키텍처](docs/architecture/overview.md)
+- [Scanner 2.0.0 전체 설계](docs/architecture/scanner-2.0.0.md)
+- [Scanner 2.0.0 300장 개발 평가](docs/experiments/bread/scanner-2.0.0-development-300.md)
+- [Scanner 2.0.0 Bread Project 5 승격 판정](docs/experiments/bread/scanner-2.0.0-bread-project-5-promotion.md)
+- [Scanner 2.0 선택적 독립 인증 test 가이드](docs/guides/scanner-2.0-private-test.md)
 - [API 계약](docs/contracts/api.md)
 - [개발 가이드](docs/guides/development.md)
 - [Detector·Classifier 학습 파이프라인 1.0.0](docs/guides/training-pipeline-1.0.0.md)

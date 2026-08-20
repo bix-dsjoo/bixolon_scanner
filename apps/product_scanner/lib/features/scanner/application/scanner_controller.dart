@@ -8,10 +8,10 @@ import 'package:flutter/widgets.dart';
 import '../../../core/design_system/tokens.dart';
 import '../../../shared/catalog/product_catalog.dart';
 import '../../../shared/models/scan_models.dart';
-import '../../activity/data/scan_log_repository.dart';
+import '../../../shared/logging/scan_log_repository.dart';
 import '../data/image_input.dart';
 import '../data/scanner_api.dart';
-import '../presentation/recapture_presentation.dart';
+import '../../../shared/presentation/recapture_presentation.dart';
 
 enum CameraIssueType { unavailable, captureFailed }
 

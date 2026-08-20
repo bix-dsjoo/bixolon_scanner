@@ -1,0 +1,53 @@
+{
+  "schema_version": "2.0",
+  "release": "2.0.0",
+  "source_release_candidate": "2.0.0-rc.8",
+  "source_release_lock_sha256": "564d804a598e4a749a5b02c29007f9fea059808411e20cdb864ab2e28205f4cf",
+  "decision": "owner_approved_manual_waiver",
+  "approved": true,
+  "approved_on": "2026-08-20",
+  "production_eligible_by_owner_waiver": true,
+  "independent_certified": false,
+  "catalog_authentication": "CHECKSUM-SHA256",
+  "checks": {
+    "development_300_gates": true,
+    "development_115_regression": true,
+    "cpu_cuda_parity": true,
+    "embedder_parity": true,
+    "source_worker_smoke": true,
+    "packaged_worker_smoke": true,
+    "accelerated_reliability": true,
+    "dependency_vulnerability_scan": true,
+    "sbom_coverage": true,
+    "owner_private_locked_production_test": false,
+    "catalog_hmac_authentication": false
+  },
+  "failures": [
+    "owner_private_locked_production_test",
+    "catalog_hmac_authentication"
+  ],
+  "waivers": [
+    {
+      "gate": "owner_private_locked_production_test",
+      "reason": "The project owner explicitly approved Scanner 2.0.0-rc.8 for production on 2026-08-20 without providing the planned new owner-private locked capture session. The 300-image and 115-image results remain development evidence."
+    },
+    {
+      "gate": "catalog_hmac_authentication",
+      "reason": "The project owner explicitly selected a permanently keyless Scanner 2.0 Catalog policy on 2026-08-20. File-level SHA-256 verification remains mandatory, while HMAC authentication is not part of the operating contract."
+    }
+  ],
+  "remaining_limitations": [
+    "This release has no independent generalization estimate; the 300 and 115 images remain development and calibration lineage.",
+    "Checksum-only Catalog validation detects accidental corruption but does not authenticate who modified the Catalog and checksum file.",
+    "The long-term APPROVED target of 99% was not met on the 300-image development set; observed APPROVED was 90% over all judgeable GT.",
+    "Future Store Catalogs remain checksum-only unless the project owner explicitly changes the public operating contract."
+  ],
+  "evidence": {
+    "release_lock": "artifacts/releases/scanner-2.0.0-rc.8-pre-private/release-lock.json",
+    "development_300": "artifacts/evaluations/scanner-2.0.0/development-300-rc.8-final-cuda.json",
+    "development_115": "artifacts/evaluations/scanner-2.0.0/operational-2026-08-18-115-rc.8-final-cuda.json",
+    "cpu_cuda_parity": "artifacts/evaluations/scanner-2.0.0/rc.8-final-cpu-cuda-parity.json",
+    "embedder_parity": "artifacts/evaluations/scanner-2.0.0/rc.8-final-embedder-parity.json",
+    "reliability": "artifacts/evaluations/scanner-2.0.0/rc.8-final-reliability-10000.json"
+  }
+}

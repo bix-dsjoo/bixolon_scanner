@@ -1,5 +1,5 @@
 import '../../../shared/models/scan_models.dart';
-import '../data/scan_log_repository.dart';
+import '../../../shared/logging/scan_log_repository.dart';
 import '../presentation/activity_presentation.dart';
 
 enum ActivityInputFilter { all, camera, image }

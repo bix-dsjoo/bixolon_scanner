@@ -1,19 +1,19 @@
-# Worker API 계약 1.0
+# Worker API 계약 1.0 / 2.0 additive fields
 
 ## Endpoint
 
 - `POST /v1/scan`: `image` 필드에 JPEG/PNG 한 장을 담은 multipart 요청
 - `GET /health/live`: 프로세스 생존 확인
-- `GET /health/ready`: 모델 package와 provider 준비 상태 확인. 준비 완료 응답은 `status`, `provider`, `worker_version`, `detector_version`, `classifier_version`을 포함합니다.
+- `GET /health/ready`: 모델 package와 provider 준비 상태 확인. 준비 완료 응답은 `status`, `provider`, `worker_version`, `detector_version`, `classifier_version`을 포함하며 2.0 runtime은 `embedder_version`, `detector_policy_version`, `classifier_policy_version`, `catalog_version`도 포함합니다.
 
 ## 응답
 
-최상위 응답은 `request_id`, `status`, `reason_codes`, `segmentations`, `processing_time_ms`, `worker_version`, `detector_version`, `classifier_version`을 포함합니다.
+최상위 응답은 `request_id`, `status`, `reason_codes`, `segmentations`, `processing_time_ms`, `worker_version`, `detector_version`, `classifier_version`을 포함합니다. 2.0의 additive nullable 필드는 `embedder_version`, `detector_policy_version`, `classifier_policy_version`, `catalog_version`입니다.
 
 - 이미지 `status`: `SEGMENTATION`, `IMAGE_RECAPTURE`, `ERROR`
 - segmentation `status`: `APPROVED`, `UNKNOWN`, `SEGMENT_RECAPTURE`
 - `segmentations[]`: `segmentation_id`, 원본 픽셀 기준 `bbox`, `status`, `reason_codes`, `prediction`, `top3`, `confidence`
-- `UNKNOWN`은 `prediction=null`이고 점수 내림차순 Top-3를 제공합니다. 승인 임계값 미만이면 `BELOW_APPROVAL_THRESHOLD`, 활성화된 포함 중복 검토 정책에 걸리면 `DETECTOR_CONTAINED_DUPLICATE`를 reason code로 사용합니다.
+- `UNKNOWN`은 `prediction=null`이고 점수 내림차순 Top-3를 제공합니다. 승인 임계값 미만이면 `BELOW_APPROVAL_THRESHOLD`, Top-1/Top-2가 모호하면 `CLASSIFIER_AMBIGUOUS_TOP2`, Catalog의 제한 SKU/pair이면 `CLASSIFIER_CATALOG_CONFLICT`, 활성화된 포함 중복 검토 정책에 걸리면 `DETECTOR_CONTAINED_DUPLICATE`를 reason code로 사용합니다.
 - `SEGMENT_RECAPTURE`는 `prediction=null`, 빈 `top3`, 하나 이상의 reason code를 가집니다. 선택적 분류 정책이 안전한 Top-3를 보장하지 못한 경우 `CLASSIFIER_TOP3_UNSAFE`를 사용합니다.
 - `IMAGE_RECAPTURE`와 `ERROR`는 빈 `segmentations`를 반환합니다.
 
@@ -33,7 +33,10 @@
 10. 그 밖의 승인 임계값 미만 segmentation은 `BELOW_APPROVAL_THRESHOLD` `UNKNOWN`과 점수 내림차순 Top-3입니다.
 11. 하나 이상의 segmentation이 있으면 이미지 상태는 `SEGMENTATION`입니다. 포함 중복 `UNKNOWN`이 있으면 최상위 reason code에 `SEGMENT_DUPLICATE_REVIEW_REQUIRED`를 포함합니다.
 
-Detector hard gate 조기 종료는 실행하지 않은 `classifier_version`을 `null`로 표시합니다. `worker_version`은 전체 조합, `detector_version`과 `classifier_version`은 개별 모델 버전입니다. 세 축은 독립적으로 semantic versioning합니다.
+Detector hard gate 조기 종료는 실행하지 않은 `classifier_version`, `embedder_version`,
+`classifier_policy_version`, `catalog_version`을 `null`로 표시합니다. Detector policy는 실행됐으므로
+`detector_policy_version`을 유지합니다. `worker_version`은 전체 조합이며 나머지는 개별 모델·정책·
+Catalog version입니다. 각 축은 독립적으로 semantic versioning합니다.
 
 ## 오류와 보안
 

@@ -180,6 +180,45 @@ ROI는 Classifier 학습·fitting에 사용할 수 없습니다. successor의 �
 잠금 test가 다시 필요합니다. 버전별 반복과 종료 조건은
 `docs/experiments/bread/bread-classifier-200-only-1.1.1-plan.md`를 따릅니다.
 
+### Scanner 2.0.0 RC.7 반려와 RC.8 개발 계보
+
+프로젝트 소유자는 2026-08-19 `bread_project_2`와 2026-08-18 운영 source의 415개 원본
+장면에서 만든 Bread Project 5 증강 3,000장을 파생 provenance 제한에도 불구하고 Scanner
+`2.0.0-rc.7` 승격 판정에 사용하도록 지시했습니다. 이 지시는 독립 촬영 provenance와 최소 독립
+certification group 수만 `manual_waiver`로 허용하며 point metric gate를 면제하지 않습니다.
+3,000장을 독립 trial 또는 독립 일반화 성능으로 표현하지 마십시오.
+
+고정 RC.7 평가 결과 `SEGMENTATION` 이미지 FN 0.9278%, FP 0.8591%, 전체 GT 대비 승인 오인
+0.1371%로 세 point gate가 실패했습니다. 따라서 RC.7은 `rejected`이며 `2.0.0` production으로
+승격하거나 운영 기본값으로 설정할 수 없습니다. 이 반려를 threshold tuning이나 같은 파생 세트의
+재사용으로 뒤집지 마십시오. 공식 근거는
+`docs/experiments/bread/scanner-2.0.0-bread-project-5-promotion.md`를 따릅니다.
+
+프로젝트 소유자는 2026-08-19부터 `bread_project_2` 300장과 2026-08-18 운영 수집본 115장을
+Scanner `2.0.0-rc.8`의 개발·ambiguity/OOD calibration과 회귀에 함께 사용하도록 결정했습니다.
+따라서 이 415장과 Bread Project 5 파생본은 더 이상 독립 승격 test가 아니며 독립 일반화 성능으로
+표현할 수 없습니다. 당시 RC.8 기본 승격 계약은 이 전체 개발 identity와 exact/dHash≤2로 겹치지 않는
+새 owner-private locked 촬영 세션을 요구했습니다. private 결과를 본 뒤 model, threshold, crop,
+ranking 또는 decision policy를 바꾸면 그 private bundle도 개발 계보로 전환해야 합니다.
+
+### Scanner 2.0.0 소유자 승인 예외와 영구 무키 Catalog 계약
+
+프로젝트 소유자는 2026-08-20 새 owner-private locked test를 제공하지 않고, 고정
+`2.0.0-rc.8`을 Scanner `2.0.0` production으로 승격하도록 명시적으로 승인했습니다. 이 예외는
+`configs/releases/scanner_2.0.0_owner_waiver.json`과
+`artifacts/releases/scanner-2.0.0-production/promotion-attestation.json`에 고정합니다. 300장과
+운영 115장은 계속 개발 계보이며 독립 일반화 성능으로 표현할 수 없고,
+`independent_certified=false`를 유지해야 합니다. 장기 `APPROVED ≥99%` 목표도 달성한 것으로
+표현하지 마십시오.
+
+Scanner 2.x Store Catalog는 지속적으로 signing key, key ID, HMAC과 `signature.json`을 사용하지
+않습니다. `authentication=CHECKSUM-SHA256`을 기록하고 Worker 시작 시 모든 Catalog file SHA-256,
+source manifest, shape와 Runtime compatibility를 검증하십시오. checksum 불일치는 시작 오류입니다.
+이 계약은 손상·파일 변경 탐지이며 발행자 진위 인증은 제공하지 않는다는 제한을 숨기지 마십시오.
+향후 Catalog compiler와 운영 예시는 기본적으로 무키 package를 생성·로딩해야 하며 사용자에게 키
+생성, 보관 또는 회전을 요구하지 마십시오. 기존 HMAC package 읽기 호환은 유지할 수 있지만 Scanner
+2.x production 기본값으로 되돌리지 마십시오.
+
 평균 지연만 보고하지 마십시오. p50, p95, p99와 표본 수를 함께 기록하고 detector 조기 종료와 full-path를 구분하십시오. 벤치마크 결과에는 모델·데이터셋·ONNX Runtime·CUDA·드라이버 버전, 하드웨어와 warm-up 조건을 포함하십시오.
 
 ## 테스트 요구사항
@@ -191,6 +230,8 @@ ROI는 Classifier 학습·fitting에 사용할 수 없습니다. successor의 �
 - detector 불확실 독립 후보 및 선택적 count verifier의 불일치·저신뢰가 classifier 실행 전 `RECAPTURE`가 되는지 검증
 - Classifier 품질 클래스가 해당 `SEGMENT_RECAPTURE`로 변환되는지 검증
 - 임계값 경계의 `APPROVED`/`UNKNOWN` 판정 검증
+- Top-1/Top-2 pair probability가 낮거나 Ridge·retrieval이 안전 경계 아래에서 불일치하면
+  `UNKNOWN`+Top-3이고, retrieval OOD 경계 미만은 `SEGMENT_RECAPTURE`인지 검증
 - 포함 중복 검토 정책이 segmentation을 삭제하거나 `RECAPTURE`하지 않고 낮은 detector 점수의 고신뢰 동종 ROI만 `UNKNOWN`으로 만드는지 검증
 - 다중 segmentation 정렬, `UNKNOWN` Top-3 정렬과 후보 수 검증
 - 네 상태의 응답 필드 및 null/빈 배열 규칙 검증

@@ -18,19 +18,13 @@ from ..contracts import (
 )
 from ..contracts.image import image_original_size
 from ..contracts.model_package import ClassifierMetadata, CountVerifierMetadata, QualityMetadata
-from .ports import ClassificationResult, Classifier, Detection, DetectionResult, Detector
+from .classification import normalize_classification, softmax
+from .ports import Classifier, Detection, DetectionResult, Detector
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _softmax(logits: np.ndarray, temperature: float) -> np.ndarray:
-    scaled = logits.astype(np.float64) / temperature
-    scaled -= scaled.max(axis=1, keepdims=True)
-    exponential = np.exp(scaled)
-    return (exponential / exponential.sum(axis=1, keepdims=True)).astype(np.float32)
-
-
-softmax = _softmax
+_softmax = softmax
 
 
 def _as_array(image: np.ndarray | Image.Image) -> np.ndarray:
@@ -164,6 +158,10 @@ class DecisionPipeline:
         count_verifier_metadata: CountVerifierMetadata | None = None,
         *,
         worker_version: str = "1.0.0",
+        embedder_version: str | None = None,
+        detector_policy_version: str | None = None,
+        classifier_policy_version: str | None = None,
+        catalog_version: str | None = None,
     ):
         self.detector = detector
         self.classifier = classifier
@@ -171,6 +169,10 @@ class DecisionPipeline:
         self.quality_metadata = quality_metadata
         self.count_verifier_metadata = count_verifier_metadata
         self.worker_version = worker_version
+        self.embedder_version = embedder_version
+        self.detector_policy_version = detector_policy_version
+        self.classifier_policy_version = classifier_policy_version
+        self.catalog_version = catalog_version
 
     @property
     def versions(self) -> ModelVersions:
@@ -205,6 +207,10 @@ class DecisionPipeline:
                 worker_version=self.worker_version,
                 detector_version=self.detector.version,
                 classifier_version=None,
+                embedder_version=None,
+                detector_policy_version=self.detector_policy_version,
+                classifier_policy_version=None,
+                catalog_version=None,
             )
             self._log(response, detector_ms=detector_ms, classifier_ms=0.0)
             return response
@@ -215,62 +221,19 @@ class DecisionPipeline:
         classifier_started = time.perf_counter()
         classification = self.classifier.classify(image, ordered)
         classifier_ms = (time.perf_counter() - classifier_started) * 1000.0
-        if isinstance(classification, ClassificationResult):
-            logits = classification.logits
-            ranking_logits = classification.ranking_logits
-            approval_scores = classification.approval_scores
-            top3_safety_scores = classification.top3_safety_scores
-        else:
-            logits = classification
-            ranking_logits = classification
-            approval_scores = None
-            top3_safety_scores = None
-        if logits.shape != (len(ordered), len(self.classifier_metadata.labels)):
-            raise ValueError("classifier output shape does not match package labels")
-        if ranking_logits.shape != logits.shape:
-            raise ValueError("classifier ranking output shape does not match logits")
-        probabilities = _softmax(logits, self.classifier_metadata.temperature)
-        ranking_probabilities = _softmax(ranking_logits, self.classifier_metadata.temperature)
-        decision_indices = np.argsort(-probabilities, axis=1, kind="stable")
-        ranking_indices = np.argsort(-ranking_probabilities, axis=1, kind="stable")
-        if approval_scores is None:
-            approval_scores = probabilities.max(axis=1)
-        if approval_scores.shape != (len(ordered),):
-            raise ValueError("classifier approval scores do not match detections")
-        if top3_safety_scores is not None and top3_safety_scores.shape != (len(ordered),):
-            raise ValueError("classifier Top-3 safety scores do not match detections")
-        configured_thresholds = self.classifier_metadata.approval_thresholds
-        if configured_thresholds is None:
-            staged_policy = self.classifier_metadata.staged_inference
-            default_threshold = (
-                self.classifier_metadata.approval_threshold
-                if staged_policy is None or staged_policy.approval_threshold is None
-                else staged_policy.approval_threshold
-            )
-            approval_thresholds = np.full(len(ordered), default_threshold, dtype=np.float32)
-        else:
-            approval_thresholds = np.asarray(
-                [
-                    self.classifier_metadata.approval_threshold
-                    if configured_thresholds[int(indices[0])] is None
-                    else configured_thresholds[int(indices[0])]
-                    for indices in decision_indices
-                ],
-                dtype=np.float32,
-            )
-        approved = approval_scores >= approval_thresholds
-        mask_policy = self.classifier_metadata.neighbor_mask_inference
-        staged_policy = self.classifier_metadata.staged_inference
-        top3_safety_threshold = (
-            mask_policy.top3_safety_threshold
-            if mask_policy is not None
-            else (staged_policy.top3_safety_threshold if staged_policy is not None else None)
+        batch = normalize_classification(
+            classification,
+            detection_count=len(ordered),
+            metadata=self.classifier_metadata,
         )
-        top3_unsafe = (
-            np.zeros(len(ordered), dtype=bool)
-            if top3_safety_scores is None or top3_safety_threshold is None
-            else top3_safety_scores < top3_safety_threshold
-        )
+        probabilities = batch.probabilities
+        ranking_probabilities = batch.ranking_probabilities
+        decision_indices = batch.decision_indices
+        approval_scores = batch.approval_scores
+        approved = batch.approved
+        top3_unsafe = batch.top3_unsafe
+        segment_recapture_reasons = batch.segment_recapture_reasons
+        unknown_reasons = batch.unknown_reasons
         duplicate_review_indices = {
             lower_index
             for lower_index, higher_index in _contained_detection_pairs(
@@ -292,7 +255,7 @@ class DecisionPipeline:
                 ordered,
                 decision_indices,
                 probabilities,
-                ranking_indices,
+                decision_indices,
                 ranking_probabilities,
             )
         ):
@@ -326,6 +289,16 @@ class DecisionPipeline:
                     top3=[],
                     confidence=top1_score,
                 )
+            elif segment_recapture_reasons is not None and segment_recapture_reasons[index]:
+                item = ScanItem(
+                    segmentation_id=f"segmentation_{ordinal:03d}",
+                    bbox=bbox,
+                    status=ItemStatus.SEGMENT_RECAPTURE,
+                    reason_codes=[segment_recapture_reasons[index]],
+                    prediction=None,
+                    top3=[],
+                    confidence=0.0,
+                )
             elif index in duplicate_review_indices and approved[index]:
                 candidates = _top3_candidates(
                     self.classifier_metadata, candidate_indices, candidate_scores
@@ -337,7 +310,7 @@ class DecisionPipeline:
                     reason_codes=["DETECTOR_CONTAINED_DUPLICATE"],
                     prediction=None,
                     top3=candidates,
-                    confidence=float(candidate_scores[int(candidate_indices[0])]),
+                    confidence=float(approval_scores[index]),
                 )
             elif approved[index]:
                 item = ScanItem(
@@ -347,7 +320,7 @@ class DecisionPipeline:
                     reason_codes=[],
                     prediction=Prediction(class_id=label.class_id, class_name=label.class_name),
                     top3=[],
-                    confidence=top1_score,
+                    confidence=float(approval_scores[index]),
                 )
             elif top3_unsafe[index]:
                 item = ScanItem(
@@ -357,7 +330,11 @@ class DecisionPipeline:
                     reason_codes=["CLASSIFIER_TOP3_UNSAFE"],
                     prediction=None,
                     top3=[],
-                    confidence=float(candidate_scores[int(candidate_indices[0])]),
+                    confidence=(
+                        0.0
+                        if batch.uses_explicit_ranking_scores
+                        else float(candidate_scores[int(candidate_indices[0])])
+                    ),
                 )
             else:
                 candidates = _top3_candidates(
@@ -367,15 +344,23 @@ class DecisionPipeline:
                     segmentation_id=f"segmentation_{ordinal:03d}",
                     bbox=bbox,
                     status=ItemStatus.UNKNOWN,
-                    reason_codes=["BELOW_APPROVAL_THRESHOLD"],
+                    reason_codes=[
+                        "BELOW_APPROVAL_THRESHOLD"
+                        if unknown_reasons is None or unknown_reasons[index] is None
+                        else unknown_reasons[index]
+                    ],
                     prediction=None,
                     top3=candidates,
-                    confidence=float(candidate_scores[int(candidate_indices[0])]),
+                    confidence=float(approval_scores[index]),
                 )
             items.append(item)
 
         reason_codes: list[str] = []
-        if any("BELOW_APPROVAL_THRESHOLD" in item.reason_codes for item in items):
+        if any(
+            item.status is ItemStatus.UNKNOWN
+            and item.reason_codes != ["DETECTOR_CONTAINED_DUPLICATE"]
+            for item in items
+        ):
             reason_codes.append("SEGMENT_BELOW_APPROVAL_THRESHOLD")
         if any("DETECTOR_CONTAINED_DUPLICATE" in item.reason_codes for item in items):
             reason_codes.append("SEGMENT_DUPLICATE_REVIEW_REQUIRED")
@@ -390,9 +375,25 @@ class DecisionPipeline:
             worker_version=self.worker_version,
             detector_version=self.detector.version,
             classifier_version=self.classifier.version,
+            embedder_version=self.embedder_version,
+            detector_policy_version=self.detector_policy_version,
+            classifier_policy_version=self.classifier_policy_version,
+            catalog_version=self.catalog_version,
         )
         self._log(response, detector_ms=detector_ms, classifier_ms=classifier_ms)
         return response
+
+    def close(self) -> None:
+        """Release optional runtime resources owned by pipeline adapters."""
+
+        closed: set[int] = set()
+        for adapter in (self.classifier, self.detector):
+            if id(adapter) in closed:
+                continue
+            closed.add(id(adapter))
+            close = getattr(adapter, "close", None)
+            if callable(close):
+                close()
 
     @staticmethod
     def _log(response: ScanResponse, *, detector_ms: float, classifier_ms: float) -> None:

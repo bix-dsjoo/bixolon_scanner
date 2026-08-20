@@ -46,7 +46,7 @@ $env:SCANNER_AUTO_START_WORKER = "0"
 flutter run -d windows --dart-define=SCANNER_API_BASE_URL=http://192.168.0.20:8000
 ```
 
-`BIXOLON_PACKAGE_DIR`, `BIXOLON_PROVIDER`, `BIXOLON_CUDA_DLL_DIR`가 이미 설정돼 있으면 자동 실행 Worker는 그 값을 우선 사용합니다. 설정이 없고 release 폴더에 `worker\cuda-runtime`이 포함돼 있으면 런처가 해당 경로와 `cuda` provider를 강제해 불완전한 GPU 배포가 CPU로 조용히 전환되지 않게 합니다. CUDA runtime이 없는 개발 빌드는 기존처럼 `auto` provider를 사용합니다.
+`BIXOLON_PACKAGE_DIR`, `BIXOLON_CATALOG_DIR`, `BIXOLON_PROVIDER`, `BIXOLON_CUDA_DLL_DIR`가 이미 설정돼 있으면 자동 실행 Worker는 그 값을 우선 사용합니다. 설정이 없으면 release 폴더의 `worker\model-package`와 `worker\store-catalog`를 자동으로 사용합니다. Store Catalog는 key·key ID·서명 없이 파일별 SHA-256을 검증합니다. `worker\cuda-runtime`이 포함된 bundle은 `cuda` provider를 강제해 불완전한 GPU 배포가 CPU로 조용히 전환되지 않게 합니다. CUDA runtime이 없는 개발 빌드는 기존처럼 `auto` provider를 사용합니다.
 
 ## 검증과 빌드
 
@@ -58,12 +58,13 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\build_worker.p
 $cudaRuntime = "C:\path\to\CUDA-13-cuDNN-9-runtime"
 powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -File .\scripts\build_app_release.ps1 `
-  -Composition configs\releases\bixolon_scanner_1.1.0.json `
+  -Composition configs\releases\scanner_2.0.0.json `
   -CudaRuntimeDirectory $cudaRuntime
 ```
 
 `build_worker.ps1`은 학습용 PyTorch를 제외하고 FastAPI와 ONNX Runtime만 포함한
-`artifacts\worker\bixolon-worker` 독립 실행본을 만듭니다. Release 빌드는 이 실행본 전체를
+`artifacts\worker\bixolon-worker` 독립 실행본을 만듭니다. Scanner 2.0 Release는 승격 레지스트리에
+잠긴 `artifacts\releases\scanner-2.0.0-production\worker-build\bixolon-worker`를
 `worker` 폴더에 복사하므로 설치 PC의 Python 또는 전역 `bixolon-worker` 설치에 의존하지
 않습니다.
 
@@ -76,14 +77,14 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass `
   -CudaRuntimeDirectory $cudaRuntime
 ```
 
-성공한 Release는 `worker\bixolon-worker.exe`, `worker\model-package`, `worker\cuda-runtime`을 포함하고 `/health/ready`의 `provider`가 `cuda`여야 합니다. CUDA DLL이 불완전하면 readiness를 열지 않으며 CPU full-path로 조용히 실행하지 않습니다.
+성공한 Release는 `worker\bixolon-worker.exe`, `worker\model-package`, `worker\store-catalog`, `worker\cuda-runtime`을 포함하고 `/health/ready`의 `provider`가 `cuda`여야 합니다. CUDA DLL이 불완전하면 readiness를 열지 않으며 CPU full-path로 조용히 실행하지 않습니다.
 
 대표 운영 상태는 `test/goldens` 이미지로도 회귀 검증합니다. 골든은 시각 비평 후 의도한 변경일 때만 `flutter test test/scanner_screen_test.dart --update-goldens`로 갱신합니다.
 
 Flutter 원본 Release 결과는 `build\windows\x64\runner\Release`, 전체 파일 manifest로 잠긴 배포본은
-`artifacts\releases\bixolon-scanner-1.0.0+3`에 생성됩니다.
-운영 모델 패키지와 기대 버전은 release composition manifest에서 읽는다. Release 빌드는 composition, Worker, Detector, Classifier 또는 CUDA runtime 파일이 하나라도 없으면 실패하며 전체 bundle file manifest를 생성한다. 앱 `1.0.0+3`은 `/health/ready`에서 Worker·Detector·Classifier `1.1.0`을 모두 검사하고, `DETECTOR_CONTAINED_DUPLICATE`를 재촬영으로 바꾸지 않은 채 중복 박스와 Top-3 검토로 안내한다. 모델 바이너리는 Git에 커밋하지 않는다.
-재현 입력은 `configs\releases\bixolon_scanner_1.1.0.json`, 생성된 bundle manifest까지 잠근 검증 계약은 `configs\releases\bixolon_scanner_1.1.0_attested.json`이다.
+`artifacts\releases\bixolon-scanner-2.0.0+4`에 생성됩니다.
+운영 Runtime·Catalog와 기대 버전은 release composition manifest에서 읽는다. Release 빌드는 composition, Worker, Runtime, checksum-only Catalog 또는 CUDA runtime 파일이 하나라도 없으면 실패하며 전체 bundle file manifest를 생성한다. 앱 `2.0.0+4`는 `/health/ready`에서 Worker·Detector·Classifier `2.0.0`을 모두 검사하고, `DETECTOR_CONTAINED_DUPLICATE`를 재촬영으로 바꾸지 않은 채 중복 박스와 Top-3 검토로 안내한다. 모델 바이너리는 Git에 커밋하지 않는다.
+재현 입력은 `configs\releases\scanner_2.0.0.json`, production 근거는 `artifacts\releases\scanner-2.0.0-production\promotion-attestation.json`이다.
 
 ## 로컬 데이터
 

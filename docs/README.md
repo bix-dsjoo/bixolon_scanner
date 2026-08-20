@@ -5,11 +5,16 @@
 ## 기준 문서
 
 - [아키텍처 개요](architecture/overview.md): Python과 Flutter의 소유권 및 의존 방향
+- [Scanner 2.0.0 전체 설계](architecture/scanner-2.0.0.md): 공용 Runtime 승격, frozen Embedder와 매장별 10-shot Catalog 자동 활성화
 - [API 계약](contracts/api.md): `POST /v1/scan`, 네 상태, 오류와 응답 규칙
 - [개발 가이드](guides/development.md): 설치, CLI, 설정, 검증 절차
+- [Scanner 2.0 선택적 독립 인증](guides/scanner-2.0-private-test.md): production과 분리된 선택적 일반화 성능 검증 계약
 - [모델 승격 가이드](guides/model-promotion.md): 실험 수명주기와 수동 gate
 - [학습 파이프라인 1.0.0](guides/training-pipeline-1.0.0.md): Detector·Classifier 독립 계약, 검증과 버전 정책
 - [Bread Classifier 200장 전용 1.1.1+ 계획](experiments/bread/bread-classifier-200-only-1.1.1-plan.md): 허용 데이터, patch 반복과 종료 조건
+- [Scanner 2.0.0 300장 개발 평가](experiments/bread/scanner-2.0.0-development-300.md): 요청 지표, latency, parity와 pre-private lock 근거
+- [Scanner 2.0.0 Bread Project 5 승격 판정](experiments/bread/scanner-2.0.0-bread-project-5-promotion.md): owner-waiver 3,000장 point gate 결과와 RC.7 반려
+- [Scanner 2.0.0 운영 수집본 115장 개발 평가](experiments/bread/scanner-2.0.0-operational-2026-08-18-115.md): RC.8 ambiguity·OOD 정책과 승인 오인 0건 회귀 결과
 - [현재 상태](status/current.md): 운영·실험 버전과 승격 여부
 
 ## 실험 기록
