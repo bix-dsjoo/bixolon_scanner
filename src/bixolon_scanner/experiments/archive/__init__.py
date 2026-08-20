@@ -1,1 +1,1 @@
-"""Archived experiment implementations retained for reproducibility."""
+"""Source-only experiment history retained for reproducibility, not wheel packaging."""

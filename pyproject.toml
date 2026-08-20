@@ -67,6 +67,7 @@ bixolon-benchmark = "bixolon_scanner.evaluation.benchmark:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bixolon_scanner"]
+exclude = ["/src/bixolon_scanner/experiments/archive/**"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

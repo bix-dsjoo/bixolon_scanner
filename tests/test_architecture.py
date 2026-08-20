@@ -4,6 +4,7 @@ import ast
 import re
 import subprocess
 import sys
+import tomllib
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -103,6 +104,24 @@ def test_worker_import_does_not_load_training_frameworks() -> None:
     subprocess.run([sys.executable, "-c", code], check=True)
 
 
+def test_active_config_entry_points_use_redirect_aware_loader() -> None:
+    archive = (PACKAGE / "experiments" / "archive").resolve()
+    for path in PACKAGE.rglob("*.py"):
+        if path.resolve().is_relative_to(archive):
+            continue
+        source = path.read_text(encoding="utf-8")
+        assert "args.config.read_text" not in source, (
+            f"{path.relative_to(ROOT)} bypasses load_json_config"
+        )
+
+
+def test_archived_experiments_are_excluded_from_the_runtime_wheel() -> None:
+    project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    wheel = project["tool"]["hatch"]["build"]["targets"]["wheel"]
+
+    assert "/src/bixolon_scanner/experiments/archive/**" in wheel["exclude"]
+
+
 def test_legacy_imports_resolve_to_canonical_objects() -> None:
     from bixolon_scanner.api import create_app as legacy_create_app
     from bixolon_scanner.contracts import ScanResponse
@@ -112,10 +131,13 @@ def test_legacy_imports_resolve_to_canonical_objects() -> None:
     from bixolon_scanner.pipeline import DecisionPipeline
     from bixolon_scanner.pipeline.decision import DecisionPipeline as canonical_pipeline
     from bixolon_scanner.pipeline.ports import Detection
+    from bixolon_scanner.runtime.onnx import OrtRunner as public_ort_runner
+    from bixolon_scanner.runtime.onnx_session import OrtRunner as session_ort_runner
     from bixolon_scanner.worker.api import create_app
 
     assert legacy_create_app is create_app
     assert legacy_detection is Detection
     assert legacy_metadata is ModelPackageMetadata
     assert DecisionPipeline is canonical_pipeline
+    assert public_ort_runner is session_ort_runner
     assert ScanResponse.__module__ == "bixolon_scanner.contracts.api"
