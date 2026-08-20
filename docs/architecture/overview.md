@@ -24,6 +24,10 @@ flowchart LR
 - `evaluation`은 재사용 가능한 측정만 소유하고, 실험별 조립은 `experiments`가 소유합니다.
 - 공용 image/NMS 함수는 `runtime`의 명시적 내부 공용 API를 사용합니다.
 - 루트의 과거 모듈은 호환 re-export입니다. 새 구현의 소유권은 canonical 하위 패키지에 있습니다.
+- ONNX provider 선택, CUDA DLL 수명주기와 session 실행은 `runtime/onnx_session.py`가 소유하고,
+  `runtime/onnx.py`는 전처리·후처리 adapter를 소유합니다.
+- 설정 파일은 `configuration.load_json_config`로 읽어 root alias의 `$redirect`를 동일하게 처리합니다.
+- `experiments/archive`는 재현용 source-only 코드이며 배포 wheel에는 포함하지 않습니다.
 
 ## Python 소유권
 
@@ -37,6 +41,13 @@ flowchart LR
 | `evaluation` | 정확도, parity, latency와 회귀 평가 |
 | `experiments` | bread·detector·RPC200 버전별 orchestration |
 | `operations` | 단일 버전 번들, 실행 로그 수집과 검수용 export |
+
+## CLI 지원 수준
+
+`command_registry.py`가 명령을 현재 버전, 운영 호환, 선택 진단, 과거 재현의 네 집합으로 나눕니다.
+일반 `bixolon --help`에는 `bundle verify`만 표시합니다. 기존 자동화의 호출 경로는 유지하되 진단 도구는
+`--help-diagnostics`, 버전별 과거 명령은 `--help-legacy`에서만 목록을 확인할 수 있습니다. 네 집합은
+중복 등록을 허용하지 않으며 전체 호환 registry를 통해 기존 dispatch 동작을 유지합니다.
 
 ## Flutter 경계
 

@@ -80,6 +80,8 @@ flutter test
 
 정확도, CPU/CUDA parity, latency와 장기 신뢰성 평가는 `evaluation` 명령으로 계속 실행할 수
 있습니다. 결과는 진단 기록이며 버전 번들 생성을 차단하거나 별도의 배포 단계를 만들지 않습니다.
+기본 `bixolon --help`에는 현재 버전 명령만 표시하며 진단 도구는
+`bixolon --help-diagnostics`, 과거 재현 명령은 `bixolon --help-legacy`에서 분리해 확인합니다.
 
 ## 저장소 구조
 
@@ -89,12 +91,15 @@ configs/versions/               단일 제품 버전 기준
 configs/archive/                과거 설정 기록
 docs/archive/                   과거 평가·판단·가이드
 src/bixolon_scanner/
+  command_registry.py           활성·진단·과거 호환 CLI 경계
+  configuration.py              redirect-aware JSON 설정 로더
   contracts/                    API·오류·패키지 계약
   pipeline/                     단일 판정 정책
-  runtime/                      이미지 decode·ONNX Runtime
+  runtime/                      이미지 decode·ONNX session/provider·adapter
   worker/                       FastAPI·설정·로그·조립
   training/                     학습과 calibration
   evaluation/                   정확도·parity·성능 진단
+  experiments/                  실험 orchestration; archive는 source-only
   operations/                   버전 번들·로그·검수 export
 tests/                          계약과 회귀 테스트
 ```

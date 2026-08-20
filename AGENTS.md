@@ -28,6 +28,8 @@ Python canonical 코드는 `src/bixolon_scanner` 아래에 둡니다.
 - `evaluation`: 정확도, parity, 지연과 회귀 진단
 - `experiments`: 학습·평가 orchestration
 - `operations`: 버전 번들, 로그 수집과 검수 export
+- `configuration.py`: redirect-aware JSON 설정 로딩의 단일 진입점
+- `command_registry.py`: 활성·진단·호환 CLI 명령의 지원 수준
 - `cli.py`: 통합 `bixolon` 명령
 
 요청 경로는 `worker → pipeline/runtime → contracts` 방향입니다. `worker`는 `training`,
@@ -39,6 +41,8 @@ Flutter canonical 코드는 `apps/product_scanner/lib`의 `core/design_system`, 
 `features/scanner`, `features/activity`에 둡니다. feature가 다른 feature의 화면 구현을 직접 참조하지
 않고 공용 계약은 `shared`, 재사용 UI는 `core/design_system`이 소유합니다. 과거 Python·Flutter
 경로의 re-export는 호환 계층이며 새 구현을 추가하지 마십시오.
+`experiments/archive`는 소스에서 재현 테스트를 위해 보존하지만 runtime wheel에는 포함하지 않습니다.
+활성 설정을 읽는 코드는 직접 `json.loads(path.read_text(...))`하지 않고 `load_json_config`를 사용합니다.
 
 ## 단일 제품 버전
 
