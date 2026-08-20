@@ -126,6 +126,8 @@ class CatalogDecisionPolicy(BaseModel):
     ridge_disagreement_minimum_pair_probability: float | None = Field(default=None, ge=0.5, le=1.0)
     ridge_pair_temperature: float = Field(default=1.0, gt=0.0)
     ridge_top3_minimum_inverse_entropy: float | None = Field(default=None, le=0.0)
+    ridge_require_retrieval_agreement: bool = False
+    ridge_retrieval_minimum_similarity: float | None = Field(default=None, ge=-1.0, le=1.0)
     ridge_alpha: float = Field(default=0.01, gt=0.0)
     support_augmentation: CatalogSupportAugmentationMetadata = Field(
         default_factory=CatalogSupportAugmentationMetadata

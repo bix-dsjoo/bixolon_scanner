@@ -313,3 +313,42 @@ def test_ridge_pair_probability_blocks_ambiguous_head_disagreement_and_low_retri
     assert result.unknown_reasons[1] == "CLASSIFIER_AMBIGUOUS_TOP2"
     assert result.segment_recapture_reasons[2] == "CLASSIFIER_OUT_OF_CATALOG"
     assert np.allclose(result.retrieval_logits[0], [0.6, 0.5, 0.4])
+
+
+def test_ridge_margin_policy_requires_retrieval_agreement_and_minimum_similarity() -> None:
+    classifier = object.__new__(OnnxCatalogClassifier)
+    classifier.policy = CatalogDecisionPolicy(
+        version="2.0.1-rc.3",
+        prototype_weight=0.5,
+        support_top_k=3,
+        approval_minimum_similarity=1.0,
+        approval_minimum_margin=0.1,
+        ood_maximum_similarity=-1.0,
+        top3_minimum_similarity=-1.0,
+        catalog_conflict_similarity=0.95,
+        ridge_approval_minimum_margin=0.2,
+        ridge_top3_minimum_inverse_entropy=-3.0,
+        ridge_require_retrieval_agreement=True,
+        ridge_retrieval_minimum_similarity=0.4,
+    )
+    classifier.labels = [
+        SimpleNamespace(class_id="bread_01"),
+        SimpleNamespace(class_id="bread_02"),
+        SimpleNamespace(class_id="bread_03"),
+    ]
+    classifier.restricted_ids = set()
+    classifier.restricted_pairs = set()
+    classifier.adapter_weight = np.eye(3, dtype=np.float32)
+    classifier.adapter_bias = np.zeros(3, dtype=np.float32)
+
+    result = classifier._classify_adapter(
+        np.asarray([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]], dtype=np.float32),
+        np.asarray([[0.7, 0.8, 0.1], [0.3, 0.2, 0.1]], dtype=np.float32),
+    )
+
+    assert result.approval_blocked.tolist() == [True, True]
+    assert result.unknown_reasons == (
+        "CLASSIFIER_AMBIGUOUS_TOP2",
+        "BELOW_APPROVAL_THRESHOLD",
+    )
+    assert result.segment_recapture_reasons == (None, "CLASSIFIER_OUT_OF_CATALOG")

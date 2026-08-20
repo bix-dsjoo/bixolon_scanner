@@ -412,6 +412,7 @@ class OnnxCatalogClassifier:
         retrieval_order = np.argsort(-retrieval_scores, axis=1, kind="stable")
         rows = np.arange(len(embeddings))
         retrieval_top1 = retrieval_scores[rows, retrieval_order[:, 0]]
+        retrieval_minimum = self.policy.ridge_retrieval_minimum_similarity
         recapture_reasons: list[str | None] = []
         unknown_reasons: list[str | None] = []
         approval_blocked = np.zeros(len(embeddings), dtype=bool)
@@ -426,14 +427,24 @@ class OnnxCatalogClassifier:
                 and disagreement_threshold is not None
                 and approval_scores[row] < disagreement_threshold
             )
-            approval_blocked[row] = restricted or disagreement_ambiguous
-            if retrieval_top1[row] < self.policy.ood_maximum_similarity:
+            agreement_blocked = self.policy.ridge_require_retrieval_agreement and heads_disagree
+            retrieval_too_low = (
+                retrieval_minimum is not None and retrieval_top1[row] < retrieval_minimum
+            )
+            approval_blocked[row] = (
+                restricted or disagreement_ambiguous or agreement_blocked or retrieval_too_low
+            )
+            if retrieval_too_low or retrieval_top1[row] < self.policy.ood_maximum_similarity:
                 recapture_reasons.append("CLASSIFIER_OUT_OF_CATALOG")
             else:
                 recapture_reasons.append(None)
             if restricted:
                 unknown_reasons.append("CLASSIFIER_CATALOG_CONFLICT")
-            elif approval_scores[row] < approval_threshold or disagreement_ambiguous:
+            elif (
+                approval_scores[row] < approval_threshold
+                or disagreement_ambiguous
+                or agreement_blocked
+            ):
                 unknown_reasons.append("CLASSIFIER_AMBIGUOUS_TOP2")
             else:
                 unknown_reasons.append("BELOW_APPROVAL_THRESHOLD")
