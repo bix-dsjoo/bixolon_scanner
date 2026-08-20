@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from io import BytesIO
+from types import SimpleNamespace
 
 import numpy as np
 from fastapi.testclient import TestClient
 from PIL import Image
+from pydantic import SecretStr
 
 from bixolon_scanner.api import create_app
 from bixolon_scanner.config import WorkerSettings
@@ -81,3 +83,62 @@ def test_unsupported_format_is_415(classifier_metadata, quality_metadata):
         response = client.post("/v1/scan", files={"image": ("file.gif", b"GIF89a", "image/gif")})
     assert response.status_code in {415, 422}
     assert response.json()["status"] == "ERROR"
+
+
+def test_v2_worker_warms_models_before_readiness(tmp_path, monkeypatch):
+    from bixolon_scanner.worker import api as worker_api
+
+    package_dir = tmp_path / "runtime"
+    package_dir.mkdir()
+    (package_dir / "metadata.json").write_text('{"schema_version":"2.0"}', encoding="utf-8")
+    events: list[str] = []
+
+    class Warmable:
+        def __init__(self, name: str) -> None:
+            self.name = name
+
+        def warmup(self) -> None:
+            events.append(self.name)
+
+    detector = Warmable("detector")
+    embedder = Warmable("embedder")
+    runtime = SimpleNamespace(
+        metadata=SimpleNamespace(
+            quality=object(),
+            worker_version="2.0.0-rc.test",
+            embedder=SimpleNamespace(version="2.0.0-rc.test"),
+            detector_policy_version="2.0.0-rc.test",
+            classifier_policy=SimpleNamespace(version="2.0.0-rc.test"),
+            input=SimpleNamespace(jpeg_draft_size=1500),
+        )
+    )
+    catalog = SimpleNamespace(metadata=SimpleNamespace(catalog_version="catalog.test"))
+    classifier = SimpleNamespace(metadata=object())
+    pipeline = SimpleNamespace(worker_version="2.0.0-rc.test")
+
+    monkeypatch.setattr(worker_api, "load_runtime_package_v2", lambda _path: runtime)
+    monkeypatch.setattr(worker_api, "load_store_catalog_package", lambda *args, **kwargs: catalog)
+    monkeypatch.setattr(worker_api, "select_provider", lambda _provider: "CUDAExecutionProvider")
+    monkeypatch.setattr(worker_api, "build_detector_v2", lambda *args, **kwargs: detector)
+    monkeypatch.setattr(worker_api, "OnnxEmbedder", lambda *args, **kwargs: embedder)
+
+    def build_classifier(*args, **kwargs):
+        assert events == ["detector", "embedder"]
+        return classifier
+
+    monkeypatch.setattr(worker_api, "OnnxCatalogClassifier", build_classifier)
+    monkeypatch.setattr(worker_api, "DecisionPipeline", lambda *args, **kwargs: pipeline)
+
+    app = create_app(
+        settings=WorkerSettings(
+            package_dir=package_dir,
+            catalog_dir=tmp_path / "catalog",
+            catalog_store_id="store",
+            catalog_key_id="key",
+            catalog_signing_key=SecretStr("secret"),
+            provider="cuda",
+        )
+    )
+    with TestClient(app):
+        assert app.state.ready is True
+        assert events == ["detector", "embedder"]

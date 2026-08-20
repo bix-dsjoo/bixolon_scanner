@@ -1,23 +1,57 @@
 # 현재 운영·릴리스 상태
 
-기준일: 2026-08-19
+기준일: 2026-08-20
 
 | 축 | 버전/후보 | 상태 |
 |---|---|---|
 | Python | `1.0.0` | 정식 API 계약 코드 |
-| 현재 운영 package | `bread-worker-1.1.0` | schema 2.0 owner-waiver production |
+| 현재 운영 release | `scanner-2.0.1` | rc.3 기반 owner-waiver production |
+| Worker / Detector / Embedder / Policy / Catalog | `2.0.1` | 원자적 운영 조합 |
+| Store Catalog | `2.0.1` | `single_objects` 200장, 영구 무키 `CHECKSUM-SHA256` |
+| 승격 원본 | `2.0.1-rc.3` | 300장 point gate 통과, 남은 gate는 waiver에 고정 |
 | schema 2.1 hardening 후보 | `bread-worker-1.0.0-hardened-candidate-recovered` | `not_promoted`, 개선 후 재검증 |
-| Worker / Detector / Classifier | `1.1.0` | 고정 4-model Detector + domain LDA bridge release |
+| Bridge rollback | `bread-worker-1.1.0` | 고정 4-model Detector + domain LDA |
 | Detector 학습 파이프라인 | `1.0.0` | recovered 10-shot provenance |
 | Classifier 학습 파이프라인 | `1.0.0` | recovered 12-shot provenance |
 | 승격 원본 | `bread-zero-error-1.1.0-domain-lda-fixed-four-v3` | 두 알려진 제한을 waiver로 보존 |
 | release 데이터셋 | `bread-1.1-development-plus-rejected-operational-v2` | E/M/H LDA fit과 반려 운영본 재사용 계보 |
-| Flutter | `1.0.0+3` | Worker·Detector·Classifier 1.1.0 readiness 확인 |
+| Flutter | `2.0.1+5` | 번들 내부 2.0.1 조합 CUDA readiness 확인 |
 | 다음 Classifier | `1.1.1+` | `single_objects` 200장 전용 계획 |
 | 사용자 독립 test | pending | 1.1.1+ successor 승격용 새 세션 필요 |
+| 이전 운영 release | `scanner-2.0.0` | 첫 rollback 기준 |
+| Scanner 2.0 RC | `2.0.0-rc.10` | 과거 반려 후보, 1 IPS production 성능 gate 실패 |
 | 이전 Detector 후보 | `0.2.5` | `experiment_only`, 미승격 |
-| Rollback package | `bread-worker-1.0.0` | 1.1.0 장애 시 첫 수동 복구용 |
+| Legacy rollback package | `bread-worker-1.0.0` | 수동 복구용 |
 | 비상 rollback package | `bread-worker-0.1.1` | 테스트 계열 최종 복구용 |
+
+Scanner 2.0 RC.10은 fixed four-model D-FINE Detector, frozen DINOv3
+ViT-B/16 Embedder와 SKU별 원본 10장 기반 Store Catalog ridge adapter 조합이다. 300장 개발
+회귀에서 `SEGMENTATION` 294/300, 반환 segmentation 1,375개 중 `APPROVED`
+1,338(97.3091%), `UNKNOWN` 9(0.6545%), `SEGMENT_RECAPTURE` 28(2.0364%), 이미지 FN/FP
+각각 0건, 승인 오인 1/1,410, Candidate out 0건을 기록했다. all-GT 승인 coverage는 94.8936%다.
+
+DINOv3 PyTorch↔ONNX CUDA, Embedder CPU↔CUDA와 300장 최종 상태·class rank parity는 통과했다.
+연속 warm CUDA full-path 평균/P95/P99도 84.74/95.38/98.76ms로 통과했지만, 운영 계약인 요청
+시작 간격 1,000ms에서는 Python 전용 NVIDIA 최대 성능 정책을 적용해도
+119.08/159.12/190.02ms로 실패했다. 따라서 RC.10은 pre-private lock 또는 owner-private test
+단계가 아니다. RC.9는 임계값 경계의 CPU/CUDA 최종 상태 mismatch 한 건으로 반려했고 RC.10은
+0.005 provider guard로 보수적으로 고정했다. 관리자 권한의 GPU clock floor 또는 모델 구조
+재최적화, 동일 cadence 재평가, packaged Worker·reliability·supply-chain gate와 새 release lock을
+먼저 완료해야 한다. 기존 RC.8 lock은 DINOv2 과거 evidence로만 보존한다.
+
+300장은 backbone·Catalog와 threshold 선택에 사용됐으므로 독립 인증 증거가 아니다. 상세 계약은
+[Scanner 2.0 설계](../architecture/scanner-2.0.0.md)와
+[300장 평가](../experiments/bread/scanner-2.0.0-development-300.md)를 따른다.
+
+`2.0.1-rc.3`는 원본 `single_objects` 200장 Catalog에 ridge/retrieval 합의 guard를 추가한
+승격 원본이다. 300장 재평가에서 정답 승인 1,311/1,410(92.9787%), 승인 오인 0건,
+Candidate out 0건, 평균/P95/P99 84.89/95.57/100.63ms를 기록했다. 개발 point gate는 모두
+통과했지만 0/1,311의 단측 95% 상한은 0.22825%이며, CPU/CUDA 전체 parity·1 IPS·비공개 test도
+완료되지 않았다. 프로젝트 소유자는 2026-08-20 이 제한과 reliability·supply-chain 미완료를
+`configs/releases/scanner_2.0.1_owner_waiver.json`에 고정하고 rc.3를 최종 `2.0.1`로
+승격했다. CPU/CUDA packaged Worker smoke와 앱 EXE의 CUDA readiness는 통과했다. 운영 승격은
+독립 certification 통과를 뜻하지 않는다. 상세 기록은
+[RC.3 결과](../experiments/bread/scanner-2.0.1-rc.3-single-objects.md)를 따른다.
 
 `bread-zero-error-1.1.0`의 공식 gate는 `SEGMENTATION ≥90%`, 전체 판정 가능 GT 대비
 end-to-end `APPROVED ≥90%`, 그리고 `SEGMENTATION` 이미지 FP/FN·승인 오인·Candidate out

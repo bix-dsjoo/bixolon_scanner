@@ -1,0 +1,91 @@
+{
+  "experiment": {
+    "name": "bread-classifier-200-only-1.1.3-small-sample-head",
+    "candidate_version": "1.1.3",
+    "lifecycle": "active",
+    "started_on": "2026-08-19",
+    "predecessor": "bread-classifier-200-only-1.1.2-neighbor-clutter",
+    "hypothesis": "Holding the 1.1.2 input recipe fixed while selecting among ridge, cosine-prototype, and shrinkage-LDA heads inside nested 200-image folds will improve small-sample separation and proposal verification without development-ROI fitting.",
+    "augmentation_seed": 20260820,
+    "stop_condition": "Select one head family and its parameters only inside nested 200-image folds, lock ONNX and policy, then evaluate E/M/H and the rejected operational collection exactly once."
+  },
+  "dataset": {
+    "manifest": "manifests/bread-zero-error-1.1/classifier_manifest.jsonl",
+    "manifest_sha256": "afe4b679c806847267e8dc8c9a2c89a48de479ec1c66e455333e757a304f4ddd",
+    "source_image_set_sha256": "554cd76a3434182573f4552ed2d8afdd5fdfd60f764559c9ff46add6f5bbe3c2",
+    "allowed_source": "single_objects",
+    "image_count": 200,
+    "class_count": 20,
+    "shots_per_class": 10,
+    "fitting_forbidden_sources": [
+      "multi_object_scenes",
+      "operational_collections",
+      "gt_crops",
+      "detector_rois"
+    ]
+  },
+  "augmentation_mode": "neighbor_masked_boundary_clutter",
+  "augmentation": {
+    "output_size": 224,
+    "target_scale_min": 0.72,
+    "target_scale_max": 0.96,
+    "distractor_count_min": 1,
+    "distractor_count_max": 3,
+    "distractor_scale_min": 0.22,
+    "distractor_scale_max": 0.62,
+    "maximum_rotation_degrees": 35.0,
+    "foreground_distractor_probability": 0.35,
+    "maximum_target_occlusion": 0.12,
+    "placement_attempts": 64,
+    "background_min": 200,
+    "background_max": 245,
+    "jpeg_quality_min": 82,
+    "jpeg_quality_max": 96
+  },
+  "training": {
+    "backbone": "dinov3_convnext_tiny",
+    "backbone_revision": "6876159a11b4df116f30f667f8c9888617df0751",
+    "backbone_weight_filename": "dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth",
+    "backbone_weight_sha256": "21b726bb286e037f00a23fb4699fa9bda9c75b6a615bd57ce3013cec1b528d54",
+    "backbone_trainable": false,
+    "head": "nested_small_sample_family",
+    "head_candidates": [
+      {"kind": "regularized_linear_ridge", "alpha": 0.1},
+      {"kind": "regularized_linear_ridge", "alpha": 1.0},
+      {"kind": "regularized_linear_ridge", "alpha": 10.0},
+      {"kind": "cosine_prototype"},
+      {"kind": "shrinkage_lda", "shrinkage": 0.01},
+      {"kind": "shrinkage_lda", "shrinkage": 0.1},
+      {"kind": "shrinkage_lda", "shrinkage": 0.5},
+      {"kind": "shrinkage_lda", "shrinkage": 0.9}
+    ],
+    "train_views_per_source": 8,
+    "validation_views_per_source": 2,
+    "feature_batch_size": 64
+  },
+  "selection": {
+    "outer_folds": [0, 1, 2],
+    "inner_policy": "next_fold_train_remaining_fold_validate",
+    "head_selection_order": [
+      "minimum_top3_miss_count",
+      "minimum_top1_error_count",
+      "maximum_median_true_margin",
+      "configured_candidate_order"
+    ],
+    "head_selection_and_threshold_fitting_are_separate": true,
+    "approval_policy": "maximum finite OOF coverage with zero approved Top-1 errors",
+    "top3_policy": "recapture finite OOF Top-3 misses before UNKNOWN",
+    "development_evaluation_used_for_fitting": false
+  },
+  "gates": {
+    "segmentation_image_rate_minimum": 0.9,
+    "approved_object_rate_minimum": 0.9,
+    "segmentation_image_false_negative_rate_maximum": 0.001,
+    "segmentation_image_false_positive_rate_maximum": 0.001,
+    "approved_object_misrecognition_rate_maximum": 0.001,
+    "unknown_top3_candidate_out_rate_maximum": 0.001,
+    "long_term_approved_object_rate_target": 0.99,
+    "cuda_full_path_mean_ms_maximum": 100.0,
+    "cuda_full_path_p95_ms_maximum": 100.0
+  }
+}

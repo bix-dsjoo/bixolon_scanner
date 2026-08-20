@@ -45,12 +45,56 @@ COMMANDS: dict[tuple[str, ...], CommandTarget] = {
         "bixolon_scanner.evaluation.bread_runtime_parity",
         "main",
     ),
+    ("evaluate", "scanner-2.0"): (
+        "bixolon_scanner.evaluation.scanner_v2",
+        "main",
+    ),
+    ("evaluate", "scanner-2.0-parity"): (
+        "bixolon_scanner.evaluation.scanner_v2_parity",
+        "main",
+    ),
+    ("evaluate", "scanner-2.0-breakdown"): (
+        "bixolon_scanner.evaluation.scanner_v2_breakdown",
+        "main",
+    ),
+    ("evaluate", "scanner-2.0-embedder-parity"): (
+        "bixolon_scanner.evaluation.embedder_v2_parity",
+        "main",
+    ),
+    ("evaluate", "scanner-2.0-private-preflight"): (
+        "bixolon_scanner.evaluation.scanner_v2_private_preflight",
+        "main",
+    ),
+    ("evaluate", "scanner-2.0-private"): (
+        "bixolon_scanner.evaluation.scanner_v2_private",
+        "main",
+    ),
+    ("evaluate", "scanner-2.0-packaged-worker-smoke"): (
+        "bixolon_scanner.evaluation.scanner_v2_packaged_worker_smoke",
+        "main",
+    ),
     ("evaluate", "bread-1.1-independent-preflight"): (
         "bixolon_scanner.experiments.bread.independent_preflight",
         "main",
     ),
     ("experiment", "bread-1.1-development-identity"): (
         "bixolon_scanner.experiments.bread.development_identity_manifest",
+        "main",
+    ),
+    ("experiment", "scanner-2.0-development-identity"): (
+        "bixolon_scanner.evaluation.scanner_v2_development_identity",
+        "main",
+    ),
+    ("experiment", "bread-classifier-200-only"): (
+        "bixolon_scanner.experiments.bread.classifier_200_only",
+        "main",
+    ),
+    ("experiment", "bread-catalog-metric"): (
+        "bixolon_scanner.experiments.bread.catalog_metric",
+        "main",
+    ),
+    ("experiment", "scanner-2.0-backbone-ab"): (
+        "bixolon_scanner.experiments.bread.catalog_backbone_ab",
         "main",
     ),
     ("evaluate", "parity"): ("bixolon_scanner.evaluation.parity", "main"),
@@ -60,6 +104,22 @@ COMMANDS: dict[tuple[str, ...], CommandTarget] = {
         "main",
     ),
     ("model", "export"): ("bixolon_scanner.training.export", "main"),
+    ("model", "export-embedder"): (
+        "bixolon_scanner.training.export_embedder",
+        "main",
+    ),
+    ("model", "export-dinov2-embedder"): (
+        "bixolon_scanner.training.export_dinov2_embedder",
+        "main",
+    ),
+    ("model", "export-dinov3-embedder"): (
+        "bixolon_scanner.training.export_dinov3_embedder",
+        "main",
+    ),
+    ("model", "bread-2.0-runtime"): (
+        "bixolon_scanner.experiments.bread.build_scanner_v2",
+        "main",
+    ),
     ("model", "promote"): ("bixolon_scanner.training.promote_package", "main"),
     ("model", "ten-shot-package"): ("bixolon_scanner.training.ten_shot_package", "main"),
     ("model", "ten-shot-finalize"): ("bixolon_scanner.training.ten_shot_finalize", "main"),
@@ -96,8 +156,24 @@ COMMANDS: dict[tuple[str, ...], CommandTarget] = {
         "bixolon_scanner.operations.worker_metrics",
         "main",
     ),
+    ("catalog", "activate"): (
+        "bixolon_scanner.operations.catalog_activation",
+        "main",
+    ),
     ("release", "verify"): (
         "bixolon_scanner.operations.release_composition",
+        "main",
+    ),
+    ("release", "lock-scanner-2.0"): (
+        "bixolon_scanner.operations.scanner_v2_release_lock",
+        "main",
+    ),
+    ("release", "promote-scanner-2.0"): (
+        "bixolon_scanner.operations.scanner_v2_promote",
+        "main",
+    ),
+    ("release", "promote-scanner-2.0-owner-waiver"): (
+        "bixolon_scanner.operations.scanner_v2_owner_waiver_promote",
         "main",
     ),
     ("tools", "cache-classifier"): (

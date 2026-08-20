@@ -30,6 +30,8 @@ def test_unified_cli_help_lists_stable_groups(capsys) -> None:
         "model",
         "experiment",
         "operations",
+        "catalog",
+        "release",
         "tools",
     ):
         assert group in output
@@ -47,3 +49,20 @@ def test_legacy_console_targets_and_unified_targets_share_callables() -> None:
     from bixolon_scanner.training.evaluate_worker import main as legacy
 
     assert legacy is canonical
+
+
+def test_scanner_2_commands_are_canonical() -> None:
+    assert ("evaluate", "scanner-2.0") in cli.COMMANDS
+    assert ("evaluate", "scanner-2.0-breakdown") in cli.COMMANDS
+    assert ("evaluate", "scanner-2.0-parity") in cli.COMMANDS
+    assert ("evaluate", "scanner-2.0-embedder-parity") in cli.COMMANDS
+    assert ("evaluate", "scanner-2.0-packaged-worker-smoke") in cli.COMMANDS
+    assert ("evaluate", "scanner-2.0-private-preflight") in cli.COMMANDS
+    assert ("evaluate", "scanner-2.0-private") in cli.COMMANDS
+    assert ("model", "export-embedder") in cli.COMMANDS
+    assert ("model", "export-dinov2-embedder") in cli.COMMANDS
+    assert ("catalog", "activate") in cli.COMMANDS
+    assert ("release", "lock-scanner-2.0") in cli.COMMANDS
+    assert ("release", "promote-scanner-2.0") in cli.COMMANDS
+    assert ("release", "promote-scanner-2.0-owner-waiver") in cli.COMMANDS
+    assert ("experiment", "bread-catalog-backbone-probe") not in cli.COMMANDS

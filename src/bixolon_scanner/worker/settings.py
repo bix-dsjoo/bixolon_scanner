@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -11,6 +11,10 @@ class WorkerSettings(BaseSettings):
     model_config = SettingsConfigDict(env_prefix="BIXOLON_", extra="ignore")
 
     package_dir: Path = Path("models/current")
+    catalog_dir: Path | None = None
+    catalog_store_id: str | None = None
+    catalog_key_id: str | None = None
+    catalog_signing_key: SecretStr | None = None
     provider: Literal["auto", "cuda", "cpu"] = "auto"
     cuda_dll_dir: Path | None = None
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)

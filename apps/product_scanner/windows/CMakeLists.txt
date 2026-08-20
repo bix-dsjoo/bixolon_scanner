@@ -81,12 +81,36 @@ if(SCANNER_RELEASE_COMPOSITION)
       "Release composition does not exist: ${SCANNER_RELEASE_COMPOSITION}")
   endif()
   file(READ "${SCANNER_RELEASE_COMPOSITION}" SCANNER_RELEASE_JSON)
-  string(JSON SCANNER_COMPOSED_PACKAGE_PATH GET
-    "${SCANNER_RELEASE_JSON}" model_package path)
+  string(JSON SCANNER_COMPOSITION_SCHEMA GET
+    "${SCANNER_RELEASE_JSON}" schema_version)
   get_filename_component(SCANNER_REPOSITORY_ROOT
     "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
-  get_filename_component(SCANNER_MODEL_PACKAGE_DIR
-    "${SCANNER_REPOSITORY_ROOT}/${SCANNER_COMPOSED_PACKAGE_PATH}" ABSOLUTE)
+  if(SCANNER_COMPOSITION_SCHEMA STREQUAL "2.0")
+    string(JSON SCANNER_COMPOSED_PACKAGE_PATH GET
+      "${SCANNER_RELEASE_JSON}" production_release runtime_path)
+    string(JSON SCANNER_COMPOSED_CATALOG_PATH GET
+      "${SCANNER_RELEASE_JSON}" production_release catalog_path)
+    string(JSON SCANNER_COMPOSED_WORKER_PATH GET
+      "${SCANNER_RELEASE_JSON}" production_release worker_bundle_path)
+    get_filename_component(SCANNER_MODEL_PACKAGE_DIR
+      "${SCANNER_REPOSITORY_ROOT}/${SCANNER_COMPOSED_PACKAGE_PATH}" ABSOLUTE)
+    get_filename_component(SCANNER_CATALOG_DIR
+      "${SCANNER_REPOSITORY_ROOT}/${SCANNER_COMPOSED_CATALOG_PATH}" ABSOLUTE)
+    get_filename_component(SCANNER_WORKER_RUNTIME_DIR
+      "${SCANNER_REPOSITORY_ROOT}/${SCANNER_COMPOSED_WORKER_PATH}" ABSOLUTE)
+    set(SCANNER_MODEL_PACKAGE_DIR "${SCANNER_MODEL_PACKAGE_DIR}"
+      CACHE PATH "Promoted BIXOLON Worker model package" FORCE)
+    set(SCANNER_CATALOG_DIR "${SCANNER_CATALOG_DIR}"
+      CACHE PATH "Checksum-only BIXOLON Store Catalog" FORCE)
+    set(SCANNER_WORKER_RUNTIME_DIR "${SCANNER_WORKER_RUNTIME_DIR}"
+      CACHE PATH "Standalone BIXOLON Worker runtime" FORCE)
+    set(SCANNER_CATALOG_REQUIRED TRUE)
+  else()
+    string(JSON SCANNER_COMPOSED_PACKAGE_PATH GET
+      "${SCANNER_RELEASE_JSON}" model_package path)
+    get_filename_component(SCANNER_MODEL_PACKAGE_DIR
+      "${SCANNER_REPOSITORY_ROOT}/${SCANNER_COMPOSED_PACKAGE_PATH}" ABSOLUTE)
+  endif()
 endif()
 # Make the "install" step default, as it's required to run.
 set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD 1)
@@ -134,9 +158,12 @@ install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
 
 # Bundle the standalone ONNX Runtime Worker beside the Windows application.
 set(SCANNER_DEFAULT_WORKER_RUNTIME_DIR
-  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/worker/bixolon-worker")
-set(SCANNER_WORKER_RUNTIME_DIR "${SCANNER_DEFAULT_WORKER_RUNTIME_DIR}"
-  CACHE PATH "Standalone BIXOLON Worker runtime")
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/releases/scanner-2.0.1-production/worker-build/bixolon-worker")
+if(NOT SCANNER_WORKER_RUNTIME_DIR)
+  set(SCANNER_WORKER_RUNTIME_DIR "${SCANNER_DEFAULT_WORKER_RUNTIME_DIR}")
+endif()
+set(SCANNER_WORKER_RUNTIME_DIR "${SCANNER_WORKER_RUNTIME_DIR}"
+  CACHE PATH "Standalone BIXOLON Worker runtime" FORCE)
 if(EXISTS "${SCANNER_WORKER_RUNTIME_DIR}/bixolon-worker.exe")
   install(DIRECTORY "${SCANNER_WORKER_RUNTIME_DIR}/"
     DESTINATION "${CMAKE_INSTALL_PREFIX}/worker"
@@ -153,9 +180,9 @@ endif()
 
 # Bundle the promoted model package beside the Windows application.
 set(SCANNER_DEFAULT_MODEL_PACKAGE_DIR
-  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/packages/bread-worker-1.1.0")
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/releases/scanner-2.0.1-production/runtime")
 set(SCANNER_PREVIOUS_MODEL_PACKAGE_DIR
-  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/packages/bread-worker-1.0.0")
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/releases/scanner-2.0.0-production/runtime")
 set(SCANNER_LEGACY_MODEL_PACKAGE_DIR
   "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/packages/bread-worker-0.1.1")
 if(NOT SCANNER_MODEL_PACKAGE_DIR OR
@@ -179,6 +206,24 @@ else()
     message(WARNING
       "BIXOLON Worker model package was not found at ${SCANNER_MODEL_PACKAGE_DIR}")
   endif()
+endif()
+
+# Scanner 2.x bundles a checksum-verified Store Catalog. No key or signature
+# is copied into the application.
+set(SCANNER_DEFAULT_CATALOG_DIR
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/releases/scanner-2.0.1-production/catalog")
+if(NOT SCANNER_CATALOG_DIR)
+  set(SCANNER_CATALOG_DIR "${SCANNER_DEFAULT_CATALOG_DIR}")
+endif()
+set(SCANNER_CATALOG_DIR "${SCANNER_CATALOG_DIR}"
+  CACHE PATH "Checksum-only BIXOLON Store Catalog" FORCE)
+if(EXISTS "${SCANNER_CATALOG_DIR}/catalog.json")
+  install(DIRECTORY "${SCANNER_CATALOG_DIR}/"
+    DESTINATION "${CMAKE_INSTALL_PREFIX}/worker/store-catalog"
+    COMPONENT Runtime)
+elseif(SCANNER_RELEASE_BUILD AND SCANNER_CATALOG_REQUIRED)
+  message(FATAL_ERROR
+    "Scanner 2.x Release requires the Store Catalog: ${SCANNER_CATALOG_DIR}")
 endif()
 
 # Optionally make the Release bundle self-contained for ONNX Runtime CUDA.

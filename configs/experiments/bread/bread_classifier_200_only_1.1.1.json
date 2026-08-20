@@ -1,0 +1,85 @@
+{
+  "experiment": {
+    "name": "bread-classifier-200-only-1.1.1-baseline",
+    "candidate_version": "1.1.1",
+    "lifecycle": "active",
+    "started_on": "2026-08-19",
+    "hypothesis": "A frozen DINOv3 ConvNeXt-Tiny representation with a nested-fold-selected regularized linear head provides an honest 200-image-only successor baseline without inheriting the 1.1.0 development-ROI LDA or thresholds.",
+    "augmentation_seed": 20260819,
+    "stop_condition": "Evaluate E/M/H and the rejected operational collection exactly once after locking the checkpoint, ONNX, and policy; reject 1.1.1 if any six-gate requirement fails and continue with one ROI-robustness hypothesis in 1.1.2."
+  },
+  "dataset": {
+    "manifest": "manifests/bread-zero-error-1.1/classifier_manifest.jsonl",
+    "manifest_sha256": "afe4b679c806847267e8dc8c9a2c89a48de479ec1c66e455333e757a304f4ddd",
+    "source_image_set_sha256": "554cd76a3434182573f4552ed2d8afdd5fdfd60f764559c9ff46add6f5bbe3c2",
+    "allowed_source": "single_objects",
+    "image_count": 200,
+    "class_count": 20,
+    "shots_per_class": 10,
+    "fitting_forbidden_sources": [
+      "multi_object_scenes",
+      "operational_collections",
+      "gt_crops",
+      "detector_rois"
+    ]
+  },
+  "augmentation": {
+    "output_size": 224,
+    "canvas_scale_min": 0.62,
+    "canvas_scale_max": 0.94,
+    "rotation_degrees": 25.0,
+    "perspective_fraction": 0.04,
+    "brightness_min": 0.8,
+    "brightness_max": 1.2,
+    "contrast_min": 0.85,
+    "contrast_max": 1.15,
+    "saturation_min": 0.85,
+    "saturation_max": 1.15,
+    "blur_probability": 0.15,
+    "blur_radius_max": 0.7,
+    "jpeg_quality_min": 82,
+    "jpeg_quality_max": 96,
+    "crop_mode": "border_connected_composite",
+    "padding_ratio": 0.0,
+    "border_color_distance": 42,
+    "mask_feather_radius": 0.8,
+    "procedural_gradient": false,
+    "procedural_shadow": false
+  },
+  "training": {
+    "backbone": "dinov3_convnext_tiny",
+    "backbone_revision": "6876159a11b4df116f30f667f8c9888617df0751",
+    "backbone_weight_filename": "dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth",
+    "backbone_weight_sha256": "21b726bb286e037f00a23fb4699fa9bda9c75b6a615bd57ce3013cec1b528d54",
+    "backbone_trainable": false,
+    "head": "regularized_linear_ridge",
+    "ridge_candidates": [0.01, 0.1, 1.0, 10.0],
+    "train_views_per_source": 8,
+    "validation_views_per_source": 2,
+    "feature_batch_size": 64
+  },
+  "selection": {
+    "outer_folds": [0, 1, 2],
+    "inner_policy": "next_fold_train_remaining_fold_validate",
+    "head_selection_order": [
+      "minimum_top3_miss_count",
+      "minimum_top1_error_count",
+      "maximum_median_true_margin",
+      "minimum_ridge_alpha"
+    ],
+    "approval_policy": "maximum finite OOF coverage with zero approved Top-1 errors",
+    "top3_policy": "recapture finite OOF Top-3 misses before UNKNOWN",
+    "development_evaluation_used_for_fitting": false
+  },
+  "gates": {
+    "segmentation_image_rate_minimum": 0.9,
+    "approved_object_rate_minimum": 0.9,
+    "segmentation_image_false_negative_rate_maximum": 0.001,
+    "segmentation_image_false_positive_rate_maximum": 0.001,
+    "approved_object_misrecognition_rate_maximum": 0.001,
+    "unknown_top3_candidate_out_rate_maximum": 0.001,
+    "long_term_approved_object_rate_target": 0.99,
+    "cuda_full_path_mean_ms_maximum": 100.0,
+    "cuda_full_path_p95_ms_maximum": 100.0
+  }
+}

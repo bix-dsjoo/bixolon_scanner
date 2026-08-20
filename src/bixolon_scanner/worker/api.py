@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -11,12 +12,19 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .. import __version__
-from ..contracts import ScanResponse, Status
+from ..contracts import (
+    ScanResponse,
+    Status,
+    load_runtime_package_v2,
+    load_store_catalog_package,
+)
 from ..contracts.errors import MissingImageError, ScannerError
 from ..contracts.model_package import load_model_package
 from ..pipeline import DecisionPipeline
+from ..runtime.catalog import OnnxCatalogClassifier, OnnxEmbedder
+from ..runtime.detector_v2 import build_detector_v2
 from ..runtime.imaging import decode_image
-from ..runtime.onnx import build_onnx_adapters
+from ..runtime.onnx import build_onnx_adapters, select_provider
 from .settings import WorkerSettings
 
 LOGGER = logging.getLogger(__name__)
@@ -58,22 +66,66 @@ def create_app(
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         if injected_pipeline is None:
-            model_package = load_model_package(worker_settings.package_dir)
-            detector, classifier, provider = build_onnx_adapters(
-                model_package,
-                worker_settings.provider,
-                cuda_dll_dir=worker_settings.cuda_dll_dir,
+            metadata_payload = json.loads(
+                (worker_settings.package_dir / "metadata.json").read_text(encoding="utf-8")
             )
-            app.state.pipeline = DecisionPipeline(
-                detector,
-                classifier,
-                model_package.metadata.classifier,
-                model_package.metadata.quality,
-                model_package.metadata.count_verifier,
-                worker_version=model_package.metadata.package_version,
-            )
+            if metadata_payload.get("schema_version") == "2.0":
+                if worker_settings.catalog_dir is None:
+                    raise ValueError("2.0 Worker requires a Store Catalog directory")
+                runtime_package = load_runtime_package_v2(worker_settings.package_dir)
+                catalog = load_store_catalog_package(
+                    worker_settings.catalog_dir,
+                    signing_key=(
+                        None
+                        if worker_settings.catalog_signing_key is None
+                        else worker_settings.catalog_signing_key.get_secret_value().encode()
+                    ),
+                    expected_store_id=worker_settings.catalog_store_id,
+                    expected_key_id=worker_settings.catalog_key_id,
+                )
+                provider = select_provider(worker_settings.provider)
+                detector = build_detector_v2(
+                    runtime_package,
+                    provider,
+                    worker_settings.cuda_dll_dir,
+                )
+                embedder = OnnxEmbedder(
+                    runtime_package,
+                    provider,
+                    worker_settings.cuda_dll_dir,
+                )
+                detector.warmup()
+                embedder.warmup()
+                classifier = OnnxCatalogClassifier(runtime_package, catalog, embedder)
+                app.state.pipeline = DecisionPipeline(
+                    detector,
+                    classifier,
+                    classifier.metadata,
+                    runtime_package.metadata.quality,
+                    worker_version=runtime_package.metadata.worker_version,
+                    embedder_version=runtime_package.metadata.embedder.version,
+                    detector_policy_version=runtime_package.metadata.detector_policy_version,
+                    classifier_policy_version=runtime_package.metadata.classifier_policy.version,
+                    catalog_version=catalog.metadata.catalog_version,
+                )
+                app.state.jpeg_draft_size = runtime_package.metadata.input.jpeg_draft_size
+            else:
+                model_package = load_model_package(worker_settings.package_dir)
+                detector, classifier, provider = build_onnx_adapters(
+                    model_package,
+                    worker_settings.provider,
+                    cuda_dll_dir=worker_settings.cuda_dll_dir,
+                )
+                app.state.pipeline = DecisionPipeline(
+                    detector,
+                    classifier,
+                    model_package.metadata.classifier,
+                    model_package.metadata.quality,
+                    model_package.metadata.count_verifier,
+                    worker_version=model_package.metadata.package_version,
+                )
+                app.state.jpeg_draft_size = model_package.metadata.input.jpeg_draft_size
             app.state.provider = provider
-            app.state.jpeg_draft_size = model_package.metadata.input.jpeg_draft_size
         else:
             app.state.pipeline = injected_pipeline
             app.state.provider = "injected"
@@ -145,13 +197,23 @@ def create_app(
         if not app.state.ready:
             return JSONResponse(status_code=503, content={"status": "not_ready"})
         versions = app.state.pipeline.versions
-        return {
+        payload = {
             "status": "ready",
             "provider": app.state.provider,
             "worker_version": app.state.worker_version,
             "detector_version": versions.detector,
             "classifier_version": versions.classifier,
         }
+        optional_versions = {
+            "embedder_version": app.state.pipeline.embedder_version,
+            "detector_policy_version": app.state.pipeline.detector_policy_version,
+            "classifier_policy_version": app.state.pipeline.classifier_policy_version,
+            "catalog_version": app.state.pipeline.catalog_version,
+        }
+        payload.update(
+            {key: value for key, value in optional_versions.items() if value is not None}
+        )
+        return payload
 
     @app.post("/v1/scan", response_model=ScanResponse)
     async def scan(request: Request, image: UploadFile = File(...)):
@@ -191,6 +253,10 @@ def create_app(
                             "worker_version": completed.worker_version,
                             "detector_version": completed.detector_version,
                             "classifier_version": completed.classifier_version,
+                            "embedder_version": completed.embedder_version,
+                            "detector_policy_version": completed.detector_policy_version,
+                            "classifier_policy_version": completed.classifier_policy_version,
+                            "catalog_version": completed.catalog_version,
                         },
                     )
                     return completed

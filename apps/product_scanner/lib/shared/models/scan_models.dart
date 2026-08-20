@@ -160,22 +160,42 @@ class ScanItem {
 }
 
 class ModelVersions {
-  const ModelVersions({this.worker, this.detector, this.classifier});
+  const ModelVersions({
+    this.worker,
+    this.detector,
+    this.classifier,
+    this.embedder,
+    this.detectorPolicy,
+    this.classifierPolicy,
+    this.catalog,
+  });
 
   factory ModelVersions.fromJson(Map<String, dynamic> json) => ModelVersions(
     worker: json['worker'] as String?,
     detector: json['detector'] as String?,
     classifier: json['classifier'] as String?,
+    embedder: json['embedder'] as String?,
+    detectorPolicy: json['detector_policy'] as String?,
+    classifierPolicy: json['classifier_policy'] as String?,
+    catalog: json['catalog'] as String?,
   );
 
   final String? worker;
   final String? detector;
   final String? classifier;
+  final String? embedder;
+  final String? detectorPolicy;
+  final String? classifierPolicy;
+  final String? catalog;
 
   Map<String, dynamic> toJson() => {
     'worker': worker,
     'detector': detector,
     'classifier': classifier,
+    'embedder': embedder,
+    'detector_policy': detectorPolicy,
+    'classifier_policy': classifierPolicy,
+    'catalog': catalog,
   };
 }
 
@@ -209,6 +229,10 @@ class ScanResponse {
         worker: json['worker_version'] as String?,
         detector: json['detector_version'] as String?,
         classifier: json['classifier_version'] as String?,
+        embedder: json['embedder_version'] as String?,
+        detectorPolicy: json['detector_policy_version'] as String?,
+        classifierPolicy: json['classifier_policy_version'] as String?,
+        catalog: json['catalog_version'] as String?,
       ),
     };
     return ScanResponse(

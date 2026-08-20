@@ -11,6 +11,15 @@
 
 모든 버전은 서로 독립적으로 올립니다. 정식 Worker·Detector·Classifier 버전은 `1.0.0`부터 시작하며 Python 또는 앱을 배포했다고 모델 후보가 자동 승격되지 않습니다.
 
+## 현재 Scanner 2.0.1 운영 예외
+
+프로젝트 소유자는 2026-08-20 `2.0.1-rc.3`를 최종 `2.0.1` 운영 release로 명시적으로
+승격했다. 일반 승격 gate를 통과한 것으로 소급 표현하지 않으며, 독립 비공개 test·통계 상한·
+300장 CPU/CUDA 전체 parity·1 IPS cadence·장시간 reliability·SBOM/취약점 scan과 Catalog HMAC
+미충족은 `configs/releases/scanner_2.0.1_owner_waiver.json`에 보존한다. 재현 가능한 최종 조합은
+`configs/releases/scanner_2.0.1.json`이고 Windows 앱 버전은 `2.0.1+5`다. 이 예외는 후속 버전에
+자동 상속되지 않는다.
+
 ## 실험 수명주기
 
 ```text

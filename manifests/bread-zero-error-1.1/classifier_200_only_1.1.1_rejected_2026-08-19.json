@@ -1,0 +1,82 @@
+{
+  "schema_version": "1.0",
+  "candidate_id": "bread-classifier-200-only-1.1.1-baseline",
+  "lifecycle": "rejected",
+  "decided_on": "2026-08-19",
+  "hypothesis": "A frozen DINOv3 ConvNeXt-Tiny representation with a nested-fold-selected regularized linear head can form an honest 200-image-only successor baseline.",
+  "fitting_contract": {
+    "allowed_source": "single_objects",
+    "source_count": 200,
+    "manifest_sha256": "afe4b679c806847267e8dc8c9a2c89a48de479ec1c66e455333e757a304f4ddd",
+    "source_image_set_sha256": "554cd76a3434182573f4552ed2d8afdd5fdfd60f764559c9ff46add6f5bbe3c2",
+    "actual_access_image_set_sha256": "554cd76a3434182573f4552ed2d8afdd5fdfd60f764559c9ff46add6f5bbe3c2",
+    "development_roi_fitting_used": false,
+    "config": "configs/experiments/bread/bread_classifier_200_only_1.1.1.json",
+    "config_sha256": "d9c7954a0c21645c9fd529706f3d88366ca475c2fb1a5ed650b49af7ac9139fd",
+    "allowlist_audit": "artifacts/experiments/bread-classifier-200-only-1.1.1/reports/allowlist-audit.json",
+    "allowlist_audit_sha256": "1f8e7a124b4c5b81712a17f29851d857f857aeccb6b8eb15d52de82061d6b579"
+  },
+  "model": {
+    "checkpoint": "artifacts/experiments/bread-classifier-200-only-1.1.1/models/classifier.pt",
+    "checkpoint_sha256": "57c67c7f40d1f3787b280b3a2e78d3d4ba1adaf5f12d5cc5b06cd9d418f616d4",
+    "onnx": "artifacts/experiments/bread-classifier-200-only-1.1.1/models/classifier.onnx",
+    "onnx_sha256": "c722f1c564e737b6a1cdbd953f2af516e2c30e9450dcb325688e2a25ceb073ce",
+    "training_report": "artifacts/experiments/bread-classifier-200-only-1.1.1/reports/training-report.json",
+    "training_report_sha256": "d5b3078a0fca6b7fcfc62c30aeb9f3910313b3a034f3db3710e0b7f0ce6a4e04",
+    "package_metadata_sha256": "a0bfd7f5e5b98845d8fab8f1558b654dbeea449f056bf153152acb7c764aede2"
+  },
+  "internal_oof": {
+    "role": "development_selection_only_not_independent_generalization_evidence",
+    "sample_count": 600,
+    "top1_accuracy": 0.9566666666666667,
+    "top3_accuracy": 0.9833333333333333,
+    "approved_rate": 0.8366666666666667,
+    "approved_error_count": 0,
+    "unknown_top3_candidate_out_count": 0
+  },
+  "development_evaluation": {
+    "emh_300": {
+      "report": "artifacts/experiments/bread-classifier-200-only-1.1.1/reports/runtime-six-gate-development-emh.json",
+      "report_sha256": "874d4f227338d99bc592041470c2832a5bd9fa1be20c6a1c02df861657f13c1e",
+      "segmentation_image_rate": 1.0,
+      "approved_object_rate": 0.6680851063829787,
+      "segmentation_image_false_negative_rate": 0.016666666666666666,
+      "segmentation_image_false_positive_rate": 0.006666666666666667,
+      "approved_object_misrecognition_rate": 0.0007092198581560284,
+      "unknown_top3_candidate_out_rate": 0.0,
+      "cuda_mean_ms": 95.62547266660356,
+      "cuda_p95_ms": 93.43769500592316,
+      "error_image_ids": [153, 155, 204, 259, 296, 298],
+      "approved_wrong": {
+        "image_id": 200,
+        "target": "bread_17",
+        "prediction": "bread_16"
+      },
+      "all_operational_gates_met": false
+    },
+    "rejected_operational_115": {
+      "report": "artifacts/experiments/bread-classifier-200-only-1.1.1/reports/runtime-six-gate-development-operational-115.json",
+      "report_sha256": "c4b2e02a0c7c80cc01f5239cac049d475dfc7b4e380d9a66b06d6b604fc61d28",
+      "segmentation_image_rate": 0.9652173913043478,
+      "approved_object_rate": 0.5813492063492064,
+      "segmentation_image_false_negative_rate": 0.009009009009009009,
+      "segmentation_image_false_positive_rate": 0.0,
+      "approved_object_misrecognition_rate": 0.0,
+      "unknown_top3_candidate_out_rate": 0.0,
+      "cuda_mean_ms": 77.32961478278689,
+      "cuda_p95_ms": 89.3815099974745,
+      "error_image_ids": [60],
+      "all_operational_gates_met": false
+    }
+  },
+  "rejection_reasons": [
+    "E/M/H end-to-end APPROVED 66.81% is below the 90% operational gate.",
+    "E/M/H segmentation-image FN 1.67% and FP 0.67% exceed the 0.1% gates because the replacement classifier also changes proposal verification.",
+    "The rejected operational development collection APPROVED 58.13% and segmentation-image FN 0.90% fail their gates."
+  ],
+  "successor": {
+    "candidate_version": "1.1.2",
+    "single_changed_hypothesis": "neighbor-masked synthetic boundary clutter made only from the frozen 200 foregrounds and procedural backgrounds",
+    "config": "configs/experiments/bread/bread_classifier_200_only_1.1.2.json"
+  }
+}

@@ -78,3 +78,21 @@ def test_unknown_rejects_unsupported_reason():
             top3=[Candidate(class_id="a", class_name="A", confidence=0.9)],
             confidence=0.9,
         )
+
+
+def test_2_0_unknown_separates_approval_and_ranking_confidence():
+    item = ScanItem(
+        segmentation_id="segmentation_001",
+        bbox=BoundingBox(x=1, y=2, width=30, height=40),
+        status=ItemStatus.UNKNOWN,
+        reason_codes=["CLASSIFIER_AMBIGUOUS_TOP2"],
+        prediction=None,
+        top3=[
+            Candidate(class_id="a", class_name="A", confidence=0.91),
+            Candidate(class_id="b", class_name="B", confidence=0.88),
+        ],
+        confidence=0.42,
+    )
+
+    assert item.confidence == 0.42
+    assert item.top3[0].confidence == 0.91

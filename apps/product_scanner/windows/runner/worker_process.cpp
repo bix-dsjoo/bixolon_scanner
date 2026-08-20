@@ -11,6 +11,7 @@ namespace {
 constexpr wchar_t kAutoStartEnvironmentName[] =
     L"SCANNER_AUTO_START_WORKER";
 constexpr wchar_t kPackageEnvironmentName[] = L"BIXOLON_PACKAGE_DIR";
+constexpr wchar_t kCatalogEnvironmentName[] = L"BIXOLON_CATALOG_DIR";
 constexpr wchar_t kProviderEnvironmentName[] = L"BIXOLON_PROVIDER";
 constexpr wchar_t kCudaDllEnvironmentName[] = L"BIXOLON_CUDA_DLL_DIR";
 
@@ -125,8 +126,12 @@ bool WorkerProcess::Start() {
 
   const auto existing_package =
       ReadEnvironmentVariable(kPackageEnvironmentName);
+  const auto existing_catalog =
+      ReadEnvironmentVariable(kCatalogEnvironmentName);
   const auto bundled_package =
       executable_directory / L"worker" / L"model-package";
+  const auto bundled_catalog =
+      executable_directory / L"worker" / L"store-catalog";
   if (!existing_package &&
       !std::filesystem::is_regular_file(bundled_package / L"metadata.json")) {
     ::OutputDebugStringW(
@@ -143,6 +148,11 @@ bool WorkerProcess::Start() {
   if (!existing_package) {
     ::SetEnvironmentVariableW(kPackageEnvironmentName,
                               bundled_package.c_str());
+  }
+  if (!existing_catalog &&
+      std::filesystem::is_regular_file(bundled_catalog / L"catalog.json")) {
+    ::SetEnvironmentVariableW(kCatalogEnvironmentName,
+                              bundled_catalog.c_str());
   }
   if (!existing_cuda_dll_directory && bundled_cuda_runtime) {
     ::SetEnvironmentVariableW(kCudaDllEnvironmentName,
@@ -161,6 +171,7 @@ bool WorkerProcess::Start() {
   job_ = ::CreateJobObjectW(nullptr, nullptr);
   if (job_ == nullptr) {
     RestoreEnvironmentVariable(kPackageEnvironmentName, existing_package);
+    RestoreEnvironmentVariable(kCatalogEnvironmentName, existing_catalog);
     RestoreEnvironmentVariable(kProviderEnvironmentName, existing_provider);
     RestoreEnvironmentVariable(kCudaDllEnvironmentName,
                                existing_cuda_dll_directory);
@@ -176,6 +187,7 @@ bool WorkerProcess::Start() {
     ::CloseHandle(job_);
     job_ = nullptr;
     RestoreEnvironmentVariable(kPackageEnvironmentName, existing_package);
+    RestoreEnvironmentVariable(kCatalogEnvironmentName, existing_catalog);
     RestoreEnvironmentVariable(kProviderEnvironmentName, existing_provider);
     RestoreEnvironmentVariable(kCudaDllEnvironmentName,
                                existing_cuda_dll_directory);
@@ -196,6 +208,7 @@ bool WorkerProcess::Start() {
       &process_information);
 
   RestoreEnvironmentVariable(kPackageEnvironmentName, existing_package);
+  RestoreEnvironmentVariable(kCatalogEnvironmentName, existing_catalog);
   RestoreEnvironmentVariable(kProviderEnvironmentName, existing_provider);
   RestoreEnvironmentVariable(kCudaDllEnvironmentName,
                              existing_cuda_dll_directory);

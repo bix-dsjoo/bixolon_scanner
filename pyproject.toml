@@ -11,7 +11,7 @@ requires-python = ">=3.11,<3.14"
 dependencies = [
   "fastapi>=0.115,<1",
   "numpy>=2,<3",
-  "pillow>=11,<13",
+  "pillow>=12.3,<13",
   "pydantic>=2.10,<3",
   "pydantic-settings>=2.7,<3",
   "python-multipart>=0.0.20,<1",
@@ -31,6 +31,7 @@ training = [
 ]
 test = ["httpx>=0.28,<1", "pytest>=8.3,<10"]
 dev = ["ruff>=0.12,<1"]
+evaluation = ["psutil>=7,<8", "scipy>=1.15,<2"]
 
 [project.scripts]
 bixolon = "bixolon_scanner.cli:main"

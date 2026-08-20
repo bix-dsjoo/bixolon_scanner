@@ -12,7 +12,11 @@
     "processing_time_ms",
     "worker_version",
     "detector_version",
-    "classifier_version"
+    "classifier_version",
+    "embedder_version",
+    "detector_policy_version",
+    "classifier_policy_version",
+    "catalog_version"
   ],
   "properties": {
     "request_id": {"type": "string", "minLength": 8},
@@ -32,7 +36,11 @@
     "processing_time_ms": {"type": "number", "minimum": 0},
     "worker_version": {"type": "string", "minLength": 1},
     "detector_version": {"type": ["string", "null"]},
-    "classifier_version": {"type": ["string", "null"]}
+    "classifier_version": {"type": ["string", "null"]},
+    "embedder_version": {"type": ["string", "null"]},
+    "detector_policy_version": {"type": ["string", "null"]},
+    "classifier_policy_version": {"type": ["string", "null"]},
+    "catalog_version": {"type": ["string", "null"]}
   },
   "$defs": {
     "BoundingBox": {
@@ -89,7 +97,7 @@
         },
         "reason_codes": {
           "type": "array",
-          "description": "UNKNOWN uses exactly one of BELOW_APPROVAL_THRESHOLD or DETECTOR_CONTAINED_DUPLICATE. SEGMENT_RECAPTURE can use CLASSIFIER_QUALITY_CLASS, DETECTOR_BORDER_CLIPPED, or CLASSIFIER_TOP3_UNSAFE.",
+          "description": "UNKNOWN uses one review reason including BELOW_APPROVAL_THRESHOLD, CLASSIFIER_AMBIGUOUS_TOP2, CLASSIFIER_CATALOG_CONFLICT, or DETECTOR_CONTAINED_DUPLICATE. SEGMENT_RECAPTURE uses an action-specific quality, border, OOD, or Top-3 safety reason.",
           "items": {"type": "string"}
         },
         "prediction": {

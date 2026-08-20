@@ -107,7 +107,7 @@ def _maximum_aspect_ratio_extremity(prediction: dict[str, Any]) -> float:
     return float(np.max(np.maximum(ratios, 1.0 / ratios)))
 
 
-def _filter_prediction_by_area(
+def filter_prediction_by_area(
     prediction: dict[str, Any], *, image_area: float, maximum_area_ratio: float
 ) -> dict[str, Any]:
     kept = [
@@ -120,6 +120,11 @@ def _filter_prediction_by_area(
         if key in prediction:
             output[key] = [prediction[key][index] for index in kept]
     return output
+
+
+# Python 0.3.x compatibility for diagnostic callers that used the former
+# private helper before it became a runtime-internal shared API.
+_filter_prediction_by_area = filter_prediction_by_area
 
 
 def _intersection(left: np.ndarray, right: np.ndarray) -> float:
@@ -264,7 +269,7 @@ def fuse_prediction_rows(
     }
 
 
-def _containment_select(
+def containment_select(
     prediction: dict[str, Any],
     *,
     score_threshold: float,
@@ -320,6 +325,9 @@ def _containment_select(
         "scores": [item["score"] for item in kept],
         "class_ids": [item["class_id"] for item in kept],
     }
+
+
+_containment_select = containment_select
 
 
 def _group_suppress(

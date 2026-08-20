@@ -164,6 +164,10 @@ class DecisionPipeline:
         count_verifier_metadata: CountVerifierMetadata | None = None,
         *,
         worker_version: str = "1.0.0",
+        embedder_version: str | None = None,
+        detector_policy_version: str | None = None,
+        classifier_policy_version: str | None = None,
+        catalog_version: str | None = None,
     ):
         self.detector = detector
         self.classifier = classifier
@@ -171,6 +175,10 @@ class DecisionPipeline:
         self.quality_metadata = quality_metadata
         self.count_verifier_metadata = count_verifier_metadata
         self.worker_version = worker_version
+        self.embedder_version = embedder_version
+        self.detector_policy_version = detector_policy_version
+        self.classifier_policy_version = classifier_policy_version
+        self.catalog_version = catalog_version
 
     @property
     def versions(self) -> ModelVersions:
@@ -205,6 +213,10 @@ class DecisionPipeline:
                 worker_version=self.worker_version,
                 detector_version=self.detector.version,
                 classifier_version=None,
+                embedder_version=None,
+                detector_policy_version=self.detector_policy_version,
+                classifier_policy_version=None,
+                catalog_version=None,
             )
             self._log(response, detector_ms=detector_ms, classifier_ms=0.0)
             return response
@@ -220,18 +232,34 @@ class DecisionPipeline:
             ranking_logits = classification.ranking_logits
             approval_scores = classification.approval_scores
             top3_safety_scores = classification.top3_safety_scores
+            ranking_scores = classification.ranking_scores
+            segment_recapture_reasons = classification.segment_recapture_reasons
+            unknown_reasons = classification.unknown_reasons
+            approval_blocked = classification.approval_blocked
         else:
             logits = classification
             ranking_logits = classification
             approval_scores = None
             top3_safety_scores = None
+            ranking_scores = None
+            segment_recapture_reasons = None
+            unknown_reasons = None
+            approval_blocked = None
         if logits.shape != (len(ordered), len(self.classifier_metadata.labels)):
             raise ValueError("classifier output shape does not match package labels")
         if ranking_logits.shape != logits.shape:
             raise ValueError("classifier ranking output shape does not match logits")
         probabilities = _softmax(logits, self.classifier_metadata.temperature)
-        ranking_probabilities = _softmax(ranking_logits, self.classifier_metadata.temperature)
-        decision_indices = np.argsort(-probabilities, axis=1, kind="stable")
+        ranking_probabilities = (
+            _softmax(ranking_logits, self.classifier_metadata.temperature)
+            if ranking_scores is None
+            else np.asarray(ranking_scores, dtype=np.float32)
+        )
+        if ranking_probabilities.shape != logits.shape or np.any(
+            (ranking_probabilities < 0.0) | (ranking_probabilities > 1.0)
+        ):
+            raise ValueError("classifier ranking scores must match labels and be in [0, 1]")
+        decision_indices = np.argsort(-ranking_probabilities, axis=1, kind="stable")
         ranking_indices = np.argsort(-ranking_probabilities, axis=1, kind="stable")
         if approval_scores is None:
             approval_scores = probabilities.max(axis=1)
@@ -239,6 +267,14 @@ class DecisionPipeline:
             raise ValueError("classifier approval scores do not match detections")
         if top3_safety_scores is not None and top3_safety_scores.shape != (len(ordered),):
             raise ValueError("classifier Top-3 safety scores do not match detections")
+        if segment_recapture_reasons is not None and len(segment_recapture_reasons) != len(ordered):
+            raise ValueError("classifier recapture reasons do not match detections")
+        if unknown_reasons is not None and len(unknown_reasons) != len(ordered):
+            raise ValueError("classifier unknown reasons do not match detections")
+        if approval_blocked is not None:
+            approval_blocked = np.asarray(approval_blocked, dtype=bool)
+            if approval_blocked.shape != (len(ordered),):
+                raise ValueError("classifier approval blocks do not match detections")
         configured_thresholds = self.classifier_metadata.approval_thresholds
         if configured_thresholds is None:
             staged_policy = self.classifier_metadata.staged_inference
@@ -259,6 +295,8 @@ class DecisionPipeline:
                 dtype=np.float32,
             )
         approved = approval_scores >= approval_thresholds
+        if approval_blocked is not None:
+            approved &= ~approval_blocked
         mask_policy = self.classifier_metadata.neighbor_mask_inference
         staged_policy = self.classifier_metadata.staged_inference
         top3_safety_threshold = (
@@ -326,6 +364,16 @@ class DecisionPipeline:
                     top3=[],
                     confidence=top1_score,
                 )
+            elif segment_recapture_reasons is not None and segment_recapture_reasons[index]:
+                item = ScanItem(
+                    segmentation_id=f"segmentation_{ordinal:03d}",
+                    bbox=bbox,
+                    status=ItemStatus.SEGMENT_RECAPTURE,
+                    reason_codes=[segment_recapture_reasons[index]],
+                    prediction=None,
+                    top3=[],
+                    confidence=0.0,
+                )
             elif index in duplicate_review_indices and approved[index]:
                 candidates = _top3_candidates(
                     self.classifier_metadata, candidate_indices, candidate_scores
@@ -337,7 +385,7 @@ class DecisionPipeline:
                     reason_codes=["DETECTOR_CONTAINED_DUPLICATE"],
                     prediction=None,
                     top3=candidates,
-                    confidence=float(candidate_scores[int(candidate_indices[0])]),
+                    confidence=float(approval_scores[index]),
                 )
             elif approved[index]:
                 item = ScanItem(
@@ -347,7 +395,7 @@ class DecisionPipeline:
                     reason_codes=[],
                     prediction=Prediction(class_id=label.class_id, class_name=label.class_name),
                     top3=[],
-                    confidence=top1_score,
+                    confidence=float(approval_scores[index]),
                 )
             elif top3_unsafe[index]:
                 item = ScanItem(
@@ -357,7 +405,11 @@ class DecisionPipeline:
                     reason_codes=["CLASSIFIER_TOP3_UNSAFE"],
                     prediction=None,
                     top3=[],
-                    confidence=float(candidate_scores[int(candidate_indices[0])]),
+                    confidence=(
+                        0.0
+                        if ranking_scores is not None
+                        else float(candidate_scores[int(candidate_indices[0])])
+                    ),
                 )
             else:
                 candidates = _top3_candidates(
@@ -367,15 +419,23 @@ class DecisionPipeline:
                     segmentation_id=f"segmentation_{ordinal:03d}",
                     bbox=bbox,
                     status=ItemStatus.UNKNOWN,
-                    reason_codes=["BELOW_APPROVAL_THRESHOLD"],
+                    reason_codes=[
+                        "BELOW_APPROVAL_THRESHOLD"
+                        if unknown_reasons is None or unknown_reasons[index] is None
+                        else unknown_reasons[index]
+                    ],
                     prediction=None,
                     top3=candidates,
-                    confidence=float(candidate_scores[int(candidate_indices[0])]),
+                    confidence=float(approval_scores[index]),
                 )
             items.append(item)
 
         reason_codes: list[str] = []
-        if any("BELOW_APPROVAL_THRESHOLD" in item.reason_codes for item in items):
+        if any(
+            item.status is ItemStatus.UNKNOWN
+            and item.reason_codes != ["DETECTOR_CONTAINED_DUPLICATE"]
+            for item in items
+        ):
             reason_codes.append("SEGMENT_BELOW_APPROVAL_THRESHOLD")
         if any("DETECTOR_CONTAINED_DUPLICATE" in item.reason_codes for item in items):
             reason_codes.append("SEGMENT_DUPLICATE_REVIEW_REQUIRED")
@@ -390,6 +450,10 @@ class DecisionPipeline:
             worker_version=self.worker_version,
             detector_version=self.detector.version,
             classifier_version=self.classifier.version,
+            embedder_version=self.embedder_version,
+            detector_policy_version=self.detector_policy_version,
+            classifier_policy_version=self.classifier_policy_version,
+            catalog_version=self.catalog_version,
         )
         self._log(response, detector_ms=detector_ms, classifier_ms=classifier_ms)
         return response

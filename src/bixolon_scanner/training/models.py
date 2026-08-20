@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 DINO_V3_CONVNEXT_TINY = "dinov3_convnext_tiny"
+DINO_V3_VIT_BASE_16 = "dinov3_vitb16"
 DINO_V3_HUB_REPOSITORY = "facebookresearch/dinov3:6876159a11b4df116f30f667f8c9888617df0751"
 
 
@@ -109,7 +110,7 @@ def build_dino_classifier(
 
         backbone = AutoModel.from_pretrained(pretrained_name)
         return DinoClassifier(backbone, int(backbone.config.hidden_size), backbone_kind)
-    if backbone_kind == "dinov3_convnext_tiny":
+    if backbone_kind in {DINO_V3_CONVNEXT_TINY, DINO_V3_VIT_BASE_16}:
         load_options = (
             {"pretrained": True, "weights": str(weights_path)}
             if weights_path
@@ -117,14 +118,14 @@ def build_dino_classifier(
         )
         backbone = torch.hub.load(
             hub_repository,
-            DINO_V3_CONVNEXT_TINY,
+            backbone_kind,
             source="github",
             trust_repo=True,
             verbose=False,
             **load_options,
         )
-        # The official pretrained ConvNeXt head is Identity and returns a
-        # normalized 768-dimensional representation.
+        # The official pretrained heads are Identity and both backbones return
+        # a 768-dimensional global representation.
         return DinoClassifier(backbone, 768, backbone_kind)
     raise ValueError(f"unsupported classifier backbone: {backbone_kind}")
 
