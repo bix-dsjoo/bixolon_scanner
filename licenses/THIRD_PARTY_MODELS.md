@@ -23,5 +23,17 @@
 - Source weight SHA-256: `d73036b56966966d07975d696bde331762f37297e2f095de8cea0040c3aa0841`
 - Packaged ONNX SHA-256: `669d290dc235d5d9d336657c9b723bb589fca3b9bc32dd9648d2ae8f1ffeac78`
 
+## DINOv3
+
+- Project: `facebookresearch/dinov3`
+- Source: <https://github.com/facebookresearch/dinov3>
+- Model: `DINOv3 ViT-B/16`, revision `6876159a11b4df116f30f667f8c9888617df0751`
+- License: DINOv3 License
+- Source weight SHA-256: `73cec8be7427c8655ceced13ce62f6e20a1fa90d1b4d4a550df17a1144081a7c`
+- Use: frozen embedding backbone for Scanner `0.0.1`
+
+`DINOV3-LICENSE.md`를 DINOv3 파생 Runtime package와 함께 배포한다. DINOv3의 사용·재배포는
+Apache-2.0이 아니라 해당 Meta 계약을 따른다.
+
 `APACHE-2.0.txt`가 이 notice와 함께 배포된다. 이 기술 검토 기록은 최종 배포 주체의 법무 승인을
 대체하지 않는다.
