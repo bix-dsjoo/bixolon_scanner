@@ -81,15 +81,25 @@ class CrossScaleOnnxDetector:
         package: RuntimePackageV2,
         provider: Literal["cuda", "cpu"],
         cuda_dll_dir: Path | None = None,
+        *,
+        cpu_intra_op_threads: int = 0,
     ):
         if package.metadata.detector_refinement is None:
             raise ValueError("cross-scale detector requires refinement metadata")
         self.package = package
         self.primary_metadata = package.metadata.detector
         self.refinement_metadata = package.metadata.detector_refinement
-        self.primary = OrtRunner(package.detector_path, provider, cuda_dll_dir)
+        self.primary = OrtRunner(
+            package.detector_path,
+            provider,
+            cuda_dll_dir,
+            cpu_intra_op_threads=cpu_intra_op_threads,
+        )
         self.refinement = OrtRunner(
-            package.root / self.refinement_metadata.filename, provider, cuda_dll_dir
+            package.root / self.refinement_metadata.filename,
+            provider,
+            cuda_dll_dir,
+            cpu_intra_op_threads=cpu_intra_op_threads,
         )
         self.version = self.primary_metadata.version
 
@@ -212,6 +222,9 @@ class FixedEnsembleOnnxDetector:
         package: RuntimePackageV2,
         provider: Literal["cuda", "cpu"],
         cuda_dll_dir: Path | None = None,
+        *,
+        cpu_detector_workers: int = 1,
+        cpu_intra_op_threads: int = 0,
     ):
         metadata = package.metadata.detector
         if metadata.ensemble is None:
@@ -234,25 +247,28 @@ class FixedEnsembleOnnxDetector:
                 cuda_dll_dir,
                 enable_cuda_graph=self.ensemble.cuda_graph_execution,
                 cuda_graph_output_shapes=output_shapes,
+                cpu_intra_op_threads=cpu_intra_op_threads,
             )
             for member in self.ensemble.members
         ]
-        self.executor = (
-            ThreadPoolExecutor(max_workers=len(self.runners))
+        if not 1 <= cpu_detector_workers <= len(self.runners):
+            raise ValueError("CPU detector worker count exceeds the detector ensemble")
+        executor_workers = (
+            cpu_detector_workers
+            if provider == "cpu"
+            else len(self.runners)
             if self.ensemble.parallel_execution
-            else None
+            else 1
+        )
+        self.executor = (
+            ThreadPoolExecutor(max_workers=executor_workers) if executor_workers > 1 else None
         )
         self.version = metadata.version
 
     def warmup(self) -> None:
         height, width = self.metadata.input_size
         dummy = np.zeros((1, 3, height, width), dtype=np.float32)
-        for runner in self.runners:
-            runner.run(
-                [self.metadata.logits_output, self.metadata.boxes_output],
-                self.metadata.input_name,
-                dummy,
-            )
+        self._run_models(dummy)
 
     def close(self) -> None:
         if self.executor is not None:
@@ -445,7 +461,21 @@ def build_detector_v2(
     package: RuntimePackageV2,
     provider: Literal["cuda", "cpu"],
     cuda_dll_dir: Path | None = None,
+    *,
+    cpu_detector_workers: int = 1,
+    cpu_intra_op_threads: int = 0,
 ) -> CrossScaleOnnxDetector | FixedEnsembleOnnxDetector:
     if package.metadata.detector.ensemble is not None:
-        return FixedEnsembleOnnxDetector(package, provider, cuda_dll_dir)
-    return CrossScaleOnnxDetector(package, provider, cuda_dll_dir)
+        return FixedEnsembleOnnxDetector(
+            package,
+            provider,
+            cuda_dll_dir,
+            cpu_detector_workers=cpu_detector_workers,
+            cpu_intra_op_threads=cpu_intra_op_threads,
+        )
+    return CrossScaleOnnxDetector(
+        package,
+        provider,
+        cuda_dll_dir,
+        cpu_intra_op_threads=cpu_intra_op_threads,
+    )

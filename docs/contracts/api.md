@@ -1,5 +1,8 @@
 # Worker API 계약
 
+제품 `0.0.2` 외부 개발자용 빵 목록과 요청·응답 예시는
+[Worker 연동 명세](worker-integration-0.0.2.md)를 참조하십시오.
+
 ## Endpoint
 
 - `POST /v1/scan`: `image` 필드에 JPEG/PNG 한 장을 담은 multipart 요청

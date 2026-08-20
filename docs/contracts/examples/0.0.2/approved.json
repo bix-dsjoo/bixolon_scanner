@@ -1,0 +1,24 @@
+{
+  "request_id": "30f02474f43b4b8eab76290015df17da",
+  "status": "SEGMENTATION",
+  "reason_codes": [],
+  "segmentations": [
+    {
+      "segmentation_id": "segmentation_001",
+      "bbox": {"x": 120, "y": 84, "width": 310, "height": 246},
+      "status": "APPROVED",
+      "reason_codes": [],
+      "prediction": {"class_id": "bread_06", "class_name": "Croissant"},
+      "top3": [],
+      "confidence": 0.987
+    }
+  ],
+  "processing_time_ms": 72.143,
+  "worker_version": "0.0.2",
+  "detector_version": "0.0.2",
+  "classifier_version": "0.0.2",
+  "embedder_version": "0.0.2",
+  "detector_policy_version": "0.0.2",
+  "classifier_policy_version": "0.0.2",
+  "catalog_version": "0.0.2"
+}

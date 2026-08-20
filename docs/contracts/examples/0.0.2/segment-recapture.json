@@ -1,0 +1,24 @@
+{
+  "request_id": "50ab6d09e0af45a584c1a1f157ed7344",
+  "status": "SEGMENTATION",
+  "reason_codes": ["SEGMENT_RECAPTURE_REQUIRED"],
+  "segmentations": [
+    {
+      "segmentation_id": "segmentation_001",
+      "bbox": {"x": 41, "y": 26, "width": 198, "height": 174},
+      "status": "SEGMENT_RECAPTURE",
+      "reason_codes": ["CLASSIFIER_TOP3_UNSAFE"],
+      "prediction": null,
+      "top3": [],
+      "confidence": 0.214
+    }
+  ],
+  "processing_time_ms": 81.405,
+  "worker_version": "0.0.2",
+  "detector_version": "0.0.2",
+  "classifier_version": "0.0.2",
+  "embedder_version": "0.0.2",
+  "detector_policy_version": "0.0.2",
+  "classifier_policy_version": "0.0.2",
+  "catalog_version": "0.0.2"
+}

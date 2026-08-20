@@ -160,8 +160,8 @@ def test_v2_runtime_warms_models_before_readiness(
             events.append("detector")
 
     class WarmEmbedder:
-        def __init__(self, *args):
-            del args
+        def __init__(self, *args, **kwargs):
+            del args, kwargs
 
         def warmup(self):
             events.append("embedder")
@@ -176,7 +176,11 @@ def test_v2_runtime_warms_models_before_readiness(
     monkeypatch.setattr(worker_api, "load_runtime_package_v2", lambda _: runtime)
     monkeypatch.setattr(worker_api, "load_store_catalog_package", lambda *args, **kwargs: catalog)
     monkeypatch.setattr(worker_api, "select_provider", lambda _: "cpu")
-    monkeypatch.setattr(worker_api, "build_detector_v2", lambda *args: WarmDetector())
+    monkeypatch.setattr(
+        worker_api,
+        "build_detector_v2",
+        lambda *args, **kwargs: WarmDetector(),
+    )
     monkeypatch.setattr(worker_api, "OnnxEmbedder", WarmEmbedder)
     monkeypatch.setattr(worker_api, "OnnxCatalogClassifier", CatalogClassifier)
 

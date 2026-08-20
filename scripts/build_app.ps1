@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.0.1",
+    [string]$Version = "0.0.2",
     [string]$FlutterExecutable = "C:/Users/OMEN/development/flutter/bin/flutter.bat",
     [string]$PythonExecutable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe"
 )

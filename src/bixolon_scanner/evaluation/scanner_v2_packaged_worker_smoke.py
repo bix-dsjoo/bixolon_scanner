@@ -23,11 +23,18 @@ def _free_local_port() -> int:
 
 
 def _request(
-    url: str, *, body: bytes | None = None, content_type: str | None = None
+    url: str,
+    *,
+    body: bytes | None = None,
+    content_type: str | None = None,
+    method: str | None = None,
 ) -> tuple[int, dict]:
     headers = {} if content_type is None else {"Content-Type": content_type}
     request = urllib.request.Request(
-        url, data=body, headers=headers, method="POST" if body else "GET"
+        url,
+        data=body,
+        headers=headers,
+        method=method or ("POST" if body is not None else "GET"),
     )
     try:
         with urllib.request.urlopen(request, timeout=10) as response:
@@ -145,6 +152,16 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         corrupt_status, corrupt_response = _request(
             f"{base_url}/v1/scan", body=corrupt_body, content_type=corrupt_type
         )
+        missing_status, missing_response = _request(f"{base_url}/v1/scan", body=b"", method="POST")
+        gif_body, gif_type = _multipart_image(
+            b"GIF89a\x01\x00\x01\x00\x80\x00\x00\x00\x00\x00\xff\xff\xff"
+            b"!\xf9\x04\x01\x00\x00\x00\x00,\x00\x00\x00\x00\x01\x00\x01\x00"
+            b"\x00\x02\x02D\x01\x00;",
+            "unsupported.gif",
+        )
+        unsupported_status, unsupported_response = _request(
+            f"{base_url}/v1/scan", body=gif_body, content_type=gif_type
+        )
     finally:
         process.terminate()
         try:
@@ -152,13 +169,28 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait(timeout=10)
+    ready_versions = [
+        value for key, value in ready_body.items() if key.endswith("_version") and value is not None
+    ]
+    scan_versions = [
+        value for key, value in scan_body.items() if key.endswith("_version") and value is not None
+    ]
     passes = (
         ready_status == 200
         and ready_body.get("status") == "ready"
+        and ready_body.get("provider") == args.provider
+        and bool(ready_versions)
+        and all(value == args.expected_version for value in ready_versions)
         and scan_status == 200
         and scan_body.get("status") in {"SEGMENTATION", "IMAGE_RECAPTURE"}
+        and bool(scan_versions)
+        and all(value == args.expected_version for value in scan_versions)
         and 400 <= corrupt_status < 500
         and corrupt_response.get("status") == "ERROR"
+        and missing_status == 422
+        and missing_response.get("status") == "ERROR"
+        and unsupported_status == 415
+        and unsupported_response.get("status") == "ERROR"
         and not prohibited
         and not unlocked_distributions
     )
@@ -170,7 +202,12 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         "executable_sha256": sha256_file(executable),
         "provider": args.provider,
         "cases": {
-            "ready": {"http_status": ready_status, "status": ready_body.get("status")},
+            "ready": {
+                "http_status": ready_status,
+                "status": ready_body.get("status"),
+                "provider": ready_body.get("provider"),
+                "versions": ready_versions,
+            },
             "valid_scan": {
                 "http_status": scan_status,
                 "status": scan_body.get("status"),
@@ -181,6 +218,16 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
                 "http_status": corrupt_status,
                 "status": corrupt_response.get("status"),
                 "reason_codes": corrupt_response.get("reason_codes"),
+            },
+            "missing_image": {
+                "http_status": missing_status,
+                "status": missing_response.get("status"),
+                "reason_codes": missing_response.get("reason_codes"),
+            },
+            "unsupported_image": {
+                "http_status": unsupported_status,
+                "status": unsupported_response.get("status"),
+                "reason_codes": unsupported_response.get("reason_codes"),
             },
         },
         "prohibited_runtime_module_path_count": len(prohibited),
@@ -213,6 +260,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--key-id")
     parser.add_argument("--signing-key-env", default="BIXOLON_CATALOG_SIGNING_KEY")
     parser.add_argument("--provider", choices=("cuda", "cpu"), default="cuda")
+    parser.add_argument("--expected-version", default="0.0.2")
     parser.add_argument("--cuda-dll-dir", type=Path)
     parser.add_argument("--startup-timeout-seconds", type=float, default=120.0)
     evaluate(parser.parse_args(argv))

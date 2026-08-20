@@ -1,0 +1,31 @@
+BIXOLON Worker 0.0.2 실행 명령어
+================================
+
+먼저 ZIP 압축을 완전히 풉니다.
+압축을 푼 폴더에서 빈 곳을 Shift+우클릭하고 "터미널에서 열기"를 선택합니다.
+명령 프롬프트(cmd)와 PowerShell 중 어느 창에서도 아래 명령을 그대로 사용할 수 있습니다.
+
+[Worker 실행]
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\start-worker.ps1"
+
+실행 창에 "BIXOLON Worker 0.0.2 CPU"가 표시되면 창을 닫지 마십시오.
+API 문서는 브라우저에서 http://127.0.0.1:8000/docs 로 확인합니다.
+
+[N100 벤치마크]
+
+먼저 C:\benchmark-images 폴더를 만들고 JPEG/PNG 대표 이미지 30장 이상을 넣습니다.
+그중 정상 full-path 결과가 나오는 이미지가 10장 이상 필요합니다.
+
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\benchmark-n100.ps1" -ImageDirectory "C:\benchmark-images"
+
+이미지가 다른 폴더에 있으면 C:\benchmark-images 부분만 실제 폴더 경로로 바꿉니다.
+완료 결과는 같은 폴더의 n100-benchmark-result.json에 저장됩니다.
+
+[ZIP SHA-256 확인 - 선택]
+
+압축을 풀기 전 ZIP과 .sha256 파일이 있는 폴더에서 실행합니다.
+
+powershell.exe -NoProfile -Command "(Get-FileHash -Algorithm SHA256 '.\bixolon-worker-0.0.2-windows-x64-cpu.zip').Hash.ToLowerInvariant()"
+
+출력값이 bixolon-worker-0.0.2-windows-x64-cpu.zip.sha256 안의 값과 같아야 합니다.

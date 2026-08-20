@@ -77,7 +77,7 @@ if(NOT SCANNER_VERSION_ROOT AND DEFINED ENV{SCANNER_VERSION_ROOT})
 endif()
 if(NOT SCANNER_VERSION_ROOT)
   set(SCANNER_VERSION_ROOT
-    "${SCANNER_REPOSITORY_ROOT}/artifacts/versions/0.0.1")
+    "${SCANNER_REPOSITORY_ROOT}/artifacts/versions/0.0.2")
 endif()
 set(SCANNER_MODEL_PACKAGE_DIR "${SCANNER_VERSION_ROOT}/staging/runtime"
   CACHE PATH "Versioned BIXOLON Worker model package" FORCE)

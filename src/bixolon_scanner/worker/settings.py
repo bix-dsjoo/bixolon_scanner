@@ -17,6 +17,9 @@ class WorkerSettings(BaseSettings):
     catalog_signing_key: SecretStr | None = None
     provider: Literal["auto", "cuda", "cpu"] = "auto"
     cuda_dll_dir: Path | None = None
+    cpu_detector_workers: int = Field(default=1, ge=1, le=4)
+    cpu_detector_intra_op_threads: int = Field(default=0, ge=0)
+    cpu_embedder_intra_op_threads: int = Field(default=0, ge=0)
     max_upload_bytes: int = Field(default=20 * 1024 * 1024, ge=1)
     max_image_pixels: int = Field(default=50_000_000, ge=1)
     jpeg_draft_size: int = Field(default=1500, gt=0)

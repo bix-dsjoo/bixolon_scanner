@@ -34,10 +34,10 @@ class WorkerScannerApi implements ScannerApi {
   WorkerScannerApi({
     required this.baseUrl,
     http.Client? client,
-    this.timeout = const Duration(seconds: 35),
+    this.timeout = const Duration(seconds: 65),
     this.waitForReady = false,
     this.expectedVersion,
-    this.readinessTimeout = const Duration(seconds: 35),
+    this.readinessTimeout = const Duration(seconds: 180),
     this.readinessPollInterval = const Duration(milliseconds: 250),
   }) : _client = client ?? http.Client();
 

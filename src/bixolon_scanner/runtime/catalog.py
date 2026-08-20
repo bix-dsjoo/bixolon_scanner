@@ -93,15 +93,23 @@ class OnnxEmbedder:
         package: RuntimePackageV2,
         provider: Literal["cuda", "cpu"],
         cuda_dll_dir: Path | None = None,
+        *,
+        cpu_intra_op_threads: int = 0,
     ):
         self.metadata = package.metadata.embedder
-        self.runner = OrtRunner(package.embedder_path, provider, cuda_dll_dir)
+        self.runner = OrtRunner(
+            package.embedder_path,
+            provider,
+            cuda_dll_dir,
+            cpu_intra_op_threads=cpu_intra_op_threads,
+        )
         self.transform = load_metric_transform(package)
         self.version = self.metadata.version
 
     def warmup(self) -> None:
         height, width = self.metadata.input_size
-        for batch_size in self.metadata.warmup_batch_sizes:
+        batch_sizes = self.metadata.warmup_batch_sizes if self.runner.cuda else [1]
+        for batch_size in batch_sizes:
             self.runner.run(
                 [self.metadata.output_name],
                 self.metadata.input_name,

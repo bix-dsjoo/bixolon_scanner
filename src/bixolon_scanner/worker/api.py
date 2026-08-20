@@ -97,12 +97,15 @@ def create_app(
                         runtime_package,
                         provider,
                         worker_settings.cuda_dll_dir,
+                        cpu_detector_workers=worker_settings.cpu_detector_workers,
+                        cpu_intra_op_threads=(worker_settings.cpu_detector_intra_op_threads),
                     )
                     managed_detector = detector
                     embedder = OnnxEmbedder(
                         runtime_package,
                         provider,
                         worker_settings.cuda_dll_dir,
+                        cpu_intra_op_threads=(worker_settings.cpu_embedder_intra_op_threads),
                     )
                     classifier = OnnxCatalogClassifier(runtime_package, catalog, embedder)
                     detector.warmup()

@@ -47,9 +47,9 @@ Flutter canonical 코드는 `apps/product_scanner/lib`의 `core/design_system`, 
 ## 단일 제품 버전
 
 배포 가능한 앱·Worker·Runtime·Catalog 조합은 하나의 semantic version으로 식별합니다. 현재
-기준은 `configs/versions/0.0.1.json`이며 Python, Worker, Detector, Embedder, Detector policy,
-Classifier policy, Catalog와 사용자 표시 버전은 모두 `0.0.1`입니다. Flutter 내부 빌드만
-`0.0.1+1`을 사용합니다.
+기준은 `configs/versions/0.0.2.json`이며 Python, Worker, Detector, Embedder, Detector policy,
+Classifier policy, Catalog와 사용자 표시 버전은 모두 `0.0.2`입니다. Flutter 내부 빌드만
+`0.0.2+2`를 사용합니다.
 
 - development, demo, production 환경 버전을 만들지 않습니다.
 - 활성 설정과 CLI에 promotion, waiver, certification 또는 release-lock 수명주기를 추가하지
@@ -136,7 +136,7 @@ fallback이나 임의의 기본 승인 결과를 추가하지 마십시오.
 - p50, p95, p99와 표본 수를 함께 기록하고 detector 조기 종료와 full-path를 구분합니다.
 
 과거 KPI, 평가 결과, 예외와 제한은 `docs/archive/version-history.md` 및 그 링크 문서에 남아
-있습니다. 현재 `0.0.1`을 독립 일반화 성능, 인증 또는 SLA 달성으로 표현하지 마십시오.
+있습니다. 현재 `0.0.2`를 독립 일반화 성능, 인증 또는 SLA 달성으로 표현하지 마십시오.
 
 ## 테스트 요구사항
 

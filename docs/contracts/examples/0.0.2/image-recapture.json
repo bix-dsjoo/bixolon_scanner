@@ -1,0 +1,14 @@
+{
+  "request_id": "fceee521b42f460bbfc09f5979cf4e89",
+  "status": "IMAGE_RECAPTURE",
+  "reason_codes": ["DETECTOR_BLUR"],
+  "segmentations": [],
+  "processing_time_ms": 31.246,
+  "worker_version": "0.0.2",
+  "detector_version": "0.0.2",
+  "classifier_version": null,
+  "embedder_version": null,
+  "detector_policy_version": "0.0.2",
+  "classifier_policy_version": null,
+  "catalog_version": null
+}

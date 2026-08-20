@@ -47,14 +47,14 @@ def test_documented_versions_match_single_version_source() -> None:
     )
     root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
     current_status = (ROOT / "docs" / "status" / "current.md").read_text(encoding="utf-8")
-    version_config = (ROOT / "configs" / "versions" / "0.0.1.json").read_text(encoding="utf-8")
+    version_config = (ROOT / "configs" / "versions" / "0.0.2.json").read_text(encoding="utf-8")
 
     assert f'__version__ = "{python_version}"' in package_init
-    assert python_version == "0.0.1"
-    assert '"version": "0.0.1"' in version_config
-    assert "version: 0.0.1+1" in flutter_pubspec
-    assert "`0.0.1+1`" in root_readme
-    assert "`0.0.1`" in current_status
+    assert python_version == "0.0.2"
+    assert '"version": "0.0.2"' in version_config
+    assert "version: 0.0.2+2" in flutter_pubspec
+    assert "`0.0.2+2`" in root_readme
+    assert "`0.0.2`" in current_status
     assert "`2.0.1-rc.3`" in current_status
 
 
@@ -67,7 +67,7 @@ def test_windows_bundle_uses_single_version_root() -> None:
     normalized_cmake = cmake.replace("\\", "/")
 
     assert "SCANNER_VERSION_ROOT" in cmake
-    assert "artifacts/versions/0.0.1" in normalized_cmake
+    assert "artifacts/versions/0.0.2" in normalized_cmake
     assert "staging/runtime" in normalized_cmake
     assert "staging/catalog" in normalized_cmake
     assert "staging/cuda-runtime" in normalized_cmake

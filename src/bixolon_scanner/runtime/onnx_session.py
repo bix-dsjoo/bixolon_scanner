@@ -23,7 +23,10 @@ class OrtRunner:
         *,
         enable_cuda_graph: bool = False,
         cuda_graph_output_shapes: dict[str, tuple[int, ...]] | None = None,
+        cpu_intra_op_threads: int = 0,
     ):
+        if cpu_intra_op_threads < 0:
+            raise ValueError("CPU intra-op thread count must be non-negative")
         try:
             import onnxruntime as ort
 
@@ -72,6 +75,10 @@ class OrtRunner:
                 raise ProviderInitializationError
             options = ort.SessionOptions()
             options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
+            options.inter_op_num_threads = 1
+            if provider == "cpu" and cpu_intra_op_threads > 0:
+                options.intra_op_num_threads = cpu_intra_op_threads
             options.log_severity_level = 3
             provider_options = {"use_tf32": "0"}
             if enable_cuda_graph and provider == "cuda":

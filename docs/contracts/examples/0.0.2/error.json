@@ -1,0 +1,14 @@
+{
+  "request_id": "2ebd0edfe04c48af9e71c69f2c83ab45",
+  "status": "ERROR",
+  "reason_codes": ["CORRUPT_IMAGE"],
+  "segmentations": [],
+  "processing_time_ms": 2.314,
+  "worker_version": "0.0.2",
+  "detector_version": null,
+  "classifier_version": null,
+  "embedder_version": null,
+  "detector_policy_version": null,
+  "classifier_policy_version": null,
+  "catalog_version": null
+}

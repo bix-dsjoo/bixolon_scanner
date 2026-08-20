@@ -1,0 +1,28 @@
+{
+  "request_id": "996d5d459ac242668b66245d4af796c3",
+  "status": "SEGMENTATION",
+  "reason_codes": ["SEGMENT_BELOW_APPROVAL_THRESHOLD"],
+  "segmentations": [
+    {
+      "segmentation_id": "segmentation_001",
+      "bbox": {"x": 74, "y": 51, "width": 280, "height": 231},
+      "status": "UNKNOWN",
+      "reason_codes": ["BELOW_APPROVAL_THRESHOLD"],
+      "prediction": null,
+      "top3": [
+        {"class_id": "bread_02", "class_name": "Croffle", "confidence": 0.521},
+        {"class_id": "bread_03", "class_name": "Waffle", "confidence": 0.312},
+        {"class_id": "bread_19", "class_name": "Pastry Bread", "confidence": 0.167}
+      ],
+      "confidence": 0.521
+    }
+  ],
+  "processing_time_ms": 75.804,
+  "worker_version": "0.0.2",
+  "detector_version": "0.0.2",
+  "classifier_version": "0.0.2",
+  "embedder_version": "0.0.2",
+  "detector_policy_version": "0.0.2",
+  "classifier_policy_version": "0.0.2",
+  "catalog_version": "0.0.2"
+}

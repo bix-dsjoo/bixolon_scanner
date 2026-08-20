@@ -1,6 +1,6 @@
 # 버전 이력
 
-이 문서는 단일 제품 버전 `0.0.1` 이전의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
+이 문서는 현재 단일 제품 버전 `0.0.2` 이전의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
 archive 인덱스입니다. 아래의 `production`, promotion, waiver, certification, release lock 표현은
 당시 기록의 용어이며 현재 빌드 수명주기나 활성 기본값이 아닙니다. 기존 ignored binary 산출물도
 원래 위치에서 이동하거나 삭제하지 않았습니다.
@@ -16,7 +16,7 @@ archive 인덱스입니다. 아래의 `production`, promotion, waiver, certifica
 - [과거 학습 파이프라인](guides/training-pipeline-1.0.0.md)
 - [과거 release 설정](../../configs/archive/releases/bixolon_scanner_1.1.0.json)
 
-이 계열의 수치와 예외는 현재 `0.0.1`의 독립 성능 근거로 사용하지 않습니다.
+이 계열의 수치와 예외는 현재 `0.0.2`의 독립 성능 근거로 사용하지 않습니다.
 
 ## Scanner 2.0.0
 
@@ -74,3 +74,13 @@ reliability를 완료한 인증 결과가 아닙니다. 과거에는 2026-08-20 
 
 `0.0.1`은 특정 실행 조합의 식별자이지 독립 인증, SLA 또는 장기 `APPROVED ≥99%` 목표 달성
 선언이 아닙니다. 이후 EXE 내용이 바뀌면 `0.0.2`처럼 단일 patch 버전만 올립니다.
+
+## `0.0.2` CPU 전달 경로
+
+`0.0.2`는 model graph, weight, Catalog payload와 판정 정책을 유지하면서 Worker에 CPU thread와
+detector 제한 병렬 실행 설정을 추가한 patch입니다. Flutter 내부 build는 `0.0.2+2`입니다.
+
+CPU 전달 ZIP은 `onnxruntime` CPU wheel만 포함하고 CUDA DLL을 포함하지 않습니다. N100 성능
+측정은 선택 진단이며 결과를 인증이나 SLA로 해석하지 않습니다. `0.0.1` 기준 설정은
+[`configs/archive/versions/0.0.1.json`](../../configs/archive/versions/0.0.1.json), 당시 번들 설명은
+[`scanner-0.0.1.md`](scanner-0.0.1.md)에 보존합니다.
