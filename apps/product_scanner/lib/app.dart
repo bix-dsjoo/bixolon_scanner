@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 
-import 'controllers/scanner_controller.dart';
-import 'scanner/scanner_screen.dart';
-import 'theme/app_theme.dart';
+import 'core/design_system/theme.dart';
+import 'features/activity/presentation/activity_screen.dart';
+import 'features/scanner/application/scanner_controller.dart';
+import 'features/scanner/presentation/scanner_screen.dart';
+import 'shared/version_info.dart';
 
 class ProductScannerApp extends StatelessWidget {
   const ProductScannerApp({
@@ -19,13 +21,29 @@ class ProductScannerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'BIXOLON Scanner',
+      title: 'BIXOLON Scanner v${VersionInfo.current}',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: ScannerScreen(
         controller: controller,
         autoInitialize: autoInitialize,
         disposeController: disposeController,
+        activityWorkspaceBuilder:
+            (
+              context, {
+              required active,
+              required canChooseImageShortcut,
+              required onChooseImageShortcut,
+              required onNavigateToScan,
+            }) => ActivityScreen(
+              loadLogs: controller.loadScanLogs,
+              dataRevision: controller.activityDataRevision,
+              latestSavedScanId: controller.latestSavedScanId,
+              active: active,
+              canChooseImageShortcut: canChooseImageShortcut,
+              onChooseImageShortcut: onChooseImageShortcut,
+              onNavigateToScan: onNavigateToScan,
+            ),
       ),
     );
   }

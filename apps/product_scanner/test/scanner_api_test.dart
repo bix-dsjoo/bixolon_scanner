@@ -56,7 +56,7 @@ void main() {
       baseUrl: 'http://127.0.0.1:8000',
       client: client,
       waitForReady: true,
-      expectedWorkerVersion: '1.0.0',
+      expectedVersion: '1.0.0',
       readinessPollInterval: Duration.zero,
     );
 
@@ -83,7 +83,7 @@ void main() {
       baseUrl: 'http://127.0.0.1:8000',
       client: client,
       waitForReady: true,
-      expectedWorkerVersion: '1.0.0',
+      expectedVersion: '1.0.0',
       readinessPollInterval: Duration.zero,
     );
 
@@ -93,7 +93,7 @@ void main() {
         isA<ScannerApiException>().having(
           (error) => error.reasonCodes,
           'reasonCodes',
-          ['WORKER_VERSION_MISMATCH'],
+          ['VERSION_MISMATCH'],
         ),
       ),
     );
@@ -112,9 +112,7 @@ void main() {
       baseUrl: 'http://127.0.0.1:8000',
       client: client,
       waitForReady: true,
-      expectedWorkerVersion: '1.0.0',
-      expectedDetectorVersion: '1.0.0',
-      expectedClassifierVersion: '1.0.0',
+      expectedVersion: '1.0.0',
       readinessPollInterval: Duration.zero,
     );
 
@@ -124,7 +122,7 @@ void main() {
         isA<ScannerApiException>().having(
           (error) => error.reasonCodes,
           'reasonCodes',
-          ['CLASSIFIER_VERSION_MISMATCH'],
+          ['VERSION_MISMATCH'],
         ),
       ),
     );

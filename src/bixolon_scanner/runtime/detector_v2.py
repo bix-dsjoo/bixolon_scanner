@@ -254,6 +254,11 @@ class FixedEnsembleOnnxDetector:
                 dummy,
             )
 
+    def close(self) -> None:
+        if self.executor is not None:
+            self.executor.shutdown(wait=True, cancel_futures=True)
+            self.executor = None
+
     def _run_models(self, tensor: np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:
         def run(runner: OrtRunner) -> tuple[np.ndarray, np.ndarray]:
             logits, boxes = runner.run(

@@ -8,7 +8,7 @@ import '../../../core/design_system/copy.dart';
 import '../../../core/design_system/theme.dart';
 import '../../../core/design_system/tokens.dart';
 import '../../../shared/models/scan_models.dart';
-import '../data/scan_log_repository.dart';
+import '../../../shared/logging/scan_log_repository.dart';
 import '../domain/activity_filters.dart';
 import 'activity_presentation.dart';
 

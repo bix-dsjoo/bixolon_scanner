@@ -2,7 +2,7 @@
 
 ## Python 경계
 
-운영 요청 경로의 의존 방향은 아래와 같습니다.
+요청 경로의 의존 방향은 아래와 같습니다.
 
 ```mermaid
 flowchart LR
@@ -15,14 +15,19 @@ flowchart LR
     EVALUATION --> RUNTIME
     EXPERIMENTS["experiments: 버전별 orchestration"] --> TRAINING
     EXPERIMENTS --> EVALUATION
-    OPERATIONS["operations: 로그·검수 export"] --> CONTRACTS
+    OPERATIONS["operations: 버전 번들·로그·검수 export"] --> CONTRACTS
 ```
 
 - `worker`는 `training`, `evaluation`, `experiments`, PyTorch를 import하지 않습니다.
 - 상태 결정은 `pipeline` 한 곳에서 수행합니다. HTTP 계층과 ONNX adapter가 판정 우선순위를 복제하지 않습니다.
 - 운영 추론은 ONNX Runtime만 사용합니다. `runtime`에 PyTorch 의존성을 추가하지 않습니다.
+- `evaluation`은 재사용 가능한 측정만 소유하고, 실험별 조립은 `experiments`가 소유합니다.
 - 공용 image/NMS 함수는 `runtime`의 명시적 내부 공용 API를 사용합니다.
 - 루트의 과거 모듈은 호환 re-export입니다. 새 구현의 소유권은 canonical 하위 패키지에 있습니다.
+- ONNX provider 선택, CUDA DLL 수명주기와 session 실행은 `runtime/onnx_session.py`가 소유하고,
+  `runtime/onnx.py`는 전처리·후처리 adapter를 소유합니다.
+- 설정 파일은 `configuration.load_json_config`로 읽어 root alias의 `$redirect`를 동일하게 처리합니다.
+- `experiments/archive`는 재현용 source-only 코드이며 배포 wheel에는 포함하지 않습니다.
 
 ## Python 소유권
 
@@ -35,7 +40,14 @@ flowchart LR
 | `training` | 데이터셋, 모델, trainer, calibration |
 | `evaluation` | 정확도, parity, latency와 회귀 평가 |
 | `experiments` | bread·detector·RPC200 버전별 orchestration |
-| `operations` | 운영 로그 수집과 검수용 export |
+| `operations` | 단일 버전 번들, 실행 로그 수집과 검수용 export |
+
+## CLI 지원 수준
+
+`command_registry.py`가 명령을 현재 버전, 운영 호환, 선택 진단, 과거 재현의 네 집합으로 나눕니다.
+일반 `bixolon --help`에는 `bundle verify`만 표시합니다. 기존 자동화의 호출 경로는 유지하되 진단 도구는
+`--help-diagnostics`, 버전별 과거 명령은 `--help-legacy`에서만 목록을 확인할 수 있습니다. 네 집합은
+중복 등록을 허용하지 않으며 전체 호환 registry를 통해 기존 dispatch 동작을 유지합니다.
 
 ## Flutter 경계
 
@@ -44,13 +56,16 @@ Flutter 앱은 feature-first 구조를 사용합니다.
 ```text
 lib/
   core/design_system/       token, theme, copy, 공통 component
-  shared/                   공용 model과 catalog
+  shared/                   공용 model, catalog, logging, presentation policy
   features/scanner/         domain/application/data/presentation
   features/activity/        domain/data/presentation
 ```
 
-`features`끼리 화면 구현을 직접 참조하지 않습니다. 공유 계약은 `shared`, 시각 토큰과 재사용 UI는 `core/design_system`에 둡니다. 과거 경로의 Dart 파일은 기존 import를 위한 export 계층입니다.
+`features`끼리 화면 구현을 직접 참조하지 않습니다. 앱 조립 계층이 화면 builder를 주입하며, 공유 계약·로그 저장소·공통 표시 정책은 `shared`, 시각 토큰과 재사용 UI는 `core/design_system`에 둡니다. 과거 경로의 Dart 파일은 기존 import를 위한 export 계층입니다.
 
-## 호환성 정책
+## 버전과 호환성
 
-기존 Python import와 `bixolon-*` console 명령은 Python `0.3.x`까지 유지합니다. 제거는 `0.4.0` 이상에서 migration 문서와 소비자 테스트를 포함한 명시적 변경으로만 수행합니다.
+배포 조합은 `configs/versions/<version>.json` 하나로 식별하며 앱, Worker, Runtime과 Catalog의
+non-null 버전을 동일하게 유지합니다. 과거 lifecycle metadata는 archive reader의 입력으로만
+허용하고 새 번들에서 생성하지 않습니다. 공개 API와 과거 Python·Flutter import re-export를
+제거하려면 migration 문서와 소비자 테스트를 포함한 명시적 호환성 변경으로 수행합니다.

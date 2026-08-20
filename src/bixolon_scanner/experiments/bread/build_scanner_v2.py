@@ -27,14 +27,18 @@ def build_runtime_package(
     output_dir: Path,
     *,
     version: str,
+    dataset_version: str = "bread-scanner-2.0.0-development",
     embedder_report_path: Path | None = None,
     approval_threshold: float | None = None,
+    approval_metric: Literal[
+        "l2_normalized_logit_margin", "top2_pair_probability"
+    ] = "l2_normalized_logit_margin",
+    disagreement_approval_threshold: float | None = None,
+    ood_minimum_similarity: float = -1.0,
     top3_safety_threshold: float | None = None,
     jpeg_draft_size: int | None = 1000,
     promotion_status: Literal["development", "independent_test_pending"] = "development",
     ridge_alpha: float = 0.01,
-    ridge_require_retrieval_agreement: bool = False,
-    ridge_retrieval_minimum_similarity: float | None = None,
     support_views_per_source: int = 0,
     detector_member_paths: list[Path] | None = None,
 ) -> dict:
@@ -43,17 +47,7 @@ def build_runtime_package(
     source = json.loads(source_metadata_path.read_text(encoding="utf-8"))
     output_dir.mkdir(parents=True)
     repository_root = Path(__file__).resolve().parents[4]
-    embedder_report = (
-        None
-        if embedder_report_path is None
-        else json.loads(embedder_report_path.read_text(encoding="utf-8"))
-    )
-    embedder_kind = (
-        "dinov3_convnext_tiny" if embedder_report is None else embedder_report["backbone_kind"]
-    )
     license_files = ["licenses/APACHE-2.0.txt", "licenses/THIRD_PARTY_MODELS.md"]
-    if embedder_kind.startswith("dinov3_"):
-        license_files.append("licenses/DINOV3-LICENSE.md")
     source_detector = DetectorMetadata.model_validate(source["detector"])
     if detector_member_paths:
         if source_detector.ensemble is None:
@@ -107,6 +101,14 @@ def build_runtime_package(
     source_models = {
         name: ModelSource.model_validate(payload) for name, payload in source["sources"].items()
     }
+    embedder_report = (
+        None
+        if embedder_report_path is None
+        else json.loads(embedder_report_path.read_text(encoding="utf-8"))
+    )
+    embedder_kind = (
+        "dinov3_convnext_tiny" if embedder_report is None else embedder_report["backbone_kind"]
+    )
     if embedder_kind == "dinov2_base":
         embedder_id = "dinov2-base-frozen"
         embedder_mean = (0.485, 0.456, 0.406)
@@ -129,52 +131,25 @@ def build_runtime_package(
                 "afe4b679c806847267e8dc8c9a2c89a48de479ec1c66e455333e757a304f4ddd"
             ),
         )
-    elif embedder_kind in {"dinov3_convnext_tiny", "dinov3_vitb16"}:
-        is_vit = embedder_kind == "dinov3_vitb16"
-        embedder_id = "dinov3-vitb16-frozen" if is_vit else "dinov3-convnext-tiny-frozen"
+    elif embedder_kind == "dinov3_convnext_tiny":
+        embedder_id = "dinov3-convnext-tiny-frozen"
         embedder_mean = (0.485, 0.456, 0.406)
         embedder_std = (0.229, 0.224, 0.225)
-        source_architecture = (
-            "DINOv3 ViT-Base/16 frozen CLS embedding backbone"
-            if is_vit
-            else "DINOv3 ConvNeXt-Tiny frozen embedding backbone"
-        )
-        source_license = (
-            "DINOv3 License: https://ai.meta.com/resources/models-and-libraries/dinov3-license/"
-        )
-        selected_approval = (
-            (None if is_vit else 0.4449983835220337)
-            if approval_threshold is None
-            else approval_threshold
-        )
+        source_architecture = "DINOv3 ConvNeXt-Tiny frozen embedding backbone"
+        source_license = source["licenses"]["classifier"]
+        selected_approval = 0.4449983835220337 if approval_threshold is None else approval_threshold
         selected_top3 = (
             -2.960296392440796 if top3_safety_threshold is None else top3_safety_threshold
         )
-        if selected_approval is None:
-            raise ValueError("DINOv3 ViT-B/16 runtime requires a locked approval threshold")
-        if embedder_report is None:
-            embedder_source = source_models["classifier"].model_copy(
-                update={"architecture": source_architecture}
-            )
-        else:
-            embedder_source = ModelSource(
-                architecture=source_architecture,
-                revision=embedder_report.get("source_revision"),
-                weight_filename=embedder_report.get("source_weight_filename"),
-                weight_sha256=embedder_report.get("source_weight_sha256"),
-                training_pipeline_version=version,
-                training_contract_sha256=sha256_file(embedder_report_path),
-                training_dataset_version="bread-catalog-10shot-backbone-ab",
-                training_manifest_sha256=(
-                    "d520d7d54000b9c637aa891257ea618e22886c5200ec0f0c5ee27da6fd68f552"
-                ),
-            )
+        embedder_source = source_models["classifier"].model_copy(
+            update={"architecture": source_architecture}
+        )
     else:
         raise ValueError(f"unsupported 2.0 embedder kind: {embedder_kind}")
     metadata = RuntimePackageV2Metadata(
         worker_version=version,
         promotion_status=promotion_status,
-        dataset_version="bread-scanner-2.0.0-development",
+        dataset_version=dataset_version,
         detector_policy_version=version,
         detector_class_count=int(
             source.get("detector_class_count") or len(source["classifier"]["labels"])
@@ -216,13 +191,18 @@ def build_runtime_package(
             support_top_k=3,
             approval_minimum_similarity=1.0,
             approval_minimum_margin=0.1,
-            ood_maximum_similarity=-1.0,
+            ood_maximum_similarity=ood_minimum_similarity,
             top3_minimum_similarity=-1.0,
             catalog_conflict_similarity=0.95,
-            ridge_approval_minimum_margin=selected_approval,
+            ridge_approval_metric=approval_metric,
+            ridge_approval_minimum_margin=(
+                selected_approval if approval_metric == "l2_normalized_logit_margin" else None
+            ),
+            ridge_approval_minimum_pair_probability=(
+                selected_approval if approval_metric == "top2_pair_probability" else None
+            ),
+            ridge_disagreement_minimum_pair_probability=disagreement_approval_threshold,
             ridge_top3_minimum_inverse_entropy=selected_top3,
-            ridge_require_retrieval_agreement=ridge_require_retrieval_agreement,
-            ridge_retrieval_minimum_similarity=ridge_retrieval_minimum_similarity,
             ridge_alpha=ridge_alpha,
             support_augmentation=CatalogSupportAugmentationMetadata(
                 views_per_source=support_views_per_source
@@ -268,14 +248,20 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--embedder", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--version", default="2.0.1-rc.1")
+    parser.add_argument("--version", default="2.0.0-rc.1")
+    parser.add_argument("--dataset-version", default="bread-scanner-2.0.0-development")
     parser.add_argument("--embedder-report", type=Path)
     parser.add_argument("--approval-threshold", type=float)
+    parser.add_argument(
+        "--approval-metric",
+        choices=("l2_normalized_logit_margin", "top2_pair_probability"),
+        default="l2_normalized_logit_margin",
+    )
+    parser.add_argument("--disagreement-approval-threshold", type=float)
+    parser.add_argument("--ood-minimum-similarity", type=float, default=-1.0)
     parser.add_argument("--top3-safety-threshold", type=float)
     parser.add_argument("--jpeg-draft-size", type=int, default=1000)
     parser.add_argument("--ridge-alpha", type=float, default=0.01)
-    parser.add_argument("--ridge-require-retrieval-agreement", action="store_true")
-    parser.add_argument("--ridge-retrieval-minimum-similarity", type=float)
     parser.add_argument("--support-views-per-source", type=int, default=0)
     parser.add_argument(
         "--promotion-status",
@@ -291,14 +277,16 @@ def main(argv: list[str] | None = None) -> None:
         args.embedder,
         args.output_dir,
         version=args.version,
+        dataset_version=args.dataset_version,
         embedder_report_path=args.embedder_report,
         approval_threshold=args.approval_threshold,
+        approval_metric=args.approval_metric,
+        disagreement_approval_threshold=args.disagreement_approval_threshold,
+        ood_minimum_similarity=args.ood_minimum_similarity,
         top3_safety_threshold=args.top3_safety_threshold,
         jpeg_draft_size=args.jpeg_draft_size,
         promotion_status=args.promotion_status,
         ridge_alpha=args.ridge_alpha,
-        ridge_require_retrieval_agreement=args.ridge_require_retrieval_agreement,
-        ridge_retrieval_minimum_similarity=args.ridge_retrieval_minimum_similarity,
         support_views_per_source=args.support_views_per_source,
         detector_member_paths=args.detector_members,
     )

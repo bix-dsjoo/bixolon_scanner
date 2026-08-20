@@ -12,6 +12,7 @@ import numpy as np
 from PIL import Image, ImageOps
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ..contracts.artifact import assert_release_not_revoked
 from ..contracts.catalog import SHA256, sha256_file
 
 Endpoint = Literal[
@@ -316,6 +317,7 @@ def validate_private_trials(
 def preflight(args: argparse.Namespace) -> dict:
     release_lock = _read_json(args.release_lock)
     lock_sha256 = release_lock_self_sha256(release_lock)
+    assert_release_not_revoked(args.release_lock, lock_sha256)
     gate_tool_sha256 = validate_locked_gate_tool(release_lock, Path(__file__))
     if (
         release_lock.get("status") != "owner_private_test_pending"

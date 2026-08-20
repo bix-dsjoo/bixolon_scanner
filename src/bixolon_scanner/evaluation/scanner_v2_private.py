@@ -14,6 +14,7 @@ import numpy as np
 from scipy.stats import beta
 
 from ..contracts import ItemStatus, ScanItem, Status, load_runtime_package_v2
+from ..contracts.artifact import assert_release_not_revoked
 from ..contracts.catalog import load_store_catalog_package, sha256_file
 from ..pipeline import DecisionPipeline
 from ..pipeline.ports import ClassificationResult, Detection, DetectionResult
@@ -256,6 +257,7 @@ def _validate_preflight(
 ) -> tuple[dict[str, Any], PrivateTestPlan, list[PrivateImageRecord]]:
     release_lock = _read_json(release_lock_path)
     lock_sha256 = release_lock_self_sha256(release_lock)
+    assert_release_not_revoked(release_lock_path, lock_sha256)
     validate_locked_gate_tool(release_lock, Path(__file__))
     if release_lock.get("status") != "owner_private_test_pending" or release_lock.get(
         "remaining_gates"

@@ -18,23 +18,51 @@ def test_unified_cli_dispatches_arguments_without_reparsing(monkeypatch) -> None
     assert observed == [["bixolon evaluate worker", "--provider", "cpu"]]
 
 
-def test_unified_cli_help_lists_stable_groups(capsys) -> None:
+def test_unified_cli_help_exposes_only_the_active_version_command(capsys) -> None:
     cli.main(["--help"])
 
     output = capsys.readouterr().out
-    for group in (
-        "worker",
-        "data",
-        "train",
-        "evaluate",
-        "model",
-        "experiment",
-        "operations",
-        "catalog",
-        "release",
-        "tools",
-    ):
-        assert group in output
+    assert "active commands:" in output
+    assert "bundle verify" in output
+    assert "worker" not in output
+    assert "evaluate" not in output
+    assert "scanner-2.0" not in output
+    assert "bread-1.1" not in output
+
+
+def test_unified_cli_can_list_optional_diagnostics(capsys) -> None:
+    cli.main(["--help-diagnostics"])
+
+    output = capsys.readouterr().out
+    assert "operational compatibility commands:" in output
+    assert "optional diagnostics:" in output
+    assert "worker" in output
+    assert "evaluate benchmark" in output
+    assert "scanner-2.0" not in output
+
+
+def test_unified_cli_can_list_legacy_compatibility_commands(capsys) -> None:
+    cli.main(["--help-legacy"])
+
+    output = capsys.readouterr().out
+    assert "legacy compatibility commands:" in output
+    assert "evaluate scanner-2.0" in output
+    assert "evaluate bread-1.1-runtime" in output
+
+
+def test_command_support_registries_do_not_overlap() -> None:
+    registries = (
+        cli.ACTIVE_COMMANDS,
+        cli.COMPATIBILITY_COMMANDS,
+        cli.DIAGNOSTIC_COMMANDS,
+        cli.LEGACY_COMMANDS,
+    )
+
+    assert cli.COMMANDS == {
+        path: target for registry in registries for path, target in registry.items()
+    }
+    assert sum(map(len, registries)) == len(cli.COMMANDS)
+    assert set(cli.ACTIVE_COMMANDS) == {("bundle", "verify")}
 
 
 def test_unified_cli_rejects_unknown_commands() -> None:
@@ -53,16 +81,12 @@ def test_legacy_console_targets_and_unified_targets_share_callables() -> None:
 
 def test_scanner_2_commands_are_canonical() -> None:
     assert ("evaluate", "scanner-2.0") in cli.COMMANDS
-    assert ("evaluate", "scanner-2.0-breakdown") in cli.COMMANDS
     assert ("evaluate", "scanner-2.0-parity") in cli.COMMANDS
     assert ("evaluate", "scanner-2.0-embedder-parity") in cli.COMMANDS
     assert ("evaluate", "scanner-2.0-packaged-worker-smoke") in cli.COMMANDS
-    assert ("evaluate", "scanner-2.0-private-preflight") in cli.COMMANDS
-    assert ("evaluate", "scanner-2.0-private") in cli.COMMANDS
     assert ("model", "export-embedder") in cli.COMMANDS
     assert ("model", "export-dinov2-embedder") in cli.COMMANDS
     assert ("catalog", "activate") in cli.COMMANDS
-    assert ("release", "lock-scanner-2.0") in cli.COMMANDS
-    assert ("release", "promote-scanner-2.0") in cli.COMMANDS
-    assert ("release", "promote-scanner-2.0-owner-waiver") in cli.COMMANDS
+    assert ("bundle", "verify") in cli.COMMANDS
+    assert not any(path[0] == "release" for path in cli.COMMANDS)
     assert ("experiment", "bread-catalog-backbone-probe") not in cli.COMMANDS

@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bixolon-scanner"
-version = "1.0.0"
+version = "0.0.1"
 description = "Multi-item bread image decision worker"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -61,15 +61,13 @@ bixolon-bread-cv = "bixolon_scanner.training.bread_cv:main"
 bixolon-synthetic-detector-dataset = "bixolon_scanner.training.synthetic_detector_dataset:main"
 bixolon-bread-10shot = "bixolon_scanner.experiments.bread.ten_shot:main"
 bixolon-detector-target = "bixolon_scanner.experiments.detector.target:main"
-bixolon-ten-shot-package = "bixolon_scanner.training.ten_shot_package:main"
-bixolon-ten-shot-finalize = "bixolon_scanner.training.ten_shot_finalize:main"
 bixolon-compare-difficulty = "bixolon_scanner.evaluation.compare_difficulty:main"
 bixolon-rpc-operational = "bixolon_scanner.experiments.rpc200.operational:main"
 bixolon-benchmark = "bixolon_scanner.evaluation.benchmark:main"
-bixolon-release-gate = "bixolon_scanner.evaluation.release:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/bixolon_scanner"]
+exclude = ["/src/bixolon_scanner/experiments/archive/**"]
 
 [tool.pytest.ini_options]
 addopts = "-q"

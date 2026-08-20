@@ -19,13 +19,11 @@ from bixolon_scanner.contracts.catalog import (
     sha256_file,
 )
 from bixolon_scanner.contracts.errors import PackageValidationError
-from bixolon_scanner.contracts.runtime_package_v2 import CatalogSupportAugmentationMetadata
-from bixolon_scanner.operations.catalog_activation import (
-    MINIMUM_SUPPORT_IMAGE_SIDE,
-    _adapter_features,
-    _audit_records,
-    fit_ridge_adapter,
+from bixolon_scanner.contracts.runtime_package_v2 import (
+    CatalogDecisionPolicy,
+    CatalogSupportAugmentationMetadata,
 )
+from bixolon_scanner.operations.catalog_activation import _adapter_features, fit_ridge_adapter
 from bixolon_scanner.runtime.catalog import OnnxCatalogClassifier
 
 SIGNING_KEY = b"test-only-catalog-signing-key"
@@ -111,6 +109,32 @@ def test_catalog_metadata_rejects_ridge_head_without_adapter() -> None:
         )
 
 
+def test_catalog_metadata_rejects_adapter_path_escape() -> None:
+    with pytest.raises(ValidationError):
+        CatalogMetadata(
+            catalog_version="2.0.0",
+            store_id="store",
+            embedder_id="embedder",
+            embedder_version="2.0.0",
+            classifier_policy_version="2.0.0",
+            embedding_dimension=4,
+            support_count_per_class=10,
+            support_count=10,
+            labels=[
+                CatalogLabel(
+                    class_id="bread",
+                    class_name="Bread",
+                    support_offset=0,
+                    support_count=10,
+                    compactness=0.5,
+                )
+            ],
+            source_manifest_sha256="0" * 64,
+            decision_head="ridge_adapter",
+            adapter_filename="../outside.bin",
+        )
+
+
 def test_signed_catalog_loads_and_rejects_wrong_identity_or_tampering(tmp_path: Path) -> None:
     root = tmp_path / "catalog"
     _write_catalog(root)
@@ -141,7 +165,7 @@ def test_signed_catalog_loads_and_rejects_wrong_identity_or_tampering(tmp_path: 
         load_store_catalog_package(root, signing_key=SIGNING_KEY)
 
 
-def test_checksum_only_catalog_loads_without_key_and_rejects_tampering(
+def test_checksum_only_catalog_loads_without_a_key_and_rejects_tampering(
     tmp_path: Path,
 ) -> None:
     root = tmp_path / "catalog"
@@ -158,7 +182,10 @@ def test_checksum_only_catalog_loads_without_key_and_rejects_tampering(
     )
     (root / "signature.json").unlink()
 
-    loaded = load_store_catalog_package(root, expected_store_id="test-store")
+    loaded = load_store_catalog_package(
+        root,
+        expected_store_id="test-store",
+    )
     assert loaded.metadata.authentication == "CHECKSUM-SHA256"
 
     (root / "supports.bin").write_bytes(b"tampered")
@@ -177,68 +204,6 @@ def test_catalog_ridge_adapter_is_deterministic_and_fits_support_labels() -> Non
     assert np.array_equal(first[1], second[1])
     logits = features @ first[0] + first[1]
     assert np.array_equal(np.argmax(logits, axis=1), labels)
-
-
-def test_catalog_ridge_adapter_blocks_retrieval_disagreement_and_low_similarity() -> None:
-    classifier = object.__new__(OnnxCatalogClassifier)
-    classifier.adapter_weight = np.eye(2, dtype=np.float32)
-    classifier.adapter_bias = np.zeros(2, dtype=np.float32)
-    classifier.policy = SimpleNamespace(
-        ridge_approval_minimum_margin=0.2,
-        ridge_top3_minimum_inverse_entropy=-3.0,
-        ridge_require_retrieval_agreement=True,
-        ridge_retrieval_minimum_similarity=0.4,
-        ood_maximum_similarity=-1.0,
-    )
-    classifier.labels = [
-        SimpleNamespace(class_id="bread_01"),
-        SimpleNamespace(class_id="bread_02"),
-    ]
-    classifier.restricted_ids = set()
-    classifier.restricted_pairs = set()
-
-    result = classifier._classify_adapter(
-        np.asarray([[1.0, 0.0], [1.0, 0.0]], dtype=np.float32),
-        np.asarray([[0.7, 0.8], [0.3, 0.2]], dtype=np.float32),
-    )
-
-    assert result.approval_blocked.tolist() == [True, True]
-    assert result.unknown_reasons == (
-        "CLASSIFIER_AMBIGUOUS_TOP2",
-        "BELOW_APPROVAL_THRESHOLD",
-    )
-    assert result.segment_recapture_reasons == (None, "CLASSIFIER_OUT_OF_CATALOG")
-
-
-def test_catalog_support_audit_accepts_96px_side_and_rejects_smaller(
-    tmp_path: Path,
-) -> None:
-    records = []
-    for index in range(10):
-        path = tmp_path / f"support-{index}.png"
-        Image.new(
-            "RGB",
-            (MINIMUM_SUPPORT_IMAGE_SIDE + index, MINIMUM_SUPPORT_IMAGE_SIDE),
-            (index, 0, 0),
-        ).save(path)
-        records.append(
-            {
-                "class_id": "bread",
-                "image_path": path.name,
-                "image_sha256": sha256_file(path),
-                "perceptual_group_id": f"group-{index}",
-            }
-        )
-
-    audited = _audit_records(tmp_path, records)
-    assert len(audited) == 10
-
-    Image.new("RGB", (MINIMUM_SUPPORT_IMAGE_SIDE - 1, 128), "white").save(
-        tmp_path / records[0]["image_path"]
-    )
-    records[0]["image_sha256"] = sha256_file(tmp_path / records[0]["image_path"])
-    with pytest.raises(ValueError, match="format or size"):
-        _audit_records(tmp_path, records)
 
 
 def test_catalog_support_augmentation_is_deterministic() -> None:
@@ -292,3 +257,98 @@ def test_catalog_support_augmentation_is_deterministic() -> None:
     assert first[1].tolist() == second[1].tolist()
     assert first[2] == second[2]
     assert first[2]["feature_count"] == 6
+
+
+def test_ridge_pair_probability_blocks_ambiguous_head_disagreement_and_low_retrieval() -> None:
+    classifier = object.__new__(OnnxCatalogClassifier)
+    classifier.policy = CatalogDecisionPolicy(
+        version="2.0.0-rc.8",
+        prototype_weight=0.5,
+        support_top_k=3,
+        approval_minimum_similarity=1.0,
+        approval_minimum_margin=0.1,
+        ood_maximum_similarity=0.4,
+        top3_minimum_similarity=-1.0,
+        catalog_conflict_similarity=0.95,
+        ridge_approval_metric="top2_pair_probability",
+        ridge_approval_minimum_pair_probability=0.55,
+        ridge_disagreement_minimum_pair_probability=0.65,
+        ridge_top3_minimum_inverse_entropy=-2.9,
+    )
+    classifier.labels = [
+        SimpleNamespace(class_id="bread_01"),
+        SimpleNamespace(class_id="bread_02"),
+        SimpleNamespace(class_id="bread_03"),
+    ]
+    classifier.restricted_ids = set()
+    classifier.restricted_pairs = set()
+    classifier.adapter_weight = np.eye(3, dtype=np.float32)
+    classifier.adapter_bias = np.zeros(3, dtype=np.float32)
+
+    result = classifier._classify_adapter(
+        np.asarray(
+            [
+                [1.0, 0.0, 0.0],
+                [1.0, 0.5, 0.0],
+                [1.0, 0.0, 0.0],
+            ],
+            dtype=np.float32,
+        ),
+        np.asarray(
+            [
+                [0.6, 0.5, 0.4],
+                [0.4, 0.6, 0.3],
+                [0.39, 0.38, 0.37],
+            ],
+            dtype=np.float32,
+        ),
+    )
+
+    assert result.approval_scores[0] > 0.55
+    assert not result.approval_blocked[0]
+    assert result.segment_recapture_reasons[0] is None
+    assert result.approval_scores[1] > 0.55
+    assert result.approval_scores[1] < 0.65
+    assert result.approval_blocked[1]
+    assert result.unknown_reasons[1] == "CLASSIFIER_AMBIGUOUS_TOP2"
+    assert result.segment_recapture_reasons[2] == "CLASSIFIER_OUT_OF_CATALOG"
+    assert np.allclose(result.retrieval_logits[0], [0.6, 0.5, 0.4])
+
+
+def test_ridge_margin_policy_requires_retrieval_agreement_and_minimum_similarity() -> None:
+    classifier = object.__new__(OnnxCatalogClassifier)
+    classifier.policy = CatalogDecisionPolicy(
+        version="2.0.1-rc.3",
+        prototype_weight=0.5,
+        support_top_k=3,
+        approval_minimum_similarity=1.0,
+        approval_minimum_margin=0.1,
+        ood_maximum_similarity=-1.0,
+        top3_minimum_similarity=-1.0,
+        catalog_conflict_similarity=0.95,
+        ridge_approval_minimum_margin=0.2,
+        ridge_top3_minimum_inverse_entropy=-3.0,
+        ridge_require_retrieval_agreement=True,
+        ridge_retrieval_minimum_similarity=0.4,
+    )
+    classifier.labels = [
+        SimpleNamespace(class_id="bread_01"),
+        SimpleNamespace(class_id="bread_02"),
+        SimpleNamespace(class_id="bread_03"),
+    ]
+    classifier.restricted_ids = set()
+    classifier.restricted_pairs = set()
+    classifier.adapter_weight = np.eye(3, dtype=np.float32)
+    classifier.adapter_bias = np.zeros(3, dtype=np.float32)
+
+    result = classifier._classify_adapter(
+        np.asarray([[1.0, 0.0, 0.0], [1.0, 0.0, 0.0]], dtype=np.float32),
+        np.asarray([[0.7, 0.8, 0.1], [0.3, 0.2, 0.1]], dtype=np.float32),
+    )
+
+    assert result.approval_blocked.tolist() == [True, True]
+    assert result.unknown_reasons == (
+        "CLASSIFIER_AMBIGUOUS_TOP2",
+        "BELOW_APPROVAL_THRESHOLD",
+    )
+    assert result.segment_recapture_reasons == (None, "CLASSIFIER_OUT_OF_CATALOG")

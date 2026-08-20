@@ -1,1 +1,1 @@
-"""Operational log ingestion and review tools."""
+"""Version bundling, log ingestion, and review tools."""

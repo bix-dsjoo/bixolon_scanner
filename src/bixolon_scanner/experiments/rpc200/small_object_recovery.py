@@ -10,6 +10,7 @@ from typing import Any
 import joblib
 import numpy as np
 
+from ...configuration import load_json_config
 from ...contracts.model_package import load_model_package, sha256_file
 from ...training.models import require_torch
 from .context_rejector import (
@@ -215,7 +216,7 @@ def main() -> None:
     if not 0.0 <= args.min_object_area_ratio < 0.005:
         raise ValueError("recovery minimum area ratio must be in [0, 0.005)")
 
-    config = json.loads(args.config.read_text(encoding="utf-8"))
+    config = load_json_config(args.config)
     root = args.output_dir
     run_dir = root / "runs" / "full" / f"seed{args.seed}"
     output_dir = run_dir / "context-small-object-v5"

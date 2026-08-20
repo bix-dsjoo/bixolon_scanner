@@ -10,14 +10,6 @@ from PIL import Image
 from ..contracts.runtime_package_v2 import load_runtime_package_v2
 from ..runtime.catalog import OnnxEmbedder
 from ..runtime.onnx import prepare_rgb
-from ..training.models import (
-    DINO_V3_CONVNEXT_TINY,
-    DINO_V3_HUB_REPOSITORY,
-    DINO_V3_VIT_BASE_16,
-    build_dino_classifier,
-)
-
-DINO_V2_BASE = "dinov2_base"
 
 
 def _representative_images(manifest: Path, dataset_root: Path) -> list[Image.Image]:
@@ -36,6 +28,7 @@ def _representative_images(manifest: Path, dataset_root: Path) -> list[Image.Ima
 
 def evaluate(args: argparse.Namespace) -> dict:
     import torch
+    from transformers import AutoModel
 
     runtime = load_runtime_package_v2(args.runtime)
     images = _representative_images(args.manifest, args.dataset_root)
@@ -52,43 +45,23 @@ def evaluate(args: argparse.Namespace) -> dict:
             for image in images
         ]
     )
-    if args.backbone == DINO_V2_BASE:
-        from transformers import AutoModel
-
-        if args.model_dir is None:
-            raise ValueError("DINOv2 parity requires --model-dir")
-        model = (
-            AutoModel.from_pretrained(
-                args.model_dir.resolve().as_posix(),
-                local_files_only=True,
-                attn_implementation="eager",
-            )
-            .cuda()
-            .eval()
+    model = (
+        AutoModel.from_pretrained(
+            args.model_dir.resolve().as_posix(),
+            local_files_only=True,
+            attn_implementation="eager",
         )
-        with torch.inference_mode():
-            pytorch = (
-                model(pixel_values=torch.from_numpy(tensors).cuda())
-                .last_hidden_state[:, 0]
-                .float()
-                .cpu()
-                .numpy()
-            )
-    else:
-        if args.weights is None:
-            raise ValueError("DINOv3 parity requires --weights")
-        model = (
-            build_dino_classifier(
-                args.backbone,
-                1,
-                weights_path=args.weights,
-                hub_repository=f"facebookresearch/dinov3:{args.source_revision}",
-            )
-            .cuda()
-            .eval()
+        .cuda()
+        .eval()
+    )
+    with torch.inference_mode():
+        pytorch = (
+            model(pixel_values=torch.from_numpy(tensors).cuda())
+            .last_hidden_state[:, 0]
+            .float()
+            .cpu()
+            .numpy()
         )
-        with torch.inference_mode():
-            pytorch = model.extract_features(torch.from_numpy(tensors).cuda()).float().cpu().numpy()
     cpu = OnnxEmbedder(runtime, "cpu").embed_images_raw(images)
     cuda = OnnxEmbedder(runtime, "cuda", args.cuda_dll_dir).embed_images_raw(images)
     for image in images:
@@ -106,7 +79,6 @@ def evaluate(args: argparse.Namespace) -> dict:
     report = {
         "schema_version": "2.0",
         "evaluation": "scanner_2_0_embedder_parity",
-        "backbone_kind": args.backbone,
         "sample_count": len(images),
         "pytorch_vs_onnx_cuda": comparison(pytorch, cuda),
         "onnx_cpu_vs_cuda": comparison(cpu, cuda),
@@ -125,19 +97,9 @@ def evaluate(args: argparse.Namespace) -> dict:
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Compare DINO PyTorch/CPU/CUDA features")
+    parser = argparse.ArgumentParser(description="Compare DINOv2 PyTorch/CPU/CUDA features")
     parser.add_argument("--runtime", type=Path, required=True)
-    parser.add_argument(
-        "--backbone",
-        choices=(DINO_V2_BASE, DINO_V3_CONVNEXT_TINY, DINO_V3_VIT_BASE_16),
-        default=DINO_V2_BASE,
-    )
-    parser.add_argument("--model-dir", type=Path)
-    parser.add_argument("--weights", type=Path)
-    parser.add_argument(
-        "--source-revision",
-        default=DINO_V3_HUB_REPOSITORY.rsplit(":", maxsplit=1)[1],
-    )
+    parser.add_argument("--model-dir", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--cuda-dll-dir", type=Path, required=True)

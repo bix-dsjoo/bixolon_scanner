@@ -40,9 +40,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   FlutterWindow window(project);
   Win32Window::Point origin(10, 10);
   Win32Window::Size size(kInitialWindowWidth, kInitialWindowHeight);
+  const std::string product_version = BIXOLON_PRODUCT_VERSION;
+  const std::wstring window_title =
+      L"BIXOLON Scanner v" +
+      std::wstring(product_version.begin(), product_version.end());
   window.SetMinimumSize(
       Win32Window::Size(kMinimumWindowWidth, kMinimumWindowHeight));
-  if (!window.Create(L"BIXOLON Scanner", origin, size)) {
+  if (!window.Create(window_title.c_str(), origin, size)) {
     worker_process.Stop();
     return EXIT_FAILURE;
   }

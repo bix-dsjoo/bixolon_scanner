@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from ..configuration import load_json_config
 from ..package import load_model_package, sha256_file
 from .fewshot_adapter import (
     adapter_spec_from_dict,
@@ -213,7 +214,7 @@ def export_ten_shot_package(args: argparse.Namespace) -> None:
             compatible_proxy_state_dict(checkpoint["head_state_dict"])
         )
     classifier.eval()
-    experiment_config = json.loads(args.config.read_text(encoding="utf-8"))
+    experiment_config = load_json_config(args.config)
     crop_scale_value = experiment_config.get("inference", {}).get("center_crop_scale")
     crop_scale = None if crop_scale_value is None else float(crop_scale_value)
     inference = experiment_config.get("inference", {})

@@ -32,6 +32,7 @@ class DetectionResult:
 class ClassificationResult:
     logits: np.ndarray
     ranking_logits: np.ndarray
+    retrieval_logits: np.ndarray | None = None
     approval_scores: np.ndarray | None = None
     top3_safety_scores: np.ndarray | None = None
     ranking_scores: np.ndarray | None = None

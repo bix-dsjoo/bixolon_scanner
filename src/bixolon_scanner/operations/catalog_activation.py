@@ -28,8 +28,6 @@ from ..training.synthetic_roi import (
     prepare_direct_roi_source,
 )
 
-MINIMUM_SUPPORT_IMAGE_SIDE = 96
-
 
 def _canonical_json(payload: object) -> bytes:
     return (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
@@ -60,7 +58,7 @@ def _audit_records(dataset_root: Path, records: list[dict]) -> list[dict]:
         if sha256_file(path) != row["image_sha256"]:
             raise ValueError("Catalog support image checksum mismatch")
         with Image.open(path) as image:
-            if image.format not in {"JPEG", "PNG"} or min(image.size) < MINIMUM_SUPPORT_IMAGE_SIDE:
+            if image.format not in {"JPEG", "PNG"} or min(image.size) < 128:
                 raise ValueError("Catalog support image format or size is invalid")
         audited.append({**row, "resolved_path": path})
     return audited
@@ -354,7 +352,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--store-id", required=True)
-    parser.add_argument("--catalog-version", default="2.0.1")
+    parser.add_argument("--catalog-version", default="2.0.0")
     parser.add_argument(
         "--authentication",
         choices=("CHECKSUM-SHA256", "HMAC-SHA256"),

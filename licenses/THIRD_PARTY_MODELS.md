@@ -30,7 +30,7 @@
 - Model: `DINOv3 ViT-B/16`, revision `6876159a11b4df116f30f667f8c9888617df0751`
 - License: DINOv3 License
 - Source weight SHA-256: `73cec8be7427c8655ceced13ce62f6e20a1fa90d1b4d4a550df17a1144081a7c`
-- Use: frozen embedding backbone challenger for Scanner `2.0.0-rc.8`
+- Use: frozen embedding backbone for Scanner `0.0.1`
 
 `DINOV3-LICENSE.md`를 DINOv3 파생 Runtime package와 함께 배포한다. DINOv3의 사용·재배포는
 Apache-2.0이 아니라 해당 Meta 계약을 따른다.

@@ -1,0 +1,65 @@
+{
+  "schema_version": "2.0",
+  "release": "scanner-2.0.0",
+  "lifecycle": "production",
+  "promotion_basis": "owner_manual_waiver",
+  "independent_certified": false,
+  "versions": {
+    "python": "1.0.0",
+    "worker": "2.0.0",
+    "detector": "2.0.0",
+    "classifier": "2.0.0",
+    "embedder": "2.0.0",
+    "classifier_policy": "2.0.0",
+    "catalog": "2.0.0",
+    "dataset": "bread-scanner-2.0.0-development-415-rc.8",
+    "app": "2.0.0+4"
+  },
+  "source_release_candidate": "2.0.0-rc.8",
+  "source_release_lock": {
+    "path": "artifacts/releases/scanner-2.0.0-rc.8-pre-private/release-lock.json",
+    "sha256": "564d804a598e4a749a5b02c29007f9fea059808411e20cdb864ab2e28205f4cf"
+  },
+  "owner_waiver": {
+    "path": "configs/releases/scanner_2.0.0_owner_waiver.json",
+    "sha256": "6289de519359c80de494acaf5553d90da1a1fd5d98105fa6448f40c37cc57dac",
+    "waived_gates": [
+      "catalog_hmac_authentication",
+      "owner_private_locked_production_test"
+    ]
+  },
+  "production_release": {
+    "path": "artifacts/releases/scanner-2.0.0-production",
+    "attestation_path": "artifacts/releases/scanner-2.0.0-production/promotion-attestation.json",
+    "attestation_sha256": "33a44cf270bc83cc339c1c68128d8c9445d3ef05f559193e1200de67819714ee",
+    "runtime_path": "artifacts/releases/scanner-2.0.0-production/runtime",
+    "runtime_manifest_sha256": "a63a72c83b6459a3f1ab7f00fa109670834d2d71a2da3f7151c003fe5d43cc06",
+    "catalog_path": "artifacts/releases/scanner-2.0.0-production/catalog",
+    "catalog_manifest_sha256": "13f8a5b6baf34bb99b63683205e456984a11e8c0e7ea0c34b5e086f20ebbfd10",
+    "catalog_authentication": "CHECKSUM-SHA256",
+    "worker_bundle_path": "artifacts/releases/scanner-2.0.0-production/worker-build/bixolon-worker",
+    "worker_bundle_manifest_sha256": "3a372525fed738fc1696af1d25ace683882c9c5128043e44e099109bc3bafd2e",
+    "worker_executable_sha256": "a58fc829e7d99ca9309378dca2a2824cda8d1fbcdcf441f0791b1624e51cc57c"
+  },
+  "validation": {
+    "source_worker_cpu_smoke": "artifacts/evaluations/scanner-2.0.0/production-2.0.0-keyless-worker-smoke-cpu.json",
+    "packaged_worker_cpu_smoke": "artifacts/evaluations/scanner-2.0.0/production-2.0.0-keyless-packaged-worker-smoke-cpu.json",
+    "packaged_worker_cuda_smoke": "artifacts/evaluations/scanner-2.0.0/production-2.0.0-keyless-packaged-worker-smoke-cuda.json",
+    "rc8_cuda_parity": "artifacts/evaluations/scanner-2.0.0-rc.8/parity-cuda.json",
+    "rc8_performance": "artifacts/evaluations/scanner-2.0.0-rc.8/performance-cuda.json"
+  },
+  "windows_bundle": {
+    "path": "artifacts/releases/bixolon-scanner-2.0.0+4",
+    "manifest_path": "artifacts/releases/bixolon-scanner-2.0.0+4/bundle-manifest.json",
+    "manifest_sha256": "f522b0c292e34d56054ed48e07c446d8fc417a3a923581542b4be50af7d15ff1",
+    "file_count": 177,
+    "catalog_authentication": "CHECKSUM-SHA256",
+    "catalog_signature_present": false
+  },
+  "limitations": [
+    "The 300-image and 115-image sources are development lineage, not independent certification evidence.",
+    "The long-term 99% APPROVED target is not met by the 300-image development result.",
+    "Catalog authenticity is not cryptographically authenticated; startup enforces file checksums and provenance consistency only."
+  ],
+  "rollback_release": "bread-worker-1.1.0"
+}

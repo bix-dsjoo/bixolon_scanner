@@ -1,1 +1,1 @@
-export '../features/scanner/presentation/recapture_presentation.dart';
+export '../shared/presentation/recapture_presentation.dart';

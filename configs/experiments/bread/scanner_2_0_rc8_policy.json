@@ -1,0 +1,68 @@
+{
+  "schema_version": "2.0",
+  "experiment_id": "scanner-2.0.0-rc.8-ambiguity-ood-policy",
+  "lifecycle": "active",
+  "candidate_version": "2.0.0-rc.8",
+  "hypothesis": "Top-2 pair probability, Ridge/retrieval agreement, and retrieval OOD gating can prevent false APPROVED outputs while preserving at least 90% all-GT approval coverage.",
+  "development_data": [
+    {
+      "id": "bread-project-2-development-300",
+      "manifest": "artifacts/verification/scan-source-cleanup-20260819/detector_manifest.jsonl",
+      "manifest_sha256": "309a7b8a3f5072ced17106f26f1a5004b13218ed310b6bd012b5c29b6fcce406",
+      "image_count": 300,
+      "judgeable_gt_object_count": 1410,
+      "role": "development_calibration_and_regression"
+    },
+    {
+      "id": "operational-collection-2026-08-18",
+      "manifest": "datasets/bread_dataset/operational_collections/2026-08-18/annotations/instances.json",
+      "manifest_sha256": "7909a8fdb31850b5af1cb4e95aa007b6b9e3d2ec5da06e6f8c9f74d3ed2bb56f",
+      "image_count": 115,
+      "judgeable_gt_object_count": 504,
+      "role": "development_calibration_and_regression"
+    }
+  ],
+  "data_contract": {
+    "combined_image_count": 415,
+    "combined_judgeable_gt_object_count": 1914,
+    "independent_promotion_evidence": false,
+    "promotion_test": "new_owner_private_locked_capture_session_only",
+    "private_test_feedback_reuse_for_this_candidate": false
+  },
+  "catalog_contract": {
+    "supports_per_sku": 10,
+    "support_manifest": "manifests/bread-zero-error-1.1/classifier_manifest.jsonl",
+    "support_manifest_sha256": "afe4b679c806847267e8dc8c9a2c89a48de479ec1c66e455333e757a304f4ddd",
+    "foundation_update": false,
+    "ridge_alpha": 0.1,
+    "deterministic_views_per_support": 8
+  },
+  "decision_policy": {
+    "approval_metric": "top2_pair_probability",
+    "pair_temperature": 1.0,
+    "approval_minimum_pair_probability": 0.54923,
+    "ridge_retrieval_disagreement_minimum_pair_probability": 0.54923,
+    "retrieval_ood_minimum_similarity": 0.414268881082535,
+    "ridge_top3_minimum_inverse_entropy": -3.0,
+    "unknown_reason": "CLASSIFIER_AMBIGUOUS_TOP2",
+    "out_of_catalog_reason": "CLASSIFIER_OUT_OF_CATALOG"
+  },
+  "selection_contract": {
+    "objective_order": [
+      "zero approved misrecognition on combined development data",
+      "approved coverage at least 90 percent on each development source",
+      "unknown Top-3 candidate-out at most 0.1 percent",
+      "CPU and CUDA boundary decisions identical",
+      "CUDA full-path mean and p95 at most 100 ms and p99 at most 150 ms"
+    ],
+    "class_pair_specific_exception": false,
+    "provider_boundary_margin": true,
+    "threshold_reselection_per_store": false
+  },
+  "stop_conditions": [
+    "any wrong APPROVED on a development source",
+    "APPROVED coverage below 90 percent on a development source",
+    "CPU/CUDA final decision mismatch",
+    "private test is opened before the pre-private release lock"
+  ]
+}

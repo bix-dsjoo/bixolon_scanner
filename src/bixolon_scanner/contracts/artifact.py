@@ -37,3 +37,22 @@ def directory_content_manifest(root: Path) -> dict[str, Any]:
         "files": files,
         "manifest_sha256": canonical_sha256(files),
     }
+
+
+def assert_release_not_revoked(release_lock_path: Path, lock_sha256: str) -> None:
+    revocation_path = release_lock_path.resolve().with_name("release-revocation.json")
+    if not revocation_path.is_file():
+        return
+    try:
+        payload = json.loads(revocation_path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise ValueError("release revocation record is invalid") from exc
+    expected = payload.get("revocation_sha256")
+    body = {key: value for key, value in payload.items() if key != "revocation_sha256"}
+    if (
+        payload.get("status") != "revoked"
+        or payload.get("release_lock_sha256") != lock_sha256
+        or expected != canonical_sha256(body)
+    ):
+        raise ValueError("release revocation record is invalid")
+    raise ValueError("release candidate was revoked after a failed promotion gate")

@@ -30,6 +30,24 @@ def _resolve_image_path(dataset_root: Path, value: str) -> Path:
     return resolved
 
 
+def _resolve_coco_image_path(annotation_path: Path, dataset_root: Path, value: str) -> Path:
+    root = dataset_root.resolve()
+    candidates = [root / value, annotation_path.resolve().parent / value]
+    valid: list[Path] = []
+    for candidate in candidates:
+        resolved = candidate.resolve()
+        try:
+            resolved.relative_to(root)
+        except ValueError:
+            continue
+        valid.append(resolved)
+        if resolved.is_file():
+            return resolved
+    if not valid:
+        raise ValueError("evaluation image path escaped the dataset root")
+    return valid[0]
+
+
 def _records(path: Path, dataset_root: Path) -> list[dict]:
     text = path.read_text(encoding="utf-8")
     if path.suffix.lower() == ".json":
@@ -45,19 +63,23 @@ def _records(path: Path, dataset_root: Path) -> list[dict]:
                     "category_id": int(annotation["category_id"]),
                 }
             )
-        rows = [
-            {
-                **image,
-                "image_id": int(image["id"]),
-                "image_path": str(image["file_name"]),
-                "annotations": annotations_by_image.get(int(image["id"]), []),
-            }
-            for image in payload["images"]
-        ]
+        rows = []
+        for image in payload["images"]:
+            resolved = _resolve_coco_image_path(path, dataset_root, str(image["file_name"]))
+            rows.append(
+                {
+                    **image,
+                    "image_id": int(image["id"]),
+                    "image_path": resolved.relative_to(dataset_root.resolve()).as_posix(),
+                    "annotations": annotations_by_image.get(int(image["id"]), []),
+                    "resolved_path": resolved,
+                }
+            )
     else:
         rows = [json.loads(line) for line in text.splitlines() if line]
     for row in rows:
-        row["resolved_path"] = _resolve_image_path(dataset_root, str(row["image_path"]))
+        if "resolved_path" not in row:
+            row["resolved_path"] = _resolve_image_path(dataset_root, str(row["image_path"]))
     return rows
 
 
@@ -115,12 +137,9 @@ class RecordingDetector:
         self.detector = detector
         self.version = detector.version
         self.last_result: DetectionResult | None = None
-        self.last_latency_ms: float | None = None
 
     def detect(self, image) -> DetectionResult:
-        started = time.perf_counter()
         self.last_result = self.detector.detect(image)
-        self.last_latency_ms = (time.perf_counter() - started) * 1000.0
         return self.last_result
 
 
@@ -130,12 +149,9 @@ class RecordingClassifier:
         self.version = classifier.version
         self.metadata = classifier.metadata
         self.last_result: ClassificationResult | None = None
-        self.last_latency_ms: float | None = None
 
     def classify(self, image, detections: list[Detection]) -> ClassificationResult:
-        started = time.perf_counter()
         self.last_result = self.classifier.classify(image, detections)
-        self.last_latency_ms = (time.perf_counter() - started) * 1000.0
         return self.last_result
 
 
@@ -160,47 +176,7 @@ class Counts:
     full_path_latencies_ms: list[float] = field(default_factory=list)
     image_recapture_latencies_ms: list[float] = field(default_factory=list)
     refinement_latencies_ms: list[float] = field(default_factory=list)
-    detector_latencies_ms: list[float] = field(default_factory=list)
-    classifier_latencies_ms: list[float] = field(default_factory=list)
     refinement_count: int = 0
-
-
-def _reported_metrics(counts: Counts) -> tuple[dict, dict]:
-    gt = counts.ground_truth_count
-    segmentation_images = counts.segmentation_image_count
-    segmentation_objects = counts.prediction_count
-    requested = {
-        "segmentation_rate": _rate(segmentation_images, counts.image_count),
-        "image_recapture_rate": _rate(counts.image_recapture_count, counts.image_count),
-        "segmentation_object_count": segmentation_objects,
-        "approved_rate": _rate(counts.approved_count, segmentation_objects),
-        "unknown_top3_rate": _rate(counts.unknown_count, segmentation_objects),
-        "segment_recapture_rate": _rate(counts.segment_recapture_count, segmentation_objects),
-        "segmentation_image_false_negative_rate": _rate(
-            counts.false_negative_image_count, segmentation_images
-        ),
-        "segmentation_image_false_positive_rate": _rate(
-            counts.false_positive_image_count, segmentation_images
-        ),
-        "approved_object_misrecognition_rate": _rate(counts.approved_misrecognition_count, gt),
-        "approved_output_misrecognition_rate": _rate(
-            counts.approved_misrecognition_count, counts.approved_count
-        ),
-        "correct_approved_rate": _rate(
-            counts.approved_count - counts.approved_misrecognition_count, gt
-        ),
-        "unknown_top3_candidate_out_rate": _rate(counts.unknown_candidate_out_count, gt),
-        "mean_speed_ms": float(np.mean(counts.latencies_ms)),
-    }
-    promotion = {
-        "approved_all_gt_rate": _rate(counts.approved_count, gt),
-        "correct_approved_all_gt_rate": _rate(
-            counts.approved_count - counts.approved_misrecognition_count, gt
-        ),
-        "approved_misrecognition_all_gt_rate": _rate(counts.approved_misrecognition_count, gt),
-        "unknown_candidate_out_all_gt_rate": _rate(counts.unknown_candidate_out_count, gt),
-    }
-    return requested, promotion
 
 
 def evaluate(args: argparse.Namespace) -> dict:
@@ -249,18 +225,12 @@ def evaluate(args: argparse.Namespace) -> dict:
     counts = Counts()
     trace = []
     classifier_diagnostics: list[dict] = []
-    request_interval_seconds = args.request_interval_ms / 1000.0
-    next_request_started = time.perf_counter()
     for ordinal, record in enumerate(records, start=1):
         # The public performance contract starts at API-internal decode. File I/O belongs to
         # the benchmark harness, not to the Worker request path, where multipart bytes are
         # already available before decode begins.
         image_bytes = record["resolved_path"].read_bytes()
-        remaining_interval = next_request_started - time.perf_counter()
-        if remaining_interval > 0.0:
-            time.sleep(remaining_interval)
         started = time.perf_counter()
-        next_request_started = started + request_interval_seconds
         image = decode_image(
             image_bytes,
             max_bytes=50_000_000,
@@ -283,9 +253,8 @@ def evaluate(args: argparse.Namespace) -> dict:
         counts.ground_truth_count += len(record["annotations"])
         counts.latencies_ms.append(elapsed)
         detector_result = detector.last_result
-        if detector_result is None or detector.last_latency_ms is None:
+        if detector_result is None:
             raise RuntimeError("detector result was not recorded")
-        counts.detector_latencies_ms.append(detector.last_latency_ms)
         if detector_result.refinement_executed:
             counts.refinement_count += 1
             counts.refinement_latencies_ms.append(elapsed)
@@ -311,13 +280,8 @@ def evaluate(args: argparse.Namespace) -> dict:
         counts.full_path_latencies_ms.append(elapsed)
         result = detector_result
         classification = classifier.last_result
-        if (
-            classification is None
-            or classification.approval_scores is None
-            or classifier.last_latency_ms is None
-        ):
+        if classification is None or classification.approval_scores is None:
             raise RuntimeError("classifier result was not recorded")
-        counts.classifier_latencies_ms.append(classifier.last_latency_ms)
         detections = sorted(result.detections, key=lambda value: (value.y1, value.x1))
         matches, missed = _match(detections, record["annotations"], args.match_iou_threshold)
         false_positive_count = len(detections) - len(matches)
@@ -336,6 +300,12 @@ def evaluate(args: argparse.Namespace) -> dict:
             else classification.ranking_logits
         )
         ranking_order = np.argsort(-ranking, axis=1, kind="stable")
+        classifier_order = np.argsort(-classification.logits, axis=1, kind="stable")
+        retrieval_order = (
+            None
+            if classification.retrieval_logits is None
+            else np.argsort(-classification.retrieval_logits, axis=1, kind="stable")
+        )
         for detection_index, segmentation in enumerate(response.segmentations):
             target_index = matches.get(detection_index)
             if target_index is None:
@@ -349,6 +319,24 @@ def evaluate(args: argparse.Namespace) -> dict:
             }
             top3_hit = target in top3_ids
             approval_score = float(classification.approval_scores[detection_index])
+            classifier_top1_index = int(classifier_order[detection_index, 0])
+            classifier_top2_index = int(classifier_order[detection_index, 1])
+            classifier_top1_logit = float(
+                classification.logits[detection_index, classifier_top1_index]
+            )
+            classifier_top2_logit = float(
+                classification.logits[detection_index, classifier_top2_index]
+            )
+            retrieval_top1_class_id = None
+            retrieval_top1_similarity = None
+            classifier_retrieval_top1_agreement = None
+            if retrieval_order is not None and classification.retrieval_logits is not None:
+                retrieval_top1_index = int(retrieval_order[detection_index, 0])
+                retrieval_top1_class_id = classifier.metadata.labels[retrieval_top1_index].class_id
+                retrieval_top1_similarity = float(
+                    classification.retrieval_logits[detection_index, retrieval_top1_index]
+                )
+                classifier_retrieval_top1_agreement = classifier_top1_index == retrieval_top1_index
             top3_safety_score = (
                 None
                 if classification.top3_safety_scores is None
@@ -367,8 +355,17 @@ def evaluate(args: argparse.Namespace) -> dict:
                     "detection_index": detection_index,
                     "target_class_id": target,
                     "classifier_top1_class_id": predicted,
+                    "classifier_top2_class_id": classifier.metadata.labels[
+                        classifier_top2_index
+                    ].class_id,
                     "classifier_top1_correct": classifier_correct,
                     "classifier_top3_hit": top3_hit,
+                    "classifier_top1_logit": classifier_top1_logit,
+                    "classifier_top2_logit": classifier_top2_logit,
+                    "classifier_top2_logit_gap": classifier_top1_logit - classifier_top2_logit,
+                    "retrieval_top1_class_id": retrieval_top1_class_id,
+                    "retrieval_top1_similarity": retrieval_top1_similarity,
+                    "classifier_retrieval_top1_agreement": (classifier_retrieval_top1_agreement),
                     "approval_score": approval_score,
                     "top3_safety_score": top3_safety_score,
                     "final_status": segmentation.status.value,
@@ -399,7 +396,29 @@ def evaluate(args: argparse.Namespace) -> dict:
             }
         )
     gt = counts.ground_truth_count
-    requested, promotion_metrics = _reported_metrics(counts)
+    segmentation_images = counts.segmentation_image_count
+    requested = {
+        "segmentation_rate": _rate(segmentation_images, counts.image_count),
+        "image_recapture_rate": _rate(counts.image_recapture_count, counts.image_count),
+        "approved_rate": _rate(counts.approved_count, gt),
+        "unknown_top3_rate": _rate(counts.unknown_count, gt),
+        "segment_recapture_rate": _rate(counts.segment_recapture_count, gt),
+        "segmentation_image_false_negative_rate": _rate(
+            counts.false_negative_image_count, segmentation_images
+        ),
+        "segmentation_image_false_positive_rate": _rate(
+            counts.false_positive_image_count, segmentation_images
+        ),
+        "approved_object_misrecognition_rate": _rate(counts.approved_misrecognition_count, gt),
+        "approved_output_misrecognition_rate": _rate(
+            counts.approved_misrecognition_count, counts.approved_count
+        ),
+        "correct_approved_rate": _rate(
+            counts.approved_count - counts.approved_misrecognition_count, gt
+        ),
+        "unknown_top3_candidate_out_rate": _rate(counts.unknown_candidate_out_count, gt),
+        "mean_speed_ms": float(np.mean(counts.latencies_ms)),
+    }
     limits = {
         "minimum_segmentation_rate": 0.90,
         "minimum_approved_rate": 0.90,
@@ -477,8 +496,7 @@ def evaluate(args: argparse.Namespace) -> dict:
     }
     gates = {
         "segmentation_rate": requested["segmentation_rate"] >= limits["minimum_segmentation_rate"],
-        "approved_rate": promotion_metrics["approved_all_gt_rate"]
-        >= limits["minimum_approved_rate"],
+        "approved_rate": requested["approved_rate"] >= limits["minimum_approved_rate"],
         "fn_image_rate": requested["segmentation_image_false_negative_rate"]
         <= limits["maximum_fn_image_rate"],
         "fp_image_rate": requested["segmentation_image_false_positive_rate"]
@@ -532,18 +550,14 @@ def evaluate(args: argparse.Namespace) -> dict:
             key: value for key, value in vars(counts).items() if not key.endswith("latencies_ms")
         },
         "requested_metrics": requested,
-        "promotion_metrics": promotion_metrics,
         "performance": {
             **performance,
             "scope": ("decode+preprocess+detector-ensemble+selective-refinement+embedder+decision"),
             "warmup_count": args.warmup_count,
-            "request_interval_ms": args.request_interval_ms,
             "gate_path": "full_path_only",
             "full_path": full_path_performance,
             "image_recapture_early_exit": recapture_performance,
             "selective_refinement": refinement_performance,
-            "detector_stage": _latency(counts.detector_latencies_ms),
-            "classifier_stage": _latency(counts.classifier_latencies_ms),
         },
         "limits": limits,
         gate_key: {**gates, "all_met": all_regression_gates_met},
@@ -596,12 +610,6 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--cuda-dll-dir", type=Path)
     parser.add_argument("--match-iou-threshold", type=float, default=0.5)
     parser.add_argument("--warmup-count", type=int, default=20)
-    parser.add_argument(
-        "--request-interval-ms",
-        type=float,
-        default=0.0,
-        help="Minimum interval between measured request starts; use 1000 for the 1 image/s gate.",
-    )
     parser.add_argument("--expected-image-count", type=int, default=300)
     parser.add_argument(
         "--evidence-role",
@@ -613,10 +621,7 @@ def main(argv: list[str] | None = None) -> None:
         action=argparse.BooleanOptionalAction,
         default=True,
     )
-    args = parser.parse_args(argv)
-    if args.request_interval_ms < 0.0:
-        parser.error("--request-interval-ms must be non-negative")
-    evaluate(args)
+    evaluate(parser.parse_args(argv))
 
 
 if __name__ == "__main__":

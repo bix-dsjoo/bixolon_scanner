@@ -45,3 +45,20 @@ def test_records_rejects_coco_path_escape(tmp_path) -> None:
 
     with pytest.raises(ValueError, match="escaped"):
         _records(annotation, tmp_path)
+
+
+def test_records_resolves_coco_path_relative_to_annotation(tmp_path) -> None:
+    image = tmp_path / "images" / "one.jpg"
+    image.parent.mkdir()
+    image.write_bytes(b"image")
+    annotation = tmp_path / "annotations" / "instances.json"
+    annotation.parent.mkdir()
+    annotation.write_text(
+        json.dumps({"images": [{"id": 1, "file_name": "../images/one.jpg"}]}),
+        encoding="utf-8",
+    )
+
+    rows = _records(annotation, tmp_path)
+
+    assert rows[0]["image_path"] == "images/one.jpg"
+    assert rows[0]["resolved_path"] == image

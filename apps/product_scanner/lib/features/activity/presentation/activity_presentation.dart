@@ -1,6 +1,6 @@
 import '../../../core/design_system/copy.dart';
-import '../../scanner/presentation/recapture_presentation.dart';
-import '../data/scan_log_repository.dart';
+import '../../../shared/logging/scan_log_repository.dart';
+import '../../../shared/presentation/recapture_presentation.dart';
 
 String activityProductLabel(ScanLogItemSummary item) {
   final value = item.productName.trim();

@@ -18,19 +18,13 @@ from ..contracts import (
 )
 from ..contracts.image import image_original_size
 from ..contracts.model_package import ClassifierMetadata, CountVerifierMetadata, QualityMetadata
-from .ports import ClassificationResult, Classifier, Detection, DetectionResult, Detector
+from .classification import normalize_classification, softmax
+from .ports import Classifier, Detection, DetectionResult, Detector
 
 LOGGER = logging.getLogger(__name__)
 
 
-def _softmax(logits: np.ndarray, temperature: float) -> np.ndarray:
-    scaled = logits.astype(np.float64) / temperature
-    scaled -= scaled.max(axis=1, keepdims=True)
-    exponential = np.exp(scaled)
-    return (exponential / exponential.sum(axis=1, keepdims=True)).astype(np.float32)
-
-
-softmax = _softmax
+_softmax = softmax
 
 
 def _as_array(image: np.ndarray | Image.Image) -> np.ndarray:
@@ -227,88 +221,19 @@ class DecisionPipeline:
         classifier_started = time.perf_counter()
         classification = self.classifier.classify(image, ordered)
         classifier_ms = (time.perf_counter() - classifier_started) * 1000.0
-        if isinstance(classification, ClassificationResult):
-            logits = classification.logits
-            ranking_logits = classification.ranking_logits
-            approval_scores = classification.approval_scores
-            top3_safety_scores = classification.top3_safety_scores
-            ranking_scores = classification.ranking_scores
-            segment_recapture_reasons = classification.segment_recapture_reasons
-            unknown_reasons = classification.unknown_reasons
-            approval_blocked = classification.approval_blocked
-        else:
-            logits = classification
-            ranking_logits = classification
-            approval_scores = None
-            top3_safety_scores = None
-            ranking_scores = None
-            segment_recapture_reasons = None
-            unknown_reasons = None
-            approval_blocked = None
-        if logits.shape != (len(ordered), len(self.classifier_metadata.labels)):
-            raise ValueError("classifier output shape does not match package labels")
-        if ranking_logits.shape != logits.shape:
-            raise ValueError("classifier ranking output shape does not match logits")
-        probabilities = _softmax(logits, self.classifier_metadata.temperature)
-        ranking_probabilities = (
-            _softmax(ranking_logits, self.classifier_metadata.temperature)
-            if ranking_scores is None
-            else np.asarray(ranking_scores, dtype=np.float32)
+        batch = normalize_classification(
+            classification,
+            detection_count=len(ordered),
+            metadata=self.classifier_metadata,
         )
-        if ranking_probabilities.shape != logits.shape or np.any(
-            (ranking_probabilities < 0.0) | (ranking_probabilities > 1.0)
-        ):
-            raise ValueError("classifier ranking scores must match labels and be in [0, 1]")
-        decision_indices = np.argsort(-ranking_probabilities, axis=1, kind="stable")
-        ranking_indices = np.argsort(-ranking_probabilities, axis=1, kind="stable")
-        if approval_scores is None:
-            approval_scores = probabilities.max(axis=1)
-        if approval_scores.shape != (len(ordered),):
-            raise ValueError("classifier approval scores do not match detections")
-        if top3_safety_scores is not None and top3_safety_scores.shape != (len(ordered),):
-            raise ValueError("classifier Top-3 safety scores do not match detections")
-        if segment_recapture_reasons is not None and len(segment_recapture_reasons) != len(ordered):
-            raise ValueError("classifier recapture reasons do not match detections")
-        if unknown_reasons is not None and len(unknown_reasons) != len(ordered):
-            raise ValueError("classifier unknown reasons do not match detections")
-        if approval_blocked is not None:
-            approval_blocked = np.asarray(approval_blocked, dtype=bool)
-            if approval_blocked.shape != (len(ordered),):
-                raise ValueError("classifier approval blocks do not match detections")
-        configured_thresholds = self.classifier_metadata.approval_thresholds
-        if configured_thresholds is None:
-            staged_policy = self.classifier_metadata.staged_inference
-            default_threshold = (
-                self.classifier_metadata.approval_threshold
-                if staged_policy is None or staged_policy.approval_threshold is None
-                else staged_policy.approval_threshold
-            )
-            approval_thresholds = np.full(len(ordered), default_threshold, dtype=np.float32)
-        else:
-            approval_thresholds = np.asarray(
-                [
-                    self.classifier_metadata.approval_threshold
-                    if configured_thresholds[int(indices[0])] is None
-                    else configured_thresholds[int(indices[0])]
-                    for indices in decision_indices
-                ],
-                dtype=np.float32,
-            )
-        approved = approval_scores >= approval_thresholds
-        if approval_blocked is not None:
-            approved &= ~approval_blocked
-        mask_policy = self.classifier_metadata.neighbor_mask_inference
-        staged_policy = self.classifier_metadata.staged_inference
-        top3_safety_threshold = (
-            mask_policy.top3_safety_threshold
-            if mask_policy is not None
-            else (staged_policy.top3_safety_threshold if staged_policy is not None else None)
-        )
-        top3_unsafe = (
-            np.zeros(len(ordered), dtype=bool)
-            if top3_safety_scores is None or top3_safety_threshold is None
-            else top3_safety_scores < top3_safety_threshold
-        )
+        probabilities = batch.probabilities
+        ranking_probabilities = batch.ranking_probabilities
+        decision_indices = batch.decision_indices
+        approval_scores = batch.approval_scores
+        approved = batch.approved
+        top3_unsafe = batch.top3_unsafe
+        segment_recapture_reasons = batch.segment_recapture_reasons
+        unknown_reasons = batch.unknown_reasons
         duplicate_review_indices = {
             lower_index
             for lower_index, higher_index in _contained_detection_pairs(
@@ -330,7 +255,7 @@ class DecisionPipeline:
                 ordered,
                 decision_indices,
                 probabilities,
-                ranking_indices,
+                decision_indices,
                 ranking_probabilities,
             )
         ):
@@ -407,7 +332,7 @@ class DecisionPipeline:
                     top3=[],
                     confidence=(
                         0.0
-                        if ranking_scores is not None
+                        if batch.uses_explicit_ranking_scores
                         else float(candidate_scores[int(candidate_indices[0])])
                     ),
                 )
@@ -457,6 +382,18 @@ class DecisionPipeline:
         )
         self._log(response, detector_ms=detector_ms, classifier_ms=classifier_ms)
         return response
+
+    def close(self) -> None:
+        """Release optional runtime resources owned by pipeline adapters."""
+
+        closed: set[int] = set()
+        for adapter in (self.classifier, self.detector):
+            if id(adapter) in closed:
+                continue
+            closed.add(id(adapter))
+            close = getattr(adapter, "close", None)
+            if callable(close):
+                close()
 
     @staticmethod
     def _log(response: ScanResponse, *, detector_ms: float, classifier_ms: float) -> None:

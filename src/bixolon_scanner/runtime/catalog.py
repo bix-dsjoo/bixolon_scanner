@@ -260,9 +260,7 @@ class OnnxCatalogClassifier:
             crop_margin_ratio=runtime.metadata.embedder.crop_margin_ratio,
             crop_mode=runtime.metadata.embedder.crop_mode,
             approval_threshold=(
-                1.0
-                if self.adapter_weight is None
-                else float(runtime.metadata.classifier_policy.ridge_approval_minimum_margin)
+                1.0 if self.adapter_weight is None else self._ridge_approval_threshold()
             ),
             temperature=1.0,
             labels=[
@@ -290,6 +288,15 @@ class OnnxCatalogClassifier:
                 )
             ),
         )
+
+    def _ridge_approval_threshold(self) -> float:
+        if self.policy.ridge_approval_metric == "top2_pair_probability":
+            value = self.policy.ridge_approval_minimum_pair_probability
+        else:
+            value = self.policy.ridge_approval_minimum_margin
+        if value is None:
+            raise ValueError("ridge Catalog approval threshold is missing")
+        return float(value)
 
     def _class_scores(self, embeddings: np.ndarray) -> np.ndarray:
         support_similarity = embeddings @ self.supports.T
@@ -358,6 +365,7 @@ class OnnxCatalogClassifier:
         return ClassificationResult(
             logits=cosine_scores,
             ranking_logits=cosine_scores,
+            retrieval_logits=cosine_scores,
             approval_scores=approval_scores,
             ranking_scores=ranking_scores,
             segment_recapture_reasons=tuple(recapture_reasons),
@@ -376,17 +384,20 @@ class OnnxCatalogClassifier:
     ) -> ClassificationResult:
         if self.adapter_weight is None or self.adapter_bias is None:
             raise ValueError("Catalog adapter is not loaded")
-        minimum_margin = self.policy.ridge_approval_minimum_margin
+        approval_threshold = self._ridge_approval_threshold()
         minimum_entropy = self.policy.ridge_top3_minimum_inverse_entropy
-        if minimum_margin is None or minimum_entropy is None:
+        if minimum_entropy is None:
             raise ValueError("ridge Catalog policy is incomplete")
         logits = l2_normalize(embeddings) @ self.adapter_weight + self.adapter_bias
         logit_order = np.argsort(-logits, axis=1, kind="stable")
         sorted_logits = np.take_along_axis(logits, logit_order, axis=1)
-        normalized_margin = (sorted_logits[:, 0] - sorted_logits[:, 1]) / np.linalg.norm(
-            logits, axis=1
-        ).clip(min=1e-12)
-        approval_scores = np.clip(normalized_margin, 0.0, 1.0).astype(np.float32)
+        logit_gap = sorted_logits[:, 0] - sorted_logits[:, 1]
+        normalized_margin = logit_gap / np.linalg.norm(logits, axis=1).clip(min=1e-12)
+        if self.policy.ridge_approval_metric == "top2_pair_probability":
+            scaled_gap = logit_gap / np.float32(self.policy.ridge_pair_temperature)
+            approval_scores = (1.0 / (1.0 + np.exp(-scaled_gap))).astype(np.float32)
+        else:
+            approval_scores = np.clip(normalized_margin, 0.0, 1.0).astype(np.float32)
         probabilities = self._softmax(logits)
         ranks = np.empty_like(logit_order)
         np.put_along_axis(
@@ -409,29 +420,38 @@ class OnnxCatalogClassifier:
             top_ids = tuple(self.labels[int(index)].class_id for index in indices[:2])
             pair = tuple(sorted(top_ids)) if len(top_ids) == 2 else None
             restricted = top_ids[0] in self.restricted_ids or pair in self.restricted_pairs
-            retrieval_agrees = int(indices[0]) == int(retrieval_order[row, 0])
+            heads_disagree = int(indices[0]) != int(retrieval_order[row, 0])
+            disagreement_threshold = self.policy.ridge_disagreement_minimum_pair_probability
+            disagreement_ambiguous = (
+                heads_disagree
+                and disagreement_threshold is not None
+                and approval_scores[row] < disagreement_threshold
+            )
+            agreement_blocked = self.policy.ridge_require_retrieval_agreement and heads_disagree
             retrieval_too_low = (
                 retrieval_minimum is not None and retrieval_top1[row] < retrieval_minimum
             )
-            agreement_blocked = (
-                self.policy.ridge_require_retrieval_agreement and not retrieval_agrees
+            approval_blocked[row] = (
+                restricted or disagreement_ambiguous or agreement_blocked or retrieval_too_low
             )
-            approval_blocked[row] = restricted or agreement_blocked or retrieval_too_low
             if retrieval_too_low or retrieval_top1[row] < self.policy.ood_maximum_similarity:
                 recapture_reasons.append("CLASSIFIER_OUT_OF_CATALOG")
             else:
                 recapture_reasons.append(None)
             if restricted:
                 unknown_reasons.append("CLASSIFIER_CATALOG_CONFLICT")
-            elif agreement_blocked:
-                unknown_reasons.append("CLASSIFIER_AMBIGUOUS_TOP2")
-            elif normalized_margin[row] < minimum_margin:
+            elif (
+                approval_scores[row] < approval_threshold
+                or disagreement_ambiguous
+                or agreement_blocked
+            ):
                 unknown_reasons.append("CLASSIFIER_AMBIGUOUS_TOP2")
             else:
                 unknown_reasons.append("BELOW_APPROVAL_THRESHOLD")
         return ClassificationResult(
             logits=logits.astype(np.float32),
             ranking_logits=ranking_logits.astype(np.float32),
+            retrieval_logits=retrieval_scores.astype(np.float32),
             approval_scores=approval_scores,
             ranking_scores=ranking_scores,
             top3_safety_scores=inverse_entropy.astype(np.float32),

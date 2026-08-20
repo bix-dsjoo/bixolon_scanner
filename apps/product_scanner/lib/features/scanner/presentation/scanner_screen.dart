@@ -4,7 +4,6 @@ import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../../activity/presentation/activity_screen.dart';
 import '../../../core/design_system/components.dart';
 import '../../../core/design_system/copy.dart';
 import '../../../core/design_system/theme.dart';
@@ -22,17 +21,28 @@ part 'review_inspector.dart';
 part 'product_picker.dart';
 part 'review_footer.dart';
 
+typedef ActivityWorkspaceBuilder =
+    Widget Function(
+      BuildContext context, {
+      required bool active,
+      required bool canChooseImageShortcut,
+      required VoidCallback onChooseImageShortcut,
+      required VoidCallback onNavigateToScan,
+    });
+
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({
     super.key,
     required this.controller,
     required this.autoInitialize,
     required this.disposeController,
+    this.activityWorkspaceBuilder,
   });
 
   final ScannerController controller;
   final bool autoInitialize;
   final bool disposeController;
+  final ActivityWorkspaceBuilder? activityWorkspaceBuilder;
 
   @override
   State<ScannerScreen> createState() => _ScannerScreenState();
@@ -331,11 +341,10 @@ class _ScannerScreenState extends State<ScannerScreen>
                         index: _section.index,
                         children: [
                           _scanWorkspace(controller),
-                          if (_activityMounted)
-                            ActivityScreen(
-                              loadLogs: controller.loadScanLogs,
-                              dataRevision: controller.activityDataRevision,
-                              latestSavedScanId: controller.latestSavedScanId,
+                          if (_activityMounted &&
+                              widget.activityWorkspaceBuilder != null)
+                            widget.activityWorkspaceBuilder!(
+                              context,
                               active: _section == _WorkspaceSection.activity,
                               canChooseImageShortcut: controller.canChooseImage,
                               onChooseImageShortcut: () =>

@@ -15,6 +15,7 @@ from sklearn.model_selection import GroupKFold
 from sklearn.pipeline import make_pipeline
 from sklearn.preprocessing import StandardScaler
 
+from ...configuration import load_json_config
 from ...training.calibration import softmax
 from .data_scale import LEVELS, evaluate_worker_taxonomy
 from .worker_gate import _iou, postprocess_worker_gate
@@ -377,7 +378,7 @@ def main() -> None:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--seed", type=int, default=20260810)
     args = parser.parse_args()
-    config = json.loads(args.config.read_text(encoding="utf-8"))
+    config = load_json_config(args.config)
     run_dir = args.output_dir / "runs" / "full" / f"seed{args.seed}"
     calibration = json.loads((run_dir / "calibration.json").read_text(encoding="utf-8"))
     temperature = float(calibration["temperature"])

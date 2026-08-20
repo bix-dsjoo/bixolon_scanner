@@ -9,6 +9,7 @@ from pydantic import ValidationError
 from bixolon_scanner.contracts.catalog import sha256_file
 from bixolon_scanner.contracts.errors import PackageValidationError
 from bixolon_scanner.contracts.runtime_package_v2 import (
+    CatalogDecisionPolicy,
     RuntimePackageV2Metadata,
     load_runtime_package_v2,
 )
@@ -111,3 +112,37 @@ def test_runtime_package_v2_rejects_license_path_escape(tmp_path: Path) -> None:
 
     with pytest.raises(ValidationError):
         RuntimePackageV2Metadata.model_validate(payload)
+
+
+def test_runtime_package_v2_rejects_model_path_escape(tmp_path: Path) -> None:
+    root = tmp_path / "package"
+    root.mkdir()
+    outside = tmp_path / "outside.onnx"
+    outside.write_bytes(b"outside")
+    payload = _metadata(root)
+    payload["detector"]["filename"] = "../outside.onnx"
+    payload["checksums"].pop("detector.onnx")
+    payload["checksums"]["../outside.onnx"] = sha256_file(outside)
+    _write_package(root, payload)
+
+    with pytest.raises(PackageValidationError):
+        load_runtime_package_v2(root)
+
+
+def test_pair_probability_policy_requires_stricter_disagreement_threshold() -> None:
+    payload = {
+        "version": "2.0.0-rc.8",
+        "prototype_weight": 0.5,
+        "support_top_k": 3,
+        "approval_minimum_similarity": 1.0,
+        "approval_minimum_margin": 0.1,
+        "ood_maximum_similarity": 0.4,
+        "top3_minimum_similarity": -1.0,
+        "catalog_conflict_similarity": 0.95,
+        "ridge_approval_metric": "top2_pair_probability",
+        "ridge_approval_minimum_pair_probability": 0.55,
+        "ridge_disagreement_minimum_pair_probability": 0.54,
+    }
+
+    with pytest.raises(ValidationError):
+        CatalogDecisionPolicy.model_validate(payload)

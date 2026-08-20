@@ -538,6 +538,7 @@ def test_contract_hashes_are_component_independent(tmp_path: Path) -> None:
     assert canonical_contract_sha256(left) != canonical_contract_sha256(right)
 
 
-def test_unified_cli_exposes_pipeline_and_release_verification() -> None:
+def test_unified_cli_exposes_pipeline_and_version_bundle_verification() -> None:
     assert ("train", "verify-pipeline") in COMMANDS
-    assert ("release", "verify") in COMMANDS
+    assert ("bundle", "verify") in COMMANDS
+    assert not any(path[0] == "release" for path in COMMANDS)

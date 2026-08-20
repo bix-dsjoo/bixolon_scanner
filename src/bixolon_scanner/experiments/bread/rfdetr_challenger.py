@@ -8,6 +8,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
+from ...configuration import load_json_config
+
 
 def _sha256(path: Path) -> str:
     digest = hashlib.sha256()
@@ -18,7 +20,7 @@ def _sha256(path: Path) -> str:
 
 
 def load_config(path: Path) -> dict[str, Any]:
-    config = json.loads(path.read_text(encoding="utf-8"))
+    config = load_json_config(path)
     if config.get("schema_version") != "1.0":
         raise ValueError("unsupported RF-DETR challenger config schema")
     folds = [int(value) for value in config["dataset"]["folds"]]

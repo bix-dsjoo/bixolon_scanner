@@ -12,6 +12,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from .errors import PackageValidationError
+from .package_files import resolve_package_file, validate_package_filename
 
 SEMVER = re.compile(r"^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-[0-9A-Za-z.-]+)?$")
 SHA256 = re.compile(r"^[0-9a-f]{64}$")
@@ -92,6 +93,8 @@ class CatalogMetadata(BaseModel):
     source_manifest_sha256: str
     decision_head: Literal["exact_retrieval", "ridge_adapter"] = "exact_retrieval"
     adapter_filename: str | None = None
+
+    _validate_adapter_filename = field_validator("adapter_filename")(validate_package_filename)
 
     @field_validator("catalog_version", "embedder_version", "classifier_policy_version")
     @classmethod
@@ -213,24 +216,26 @@ def load_store_catalog_package(
         required.add(metadata.adapter_filename)
     if set(checksums) != required:
         raise PackageValidationError
+    resolved_files: dict[str, Path] = {}
     for filename, expected in checksums.items():
         if not isinstance(expected, str) or not SHA256.fullmatch(expected):
             raise PackageValidationError
-        path = catalog_root / filename
-        if not path.is_file() or sha256_file(path) != expected:
+        path = resolve_package_file(catalog_root, filename)
+        if sha256_file(path) != expected:
             raise PackageValidationError
-    source_manifest = catalog_root / "source-manifest.jsonl"
+        resolved_files[filename] = path
+    source_manifest = resolved_files["source-manifest.jsonl"]
     if sha256_file(source_manifest) != metadata.source_manifest_sha256:
         raise PackageValidationError
     return StoreCatalogPackage(
         root=catalog_root,
         metadata=metadata,
         activation=activation,
-        supports_path=catalog_root / "supports.bin",
-        prototypes_path=catalog_root / "prototypes.bin",
-        statistics_path=catalog_root / "statistics.json",
+        supports_path=resolved_files["supports.bin"],
+        prototypes_path=resolved_files["prototypes.bin"],
+        statistics_path=resolved_files["statistics.json"],
         source_manifest_path=source_manifest,
         adapter_path=(
-            None if metadata.adapter_filename is None else catalog_root / metadata.adapter_filename
+            None if metadata.adapter_filename is None else resolved_files[metadata.adapter_filename]
         ),
     )

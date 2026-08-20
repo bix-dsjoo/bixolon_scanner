@@ -10,6 +10,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from .catalog import SEMVER, SHA256, sha256_file
 from .errors import PackageValidationError
 from .model_package import DetectorMetadata, InputMetadata, ModelSource, QualityMetadata
+from .package_files import resolve_package_file, validate_package_filename
 
 
 class EmbedderMetadata(BaseModel):
@@ -33,6 +34,8 @@ class EmbedderMetadata(BaseModel):
     neighbor_distance_bias: float = Field(default=0.0, ge=0.0)
     neighbor_shared_scale: bool = False
 
+    _validate_filename = field_validator("filename")(validate_package_filename)
+
     @field_validator("version")
     @classmethod
     def validate_version(cls, value: str) -> str:
@@ -49,6 +52,8 @@ class MetricProjectionMetadata(BaseModel):
     output_dimension: int = Field(gt=0)
     residual_weight: float = Field(default=1.0, ge=0.0)
     projection_weight: float = Field(default=0.0, ge=0.0)
+
+    _validate_filename = field_validator("filename")(validate_package_filename)
 
     @model_validator(mode="after")
     def validate_projection(self) -> "MetricProjectionMetadata":
@@ -113,7 +118,13 @@ class CatalogDecisionPolicy(BaseModel):
     ood_maximum_similarity: float = Field(ge=-1.0, le=1.0)
     top3_minimum_similarity: float = Field(ge=-1.0, le=1.0)
     catalog_conflict_similarity: float = Field(ge=-1.0, le=1.0)
+    ridge_approval_metric: Literal["l2_normalized_logit_margin", "top2_pair_probability"] = (
+        "l2_normalized_logit_margin"
+    )
     ridge_approval_minimum_margin: float | None = Field(default=None, ge=0.0)
+    ridge_approval_minimum_pair_probability: float | None = Field(default=None, ge=0.5, le=1.0)
+    ridge_disagreement_minimum_pair_probability: float | None = Field(default=None, ge=0.5, le=1.0)
+    ridge_pair_temperature: float = Field(default=1.0, gt=0.0)
     ridge_top3_minimum_inverse_entropy: float | None = Field(default=None, le=0.0)
     ridge_require_retrieval_agreement: bool = False
     ridge_retrieval_minimum_similarity: float | None = Field(default=None, ge=-1.0, le=1.0)
@@ -135,6 +146,24 @@ class CatalogDecisionPolicy(BaseModel):
             raise ValueError("OOD similarity threshold cannot exceed approval similarity threshold")
         if self.top3_minimum_similarity > self.approval_minimum_similarity:
             raise ValueError("Top-3 threshold cannot exceed approval similarity threshold")
+        if self.ridge_approval_metric == "top2_pair_probability":
+            if self.ridge_approval_minimum_pair_probability is None:
+                raise ValueError("Top-2 pair approval requires a pair probability threshold")
+            if self.ridge_approval_minimum_margin is not None:
+                raise ValueError("Top-2 pair approval cannot also configure the legacy margin")
+            if (
+                self.ridge_disagreement_minimum_pair_probability is not None
+                and self.ridge_disagreement_minimum_pair_probability
+                < self.ridge_approval_minimum_pair_probability
+            ):
+                raise ValueError(
+                    "Ridge disagreement threshold cannot be lower than the base pair threshold"
+                )
+        elif (
+            self.ridge_approval_minimum_pair_probability is not None
+            or self.ridge_disagreement_minimum_pair_probability is not None
+        ):
+            raise ValueError("Legacy Ridge margin approval cannot configure pair thresholds")
         return self
 
 
@@ -148,6 +177,8 @@ class DetectorRefinementMetadata(BaseModel):
     containment_threshold: float = Field(gt=0.0, le=1.0)
     group_minimum: int = Field(ge=2)
     agreement_iou_threshold: float = Field(ge=0.0, le=1.0)
+
+    _validate_filename = field_validator("filename")(validate_package_filename)
 
 
 class DetectorAmbiguityPolicyMetadata(BaseModel):
@@ -172,7 +203,8 @@ class RuntimePackageV2Metadata(BaseModel):
 
     schema_version: Literal["2.0"] = "2.0"
     worker_version: str
-    promotion_status: Literal["development", "independent_test_pending", "production"]
+    # Legacy packages may contain this field. Version bundles no longer emit it.
+    promotion_status: Literal["development", "independent_test_pending", "production"] | None = None
     dataset_version: str
     detector_policy_version: str
     detector_class_count: int = Field(default=20, gt=0)
@@ -244,21 +276,23 @@ def load_runtime_package_v2(root: Path) -> RuntimePackageV2:
     required.update(metadata.license_files)
     if set(metadata.checksums) != required:
         raise PackageValidationError
+    resolved_files: dict[str, Path] = {}
     for filename, expected in metadata.checksums.items():
         if not SHA256.fullmatch(expected):
             raise PackageValidationError
-        path = package_root / filename
-        if not path.is_file() or sha256_file(path) != expected:
+        path = resolve_package_file(package_root, filename)
+        if sha256_file(path) != expected:
             raise PackageValidationError
+        resolved_files[filename] = path
     projection_path = (
         None
         if metadata.metric_projection.filename is None
-        else package_root / metadata.metric_projection.filename
+        else resolved_files[metadata.metric_projection.filename]
     )
     return RuntimePackageV2(
         root=package_root,
         metadata=metadata,
-        detector_path=package_root / metadata.detector.filename,
-        embedder_path=package_root / metadata.embedder.filename,
+        detector_path=resolved_files[metadata.detector.filename],
+        embedder_path=resolved_files[metadata.embedder.filename],
         metric_projection_path=projection_path,
     )

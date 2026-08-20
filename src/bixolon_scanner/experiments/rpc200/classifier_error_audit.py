@@ -8,6 +8,7 @@ from typing import Any
 import numpy as np
 from PIL import Image, ImageDraw
 
+from ...configuration import load_json_config
 from ...training.calibration import softmax
 from .class_aware_nms import _keep_indices
 from .context_rejector import _geometry_features, _read_jsonl
@@ -59,7 +60,7 @@ def main() -> None:
     parser.add_argument("--role", choices=("calibration", "selection"), default="selection")
     args = parser.parse_args()
 
-    config = json.loads(args.config.read_text(encoding="utf-8"))
+    config = load_json_config(args.config)
     root = args.output_dir
     run_dir = root / "runs" / "full" / f"seed{args.seed}"
     detector_dir = root / "detector"
