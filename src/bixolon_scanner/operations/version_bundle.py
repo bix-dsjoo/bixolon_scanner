@@ -82,6 +82,7 @@ class VersionBundleConfig(BaseModel):
     schema_version: str = Field(pattern=r"^1\.0$")
     version: str
     app_build: int = Field(ge=1)
+    source_date_epoch: int = Field(default=0, ge=0)
     source_candidate: str = Field(min_length=1)
     runtime: ArtifactLock
     catalog: CatalogLock

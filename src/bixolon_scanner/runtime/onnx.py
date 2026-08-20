@@ -150,6 +150,7 @@ class OrtRunner:
                 raise ProviderInitializationError
             options = ort.SessionOptions()
             options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            options.log_severity_level = 3
             provider_options = {"use_tf32": "0"}
             if enable_cuda_graph and provider == "cuda":
                 provider_options["enable_cuda_graph"] = "1"

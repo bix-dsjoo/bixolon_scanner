@@ -14,6 +14,8 @@ constexpr wchar_t kPackageEnvironmentName[] = L"BIXOLON_PACKAGE_DIR";
 constexpr wchar_t kCatalogEnvironmentName[] = L"BIXOLON_CATALOG_DIR";
 constexpr wchar_t kProviderEnvironmentName[] = L"BIXOLON_PROVIDER";
 constexpr wchar_t kCudaDllEnvironmentName[] = L"BIXOLON_CUDA_DLL_DIR";
+constexpr wchar_t kLogToStderrEnvironmentName[] =
+    L"BIXOLON_LOG_TO_STDERR";
 
 std::optional<std::wstring> ReadEnvironmentVariable(const wchar_t* name) {
   const DWORD required = ::GetEnvironmentVariableW(name, nullptr, 0);
@@ -143,6 +145,8 @@ bool WorkerProcess::Start() {
       ReadEnvironmentVariable(kProviderEnvironmentName);
   const auto existing_cuda_dll_directory =
       ReadEnvironmentVariable(kCudaDllEnvironmentName);
+  const auto existing_log_to_stderr =
+      ReadEnvironmentVariable(kLogToStderrEnvironmentName);
   const auto bundled_cuda_runtime =
       FindBundledCudaRuntime(executable_directory);
   if (!existing_package) {
@@ -201,6 +205,12 @@ bool WorkerProcess::Start() {
   PROCESS_INFORMATION process_information = {};
   std::wstring command_line = L"\"" + worker_executable.wstring() + L"\"";
 
+  if (!existing_log_to_stderr) {
+    // The GUI process has no console handles. Prevent the child from trying
+    // to emit access logs through an invalid inherited stderr stream.
+    ::SetEnvironmentVariableW(kLogToStderrEnvironmentName, L"0");
+  }
+
   const BOOL created = ::CreateProcessW(
       worker_executable.c_str(), command_line.data(), nullptr, nullptr, FALSE,
       CREATE_NO_WINDOW | CREATE_SUSPENDED, nullptr,
@@ -212,6 +222,8 @@ bool WorkerProcess::Start() {
   RestoreEnvironmentVariable(kProviderEnvironmentName, existing_provider);
   RestoreEnvironmentVariable(kCudaDllEnvironmentName,
                              existing_cuda_dll_directory);
+  RestoreEnvironmentVariable(kLogToStderrEnvironmentName,
+                             existing_log_to_stderr);
 
   if (!created) {
     ::CloseHandle(job_);

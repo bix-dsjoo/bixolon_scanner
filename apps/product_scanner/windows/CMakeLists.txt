@@ -132,6 +132,12 @@ install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   CONFIGURATIONS Profile;Release
   COMPONENT Runtime)
 
+# Fully re-copy the Worker tree so excluded modules from an older PyInstaller
+# build cannot survive in the release bundle.
+install(CODE "
+  file(REMOVE_RECURSE \"${CMAKE_INSTALL_PREFIX}/worker\")
+  " COMPONENT Runtime)
+
 # Bundle the standalone ONNX Runtime Worker beside the Windows application.
 if(EXISTS "${SCANNER_WORKER_RUNTIME_DIR}/bixolon-worker.exe")
   install(DIRECTORY "${SCANNER_WORKER_RUNTIME_DIR}/"

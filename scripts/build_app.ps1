@@ -34,6 +34,7 @@ if ([string]$config.version -ne $Version) {
     throw "Version config identity mismatch: $configPath"
 }
 $appBuild = [int]$config.app_build
+$sourceDateEpoch = [long]$config.source_date_epoch
 $versionRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $repositoryRoot ([string]$config.output_root + "/" + $Version)))
 $workerOutput = "artifacts/versions/$Version/worker-build"
@@ -52,7 +53,8 @@ try {
 
     & (Join-Path $PSScriptRoot "build_worker.ps1") `
         -PythonExecutable $PythonExecutable `
-        -OutputDirectory $workerOutput
+        -OutputDirectory $workerOutput `
+        -SourceDateEpoch $sourceDateEpoch
     if ($LASTEXITCODE -ne 0) {
         throw "Worker build failed with exit code $LASTEXITCODE."
     }

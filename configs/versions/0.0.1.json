@@ -2,6 +2,7 @@
   "schema_version": "1.0",
   "version": "0.0.1",
   "app_build": 1,
+  "source_date_epoch": 1787184000,
   "source_candidate": "2.0.1-rc.3",
   "runtime": {
     "path": "artifacts/packages/bread-scanner-2.0.1-rc.3-dinov3-vitb16-single-objects-validated-runtime",
