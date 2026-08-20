@@ -17,6 +17,7 @@ from bixolon_scanner.operations.version_bundle import (
     VersionBundleConfig,
     prepare_version_bundle,
     verify_prepared_version,
+    write_final_bundle_manifest,
 )
 
 
@@ -128,6 +129,8 @@ def _config(root: Path) -> VersionBundleConfig:
     _write_catalog(catalog)
     cuda.mkdir()
     (cuda / "cudart64_13.dll").write_bytes(b"cuda")
+    (cuda / "cublas64_13.dll").write_bytes(b"cublas")
+    (cuda / "cudnn64_9.dll").write_bytes(b"cudnn")
     evidence.write_text("{}", encoding="utf-8")
     return VersionBundleConfig.model_validate(
         {
@@ -147,7 +150,7 @@ def _config(root: Path) -> VersionBundleConfig:
             "cuda_runtime": {
                 "path": "artifacts/cuda",
                 "manifest_sha256": directory_content_manifest(cuda)["manifest_sha256"],
-                "files": ["cudart64_13.dll"],
+                "files": ["cublas64_13.dll", "cudart64_13.dll", "cudnn64_9.dll"],
             },
             "evaluation_evidence": [
                 {"path": "artifacts/evaluation.json", "sha256": sha256_file(evidence)}
@@ -217,31 +220,19 @@ def test_version_bundle_verifies_the_complete_windows_bundle(tmp_path: Path) -> 
     (worker / "bixolon-worker.exe").write_bytes(b"worker")
     shutil.copy2(staging / "version.json", bundle / "version.json")
     shutil.copy2(staging / "provenance.json", bundle / "provenance.json")
-    files = [
-        {
-            "path": path.relative_to(bundle).as_posix(),
-            "size_bytes": path.stat().st_size,
-            "sha256": sha256_file(path),
-        }
-        for path in sorted(candidate for candidate in bundle.rglob("*") if candidate.is_file())
-    ]
-    (bundle / "bundle-manifest.json").write_text(
-        json.dumps(
-            {
-                "schema_version": "1.0",
-                "version": "0.0.1",
-                "app_build": 1,
-                "file_count": len(files),
-                "files": files,
-            }
-        ),
-        encoding="utf-8",
-    )
+    with pytest.raises(ValueError, match="product_scanner.exe"):
+        write_final_bundle_manifest(config, repository_root=tmp_path, bundle=bundle)
+    (bundle / "product_scanner.exe").write_bytes(b"app")
+
+    written = write_final_bundle_manifest(config, repository_root=tmp_path, bundle=bundle)
 
     result = verify_prepared_version(config, repository_root=tmp_path)
 
+    assert written["file_count"] > 0
     assert result["bundle_path"] == bundle.as_posix()
     assert result["bundle_manifest_sha256"] == sha256_file(bundle / "bundle-manifest.json")
+    with pytest.raises(ValueError, match="already exists"):
+        write_final_bundle_manifest(config, repository_root=tmp_path, bundle=bundle)
     (worker / "model-package" / "detector.onnx").write_bytes(b"tampered")
     with pytest.raises(ValueError, match="final bundle manifest mismatch"):
         verify_prepared_version(config, repository_root=tmp_path)

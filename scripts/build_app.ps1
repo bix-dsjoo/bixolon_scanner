@@ -6,24 +6,6 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-function Get-RelativeVersionPath {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$BasePath,
-        [Parameter(Mandatory = $true)]
-        [string]$TargetPath
-    )
-
-    $baseFullPath = [System.IO.Path]::GetFullPath($BasePath).TrimEnd("\") + "\"
-    $targetFullPath = [System.IO.Path]::GetFullPath($TargetPath)
-    if (-not $targetFullPath.StartsWith(
-            $baseFullPath,
-            [System.StringComparison]::OrdinalIgnoreCase)) {
-        throw "Version path is outside its expected root: $targetFullPath"
-    }
-    return $targetFullPath.Substring($baseFullPath.Length).Replace("\", "/")
-}
-
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $configPath = Join-Path $repositoryRoot "configs/versions/$Version.json"
 if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
@@ -101,52 +83,6 @@ try {
     Copy-Item -LiteralPath (Join-Path $versionRoot "staging/provenance.json") `
         -Destination $temporaryBundle
 
-    $required = @(
-        "product_scanner.exe",
-        "worker/bixolon-worker.exe",
-        "worker/model-package/metadata.json",
-        "worker/store-catalog/catalog.json",
-        "worker/store-catalog/checksums.json",
-        "worker/model-package/licenses/APACHE-2.0.txt",
-        "worker/model-package/licenses/DINOV3-LICENSE.md",
-        "worker/model-package/licenses/THIRD_PARTY_MODELS.md",
-        "worker/cuda-runtime/cudart64_13.dll",
-        "worker/cuda-runtime/cublas64_13.dll",
-        "worker/cuda-runtime/cudnn64_9.dll"
-    )
-    foreach ($relative in $required) {
-        $path = Join-Path $temporaryBundle $relative
-        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
-            throw "Version bundle is missing a required file: $relative"
-        }
-    }
-    if (Test-Path -LiteralPath (
-            Join-Path $temporaryBundle "worker/store-catalog/signature.json")) {
-        throw "Version bundle must not contain a Catalog signature."
-    }
-
-    $runtimeMetadata = Get-Content -Raw -LiteralPath (
-        Join-Path $temporaryBundle "worker/model-package/metadata.json") | ConvertFrom-Json
-    $catalogMetadata = Get-Content -Raw -LiteralPath (
-        Join-Path $temporaryBundle "worker/store-catalog/catalog.json") | ConvertFrom-Json
-    $componentVersions = @(
-        [string]$runtimeMetadata.worker_version,
-        [string]$runtimeMetadata.detector.version,
-        [string]$runtimeMetadata.embedder.version,
-        [string]$runtimeMetadata.detector_policy_version,
-        [string]$runtimeMetadata.classifier_policy.version,
-        [string]$catalogMetadata.catalog_version,
-        [string]$catalogMetadata.embedder_version,
-        [string]$catalogMetadata.classifier_policy_version
-    )
-    if (@($componentVersions | Where-Object { $_ -ne $Version }).Count -ne 0) {
-        throw "Version bundle contains mixed component versions."
-    }
-    if ($null -ne $runtimeMetadata.promotion_status -or
-        $null -ne $runtimeMetadata.promotion) {
-        throw "Version bundle contains a lifecycle field."
-    }
-
     $productExecutable = Join-Path $temporaryBundle "product_scanner.exe"
     $productVersion = [System.Diagnostics.FileVersionInfo]::GetVersionInfo(
         $productExecutable).ProductVersion
@@ -154,26 +90,20 @@ try {
         throw "Windows ProductVersion does not match ${Version}: $productVersion"
     }
 
-    $files = Get-ChildItem -LiteralPath $temporaryBundle -Recurse -File |
-        Sort-Object FullName |
-        ForEach-Object {
-            [ordered]@{
-                path = Get-RelativeVersionPath `
-                    -BasePath $temporaryBundle `
-                    -TargetPath $_.FullName
-                size_bytes = $_.Length
-                sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
-            }
+    $manifestPythonPath = $env:PYTHONPATH
+    try {
+        $env:PYTHONPATH = $sourceDirectory
+        & $PythonExecutable -m bixolon_scanner.operations.version_bundle manifest `
+            --config $configPath `
+            --repository-root $repositoryRoot `
+            --bundle $temporaryBundle
+        if ($LASTEXITCODE -ne 0) {
+            throw "Bundle manifest generation failed with exit code $LASTEXITCODE."
         }
-    $manifest = [ordered]@{
-        schema_version = "1.0"
-        version = $Version
-        app_build = $appBuild
-        file_count = @($files).Count
-        files = @($files)
     }
-    $manifest | ConvertTo-Json -Depth 8 | Set-Content -Encoding UTF8 `
-        -LiteralPath (Join-Path $temporaryBundle "bundle-manifest.json")
+    finally {
+        $env:PYTHONPATH = $manifestPythonPath
+    }
     [System.IO.Directory]::Move($temporaryBundle, $targetBundle)
 }
 catch {

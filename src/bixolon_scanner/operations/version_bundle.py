@@ -14,6 +14,20 @@ from ..contracts.artifact import directory_content_manifest
 from ..contracts.catalog import SEMVER, SHA256, load_store_catalog_package, sha256_file
 from ..contracts.runtime_package_v2 import load_runtime_package_v2
 
+FINAL_BUNDLE_REQUIRED_FILES = (
+    "product_scanner.exe",
+    "worker/bixolon-worker.exe",
+    "worker/model-package/metadata.json",
+    "worker/store-catalog/catalog.json",
+    "worker/store-catalog/checksums.json",
+    "worker/model-package/licenses/APACHE-2.0.txt",
+    "worker/model-package/licenses/DINOV3-LICENSE.md",
+    "worker/model-package/licenses/THIRD_PARTY_MODELS.md",
+    "worker/cuda-runtime/cudart64_13.dll",
+    "worker/cuda-runtime/cublas64_13.dll",
+    "worker/cuda-runtime/cudnn64_9.dll",
+)
+
 
 class ArtifactLock(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -383,15 +397,9 @@ def verify_prepared_version(
     return result
 
 
-def _verify_final_bundle(
-    config: VersionBundleConfig,
-    *,
-    staging: Path,
-    bundle: Path,
-) -> dict[str, Any]:
+def _final_bundle_file_records(bundle: Path) -> list[dict[str, Any]]:
     manifest_path = bundle / "bundle-manifest.json"
-    manifest = _read_json(manifest_path)
-    actual_files = [
+    return [
         {
             "path": path.relative_to(bundle).as_posix(),
             "size_bytes": path.stat().st_size,
@@ -400,6 +408,71 @@ def _verify_final_bundle(
         for path in sorted(candidate for candidate in bundle.rglob("*") if candidate.is_file())
         if path != manifest_path
     ]
+
+
+def _validate_final_bundle_content(
+    config: VersionBundleConfig,
+    *,
+    staging: Path,
+    bundle: Path,
+) -> None:
+    if _read_json(bundle / "version.json") != _read_json(staging / "version.json"):
+        raise ValueError("final bundle version identity mismatch")
+    if _read_json(bundle / "provenance.json") != _read_json(staging / "provenance.json"):
+        raise ValueError("final bundle provenance mismatch")
+    runtime = bundle / "worker" / "model-package"
+    catalog = bundle / "worker" / "store-catalog"
+    _validate_composition(config, runtime, catalog)
+    for relative in FINAL_BUNDLE_REQUIRED_FILES:
+        if not (bundle / relative).is_file():
+            raise ValueError(f"final bundle is missing a required file: {relative}")
+
+
+def write_final_bundle_manifest(
+    config: VersionBundleConfig,
+    *,
+    repository_root: Path,
+    bundle: Path,
+) -> dict[str, Any]:
+    """Validate a temporary Windows bundle and write its canonical file manifest."""
+
+    root = repository_root.absolute()
+    version_root = _repository_path(root, f"{config.output_root}/{config.version}").resolve()
+    staging = version_root / "staging"
+    target = bundle.resolve()
+    if target.parent != version_root or not target.is_dir():
+        raise ValueError("final bundle must be a direct child of the configured version root")
+    manifest_path = target / "bundle-manifest.json"
+    if manifest_path.exists():
+        raise ValueError("final bundle manifest already exists")
+    _validate_final_bundle_content(config, staging=staging, bundle=target)
+    files = _final_bundle_file_records(target)
+    manifest = {
+        "schema_version": "1.0",
+        "version": config.version,
+        "app_build": config.app_build,
+        "file_count": len(files),
+        "files": files,
+    }
+    _write_json(manifest_path, manifest)
+    return {
+        "version": config.version,
+        "bundle_path": target.as_posix(),
+        "bundle_manifest_sha256": sha256_file(manifest_path),
+        "file_count": len(files),
+        "passed": True,
+    }
+
+
+def _verify_final_bundle(
+    config: VersionBundleConfig,
+    *,
+    staging: Path,
+    bundle: Path,
+) -> dict[str, Any]:
+    manifest_path = bundle / "bundle-manifest.json"
+    manifest = _read_json(manifest_path)
+    actual_files = _final_bundle_file_records(bundle)
     recorded_files = manifest.get("files")
     if not isinstance(recorded_files, list):
         raise ValueError("final bundle manifest has no file list")
@@ -414,22 +487,7 @@ def _verify_final_bundle(
         or recorded_by_path != actual_by_path
     ):
         raise ValueError("final bundle manifest mismatch")
-    if _read_json(bundle / "version.json") != _read_json(staging / "version.json"):
-        raise ValueError("final bundle version identity mismatch")
-    if _read_json(bundle / "provenance.json") != _read_json(staging / "provenance.json"):
-        raise ValueError("final bundle provenance mismatch")
-    runtime = bundle / "worker" / "model-package"
-    catalog = bundle / "worker" / "store-catalog"
-    _validate_composition(config, runtime, catalog)
-    for relative in (
-        "worker/bixolon-worker.exe",
-        "worker/model-package/licenses/APACHE-2.0.txt",
-        "worker/model-package/licenses/DINOV3-LICENSE.md",
-        "worker/model-package/licenses/THIRD_PARTY_MODELS.md",
-        "worker/cuda-runtime/cudart64_13.dll",
-    ):
-        if not (bundle / relative).is_file():
-            raise ValueError(f"final bundle is missing a required file: {relative}")
+    _validate_final_bundle_content(config, staging=staging, bundle=bundle)
     return {
         "bundle_path": bundle.as_posix(),
         "bundle_manifest_sha256": sha256_file(manifest_path),
@@ -443,12 +501,25 @@ def main(argv: list[str] | None = None) -> None:
         command = subparsers.add_parser(action)
         command.add_argument("--config", type=Path, required=True)
         command.add_argument("--repository-root", type=Path, default=Path("."))
+    manifest_command = subparsers.add_parser("manifest")
+    manifest_command.add_argument("--config", type=Path, required=True)
+    manifest_command.add_argument("--repository-root", type=Path, default=Path("."))
+    manifest_command.add_argument("--bundle", type=Path, required=True)
     args = parser.parse_args(argv)
     config = load_version_config(args.config)
-    operation = prepare_version_bundle if args.action == "prepare" else verify_prepared_version
+    if args.action == "prepare":
+        result = prepare_version_bundle(config, repository_root=args.repository_root)
+    elif args.action == "verify":
+        result = verify_prepared_version(config, repository_root=args.repository_root)
+    else:
+        result = write_final_bundle_manifest(
+            config,
+            repository_root=args.repository_root,
+            bundle=args.bundle,
+        )
     print(
         json.dumps(
-            operation(config, repository_root=args.repository_root),
+            result,
             ensure_ascii=False,
             indent=2,
         )
