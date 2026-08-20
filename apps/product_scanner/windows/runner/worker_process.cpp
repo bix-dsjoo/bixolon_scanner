@@ -159,7 +159,7 @@ bool WorkerProcess::Start() {
                               bundled_cuda_runtime->c_str());
   }
   if (!existing_provider) {
-    // A release that bundles the CUDA runtime is an explicitly GPU-targeted
+    // A bundle that includes the CUDA runtime is explicitly GPU-targeted.
     // package. Force CUDA so an incomplete deployment fails readiness instead
     // of silently running the full pipeline on CPU at roughly 10x latency.
     ::SetEnvironmentVariableW(

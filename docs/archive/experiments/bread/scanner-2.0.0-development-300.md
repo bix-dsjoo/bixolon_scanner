@@ -4,7 +4,7 @@
 - 후보: `2.0.0-rc.8`
 - 결론: `development_gates_passed — owner_private_test_pending`
 - evidence role: `development_regression`, `promotion_evidence=false`
-- 설계 계약: [Scanner 2.0.0 전체 설계](../../architecture/scanner-2.0.0.md)
+- 설계 계약: [Scanner 2.0.0 과거 설계](../../releases/scanner-2.0.0-architecture.md)
 
 > 2026-08-20 후속 결정: 프로젝트 소유자가 private test 미실행과 영구 무키 Catalog를 명시적으로
 > waiver하고 같은 RC.8을 `2.0.0` production으로 승격했다. 이 보고서의 역할과 지표는 계속

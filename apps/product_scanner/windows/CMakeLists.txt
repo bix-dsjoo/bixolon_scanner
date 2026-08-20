@@ -63,55 +63,31 @@ include(flutter/generated_plugins.cmake)
 # run in place. This is done instead of making a separate bundle (as on Linux)
 # so that building and running from within Visual Studio will work.
 set(BUILD_BUNDLE_DIR "$<TARGET_FILE_DIR:${BINARY_NAME}>")
-set(SCANNER_RELEASE_BUILD FALSE)
+set(SCANNER_BUNDLE_BUILD FALSE)
 if(CMAKE_BUILD_TYPE STREQUAL "Release" OR FLUTTER_BUILD_MODE STREQUAL "release")
-  set(SCANNER_RELEASE_BUILD TRUE)
+  set(SCANNER_BUNDLE_BUILD TRUE)
 endif()
 
-# A release composition is the only source of package identity for distributable builds.
-set(SCANNER_RELEASE_COMPOSITION "" CACHE FILEPATH
-  "BIXOLON release composition JSON")
-if(NOT SCANNER_RELEASE_COMPOSITION AND DEFINED ENV{SCANNER_RELEASE_COMPOSITION})
-  file(TO_CMAKE_PATH "$ENV{SCANNER_RELEASE_COMPOSITION}"
-    SCANNER_RELEASE_COMPOSITION)
+# One version root supplies every component of a distributable build.
+get_filename_component(SCANNER_REPOSITORY_ROOT
+  "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
+set(SCANNER_VERSION_ROOT "" CACHE PATH "Prepared BIXOLON version root")
+if(NOT SCANNER_VERSION_ROOT AND DEFINED ENV{SCANNER_VERSION_ROOT})
+  file(TO_CMAKE_PATH "$ENV{SCANNER_VERSION_ROOT}" SCANNER_VERSION_ROOT)
 endif()
-if(SCANNER_RELEASE_COMPOSITION)
-  if(NOT EXISTS "${SCANNER_RELEASE_COMPOSITION}")
-    message(FATAL_ERROR
-      "Release composition does not exist: ${SCANNER_RELEASE_COMPOSITION}")
-  endif()
-  file(READ "${SCANNER_RELEASE_COMPOSITION}" SCANNER_RELEASE_JSON)
-  string(JSON SCANNER_COMPOSITION_SCHEMA GET
-    "${SCANNER_RELEASE_JSON}" schema_version)
-  get_filename_component(SCANNER_REPOSITORY_ROOT
-    "${CMAKE_CURRENT_SOURCE_DIR}/../../.." ABSOLUTE)
-  if(SCANNER_COMPOSITION_SCHEMA STREQUAL "2.0")
-    string(JSON SCANNER_COMPOSED_PACKAGE_PATH GET
-      "${SCANNER_RELEASE_JSON}" production_release runtime_path)
-    string(JSON SCANNER_COMPOSED_CATALOG_PATH GET
-      "${SCANNER_RELEASE_JSON}" production_release catalog_path)
-    string(JSON SCANNER_COMPOSED_WORKER_PATH GET
-      "${SCANNER_RELEASE_JSON}" production_release worker_bundle_path)
-    get_filename_component(SCANNER_MODEL_PACKAGE_DIR
-      "${SCANNER_REPOSITORY_ROOT}/${SCANNER_COMPOSED_PACKAGE_PATH}" ABSOLUTE)
-    get_filename_component(SCANNER_CATALOG_DIR
-      "${SCANNER_REPOSITORY_ROOT}/${SCANNER_COMPOSED_CATALOG_PATH}" ABSOLUTE)
-    get_filename_component(SCANNER_WORKER_RUNTIME_DIR
-      "${SCANNER_REPOSITORY_ROOT}/${SCANNER_COMPOSED_WORKER_PATH}" ABSOLUTE)
-    set(SCANNER_MODEL_PACKAGE_DIR "${SCANNER_MODEL_PACKAGE_DIR}"
-      CACHE PATH "Promoted BIXOLON Worker model package" FORCE)
-    set(SCANNER_CATALOG_DIR "${SCANNER_CATALOG_DIR}"
-      CACHE PATH "Checksum-only BIXOLON Store Catalog" FORCE)
-    set(SCANNER_WORKER_RUNTIME_DIR "${SCANNER_WORKER_RUNTIME_DIR}"
-      CACHE PATH "Standalone BIXOLON Worker runtime" FORCE)
-    set(SCANNER_CATALOG_REQUIRED TRUE)
-  else()
-    string(JSON SCANNER_COMPOSED_PACKAGE_PATH GET
-      "${SCANNER_RELEASE_JSON}" model_package path)
-    get_filename_component(SCANNER_MODEL_PACKAGE_DIR
-      "${SCANNER_REPOSITORY_ROOT}/${SCANNER_COMPOSED_PACKAGE_PATH}" ABSOLUTE)
-  endif()
+if(NOT SCANNER_VERSION_ROOT)
+  set(SCANNER_VERSION_ROOT
+    "${SCANNER_REPOSITORY_ROOT}/artifacts/versions/0.0.1")
 endif()
+set(SCANNER_MODEL_PACKAGE_DIR "${SCANNER_VERSION_ROOT}/staging/runtime"
+  CACHE PATH "Versioned BIXOLON Worker model package" FORCE)
+set(SCANNER_CATALOG_DIR "${SCANNER_VERSION_ROOT}/staging/catalog"
+  CACHE PATH "Versioned BIXOLON Store Catalog" FORCE)
+set(SCANNER_WORKER_RUNTIME_DIR
+  "${SCANNER_VERSION_ROOT}/worker-build/bixolon-worker"
+  CACHE PATH "Versioned standalone BIXOLON Worker runtime" FORCE)
+set(SCANNER_CUDA_RUNTIME_DIR "${SCANNER_VERSION_ROOT}/staging/cuda-runtime"
+  CACHE PATH "Versioned redistributable CUDA runtime" FORCE)
 # Make the "install" step default, as it's required to run.
 set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD 1)
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
@@ -157,84 +133,48 @@ install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_DATA_DIR}"
   COMPONENT Runtime)
 
 # Bundle the standalone ONNX Runtime Worker beside the Windows application.
-set(SCANNER_DEFAULT_WORKER_RUNTIME_DIR
-  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/releases/scanner-2.0.0-production/worker-build/bixolon-worker")
-if(NOT SCANNER_WORKER_RUNTIME_DIR)
-  set(SCANNER_WORKER_RUNTIME_DIR "${SCANNER_DEFAULT_WORKER_RUNTIME_DIR}")
-endif()
-set(SCANNER_WORKER_RUNTIME_DIR "${SCANNER_WORKER_RUNTIME_DIR}"
-  CACHE PATH "Standalone BIXOLON Worker runtime" FORCE)
 if(EXISTS "${SCANNER_WORKER_RUNTIME_DIR}/bixolon-worker.exe")
   install(DIRECTORY "${SCANNER_WORKER_RUNTIME_DIR}/"
     DESTINATION "${CMAKE_INSTALL_PREFIX}/worker"
     COMPONENT Runtime)
 else()
-  if(SCANNER_RELEASE_BUILD)
+  if(SCANNER_BUNDLE_BUILD)
     message(FATAL_ERROR
-      "Release requires standalone Worker: ${SCANNER_WORKER_RUNTIME_DIR}")
+      "Version bundle requires standalone Worker: ${SCANNER_WORKER_RUNTIME_DIR}")
   else()
     message(WARNING
       "Standalone BIXOLON Worker was not found at ${SCANNER_WORKER_RUNTIME_DIR}")
   endif()
 endif()
 
-# Bundle the promoted model package beside the Windows application.
-set(SCANNER_DEFAULT_MODEL_PACKAGE_DIR
-  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/releases/scanner-2.0.0-production/runtime")
-set(SCANNER_PREVIOUS_MODEL_PACKAGE_DIR
-  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/packages/bread-worker-1.1.0")
-set(SCANNER_LEGACY_MODEL_PACKAGE_DIR
-  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/packages/bread-worker-0.1.1")
-if(NOT SCANNER_MODEL_PACKAGE_DIR OR
-   SCANNER_MODEL_PACKAGE_DIR STREQUAL SCANNER_PREVIOUS_MODEL_PACKAGE_DIR OR
-   SCANNER_MODEL_PACKAGE_DIR STREQUAL SCANNER_LEGACY_MODEL_PACKAGE_DIR)
-  set(SCANNER_MODEL_PACKAGE_DIR "${SCANNER_DEFAULT_MODEL_PACKAGE_DIR}"
-    CACHE PATH "Promoted BIXOLON Worker model package" FORCE)
-else()
-  set(SCANNER_MODEL_PACKAGE_DIR "${SCANNER_MODEL_PACKAGE_DIR}"
-    CACHE PATH "Promoted BIXOLON Worker model package")
-endif()
+# Bundle the versioned model package beside the Windows application.
 if(EXISTS "${SCANNER_MODEL_PACKAGE_DIR}/metadata.json")
   install(DIRECTORY "${SCANNER_MODEL_PACKAGE_DIR}/"
     DESTINATION "${CMAKE_INSTALL_PREFIX}/worker/model-package"
     COMPONENT Runtime)
 else()
-  if(SCANNER_RELEASE_BUILD)
+  if(SCANNER_BUNDLE_BUILD)
     message(FATAL_ERROR
-      "Release requires the composed model package: ${SCANNER_MODEL_PACKAGE_DIR}")
+      "Version bundle requires the model package: ${SCANNER_MODEL_PACKAGE_DIR}")
   else()
     message(WARNING
       "BIXOLON Worker model package was not found at ${SCANNER_MODEL_PACKAGE_DIR}")
   endif()
 endif()
 
-# Scanner 2.x bundles a checksum-verified Store Catalog. No key or signature
-# is copied into the application.
-set(SCANNER_DEFAULT_CATALOG_DIR
-  "${CMAKE_CURRENT_SOURCE_DIR}/../../../artifacts/releases/scanner-2.0.0-production/catalog")
-if(NOT SCANNER_CATALOG_DIR)
-  set(SCANNER_CATALOG_DIR "${SCANNER_DEFAULT_CATALOG_DIR}")
-endif()
-set(SCANNER_CATALOG_DIR "${SCANNER_CATALOG_DIR}"
-  CACHE PATH "Checksum-only BIXOLON Store Catalog" FORCE)
+# Bundle the checksum-verified Store Catalog. No key or signature is copied.
 if(EXISTS "${SCANNER_CATALOG_DIR}/catalog.json")
   install(DIRECTORY "${SCANNER_CATALOG_DIR}/"
     DESTINATION "${CMAKE_INSTALL_PREFIX}/worker/store-catalog"
     COMPONENT Runtime)
-elseif(SCANNER_RELEASE_BUILD AND SCANNER_CATALOG_REQUIRED)
+elseif(SCANNER_BUNDLE_BUILD)
   message(FATAL_ERROR
-    "Scanner 2.x Release requires the Store Catalog: ${SCANNER_CATALOG_DIR}")
+    "Version bundle requires the Store Catalog: ${SCANNER_CATALOG_DIR}")
 endif()
 
-# Optionally make the Release bundle self-contained for ONNX Runtime CUDA.
+# Make the version bundle self-contained for ONNX Runtime CUDA.
 # The source directory must contain only redistributable CUDA/cuDNN runtime
 # libraries; PyTorch itself is never installed or imported by the Worker.
-set(SCANNER_CUDA_RUNTIME_DIR "" CACHE PATH
-  "Directory containing redistributable CUDA 13 and cuDNN 9 DLLs")
-if(NOT SCANNER_CUDA_RUNTIME_DIR AND DEFINED ENV{BIXOLON_CUDA_DLL_DIR})
-  file(TO_CMAKE_PATH "$ENV{BIXOLON_CUDA_DLL_DIR}" SCANNER_CUDA_RUNTIME_DIR)
-endif()
-
 set(SCANNER_CUDA_RUNTIME_FILES
   cublas64_13.dll
   cublasLt64_13.dll
@@ -263,7 +203,7 @@ if(SCANNER_CUDA_RUNTIME_DIR)
       list(APPEND SCANNER_CUDA_RUNTIME_PATHS "${RUNTIME_PATH}")
     else()
       set(SCANNER_CUDA_RUNTIME_COMPLETE FALSE)
-      if(SCANNER_RELEASE_BUILD)
+      if(SCANNER_BUNDLE_BUILD)
         message(FATAL_ERROR "CUDA runtime file is missing: ${RUNTIME_PATH}")
       else()
         message(WARNING "CUDA runtime file is missing: ${RUNTIME_PATH}")
@@ -278,15 +218,15 @@ if(SCANNER_CUDA_RUNTIME_DIR)
       "Bundling ONNX Runtime CUDA dependencies from "
       "${SCANNER_CUDA_RUNTIME_DIR}")
   else()
-    if(SCANNER_RELEASE_BUILD)
+    if(SCANNER_BUNDLE_BUILD)
       message(FATAL_ERROR "CUDA runtime bundle is incomplete")
     else()
       message(WARNING "CUDA runtime bundle is incomplete")
     endif()
   endif()
 else()
-  if(SCANNER_RELEASE_BUILD)
-    message(FATAL_ERROR "Release requires SCANNER_CUDA_RUNTIME_DIR")
+  if(SCANNER_BUNDLE_BUILD)
+    message(FATAL_ERROR "Version bundle requires SCANNER_CUDA_RUNTIME_DIR")
   else()
     message(STATUS "SCANNER_CUDA_RUNTIME_DIR is empty")
   endif()

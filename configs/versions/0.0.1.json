@@ -1,0 +1,52 @@
+{
+  "schema_version": "1.0",
+  "version": "0.0.1",
+  "app_build": 1,
+  "source_candidate": "2.0.1-rc.3",
+  "runtime": {
+    "path": "artifacts/packages/bread-scanner-2.0.1-rc.3-dinov3-vitb16-single-objects-validated-runtime",
+    "manifest_sha256": "7b7364c381782493d597520da4b4bc55993068ae97d7ba405e30be4b2d92389a"
+  },
+  "catalog": {
+    "path": "artifacts/catalogs/bread-project-2/2.0.1-rc.3-development-single-objects-validated",
+    "manifest_sha256": "36afc8946f3661135f575f6c03fd968bd4cfd59cd36f3713e90359a6f8442c41",
+    "store_id": "bread-project-2"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/releases/bixolon-scanner-2.0.0+4/worker/cuda-runtime",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/evaluations/scanner-2.0.1/development-300-rc.3-dinov3-vitb16-single-objects-validated-cuda.json",
+      "sha256": "be7d009d5de1d41ae3ddf10333b510755016301efc54abf027b1b710e4bfe736"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-2.0.1/development-300-rc.3-dinov3-vitb16-single-objects-validated-cuda-trace.jsonl",
+      "sha256": "b06e42514ace6d93e3d67a5fe429462f8f0a5bf49edb28339e342ee900f732cb"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-2.0.1/development-300-rc.3-dinov3-vitb16-single-objects-validated-cuda-breakdown.json",
+      "sha256": "1aee711f75f6f33051504391d16b20802f19e456e20755cc4cb20d8e74c6eddc"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}

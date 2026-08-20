@@ -1,4 +1,4 @@
-# Worker API 계약 1.0 / 2.0 additive fields
+# Worker API 계약
 
 ## Endpoint
 
@@ -35,8 +35,8 @@
 
 Detector hard gate 조기 종료는 실행하지 않은 `classifier_version`, `embedder_version`,
 `classifier_policy_version`, `catalog_version`을 `null`로 표시합니다. Detector policy는 실행됐으므로
-`detector_policy_version`을 유지합니다. `worker_version`은 전체 조합이며 나머지는 개별 모델·정책·
-Catalog version입니다. 각 축은 독립적으로 semantic versioning합니다.
+`detector_policy_version`을 유지합니다. 현재 번들의 실행된 non-null Worker·모델·정책·Catalog
+version은 모두 하나의 제품 version과 일치해야 합니다.
 
 ## 오류와 보안
 

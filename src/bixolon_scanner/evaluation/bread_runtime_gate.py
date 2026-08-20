@@ -15,8 +15,8 @@ from ..pipeline import DecisionPipeline
 from ..runtime.imaging import decode_image
 from ..runtime.onnx import build_onnx_adapters
 from .bread_dataset_identity import identity_manifest_sha256, load_coco_image_identities
+from .diagnostic_helpers import RecordingClassifier, RecordingDetector, match_detections
 from .onnx_detector import load_records
-from .release import RecordingClassifier, RecordingDetector, _match
 
 
 def _rate(numerator: int, denominator: int) -> float:
@@ -296,7 +296,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             {"bbox": row["bbox_xywh"], "category_id": row["category_id"]}
             for row in record["annotations"]
         ]
-        matches, missed = _match(detections, annotations, args.match_iou_threshold)
+        matches, missed = match_detections(detections, annotations, args.match_iou_threshold)
         false_positive_count = len(detections) - len(matches)
         counts.segmentation_image_count += 1
         counts.predicted_segmentation_count += len(detections)

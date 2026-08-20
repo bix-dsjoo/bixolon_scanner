@@ -12,4 +12,4 @@
 | [학습 파이프라인 1.0.0](../../guides/training-pipeline-1.0.0.md) | Detector·Classifier 독립 재현 계약 |
 
 실험 기록의 모델 버전과 운영 기본 package는 별개다. 승격 여부는
-[현재 상태](../../status/current.md)와 함께 확인한다.
+[현재 버전 상태](../../../status/current.md)와 함께 확인한다.

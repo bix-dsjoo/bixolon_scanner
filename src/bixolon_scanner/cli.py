@@ -57,20 +57,8 @@ COMMANDS: dict[tuple[str, ...], CommandTarget] = {
         "bixolon_scanner.evaluation.embedder_v2_parity",
         "main",
     ),
-    ("evaluate", "scanner-2.0-private-preflight"): (
-        "bixolon_scanner.evaluation.scanner_v2_private_preflight",
-        "main",
-    ),
-    ("evaluate", "scanner-2.0-private"): (
-        "bixolon_scanner.evaluation.scanner_v2_private",
-        "main",
-    ),
     ("evaluate", "scanner-2.0-packaged-worker-smoke"): (
         "bixolon_scanner.evaluation.scanner_v2_packaged_worker_smoke",
-        "main",
-    ),
-    ("evaluate", "bread-1.1-independent-preflight"): (
-        "bixolon_scanner.experiments.bread.independent_preflight",
         "main",
     ),
     ("experiment", "bread-1.1-development-identity"): (
@@ -108,9 +96,6 @@ COMMANDS: dict[tuple[str, ...], CommandTarget] = {
         "bixolon_scanner.experiments.bread.build_scanner_v2",
         "main",
     ),
-    ("model", "promote"): ("bixolon_scanner.training.promote_package", "main"),
-    ("model", "ten-shot-package"): ("bixolon_scanner.training.ten_shot_package", "main"),
-    ("model", "ten-shot-finalize"): ("bixolon_scanner.training.ten_shot_finalize", "main"),
     ("model", "bread-1.1-candidate-package"): (
         "bixolon_scanner.experiments.bread.runtime_candidate_package",
         "main",
@@ -148,21 +133,9 @@ COMMANDS: dict[tuple[str, ...], CommandTarget] = {
         "bixolon_scanner.operations.catalog_activation",
         "main",
     ),
-    ("release", "verify"): (
-        "bixolon_scanner.operations.release_composition",
-        "main",
-    ),
-    ("release", "lock-scanner-2.0"): (
-        "bixolon_scanner.operations.scanner_v2_release_lock",
-        "main",
-    ),
-    ("release", "promote-scanner-2.0"): (
-        "bixolon_scanner.operations.scanner_v2_promote",
-        "main",
-    ),
-    ("release", "promote-scanner-2.0-owner-waiver"): (
-        "bixolon_scanner.operations.scanner_v2_owner_waiver_promote",
-        "main",
+    ("bundle", "verify"): (
+        "bixolon_scanner.operations.version_bundle",
+        "verify_main",
     ),
     ("tools", "cache-classifier"): (
         "bixolon_scanner.training.cache_classifier",

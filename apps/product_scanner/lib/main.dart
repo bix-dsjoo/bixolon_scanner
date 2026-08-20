@@ -6,7 +6,7 @@ import 'features/scanner/data/image_input.dart';
 import 'features/scanner/data/scanner_api.dart';
 import 'shared/catalog/product_catalog.dart';
 import 'shared/logging/scan_log_repository.dart';
-import 'shared/release_versions.dart';
+import 'shared/version_info.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -19,9 +19,7 @@ Future<void> main() async {
     WorkerScannerApi(
       baseUrl: baseUrl,
       waitForReady: true,
-      expectedWorkerVersion: ReleaseVersions.worker,
-      expectedDetectorVersion: ReleaseVersions.detector,
-      expectedClassifierVersion: ReleaseVersions.classifier,
+      expectedVersion: VersionInfo.current,
     ),
     WindowsCameraGateway(),
     WindowsImageFileGateway(),

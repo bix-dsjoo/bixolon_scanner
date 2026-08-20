@@ -4,6 +4,7 @@ import 'core/design_system/theme.dart';
 import 'features/activity/presentation/activity_screen.dart';
 import 'features/scanner/application/scanner_controller.dart';
 import 'features/scanner/presentation/scanner_screen.dart';
+import 'shared/version_info.dart';
 
 class ProductScannerApp extends StatelessWidget {
   const ProductScannerApp({
@@ -20,7 +21,7 @@ class ProductScannerApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'BIXOLON Scanner',
+      title: 'BIXOLON Scanner v${VersionInfo.current}',
       debugShowCheckedModeBanner: false,
       theme: buildAppTheme(),
       home: ScannerScreen(

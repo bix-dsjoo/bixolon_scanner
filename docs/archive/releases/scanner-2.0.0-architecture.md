@@ -137,6 +137,13 @@ view는 rotation, scale, 작은 perspective, 밝기·대비·채도, 제한적 b
 지원 이미지 leave-one-out과 compactness/confusability는 등록 오류 진단에만 사용한다. 비슷한 SKU는
 Catalog 전체를 막지 않고 관련 SKU/pair만 `approval_restricted`로 두어 `UNKNOWN`으로 방어한다.
 
+`2.0.1-rc.3` 개발 후보는 원본 `single_objects` Catalog의 domain shift를 방어하기 위해 ridge와
+exact retrieval Top-1의 일치를 승인 필수 조건으로 추가한다. 불일치는
+`CLASSIFIER_AMBIGUOUS_TOP2` `UNKNOWN`, retrieval similarity가 Runtime metadata의
+`ridge_retrieval_minimum_similarity` 미만이면 `CLASSIFIER_OUT_OF_CATALOG`
+`SEGMENT_RECAPTURE`다. 이 설정은 Runtime의 versioned policy이며 매장 Catalog가 임의로 다시
+선택하지 않는다. 자세한 개발 근거는
+[RC.3 기록](scanner-2.0.1-rc.3-single-objects.md)을 따른다.
 ### 4.3 Catalog package
 
 ```text

@@ -160,7 +160,7 @@ def create_app(
                 if callable(close):
                     close()
 
-    app = FastAPI(title="Bixolon Image Decision Worker", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="Bixolon Image Decision Worker", version=__version__, lifespan=lifespan)
     app.state.ready = False
     app.state.semaphore = asyncio.Semaphore(1)
 

@@ -2,7 +2,7 @@
 
 ## Python 경계
 
-운영 요청 경로의 의존 방향은 아래와 같습니다.
+요청 경로의 의존 방향은 아래와 같습니다.
 
 ```mermaid
 flowchart LR
@@ -15,7 +15,7 @@ flowchart LR
     EVALUATION --> RUNTIME
     EXPERIMENTS["experiments: 버전별 orchestration"] --> TRAINING
     EXPERIMENTS --> EVALUATION
-    OPERATIONS["operations: 로그·검수 export"] --> CONTRACTS
+    OPERATIONS["operations: 버전 번들·로그·검수 export"] --> CONTRACTS
 ```
 
 - `worker`는 `training`, `evaluation`, `experiments`, PyTorch를 import하지 않습니다.
@@ -36,7 +36,7 @@ flowchart LR
 | `training` | 데이터셋, 모델, trainer, calibration |
 | `evaluation` | 정확도, parity, latency와 회귀 평가 |
 | `experiments` | bread·detector·RPC200 버전별 orchestration |
-| `operations` | 운영 로그 수집과 검수용 export |
+| `operations` | 단일 버전 번들, 실행 로그 수집과 검수용 export |
 
 ## Flutter 경계
 
@@ -52,6 +52,9 @@ lib/
 
 `features`끼리 화면 구현을 직접 참조하지 않습니다. 앱 조립 계층이 화면 builder를 주입하며, 공유 계약·로그 저장소·공통 표시 정책은 `shared`, 시각 토큰과 재사용 UI는 `core/design_system`에 둡니다. 과거 경로의 Dart 파일은 기존 import를 위한 export 계층입니다.
 
-## 호환성 정책
+## 버전과 호환성
 
-기존 Python import와 `bixolon-*` console 명령은 Python `0.3.x`까지 유지합니다. 제거는 `0.4.0` 이상에서 migration 문서와 소비자 테스트를 포함한 명시적 변경으로만 수행합니다.
+배포 조합은 `configs/versions/<version>.json` 하나로 식별하며 앱, Worker, Runtime과 Catalog의
+non-null 버전을 동일하게 유지합니다. 과거 lifecycle metadata는 archive reader의 입력으로만
+허용하고 새 번들에서 생성하지 않습니다. 공개 API와 과거 Python·Flutter import re-export를
+제거하려면 migration 문서와 소비자 테스트를 포함한 명시적 호환성 변경으로 수행합니다.

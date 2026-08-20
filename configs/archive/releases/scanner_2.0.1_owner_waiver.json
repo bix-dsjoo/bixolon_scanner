@@ -1,0 +1,96 @@
+{
+  "schema_version": "2.0",
+  "release": "2.0.1",
+  "source_release_candidate": "2.0.1-rc.3",
+  "decision": "owner_approved_manual_waiver",
+  "approved": true,
+  "approved_on": "2026-08-20",
+  "owner_instruction": "rc3로 운영 승격하고 exe까지 반영해줘",
+  "production_eligible_by_owner_waiver": true,
+  "independent_certified": false,
+  "catalog_authentication": "CHECKSUM-SHA256",
+  "source_artifacts": {
+    "runtime_manifest_sha256": "7b7364c381782493d597520da4b4bc55993068ae97d7ba405e30be4b2d92389a",
+    "catalog_manifest_sha256": "36afc8946f3661135f575f6c03fd968bd4cfd59cd36f3713e90359a6f8442c41"
+  },
+  "checks": {
+    "development_300_point_gates": true,
+    "continuous_cuda_p95": true,
+    "packaged_worker_smoke": true,
+    "owner_private_locked_production_test": false,
+    "approved_misrecognition_statistical_upper_bound": false,
+    "development_evidence_independence": false,
+    "cpu_cuda_full_decision_parity": false,
+    "one_ips_cadence_performance": false,
+    "accelerated_reliability": false,
+    "dependency_vulnerability_scan": false,
+    "sbom_coverage": false,
+    "catalog_hmac_authentication": false
+  },
+  "failures": [
+    "accelerated_reliability",
+    "approved_misrecognition_statistical_upper_bound",
+    "catalog_hmac_authentication",
+    "cpu_cuda_full_decision_parity",
+    "dependency_vulnerability_scan",
+    "development_evidence_independence",
+    "one_ips_cadence_performance",
+    "owner_private_locked_production_test",
+    "sbom_coverage"
+  ],
+  "waivers": [
+    {
+      "gate": "accelerated_reliability",
+      "reason": "The owner instructed immediate production promotion before the planned 10,000-request accelerated reliability run. Packaged CPU/CUDA smoke remains mandatory for this release build."
+    },
+    {
+      "gate": "approved_misrecognition_statistical_upper_bound",
+      "reason": "The development point estimate is 0 wrong approvals out of 1,311 approved outputs, but the one-sided 95% upper bound is 0.22825%, above the 0.1% target."
+    },
+    {
+      "gate": "catalog_hmac_authentication",
+      "reason": "Scanner 2.x retains the owner-approved permanently keyless Catalog contract. File-level SHA-256 validation is mandatory, but Catalog authorship is not cryptographically authenticated."
+    },
+    {
+      "gate": "cpu_cuda_full_decision_parity",
+      "reason": "The exact RC.3 policy has not completed the full 300-image CPU/CUDA decision parity run. The production package changes versions and Catalog authentication only."
+    },
+    {
+      "gate": "dependency_vulnerability_scan",
+      "reason": "The rebuilt Worker uses the existing locked runtime dependency set, but a release-specific vulnerability scan was not completed before the owner-directed promotion."
+    },
+    {
+      "gate": "development_evidence_independence",
+      "reason": "The 300-image set was used to select the RC.3 safety thresholds and remains development evidence rather than an independent estimate."
+    },
+    {
+      "gate": "one_ips_cadence_performance",
+      "reason": "Continuous warm CUDA p95 is 95.57 ms, but the exact RC.3 package has not completed the production 1 image/second cadence benchmark."
+    },
+    {
+      "gate": "owner_private_locked_production_test",
+      "reason": "The owner explicitly instructed production promotion on 2026-08-20 while the separately prepared private promotion images remain unavailable."
+    },
+    {
+      "gate": "sbom_coverage",
+      "reason": "The existing Worker dependency lock is reused, but a release-specific SBOM was not regenerated before the owner-directed promotion."
+    }
+  ],
+  "remaining_limitations": [
+    "This release has no independent generalization estimate; its 300-image result is development evidence.",
+    "Zero development misapprovals does not statistically certify the 0.1% target at one-sided 95% confidence.",
+    "Checksum-only Catalog validation detects corruption but does not authenticate who modified the Catalog and checksum file.",
+    "Correct APPROVED coverage is 92.9787% over all 1,410 development GT objects, below the long-term 99% target.",
+    "Rollback targets are Scanner 2.0.0 and bread-worker 1.1.0."
+  ],
+  "evidence": {
+    "development_report_sha256": "be7d009d5de1d41ae3ddf10333b510755016301efc54abf027b1b710e4bfe736",
+    "development_trace_sha256": "b06e42514ace6d93e3d67a5fe429462f8f0a5bf49edb28339e342ee900f732cb",
+    "difficulty_breakdown_sha256": "1aee711f75f6f33051504391d16b20802f19e456e20755cc4cb20d8e74c6eddc",
+    "development_image_count": 300,
+    "development_ground_truth_count": 1410,
+    "approved_output_count": 1311,
+    "approved_misrecognition_count": 0,
+    "continuous_cuda_p95_ms": 95.57138
+  }
+}

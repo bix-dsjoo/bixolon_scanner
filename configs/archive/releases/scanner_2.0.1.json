@@ -1,0 +1,82 @@
+{
+  "schema_version": "2.0",
+  "release": "scanner-2.0.1",
+  "lifecycle": "production",
+  "promotion_basis": "owner_manual_waiver",
+  "independent_certified": false,
+  "versions": {
+    "python": "1.0.0",
+    "worker": "2.0.1",
+    "detector": "2.0.1",
+    "classifier": "2.0.1",
+    "embedder": "2.0.1",
+    "classifier_policy": "2.0.1",
+    "catalog": "2.0.1",
+    "dataset": "bread-scanner-2.0.0-development",
+    "app": "2.0.1+5"
+  },
+  "source_release_candidate": "2.0.1-rc.3",
+  "source_artifacts": {
+    "runtime_manifest_sha256": "7b7364c381782493d597520da4b4bc55993068ae97d7ba405e30be4b2d92389a",
+    "catalog_manifest_sha256": "36afc8946f3661135f575f6c03fd968bd4cfd59cd36f3713e90359a6f8442c41"
+  },
+  "owner_waiver": {
+    "path": "configs/releases/scanner_2.0.1_owner_waiver.json",
+    "sha256": "88657dca9367e77b6c1106bbe3c71a2b64d346104b4e7b9f3cc363c6a50e9dfb",
+    "waived_gates": [
+      "accelerated_reliability",
+      "approved_misrecognition_statistical_upper_bound",
+      "catalog_hmac_authentication",
+      "cpu_cuda_full_decision_parity",
+      "dependency_vulnerability_scan",
+      "development_evidence_independence",
+      "one_ips_cadence_performance",
+      "owner_private_locked_production_test",
+      "sbom_coverage"
+    ]
+  },
+  "production_release": {
+    "path": "artifacts/releases/scanner-2.0.1-production",
+    "attestation_path": "artifacts/releases/scanner-2.0.1-production/promotion-attestation.json",
+    "attestation_sha256": "ae5079bff0a33f909caff598fb53082c78432c2e72c561b6ce72505c83d75762",
+    "attestation_file_sha256": "8c938adf6cae0e64e6b6e866a23af5ab2eea5cb887dd9e7b70b5cd4fa7d7ad29",
+    "runtime_path": "artifacts/releases/scanner-2.0.1-production/runtime",
+    "runtime_manifest_sha256": "d0905c6bbe2c118a08549cd6b777284313148c7051d3a4df567136d902cde7b4",
+    "catalog_path": "artifacts/releases/scanner-2.0.1-production/catalog",
+    "catalog_manifest_sha256": "1df2d6ef56eb818656eed029869020383980101e5cee43ce2d4643b152f4b73a",
+    "catalog_authentication": "CHECKSUM-SHA256",
+    "worker_bundle_path": "artifacts/releases/scanner-2.0.1-production/worker-build/bixolon-worker",
+    "worker_bundle_manifest_sha256": "e5aa0c63df290ea25188d9036e421d7bf0a4c94ad588761c57535e838c7295b4",
+    "worker_executable_sha256": "63d386a8e106803fb2fb21ce9b4a4fbb746fc377081153a392ffb0aab6416559"
+  },
+  "validation": {
+    "development_300_report_sha256": "be7d009d5de1d41ae3ddf10333b510755016301efc54abf027b1b710e4bfe736",
+    "development_300_trace_sha256": "b06e42514ace6d93e3d67a5fe429462f8f0a5bf49edb28339e342ee900f732cb",
+    "packaged_worker_cpu_smoke": "artifacts/evaluations/scanner-2.0.1/production-2.0.1-keyless-packaged-worker-smoke-cpu.json",
+    "packaged_worker_cpu_smoke_sha256": "8759dc10caf9d6e7e3704a868c8d2e4b140a02cb2300bf589dba4573cedf180c",
+    "packaged_worker_cuda_smoke": "artifacts/evaluations/scanner-2.0.1/production-2.0.1-keyless-packaged-worker-smoke-cuda.json",
+    "packaged_worker_cuda_smoke_sha256": "62d393f402db322de08172742baf9145b13d3c1813e3f01b8dc4010cd674fc72",
+    "windows_app_launch_smoke": "artifacts/evaluations/scanner-2.0.1/production-2.0.1-windows-app-launch-smoke-cuda.json",
+    "windows_app_launch_smoke_sha256": "2bb213a707d641b1ec6a2b70bf04cb2a99ace2d29cb54ef80734e0e87f6122d8"
+  },
+  "windows_bundle": {
+    "path": "artifacts/releases/bixolon-scanner-2.0.1+5",
+    "manifest_path": "artifacts/releases/bixolon-scanner-2.0.1+5/bundle-manifest.json",
+    "manifest_sha256": "f230626160608134986f3d95876eb75c743c0a4f00848847e81435973bcb6f30",
+    "file_count": 140,
+    "product_scanner_executable_sha256": "c3d65429ae1e02518bc56cb2de9efba4492e8eecaa3a29d2e17c4c09b35b0700",
+    "worker_executable_sha256": "63d386a8e106803fb2fb21ce9b4a4fbb746fc377081153a392ffb0aab6416559",
+    "catalog_authentication": "CHECKSUM-SHA256",
+    "catalog_signature_present": false
+  },
+  "limitations": [
+    "The 300-image result is development evidence and not independent certification.",
+    "The approved-misrecognition one-sided 95% upper bound is 0.22825%, above the 0.1% target.",
+    "The exact RC.3 policy has no complete 300-image CPU/CUDA parity or 1 IPS cadence result.",
+    "Catalog authenticity is not cryptographically authenticated; startup enforces file checksums and provenance consistency only."
+  ],
+  "rollback_releases": [
+    "scanner-2.0.0",
+    "bread-worker-1.1.0"
+  ]
+}

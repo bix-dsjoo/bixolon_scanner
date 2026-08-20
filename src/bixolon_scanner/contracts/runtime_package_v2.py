@@ -201,7 +201,8 @@ class RuntimePackageV2Metadata(BaseModel):
 
     schema_version: Literal["2.0"] = "2.0"
     worker_version: str
-    promotion_status: Literal["development", "independent_test_pending", "production"]
+    # Legacy packages may contain this field. Version bundles no longer emit it.
+    promotion_status: Literal["development", "independent_test_pending", "production"] | None = None
     dataset_version: str
     detector_policy_version: str
     detector_class_count: int = Field(default=20, gt=0)
