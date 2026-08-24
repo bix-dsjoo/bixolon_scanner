@@ -4,7 +4,9 @@ param(
     [string]$OutputPath = "",
     [int]$Port = 8188,
     [int]$MinimumImages = 30,
-    [int]$MinimumFullPathImages = 10
+    [int]$MinimumFullPathImages = 10,
+    [ValidateRange(0, 20)]
+    [int]$WarmupCount = 3
 )
 
 $ErrorActionPreference = "Stop"
@@ -24,58 +26,6 @@ function Get-Percentile {
     return [Math]::Round([double]$ordered[$index], 3)
 }
 
-function Get-SemanticPayload {
-    param($Body)
-    $segmentations = @()
-    foreach ($item in @($Body.segmentations)) {
-        $prediction = $null
-        if ($null -ne $item.prediction) {
-            $prediction = [ordered]@{
-                class_id = $item.prediction.class_id
-                class_name = $item.prediction.class_name
-            }
-        }
-        $top3 = @(
-            foreach ($candidate in @($item.top3)) {
-                [ordered]@{
-                    class_id = $candidate.class_id
-                    class_name = $candidate.class_name
-                }
-            }
-        )
-        $segmentations += [ordered]@{
-            segmentation_id = $item.segmentation_id
-            bbox = [ordered]@{
-                x = $item.bbox.x
-                y = $item.bbox.y
-                width = $item.bbox.width
-                height = $item.bbox.height
-            }
-            status = $item.status
-            reason_codes = @($item.reason_codes)
-            prediction = $prediction
-            top3 = $top3
-        }
-    }
-    return ([ordered]@{
-        status = $Body.status
-        reason_codes = @($Body.reason_codes)
-        segmentations = $segmentations
-    } | ConvertTo-Json -Depth 12 -Compress)
-}
-
-function Get-ConfidenceVector {
-    param($Body)
-    $values = [System.Collections.Generic.List[double]]::new()
-    foreach ($item in @($Body.segmentations)) {
-        $values.Add([double]$item.confidence)
-        foreach ($candidate in @($item.top3)) {
-            $values.Add([double]$candidate.confidence)
-        }
-    }
-    return $values.ToArray()
-}
-
 function Test-VersionContract {
     param($Body)
     $names = @(
@@ -89,7 +39,7 @@ function Test-VersionContract {
     )
     foreach ($name in $names) {
         $value = $Body.$name
-        if ($null -ne $value -and [string]$value -ne "0.0.2") {
+        if ($null -ne $value -and [string]$value -ne $script:ExpectedVersion) {
             return $false
         }
     }
@@ -133,13 +83,13 @@ function Invoke-Profile {
         [System.IO.FileInfo[]]$Images,
         [string]$WorkerRoot,
         [int]$WorkerPort,
-        $BaselineResponses
+        [int]$ProfileWarmupCount
     )
     $workerExecutable = Join-Path $WorkerRoot "bixolon-worker.exe"
     $environment = [ordered]@{
         BIXOLON_PACKAGE_DIR = Join-Path $WorkerRoot "model-package"
         BIXOLON_CATALOG_DIR = Join-Path $WorkerRoot "store-catalog"
-        BIXOLON_PROVIDER = "cpu"
+        BIXOLON_PROVIDER = [string]$Profile.Provider
         BIXOLON_HOST = "127.0.0.1"
         BIXOLON_PORT = [string]$WorkerPort
         BIXOLON_REQUEST_TIMEOUT_SECONDS = "60"
@@ -193,71 +143,69 @@ function Invoke-Profile {
         if ($null -eq $ready -or $ready.status -ne "ready") {
             throw "Worker readiness timed out for profile $($Profile.Name)."
         }
-        if ($ready.provider -ne "cpu" -or -not (Test-VersionContract $ready)) {
+        if ($ready.provider -ne $Profile.Provider -or -not (Test-VersionContract $ready)) {
             throw "Worker readiness contract mismatch for profile $($Profile.Name)."
         }
 
         $client = [System.Net.Http.HttpClient]::new()
         $client.Timeout = [TimeSpan]::FromSeconds(65)
+        for ($warmupIndex = 0; $warmupIndex -lt $ProfileWarmupCount; $warmupIndex++) {
+            $warmupImage = $Images[$warmupIndex % $Images.Count]
+            $warmup = Invoke-Scan -Client $client -Image $warmupImage -BaseUrl $baseUrl
+            if (
+                $warmup.HttpStatus -lt 200 -or
+                $warmup.HttpStatus -ge 300 -or
+                $warmup.Body.status -eq "ERROR" -or
+                -not (Test-VersionContract $warmup.Body)
+            ) {
+                throw "Worker warm-up response contract failed for profile $($Profile.Name)."
+            }
+        }
         $latencies = [System.Collections.Generic.List[double]]::new()
-        $responses = [System.Collections.Generic.List[object]]::new()
         $statusCounts = [ordered]@{
             SEGMENTATION = 0
             IMAGE_RECAPTURE = 0
             ERROR = 0
         }
+        $segmentationStatusCounts = [ordered]@{
+            APPROVED = 0
+            UNKNOWN = 0
+            SEGMENT_RECAPTURE = 0
+        }
         $errorCount = 0
         foreach ($image in $Images) {
             $scan = Invoke-Scan -Client $client -Image $image -BaseUrl $baseUrl
             $latencies.Add($scan.ElapsedMs)
-            $responses.Add($scan.Body)
-            if ($statusCounts.Contains($scan.Body.status)) {
-                $statusCounts[$scan.Body.status]++
+            $responseContractValid = $statusCounts.Contains([string]$scan.Body.status)
+            if ($responseContractValid) {
+                $statusCounts[[string]$scan.Body.status]++
+            }
+            foreach ($segmentation in @($scan.Body.segmentations)) {
+                $segmentationStatus = [string]$segmentation.status
+                if ($segmentationStatusCounts.Contains($segmentationStatus)) {
+                    $segmentationStatusCounts[$segmentationStatus]++
+                }
+                else {
+                    $responseContractValid = $false
+                }
             }
             if (
                 $scan.HttpStatus -lt 200 -or
                 $scan.HttpStatus -ge 300 -or
                 $scan.Body.status -eq "ERROR" -or
-                -not (Test-VersionContract $scan.Body)
+                -not (Test-VersionContract $scan.Body) -or
+                -not $responseContractValid
             ) {
                 $errorCount++
             }
             $process.Refresh()
         }
 
-        $paritySafe = $true
-        $maximumConfidenceDelta = 0.0
-        if ($null -ne $BaselineResponses) {
-            for ($index = 0; $index -lt $responses.Count; $index++) {
-                $baseline = $BaselineResponses[$index]
-                $candidate = $responses[$index]
-                if ((Get-SemanticPayload $baseline) -ne (Get-SemanticPayload $candidate)) {
-                    $paritySafe = $false
-                    continue
-                }
-                $baselineConfidence = @(Get-ConfidenceVector $baseline)
-                $candidateConfidence = @(Get-ConfidenceVector $candidate)
-                if ($baselineConfidence.Count -ne $candidateConfidence.Count) {
-                    $paritySafe = $false
-                    continue
-                }
-                for ($confidenceIndex = 0; $confidenceIndex -lt $baselineConfidence.Count; $confidenceIndex++) {
-                    $delta = [Math]::Abs(
-                        [double]$baselineConfidence[$confidenceIndex] -
-                        [double]$candidateConfidence[$confidenceIndex]
-                    )
-                    $maximumConfidenceDelta = [Math]::Max($maximumConfidenceDelta, $delta)
-                    if ($delta -gt 0.00001) {
-                        $paritySafe = $false
-                    }
-                }
-            }
-        }
-
         $process.Refresh()
         $values = $latencies.ToArray()
         return [pscustomobject]@{
             Name = $Profile.Name
+            Provider = $Profile.Provider
             DetectorWorkers = $Profile.DetectorWorkers
             DetectorThreads = $Profile.DetectorThreads
             EmbedderThreads = $Profile.EmbedderThreads
@@ -268,11 +216,12 @@ function Invoke-Profile {
             MeanMs = [Math]::Round(($values | Measure-Object -Average).Average, 3)
             PeakWorkingSetBytes = [long]$process.PeakWorkingSet64
             StatusCounts = $statusCounts
+            SegmentationStatusCounts = $segmentationStatusCounts
+            SegmentationCount = [int](
+                ($segmentationStatusCounts.Values | Measure-Object -Sum).Sum
+            )
             FullPathCount = [int]$statusCounts.SEGMENTATION
             ErrorCount = $errorCount
-            ParitySafe = $paritySafe
-            MaximumConfidenceDelta = $maximumConfidenceDelta
-            Responses = $responses.ToArray()
         }
     }
     finally {
@@ -300,9 +249,25 @@ function Invoke-Profile {
 $packageRoot = $PSScriptRoot
 $workerRoot = Join-Path $packageRoot "worker"
 $workerExecutable = Join-Path $workerRoot "bixolon-worker.exe"
+$metadataPath = Join-Path $workerRoot "model-package/metadata.json"
 $resolvedImageDirectory = [System.IO.Path]::GetFullPath($ImageDirectory)
 if (-not (Test-Path -LiteralPath $workerExecutable -PathType Leaf)) {
     throw "CPU Worker executable is missing: $workerExecutable"
+}
+if (-not (Test-Path -LiteralPath $metadataPath -PathType Leaf)) {
+    throw "Runtime metadata is missing: $metadataPath"
+}
+$metadata = Get-Content -Raw -LiteralPath $metadataPath | ConvertFrom-Json
+$script:ExpectedVersion = [string]$metadata.worker_version
+if (
+    $null -ne $metadata.detector.ensemble -or
+    [string]$metadata.detector.filename -ne "detector.onnx" -or
+    [double]$metadata.detector.score_threshold -ne 0.33 -or
+    $null -eq $metadata.count_verifier -or
+    [string]$metadata.count_verifier.comparison_mode -ne "object_presence" -or
+    [int]$metadata.count_verifier.input_size[0] -ne 192
+) {
+    throw "N100 benchmark Runtime does not match the selected 0.1.2 single-detector policy."
 }
 if (-not (Test-Path -LiteralPath $resolvedImageDirectory -PathType Container)) {
     throw "Benchmark image directory is missing: $resolvedImageDirectory"
@@ -316,58 +281,40 @@ if ($images.Count -lt $MinimumImages) {
     throw "N100 benchmark requires at least $MinimumImages JPEG/PNG images."
 }
 
-$profiles = @(
-    [pscustomobject]@{ Name = "sequential-4"; DetectorWorkers = 1; DetectorThreads = 4; EmbedderThreads = 4 },
-    [pscustomobject]@{ Name = "parallel-2x2"; DetectorWorkers = 2; DetectorThreads = 2; EmbedderThreads = 4 },
-    [pscustomobject]@{ Name = "parallel-4x1"; DetectorWorkers = 4; DetectorThreads = 1; EmbedderThreads = 4 }
+$profiles = [System.Collections.Generic.List[object]]::new()
+$profiles.Add(
+    [pscustomobject]@{
+        Name = "candidate-cpu-1x4"
+        Provider = "cpu"
+        DetectorWorkers = 1
+        DetectorThreads = 4
+        EmbedderThreads = 4
+    }
 )
 $internalResults = [System.Collections.Generic.List[object]]::new()
-$baselineResponses = $null
 foreach ($profile in $profiles) {
-    Write-Host "Benchmarking CPU profile: $($profile.Name)"
+    Write-Host "Benchmarking provider profile: $($profile.Name)"
     $result = Invoke-Profile `
         -Profile $profile `
         -Images $images `
         -WorkerRoot $workerRoot `
         -WorkerPort $Port `
-        -BaselineResponses $baselineResponses
+        -ProfileWarmupCount $WarmupCount
     $internalResults.Add($result)
-    if ($null -eq $baselineResponses) {
-        $baselineResponses = $result.Responses
-    }
 }
 
-$safeResults = @(
-    $internalResults |
-        Where-Object { $_.ParitySafe -and $_.ErrorCount -eq 0 }
-)
-$baselineResult = $internalResults[0]
-$beneficialParallelResults = @(
-    $safeResults |
-        Where-Object {
-            $_.DetectorWorkers -gt 1 -and $_.P95Ms -lt $baselineResult.P95Ms
-        }
-)
-if ($beneficialParallelResults.Count -eq 0) {
-    $recommended = $internalResults[0]
-    $selectionResult = "No parity-safe parallel profile improved p95; use the 1 x 4 fallback."
-}
-else {
-    $selectionCandidates = @($beneficialParallelResults + $baselineResult)
-    $minimumP95 = ($selectionCandidates | Measure-Object -Property P95Ms -Minimum).Minimum
-    $recommended = $selectionCandidates |
-        Where-Object { $_.P95Ms -le $minimumP95 * 1.05 } |
-        Sort-Object PeakWorkingSetBytes, DetectorWorkers |
-        Select-Object -First 1
-    $selectionResult = "Selected the lowest parity-safe p95; within 5 percent preferred lower peak memory."
-}
+$candidate = $internalResults[0]
+$recommended = $candidate
+$selectionResult = "CPU 1x4 is accepted only when errors and the one-second mean/p95 target all pass."
 
 $processor = Get-CimInstance Win32_Processor | Select-Object -First 1
 $computer = Get-CimInstance Win32_ComputerSystem
+$targetCpuDetected = ([string]$processor.Name -match "N100")
 $publicResults = @(
     foreach ($result in $internalResults) {
         [ordered]@{
             name = $result.Name
+            provider = $result.Provider
             detector_workers = $result.DetectorWorkers
             detector_threads_per_session = $result.DetectorThreads
             embedder_threads = $result.EmbedderThreads
@@ -380,40 +327,56 @@ $publicResults = @(
             }
             peak_working_set_bytes = $result.PeakWorkingSetBytes
             status_counts = $result.StatusCounts
+            segmentation_status_counts = $result.SegmentationStatusCounts
+            segmentation_count = $result.SegmentationCount
             full_path_count = $result.FullPathCount
             error_count = $result.ErrorCount
-            parity_safe = $result.ParitySafe
-            maximum_confidence_delta = $result.MaximumConfidenceDelta
         }
     }
 )
-$passes = (
-    $safeResults.Count -gt 0 -and
-    $internalResults[0].FullPathCount -ge $MinimumFullPathImages -and
+$responseContractSafe = (
     ($internalResults | Where-Object { $_.ErrorCount -gt 0 }).Count -eq 0
+)
+$passes = (
+    $targetCpuDetected -and
+    $responseContractSafe -and
+    $candidate.FullPathCount -ge $MinimumFullPathImages -and
+    $candidate.MeanMs -le 1000 -and
+    $candidate.P95Ms -le 1000
 )
 $report = [ordered]@{
     schema_version = "1.0"
-    evaluation = "bixolon_worker_n100_cpu_profiles"
-    product_version = "0.0.2"
+    evaluation = "bixolon_worker_n100_cpu_1x4"
+    product_version = $script:ExpectedVersion
     provider = "cpu"
     hardware = [ordered]@{
         cpu_name = $processor.Name
         cores = $processor.NumberOfCores
         logical_processors = $processor.NumberOfLogicalProcessors
         total_physical_memory_bytes = [long]$computer.TotalPhysicalMemory
-        target_cpu_detected = ([string]$processor.Name -match "N100")
+        target_cpu_detected = $targetCpuDetected
     }
     sample_count = $images.Count
+    warmup_count = $WarmupCount
     minimum_full_path_count = $MinimumFullPathImages
+    response_contract_safe = $responseContractSafe
+    cross_provider_parity_checked = $false
     profiles = $publicResults
     recommended_profile = [ordered]@{
         name = $recommended.Name
+        provider = $recommended.Provider
         detector_workers = $recommended.DetectorWorkers
         detector_threads_per_session = $recommended.DetectorThreads
         embedder_threads = $recommended.EmbedderThreads
     }
-    selection = "lowest parity-safe p95; within 5 percent choose lower peak memory, then fewer detector workers"
+    target = [ordered]@{
+        full_path_latency_ms = 1000
+        recommended_mean_ms = $recommended.MeanMs
+        recommended_p95_ms = $recommended.P95Ms
+        mean_within_1_second = ($recommended.MeanMs -le 1000)
+        p95_within_1_second = ($recommended.P95Ms -le 1000)
+    }
+    selection = "fixed CPU 1x4"
     selection_result = $selectionResult
     passes = $passes
     privacy = [ordered]@{
@@ -437,5 +400,5 @@ $json = $report | ConvertTo-Json -Depth 12
 Write-Host $json
 Write-Host "N100 benchmark result: $resolvedOutput"
 if (-not $passes) {
-    throw "N100 benchmark did not satisfy the sample, full-path, error, and parity checks."
+    throw "N100 benchmark did not satisfy the hardware, full-path, response, and one-second checks."
 }

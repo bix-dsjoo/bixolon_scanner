@@ -1,0 +1,100 @@
+{
+  "schema_version": "1.0",
+  "evaluation": "bixolon_worker_n100_cpu_profiles",
+  "product_version": "0.0.2",
+  "provider": "cpu",
+  "hardware": {
+    "cpu_name": "Intel(R) N100",
+    "cores": 4,
+    "logical_processors": 4,
+    "total_physical_memory_bytes": 4006068224,
+    "target_cpu_detected": true
+  },
+  "sample_count": 100,
+  "minimum_full_path_count": 10,
+  "profiles": [
+    {
+      "name": "sequential-4",
+      "detector_workers": 1,
+      "detector_threads_per_session": 4,
+      "embedder_threads": 4,
+      "startup_ms": 15347.66,
+      "latency_ms": {
+        "mean": 7748.158,
+        "p50": 7788.206,
+        "p95": 8381.742,
+        "p99": 8840.794
+      },
+      "peak_working_set_bytes": 947675136,
+      "status_counts": {
+        "SEGMENTATION": 99,
+        "IMAGE_RECAPTURE": 1,
+        "ERROR": 0
+      },
+      "full_path_count": 99,
+      "error_count": 0,
+      "parity_safe": true,
+      "maximum_confidence_delta": 0
+    },
+    {
+      "name": "parallel-2x2",
+      "detector_workers": 2,
+      "detector_threads_per_session": 2,
+      "embedder_threads": 4,
+      "startup_ms": 9222.339,
+      "latency_ms": {
+        "mean": 4283.878,
+        "p50": 4364.736,
+        "p95": 4689.511,
+        "p99": 4798.124
+      },
+      "peak_working_set_bytes": 945737728,
+      "status_counts": {
+        "SEGMENTATION": 99,
+        "IMAGE_RECAPTURE": 1,
+        "ERROR": 0
+      },
+      "full_path_count": 99,
+      "error_count": 0,
+      "parity_safe": true,
+      "maximum_confidence_delta": 0
+    },
+    {
+      "name": "parallel-4x1",
+      "detector_workers": 4,
+      "detector_threads_per_session": 1,
+      "embedder_threads": 4,
+      "startup_ms": 6712.22,
+      "latency_ms": {
+        "mean": 2052.523,
+        "p50": 2025.864,
+        "p95": 2405.074,
+        "p99": 2714.368
+      },
+      "peak_working_set_bytes": 944832512,
+      "status_counts": {
+        "SEGMENTATION": 99,
+        "IMAGE_RECAPTURE": 1,
+        "ERROR": 0
+      },
+      "full_path_count": 99,
+      "error_count": 0,
+      "parity_safe": true,
+      "maximum_confidence_delta": 0
+    }
+  ],
+  "recommended_profile": {
+    "name": "parallel-4x1",
+    "detector_workers": 4,
+    "detector_threads_per_session": 1,
+    "embedder_threads": 4
+  },
+  "selection": "lowest parity-safe p95; within 5 percent choose lower peak memory, then fewer detector workers",
+  "selection_result": "Selected the lowest parity-safe p95; within 5 percent preferred lower peak memory.",
+  "passes": true,
+  "privacy": {
+    "image_paths_recorded": false,
+    "image_bytes_recorded": false
+  },
+  "limitation": "Diagnostic measurement only; not an SLA or certification."
+}

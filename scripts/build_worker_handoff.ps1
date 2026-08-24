@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.0.2",
+    [string]$Version = "0.1.2",
     [string]$Python311Executable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$ReuseBuildEnvironment,
@@ -54,6 +54,17 @@ function Write-JsonFile {
     )
 }
 
+function Get-RelativePackagePath {
+    param([string]$Root, [string]$Path)
+    $rootPath = [System.IO.Path]::GetFullPath($Root).TrimEnd(
+        [System.IO.Path]::DirectorySeparatorChar,
+        [System.IO.Path]::AltDirectorySeparatorChar
+    ) + [System.IO.Path]::DirectorySeparatorChar
+    $rootUri = [System.Uri]::new($rootPath)
+    $pathUri = [System.Uri]::new([System.IO.Path]::GetFullPath($Path))
+    return [System.Uri]::UnescapeDataString($rootUri.MakeRelativeUri($pathUri).ToString())
+}
+
 function Assert-DirectoryCopyMatches {
     param(
         [Parameter(Mandatory = $true)]
@@ -64,7 +75,7 @@ function Assert-DirectoryCopyMatches {
     $sourceFiles = @(
         Get-ChildItem -LiteralPath $Source -File -Recurse | Sort-Object FullName | ForEach-Object {
             [ordered]@{
-                Path = [System.IO.Path]::GetRelativePath($Source, $_.FullName).Replace("\", "/")
+                Path = Get-RelativePackagePath -Root $Source -Path $_.FullName
                 Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash
             }
         }
@@ -72,7 +83,7 @@ function Assert-DirectoryCopyMatches {
     $targetFiles = @(
         Get-ChildItem -LiteralPath $Target -File -Recurse | Sort-Object FullName | ForEach-Object {
             [ordered]@{
-                Path = [System.IO.Path]::GetRelativePath($Target, $_.FullName).Replace("\", "/")
+                Path = Get-RelativePackagePath -Root $Target -Path $_.FullName
                 Hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash
             }
         }
@@ -88,26 +99,48 @@ function Assert-DirectoryCopyMatches {
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $sourceDirectory = Join-Path $repositoryRoot "src"
 $configPath = Join-Path $repositoryRoot "configs/versions/$Version.json"
-$lockPath = Join-Path $repositoryRoot "configs/runtime/requirements-windows-cpu.lock"
+$lockPath = Join-Path $repositoryRoot "configs/runtime/requirements-windows-openvino.lock"
+$n100DiagnosticPath = Join-Path $repositoryRoot "docs/diagnostics/n100-worker-$Version.json"
 $resolvedOutputRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot $OutputRoot))
 $handoffVersionRoot = Join-Path $resolvedOutputRoot $Version
-$packageName = "bixolon-worker-$Version-windows-x64-cpu"
+$packageName = "bixolon-worker-$Version-windows-x64-openvino"
 $packageRoot = Join-Path $handoffVersionRoot $packageName
 $zipPath = Join-Path $handoffVersionRoot "$packageName.zip"
 $zipHashPath = "$zipPath.sha256"
-$buildEnvironment = Join-Path $repositoryRoot "artifacts/build-envs/worker-cpu-py311"
-$workerOutput = "artifacts/versions/$Version/cpu-worker-build"
+$buildEnvironment = Join-Path $repositoryRoot "artifacts/build-envs/worker-openvino-py311"
+$workerOutput = "artifacts/versions/$Version/openvino-worker-build"
 $workerOutputAbsolute = Join-Path $repositoryRoot $workerOutput
 
 if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
     throw "Version config is missing: $configPath"
 }
 if (-not (Test-Path -LiteralPath $lockPath -PathType Leaf)) {
-    throw "CPU dependency lock is missing: $lockPath"
+    throw "OpenVINO dependency lock is missing: $lockPath"
 }
 $config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
 if ([string]$config.version -ne $Version) {
     throw "Version config identity mismatch: $configPath"
+}
+$n100Diagnostic = $null
+$recommendedN100Profile = $null
+if (Test-Path -LiteralPath $n100DiagnosticPath -PathType Leaf) {
+    $n100Diagnostic = Get-Content -Raw -LiteralPath $n100DiagnosticPath | ConvertFrom-Json
+    if (
+        [string]$n100Diagnostic.product_version -ne $Version -or
+        [string]$n100Diagnostic.provider -ne "cpu" -or
+        -not [bool]$n100Diagnostic.response_contract_safe -or
+        -not [bool]$n100Diagnostic.passes
+    ) {
+        throw "N100 diagnostic version, provider, or response/error checks are invalid."
+    }
+    $recommendedN100Profiles = @(
+        $n100Diagnostic.profiles |
+            Where-Object { $_.name -eq $n100Diagnostic.recommended_profile.name }
+    )
+    if ($recommendedN100Profiles.Count -ne 1) {
+        throw "N100 diagnostic must contain exactly one recommended profile result."
+    }
+    $recommendedN100Profile = $recommendedN100Profiles[0]
 }
 $sourceDateEpoch = [long]$config.source_date_epoch
 $versionRoot = [System.IO.Path]::GetFullPath(
@@ -127,19 +160,20 @@ if (-not $ReuseBuildEnvironment -and (Test-Path -LiteralPath $buildEnvironment))
 }
 if (-not (Test-Path -LiteralPath $buildEnvironment -PathType Container)) {
     [System.IO.Directory]::CreateDirectory((Split-Path -Parent $buildEnvironment)) | Out-Null
-    Invoke-Native -FailureMessage "CPU build environment creation failed" -Command {
+    Invoke-Native -FailureMessage "OpenVINO build environment creation failed" -Command {
         & $Python311Executable -m venv $buildEnvironment
     }
 }
 $buildPython = Join-Path $buildEnvironment "Scripts/python.exe"
-Invoke-Native -FailureMessage "CPU dependency installation failed" -Command {
+Invoke-Native -FailureMessage "OpenVINO dependency installation failed" -Command {
     & $buildPython -m pip install --disable-pip-version-check --no-deps -r $lockPath
 }
-Invoke-Native -FailureMessage "CPU ONNX Runtime validation failed" -Command {
+Invoke-Native -FailureMessage "OpenVINO ONNX Runtime validation failed" -Command {
     & $buildPython -c (
         "import onnxruntime as ort; " +
-        "assert ort.__version__ == '1.28.0', ort.__version__; " +
+        "assert ort.__version__ == '1.24.1', ort.__version__; " +
         "providers = ort.get_available_providers(); " +
+        "assert 'OpenVINOExecutionProvider' in providers, providers; " +
         "assert 'CPUExecutionProvider' in providers, providers; " +
         "forbidden = {'CUDAExecutionProvider', 'TensorrtExecutionProvider', " +
         "'DmlExecutionProvider'}; " +
@@ -160,11 +194,14 @@ try {
             --config $configPath `
             --repository-root $repositoryRoot
     }
-    Invoke-Native -FailureMessage "CPU Worker build failed" -Command {
+    Invoke-Native -FailureMessage "OpenVINO Worker build failed" -Command {
         & (Join-Path $PSScriptRoot "build_worker.ps1") `
             -PythonExecutable $buildPython `
             -OutputDirectory $workerOutput `
-            -SourceDateEpoch $sourceDateEpoch
+            -SourceDateEpoch $sourceDateEpoch `
+            -OpenVinoLibraryDirectory (
+                Join-Path $buildEnvironment "Lib/site-packages/openvino/libs"
+            )
     }
 }
 finally {
@@ -227,6 +264,10 @@ try {
         -Destination $temporaryRoot
     Copy-Item -LiteralPath (Join-Path $repositoryRoot "scripts/handoff/RUN-COMMANDS.txt") `
         -Destination $temporaryRoot
+    if ($null -ne $n100Diagnostic) {
+        Copy-Item -LiteralPath $n100DiagnosticPath `
+            -Destination (Join-Path $temporaryRoot "n100-reference-result.json")
+    }
     Copy-Item -LiteralPath (Join-Path $repositoryRoot "docs/contracts/worker-integration-$Version.md") `
         -Destination (Join-Path $temporaryRoot "API.md")
     Copy-Item -LiteralPath (Join-Path $repositoryRoot "schemas/scan-response.schema.json") `
@@ -252,37 +293,77 @@ try {
     Copy-Item -LiteralPath (Join-Path $stagingRoot "version.json") -Destination $temporaryRoot
     $provenance = Get-Content -Raw -LiteralPath (Join-Path $stagingRoot "provenance.json") |
         ConvertFrom-Json
-    $provenance | Add-Member -NotePropertyName "worker_handoff" -NotePropertyValue ([ordered]@{
-        platform = "windows-x64"
-        provider = "CPUExecutionProvider"
-        onnxruntime_version = "1.28.0"
-        dependency_lock_sha256 = (
-            Get-FileHash -Algorithm SHA256 -LiteralPath $lockPath
-        ).Hash.ToLowerInvariant()
-        default_profile = [ordered]@{
+    $runtimeMetadata = Get-Content -Raw -LiteralPath (Join-Path $stagingRoot "runtime/metadata.json") |
+        ConvertFrom-Json
+    $defaultProfile = if ($null -eq $n100Diagnostic) {
+        [ordered]@{
             detector_workers = 1
             detector_intra_op_threads = 4
             embedder_intra_op_threads = 4
         }
-        n100_benchmark_status = "PENDING_RECEIVER_MEASUREMENT"
+    }
+    else {
+        [ordered]@{
+            detector_workers = [int]$n100Diagnostic.recommended_profile.detector_workers
+            detector_intra_op_threads = [int](
+                $n100Diagnostic.recommended_profile.detector_threads_per_session
+            )
+            embedder_intra_op_threads = [int]$n100Diagnostic.recommended_profile.embedder_threads
+        }
+    }
+    $n100Benchmark = if ($null -eq $n100Diagnostic) {
+        $null
+    }
+    else {
+        [ordered]@{
+            reference_result_sha256 = (
+                Get-FileHash -Algorithm SHA256 -LiteralPath $n100DiagnosticPath
+            ).Hash.ToLowerInvariant()
+            sample_count = [int]$n100Diagnostic.sample_count
+            full_path_count = [int]$recommendedN100Profile.full_path_count
+            mean_ms = [double]$recommendedN100Profile.latency_ms.mean
+            p50_ms = [double]$recommendedN100Profile.latency_ms.p50
+            p95_ms = [double]$recommendedN100Profile.latency_ms.p95
+            p99_ms = [double]$recommendedN100Profile.latency_ms.p99
+            peak_working_set_bytes = [long]$recommendedN100Profile.peak_working_set_bytes
+            response_contract_safe = [bool]$n100Diagnostic.response_contract_safe
+            mean_within_1_second = [bool]$n100Diagnostic.target.mean_within_1_second
+            p95_within_1_second = [bool]$n100Diagnostic.target.p95_within_1_second
+            limitation = "Diagnostic measurement only; not an SLA or certification."
+        }
+    }
+    $provenance | Add-Member -NotePropertyName "worker_handoff" -NotePropertyValue ([ordered]@{
+        platform = "windows-x64"
+        provider = "CPUExecutionProvider"
+        onnxruntime_version = "1.24.1"
+        dependency_lock_sha256 = (
+            Get-FileHash -Algorithm SHA256 -LiteralPath $lockPath
+        ).Hash.ToLowerInvariant()
+        default_profile = $defaultProfile
+        n100_benchmark_status = if ($null -eq $n100Diagnostic) {
+            "PENDING_FIELD_MEASUREMENT"
+        } else {
+            "MEASURED_DIAGNOSTIC"
+        }
+        n100_benchmark = $n100Benchmark
         model_graph_or_weight_changed = $false
         decision_policy_changed = $false
     })
     Write-JsonFile -Path (Join-Path $temporaryRoot "provenance.json") -Value $provenance
 
     $forbiddenFiles = Get-ChildItem -LiteralPath $temporaryRoot -File -Recurse | Where-Object {
-        $_.Name -match "(?i)^(onnxruntime_providers_(cuda|tensorrt)\.dll|cudnn.*\.dll|cublas.*\.dll|cudart.*\.dll|cufft.*\.dll|nvrtc.*\.dll|nvjitlink.*\.dll)$" -or
+        $_.Name -match "(?i)^(onnxruntime_providers_(cuda|tensorrt|dml)\.dll|cudnn.*\.dll|cublas.*\.dll|cudart.*\.dll|cufft.*\.dll|nvrtc.*\.dll|nvjitlink.*\.dll)$" -or
         $_.FullName -match "(?i)[\\/]cuda-runtime[\\/]"
     }
     if ($forbiddenFiles) {
         $paths = ($forbiddenFiles | ForEach-Object { $_.FullName }) -join ", "
-        throw "CPU handoff contains CUDA or GPU provider files: $paths"
+        throw "OpenVINO handoff contains an unsupported GPU provider or CUDA file: $paths"
     }
 
     $files = Get-ChildItem -LiteralPath $temporaryRoot -File -Recurse | Sort-Object FullName |
         ForEach-Object {
             [ordered]@{
-                path = [System.IO.Path]::GetRelativePath($temporaryRoot, $_.FullName).Replace("\", "/")
+                path = Get-RelativePackagePath -Root $temporaryRoot -Path $_.FullName
                 size_bytes = $_.Length
                 sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $_.FullName).Hash.ToLowerInvariant()
             }
@@ -314,6 +395,6 @@ $zipHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipPath).Hash.ToLowerIn
     [System.Text.UTF8Encoding]::new($false)
 )
 
-Write-Host "CPU Worker handoff: $packageRoot"
+Write-Host "OpenVINO Worker handoff: $packageRoot"
 Write-Host "ZIP: $zipPath"
 Write-Host "ZIP SHA-256: $zipHash"

@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.2",
+  "app_build": 4,
+  "source_date_epoch": 1787529600,
+  "source_candidate": "detector415-single3-bias004-detector-corroboration-cpu",
+  "runtime": {
+    "path": "artifacts/packages/bread-scanner-0.1.2-n100-runtime",
+    "manifest_sha256": "6bc192b3d8fadc13051b0ae98f96d9536d34c0b350a01de790b273b659bff000"
+  },
+  "catalog": {
+    "path": "artifacts/catalogs/bread-store-0.1.2",
+    "manifest_sha256": "ef72b19dcfe9a3d1fc9469d333f24b1ba14afcf45cc06c7617013ad80fdbe5e0",
+    "store_id": "bread-store-0.1.2"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/releases/bixolon-scanner-2.0.0+4/worker/cuda-runtime",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/evaluations/scanner-0.1.2/development-415-current-pc-cpu.json",
+      "sha256": "09674fd7d3b8517db86332234e8b4b1f9492fb66d6dad2aad5ffcb70a6ed1374"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.2/development-415-current-pc-cpu-trace.jsonl",
+      "sha256": "f8034113b32bd8f076a7356157a50085491992de2b10a61cd3fb4db85dbaba6a"
+    },
+    {
+      "path": "artifacts/experiments/bread-0.1.2-detector415/postprocess-grid.json",
+      "sha256": "89279fdc25307d3b5b6c18d940a2e99127d40d8c7c95f9f81e8a36d25304420e"
+    },
+    {
+      "path": "artifacts/experiments/bread-0.1.2-detector415/presence-verifier-192/training-report.json",
+      "sha256": "69ccbe0a47a417862cea5ff6baee8a1a490394b954678d2eee9d044d98f4a3c8"
+    },
+    {
+      "path": "artifacts/experiments/bread-0.1.2-classifier-single3/robust-last-stage-neighbor-moderate/training-report.json",
+      "sha256": "888fd49078fc4d5a728abf000ecab3fabd3b658a99d140baae9ca27919ad3e26"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}
