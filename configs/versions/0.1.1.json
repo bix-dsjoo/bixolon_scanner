@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.1",
+  "app_build": 3,
+  "source_date_epoch": 1787184000,
+  "source_candidate": "n100-convnext-tiny-selective-detector-openvino",
+  "runtime": {
+    "path": "artifacts/packages/bread-scanner-0.1.1-n100-cascade-runtime",
+    "manifest_sha256": "671990ce6e8abde9def9ec39ee2f16c960bd6f23e30ae306a72c83a0e053ab6d"
+  },
+  "catalog": {
+    "path": "artifacts/catalogs/bread-project-2/0.1.1-n100-2det",
+    "manifest_sha256": "eb3d5a576447f70b20ad4841f4da0174ade36a64e06532a952d9807a2011cc79",
+    "store_id": "bread-project-2"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/releases/bixolon-scanner-2.0.0+4/worker/cuda-runtime",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/evaluations/scanner-0.1.1/development-300-n100-cascade-cuda.json",
+      "sha256": "b47c74fb4da5555eb2f08f273f055cc333c0ce679eff5c501970fca2d7b051c7"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.1/development-300-n100-cascade-cuda-trace.jsonl",
+      "sha256": "bc425828f03208a471d1dc2f070e6d72e1c5f59172bea1284ce82906fa4c2434"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.1/development-300-n100-cascade-openvino.json",
+      "sha256": "29beb8aa6ea18193e77cf8e1203d72076de81d963102322bf4b7f975e5f9e2cf"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.1/development-300-n100-cascade-openvino-trace.jsonl",
+      "sha256": "9f0bd3fec80c56803e02074c6035800f20f5c203c056796e1c216958cb3e0117"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.1/packaged-worker-n100-cascade-openvino-smoke.json",
+      "sha256": "3a42aca19a777256036aa23c42118af593e4a6922ba88fde6ba4b2a230c54212"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}

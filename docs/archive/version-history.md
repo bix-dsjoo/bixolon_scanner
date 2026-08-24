@@ -1,6 +1,6 @@
 # 버전 이력
 
-이 문서는 현재 단일 제품 버전 `0.0.2` 이전의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
+이 문서는 현재 단일 제품 버전 `0.1.1` 이전의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
 archive 인덱스입니다. 아래의 `production`, promotion, waiver, certification, release lock 표현은
 당시 기록의 용어이며 현재 빌드 수명주기나 활성 기본값이 아닙니다. 기존 ignored binary 산출물도
 원래 위치에서 이동하거나 삭제하지 않았습니다.
@@ -16,7 +16,7 @@ archive 인덱스입니다. 아래의 `production`, promotion, waiver, certifica
 - [과거 학습 파이프라인](guides/training-pipeline-1.0.0.md)
 - [과거 release 설정](../../configs/archive/releases/bixolon_scanner_1.1.0.json)
 
-이 계열의 수치와 예외는 현재 `0.0.2`의 독립 성능 근거로 사용하지 않습니다.
+이 계열의 수치와 예외는 현재 `0.1.1`의 독립 성능 근거로 사용하지 않습니다.
 
 ## Scanner 2.0.0
 
@@ -81,6 +81,30 @@ reliability를 완료한 인증 결과가 아닙니다. 과거에는 2026-08-20 
 detector 제한 병렬 실행 설정을 추가한 patch입니다. Flutter 내부 build는 `0.0.2+2`입니다.
 
 CPU 전달 ZIP은 `onnxruntime` CPU wheel만 포함하고 CUDA DLL을 포함하지 않습니다. N100 성능
-측정은 선택 진단이며 결과를 인증이나 SLA로 해석하지 않습니다. `0.0.1` 기준 설정은
+측정은 선택 진단이며 결과를 인증이나 SLA로 해석하지 않습니다. 4코어 N100의 100장 진단에서는
+parity-safe `4 workers × 1 thread`가 선택됐고 p50/p95/p99는
+2,025.864/2,405.074/2,714.368ms였습니다. `0.0.1` 기준 설정은
 [`configs/archive/versions/0.0.1.json`](../../configs/archive/versions/0.0.1.json), 당시 번들 설명은
 [`scanner-0.0.1.md`](scanner-0.0.1.md)에 보존합니다.
+
+## `0.1.1` N100 경량 후보
+
+`0.1.1`은 N100 처리시간을 줄이기 위해 같은 DINOv3 계열에서 Embedder를 ViT-B/16에서
+ConvNeXt-Tiny last-stage fine-tuned 모델로 경량화했습니다. Detector 모델 graph와 weight는
+`fold1+production` 2개를 유지하지만 `production`을 먼저 실행하고 selected count가 6이면서
+`uncertain`, 최소 점수 `≤0.5` 또는 `≥0.87`일 때만 `fold1`을 추가하는 선택적 cascade로
+바꿨습니다. 두 detector의 합의 수가 1 이하이면서 선택 박스 종횡비가 2.1 이상인 경우 재촬영하는
+안전 조건도 유지합니다. ConvNeXt ONNX는 약 111.4MB이며 기존 ViT-B ONNX 약 327MB보다 작습니다.
+
+300장 개발 재평가에서는 segmentation 292건, prediction 1,367건, detector false
+negative/positive 각 0건과 승인 오인 0건을 유지했습니다. 정답 승인 coverage는
+1,294/1,410(91.7730%)이고 CUDA 연속 warm 평균/P95/P99는 65.08/82.02/90.92ms였습니다. 이
+결과는 후보 선택에 사용한 개발 데이터 진단이며 독립 일반화 성능이나 N100 SLA를 의미하지
+않습니다.
+
+같은 300장의 선택적 cascade 로컬 CPU `1×4` 평가는 평균/P95/P99
+225.95/317.12/335.98ms였고 OpenVINO `1×4`는 169.53/228.13/234.90ms였습니다. 이 비교 장비는
+N100이 아닙니다. N100에서는 이미 수행한 `1×4`, `2×2`, `2×1` 조합 비교를 반복하지 않고 동일한
+`1×4`에서 CPU와 OpenVINO를 비교하며, OpenVINO 평균과 p95가 각각 1,000ms 이내인지
+`n100-0.1.1-result.json`으로 판정합니다. 현장 JSON이 돌아오기 전에는 목표 달성을 확정하지 않고
+최종 Setup을 만들지 않습니다.
