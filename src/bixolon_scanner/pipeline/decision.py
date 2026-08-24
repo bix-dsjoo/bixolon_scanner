@@ -194,7 +194,11 @@ class DecisionPipeline:
                 < self.count_verifier_metadata.confidence_threshold
             ):
                 reasons.append("DETECTOR_COUNT_UNCERTAIN")
-            elif detection_result.verified_count != len(detection_result.detections):
+            elif detection_result.verified_count != (
+                int(bool(detection_result.detections))
+                if self.count_verifier_metadata.comparison_mode == "object_presence"
+                else len(detection_result.detections)
+            ):
                 reasons.append("DETECTOR_COUNT_MISMATCH")
             reasons = list(dict.fromkeys(reasons))
         if reasons:

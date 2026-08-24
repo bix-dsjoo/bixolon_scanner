@@ -15,7 +15,7 @@ from ..contracts.model_package import (
 )
 from ..pipeline.ports import ClassificationResult, Detection, DetectionResult
 from .imaging import image_original_size
-from .onnx_session import OrtRunner, select_provider
+from .onnx_session import ExecutionProvider, OrtRunner, select_provider
 
 
 def _sigmoid(values: np.ndarray) -> np.ndarray:
@@ -232,11 +232,18 @@ class OnnxDetector:
         self,
         model_path: Path,
         metadata: DetectorMetadata,
-        provider: Literal["cuda", "cpu"],
+        provider: ExecutionProvider,
         cuda_dll_dir: Path | None = None,
+        *,
+        cpu_intra_op_threads: int = 0,
     ):
         self.metadata = metadata
-        self.runner = OrtRunner(model_path, provider, cuda_dll_dir)
+        self.runner = OrtRunner(
+            model_path,
+            provider,
+            cuda_dll_dir,
+            cpu_intra_op_threads=cpu_intra_op_threads,
+        )
         self.version = metadata.version
 
     def warmup(self) -> None:
@@ -292,10 +299,11 @@ class OnnxDetector:
                         > aspect_limit
                     ):
                         continue
-                    class_aware = getattr(self.metadata, "nms_class_aware_containment", False)
-                    class_id = (
-                        int(np.argmax(logits[index])) if class_aware and logits.ndim == 2 else None
-                    )
+                    # Preserve the detector's generic class prediction even when containment
+                    # suppression is class agnostic.  The NMS policy flag controls only whether
+                    # class equality participates in suppression; downstream diagnostics and
+                    # model-level fusion still need the detector output that was actually run.
+                    class_id = int(np.argmax(logits[index])) if logits.ndim == 2 else None
                     converted.append(Detection(x1, y1, x2, y2, float(scores[index]), class_id))
             return converted
 
@@ -344,7 +352,7 @@ class OnnxClassifier:
         self,
         model_path: Path,
         metadata: ClassifierMetadata,
-        provider: Literal["cuda", "cpu"],
+        provider: ExecutionProvider,
         cuda_dll_dir: Path | None = None,
     ):
         self.metadata = metadata
@@ -674,11 +682,18 @@ class OnnxCountVerifier:
         self,
         model_path: Path,
         metadata: CountVerifierMetadata,
-        provider: Literal["cuda", "cpu"],
+        provider: ExecutionProvider,
         cuda_dll_dir: Path | None = None,
+        *,
+        cpu_intra_op_threads: int = 0,
     ):
         self.metadata = metadata
-        self.runner = OrtRunner(model_path, provider, cuda_dll_dir)
+        self.runner = OrtRunner(
+            model_path,
+            provider,
+            cuda_dll_dir,
+            cpu_intra_op_threads=cpu_intra_op_threads,
+        )
         self.version = metadata.version
 
     def warmup(self) -> None:
@@ -712,6 +727,17 @@ class CountVerifiedDetector:
         self.verifier = verifier
         self.version = detector.version
 
+    def warmup(self) -> None:
+        warmup = getattr(self.detector, "warmup", None)
+        if callable(warmup):
+            warmup()
+        self.verifier.warmup()
+
+    def close(self) -> None:
+        close = getattr(self.detector, "close", None)
+        if callable(close):
+            close()
+
     def detect(self, image: np.ndarray | Image.Image) -> DetectionResult:
         result = self.detector.detect(image)
         verified_count, confidence = self.verifier.verify(image)
@@ -733,7 +759,7 @@ def build_onnx_adapters(
 ):
     provider = select_provider(provider_mode)
 
-    def create(selected_provider: Literal["cuda", "cpu"]):
+    def create(selected_provider: ExecutionProvider):
         classifier = OnnxClassifier(
             model_package.classifier_path,
             model_package.metadata.classifier,

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-from typing import Literal
 
 import numpy as np
 from PIL import Image
@@ -19,7 +18,16 @@ from .bread_zero_error import (
     is_ambiguous,
 )
 from .imaging import image_original_size, restore_original_resolution
-from .onnx import OrtRunner, box_iou, prepare_rgb, sigmoid
+from .onnx import (
+    CountVerifiedDetector,
+    OnnxCountVerifier,
+    OnnxDetector,
+    OrtRunner,
+    box_iou,
+    prepare_rgb,
+    sigmoid,
+)
+from .onnx_session import ExecutionProvider
 
 
 def _area(box: Detection) -> float:
@@ -79,7 +87,7 @@ class CrossScaleOnnxDetector:
     def __init__(
         self,
         package: RuntimePackageV2,
-        provider: Literal["cuda", "cpu"],
+        provider: ExecutionProvider,
         cuda_dll_dir: Path | None = None,
         *,
         cpu_intra_op_threads: int = 0,
@@ -220,7 +228,7 @@ class FixedEnsembleOnnxDetector:
     def __init__(
         self,
         package: RuntimePackageV2,
-        provider: Literal["cuda", "cpu"],
+        provider: ExecutionProvider,
         cuda_dll_dir: Path | None = None,
         *,
         cpu_detector_workers: int = 1,
@@ -254,7 +262,9 @@ class FixedEnsembleOnnxDetector:
         if not 1 <= cpu_detector_workers <= len(self.runners):
             raise ValueError("CPU detector worker count exceeds the detector ensemble")
         executor_workers = (
-            cpu_detector_workers
+            1
+            if self.ensemble.selective_cascade is not None
+            else cpu_detector_workers
             if provider == "cpu"
             else len(self.runners)
             if self.ensemble.parallel_execution
@@ -275,34 +285,26 @@ class FixedEnsembleOnnxDetector:
             self.executor.shutdown(wait=True, cancel_futures=True)
             self.executor = None
 
+    def _run_model(self, runner: OrtRunner, tensor: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        logits, boxes = runner.run(
+            [self.metadata.logits_output, self.metadata.boxes_output],
+            self.metadata.input_name,
+            tensor,
+        )
+        return np.asarray(logits)[0], np.asarray(boxes)[0]
+
     def _run_models(self, tensor: np.ndarray) -> list[tuple[np.ndarray, np.ndarray]]:
-        def run(runner: OrtRunner) -> tuple[np.ndarray, np.ndarray]:
-            logits, boxes = runner.run(
-                [self.metadata.logits_output, self.metadata.boxes_output],
-                self.metadata.input_name,
-                tensor,
-            )
-            return np.asarray(logits)[0], np.asarray(boxes)[0]
-
         if self.executor is None:
-            return [run(runner) for runner in self.runners]
-        return list(self.executor.map(run, self.runners))
+            return [self._run_model(runner, tensor) for runner in self.runners]
+        return list(self.executor.map(lambda runner: self._run_model(runner, tensor), self.runners))
 
-    def _predict(
+    def _select_outputs(
         self,
-        image: np.ndarray | Image.Image,
+        outputs: list[tuple[np.ndarray, np.ndarray]],
         *,
         width: int,
         height: int,
     ) -> tuple[dict, int, bool, bool]:
-        tensor = prepare_rgb(
-            image,
-            self.metadata.input_size,
-            self.metadata.mean,
-            self.metadata.std,
-            reducing_gap=self.metadata.resize_reducing_gap,
-        )[None]
-        outputs = self._run_models(tensor)
         rows = [
             detector_output_to_prediction(
                 logits,
@@ -363,6 +365,46 @@ class FixedEnsembleOnnxDetector:
         )
         return selected, agreement_count, uncertain, saturated
 
+    def _predict(
+        self,
+        image: np.ndarray | Image.Image,
+        *,
+        width: int,
+        height: int,
+    ) -> tuple[dict, int, bool, bool]:
+        tensor = prepare_rgb(
+            image,
+            self.metadata.input_size,
+            self.metadata.mean,
+            self.metadata.std,
+            reducing_gap=self.metadata.resize_reducing_gap,
+        )[None]
+        cascade = self.ensemble.selective_cascade
+        if cascade is None:
+            return self._select_outputs(
+                self._run_models(tensor),
+                width=width,
+                height=height,
+            )
+        member_filenames = [member.filename for member in self.ensemble.members]
+        primary_index = member_filenames.index(cascade.primary_member_filename)
+        primary = self._run_model(self.runners[primary_index], tensor)
+        primary_outputs = [primary] * len(self.runners)
+        primary_result = self._select_outputs(
+            primary_outputs,
+            width=width,
+            height=height,
+        )
+        if not self._cascade_requires_secondary(
+            primary_result[0], cascade, uncertain=primary_result[2]
+        ):
+            return primary_result
+        outputs = list(primary_outputs)
+        for index, runner in enumerate(self.runners):
+            if index != primary_index:
+                outputs[index] = self._run_model(runner, tensor)
+        return self._select_outputs(outputs, width=width, height=height)
+
     @staticmethod
     def _maximum_aspect_ratio_extremity(selected: dict) -> float:
         boxes = np.asarray(selected["boxes_xyxy"], dtype=np.float64)
@@ -376,6 +418,22 @@ class FixedEnsembleOnnxDetector:
         ratios = widths[valid] / heights[valid]
         return float(np.max(np.maximum(ratios, 1.0 / ratios)))
 
+    @staticmethod
+    def _cascade_requires_secondary(selected: dict, cascade, *, uncertain: bool = False) -> bool:
+        scores = np.asarray(selected["scores"], dtype=np.float64)
+        if len(scores) not in cascade.secondary_trigger_selected_counts:
+            return False
+        maximum = cascade.secondary_trigger_minimum_score_maximum
+        minimum = cascade.secondary_trigger_minimum_score_minimum
+        if maximum is None and minimum is None and not cascade.secondary_trigger_on_uncertain:
+            return True
+        if cascade.secondary_trigger_on_uncertain and uncertain:
+            return True
+        minimum_score = float(np.min(scores))
+        return (maximum is not None and minimum_score <= maximum) or (
+            minimum is not None and minimum_score >= minimum
+        )
+
     @classmethod
     def _selective_uncertainty(
         cls,
@@ -384,9 +442,17 @@ class FixedEnsembleOnnxDetector:
         uncertain: bool,
         policy,
     ) -> bool:
-        if policy.mode != "selective" or not uncertain:
+        if policy.mode != "selective":
             return uncertain
         aspect_ratio = cls._maximum_aspect_ratio_extremity(selected)
+        if (
+            policy.low_agreement_count_maximum is not None
+            and agreement_count <= policy.low_agreement_count_maximum
+            and aspect_ratio >= policy.low_agreement_aspect_ratio_minimum
+        ):
+            return True
+        if not uncertain:
+            return False
         selected_count = len(selected["scores"])
         return aspect_ratio >= policy.high_aspect_ratio_minimum or (
             policy.dense_selected_count_minimum
@@ -459,23 +525,44 @@ class FixedEnsembleOnnxDetector:
 
 def build_detector_v2(
     package: RuntimePackageV2,
-    provider: Literal["cuda", "cpu"],
+    provider: ExecutionProvider,
     cuda_dll_dir: Path | None = None,
     *,
     cpu_detector_workers: int = 1,
     cpu_intra_op_threads: int = 0,
-) -> CrossScaleOnnxDetector | FixedEnsembleOnnxDetector:
+) -> OnnxDetector | CrossScaleOnnxDetector | FixedEnsembleOnnxDetector | CountVerifiedDetector:
     if package.metadata.detector.ensemble is not None:
-        return FixedEnsembleOnnxDetector(
+        detector = FixedEnsembleOnnxDetector(
             package,
             provider,
             cuda_dll_dir,
             cpu_detector_workers=cpu_detector_workers,
             cpu_intra_op_threads=cpu_intra_op_threads,
         )
-    return CrossScaleOnnxDetector(
-        package,
+    elif package.metadata.detector_refinement is None:
+        detector = OnnxDetector(
+            package.detector_path,
+            package.metadata.detector,
+            provider,
+            cuda_dll_dir,
+            cpu_intra_op_threads=cpu_intra_op_threads,
+        )
+    else:
+        detector = CrossScaleOnnxDetector(
+            package,
+            provider,
+            cuda_dll_dir,
+            cpu_intra_op_threads=cpu_intra_op_threads,
+        )
+    if package.metadata.count_verifier is None:
+        return detector
+    if package.count_verifier_path is None:
+        raise ValueError("count verifier metadata requires a packaged model")
+    verifier = OnnxCountVerifier(
+        package.count_verifier_path,
+        package.metadata.count_verifier,
         provider,
         cuda_dll_dir,
         cpu_intra_op_threads=cpu_intra_op_threads,
     )
+    return CountVerifiedDetector(detector, verifier)

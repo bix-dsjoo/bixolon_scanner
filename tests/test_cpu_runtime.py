@@ -15,7 +15,11 @@ from bixolon_scanner.worker.settings import WorkerSettings
 
 
 class _FakeSessionOptions:
-    pass
+    def __init__(self) -> None:
+        self.config_entries: dict[str, str] = {}
+
+    def add_session_config_entry(self, name: str, value: str) -> None:
+        self.config_entries[name] = value
 
 
 class _FakeSession:
@@ -41,7 +45,12 @@ def _fake_ort():
         GraphOptimizationLevel=SimpleNamespace(ORT_ENABLE_ALL="all"),
         ExecutionMode=SimpleNamespace(ORT_SEQUENTIAL="sequential"),
         InferenceSession=create_session,
-        get_available_providers=lambda: ["CUDAExecutionProvider", "CPUExecutionProvider"],
+        get_available_providers=lambda: [
+            "CUDAExecutionProvider",
+            "DmlExecutionProvider",
+            "OpenVINOExecutionProvider",
+            "CPUExecutionProvider",
+        ],
     )
     return module, captured
 
@@ -77,6 +86,93 @@ def test_cuda_runner_does_not_apply_cpu_thread_contract(monkeypatch, tmp_path: P
     options = captured["session"].options
     assert not hasattr(options, "intra_op_num_threads")
     assert runner.cuda is True
+    assert runner.accelerated is True
+
+
+def test_directml_runner_applies_required_session_contract(monkeypatch, tmp_path: Path) -> None:
+    fake_ort, captured = _fake_ort()
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+
+    runner = onnx_session.OrtRunner(tmp_path / "model.onnx", "directml")
+
+    session = captured["session"]
+    options = session.options
+    assert options.execution_mode == "sequential"
+    assert options.enable_mem_pattern is False
+    assert session.providers == [("DmlExecutionProvider", {"device_id": "0"})]
+    assert runner.cuda is False
+    assert runner.accelerated is True
+
+
+def test_explicit_directml_never_falls_back(monkeypatch) -> None:
+    fake_ort, _ = _fake_ort()
+    fake_ort.get_available_providers = lambda: ["CPUExecutionProvider"]
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+
+    with pytest.raises(onnx_session.ProviderInitializationError):
+        onnx_session.select_provider("directml")
+
+
+def test_openvino_runner_applies_cpu_device_and_thread_contract(
+    monkeypatch, tmp_path: Path
+) -> None:
+    fake_ort, captured = _fake_ort()
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+
+    runner = onnx_session.OrtRunner(
+        tmp_path / "model.onnx",
+        "openvino",
+        cpu_intra_op_threads=4,
+    )
+
+    session = captured["session"]
+    assert session.providers == [
+        (
+            "OpenVINOExecutionProvider",
+            {"device_type": "CPU", "num_of_threads": "4"},
+        )
+    ]
+    assert runner.accelerated is True
+
+
+def test_explicit_openvino_never_falls_back(monkeypatch) -> None:
+    fake_ort, _ = _fake_ort()
+    fake_ort.get_available_providers = lambda: ["CPUExecutionProvider"]
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+
+    with pytest.raises(onnx_session.ProviderInitializationError):
+        onnx_session.select_provider("openvino")
+
+
+def test_openvino_gpu_runner_selects_gpu_and_disables_cpu_fallback(
+    monkeypatch, tmp_path: Path
+) -> None:
+    fake_ort, captured = _fake_ort()
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+
+    runner = onnx_session.OrtRunner(
+        tmp_path / "model.onnx",
+        "openvino_gpu",
+    )
+
+    session = captured["session"]
+    assert session.providers == [
+        (
+            "OpenVINOExecutionProvider",
+            {"device_type": "GPU"},
+        )
+    ]
+    assert session.options.config_entries == {"session.disable_cpu_ep_fallback": "1"}
+    assert runner.accelerated is True
+
+
+def test_explicit_openvino_gpu_never_falls_back(monkeypatch) -> None:
+    fake_ort, _ = _fake_ort()
+    fake_ort.get_available_providers = lambda: ["CPUExecutionProvider"]
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+
+    with pytest.raises(onnx_session.ProviderInitializationError):
+        onnx_session.select_provider("openvino_gpu")
 
 
 def test_worker_settings_validate_cpu_execution_limits() -> None:
@@ -95,9 +191,30 @@ def test_worker_settings_validate_cpu_execution_limits() -> None:
         WorkerSettings(cpu_detector_intra_op_threads=-1)
 
 
+def test_worker_settings_accept_explicit_directml_embedder() -> None:
+    settings = WorkerSettings(provider="cpu", embedder_provider="directml")
+
+    assert settings.provider == "cpu"
+    assert settings.embedder_provider == "directml"
+
+
+def test_worker_settings_accept_explicit_openvino_provider() -> None:
+    settings = WorkerSettings(provider="openvino")
+
+    assert settings.provider == "openvino"
+
+
+def test_worker_settings_accept_openvino_cpu_gpu_split() -> None:
+    settings = WorkerSettings(provider="openvino", embedder_provider="openvino_gpu")
+
+    assert settings.provider == "openvino"
+    assert settings.embedder_provider == "openvino_gpu"
+
+
 class _WarmupRunner:
     def __init__(self, *, cuda: bool):
         self.cuda = cuda
+        self.accelerated = cuda
         self.batch_sizes: list[int] = []
 
     def run(self, _outputs, _input_name, tensor):
@@ -135,12 +252,53 @@ def test_embedder_cuda_warmup_keeps_all_metadata_batches() -> None:
     assert embedder.runner.batch_sizes == [1, 2, 4, 8]
 
 
+def test_embedder_directml_warmup_keeps_all_metadata_batches() -> None:
+    embedder = object.__new__(OnnxEmbedder)
+    embedder.metadata = SimpleNamespace(
+        input_size=(16, 16),
+        warmup_batch_sizes=[1, 2, 4, 8],
+        output_name="output",
+        input_name="input",
+    )
+    embedder.runner = _WarmupRunner(cuda=False)
+    embedder.runner.accelerated = True
+
+    embedder.warmup()
+
+    assert embedder.runner.batch_sizes == [1, 2, 4, 8]
+
+
+def test_embedder_reuses_float32_input_buffer() -> None:
+    class CaptureRunner:
+        def __init__(self) -> None:
+            self.tensor = None
+
+        def run(self, _outputs, _input_name, tensor):
+            self.tensor = tensor
+            return [np.zeros((len(tensor), 3), dtype=np.float32)]
+
+    embedder = object.__new__(OnnxEmbedder)
+    embedder.metadata = SimpleNamespace(
+        output_name="output",
+        input_name="input",
+        embedding_dimension=3,
+    )
+    embedder.runner = CaptureRunner()
+    batch = np.zeros((2, 3, 4, 4), dtype=np.float32)
+
+    result = embedder._run_raw_tensors(batch)
+
+    assert embedder.runner.tensor is batch
+    assert result.shape == (2, 3)
+
+
 def _ensemble_package(tmp_path: Path):
     members = [SimpleNamespace(filename=f"detector-{index}.onnx") for index in range(4)]
     ensemble = SimpleNamespace(
         members=members,
         parallel_execution=False,
         cuda_graph_execution=True,
+        selective_cascade=None,
     )
     detector = SimpleNamespace(
         ensemble=ensemble,
@@ -202,3 +360,69 @@ def test_cuda_detector_keeps_metadata_parallel_setting(monkeypatch, tmp_path: Pa
         cpu_intra_op_threads=1,
     )
     assert detector.executor is None
+
+
+@pytest.mark.parametrize(
+    ("selected_count", "expected_secondary_calls"),
+    ((5, 0), (6, 1)),
+)
+def test_detector_cascade_runs_secondary_only_for_triggered_count(
+    monkeypatch,
+    selected_count: int,
+    expected_secondary_calls: int,
+) -> None:
+    class CountingRunner:
+        def __init__(self, marker: float) -> None:
+            self.marker = marker
+            self.calls = 0
+
+        def run(self, _outputs, _input_name, _tensor):
+            self.calls += 1
+            return [
+                np.asarray([[[self.marker]]], dtype=np.float32),
+                np.zeros((1, 1, 4), dtype=np.float32),
+            ]
+
+    detector = object.__new__(FixedEnsembleOnnxDetector)
+    detector.metadata = SimpleNamespace(
+        input_size=(8, 8),
+        mean=(0.0, 0.0, 0.0),
+        std=(1.0, 1.0, 1.0),
+        resize_reducing_gap=1.0,
+        logits_output="logits",
+        boxes_output="boxes",
+        input_name="input",
+    )
+    detector.ensemble = SimpleNamespace(
+        members=[
+            SimpleNamespace(filename="detector-fold1.onnx"),
+            SimpleNamespace(filename="detector-production.onnx"),
+        ],
+        selective_cascade=SimpleNamespace(
+            primary_member_filename="detector-production.onnx",
+            secondary_trigger_selected_counts=[6],
+            secondary_trigger_minimum_score_maximum=None,
+            secondary_trigger_minimum_score_minimum=None,
+            secondary_trigger_on_uncertain=False,
+        ),
+    )
+    secondary = CountingRunner(1.0)
+    primary = CountingRunner(2.0)
+    detector.runners = [secondary, primary]
+
+    def select_outputs(outputs, **_kwargs):
+        repeated_primary = float(outputs[0][0][0, 0]) == float(outputs[1][0][0, 0]) == 2.0
+        count = selected_count if repeated_primary else 3
+        return ({"scores": [0.9] * count}, 2, False, False)
+
+    detector._select_outputs = select_outputs
+    monkeypatch.setattr(
+        detector_v2,
+        "prepare_rgb",
+        lambda *_args, **_kwargs: np.zeros((3, 8, 8), dtype=np.float32),
+    )
+
+    detector._predict(np.zeros((8, 8, 3), dtype=np.uint8), width=8, height=8)
+
+    assert primary.calls == 1
+    assert secondary.calls == expected_secondary_calls

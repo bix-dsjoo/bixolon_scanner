@@ -119,6 +119,38 @@ class DetectorClassVerifiedSelectorMetadata(BaseModel):
     unique_class_per_image_contract: Literal[True] = True
 
 
+class DetectorSelectiveCascadeMetadata(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    primary_member_filename: str = Field(min_length=1)
+    secondary_trigger_selected_counts: list[int] = Field(min_length=1)
+    secondary_trigger_minimum_score_maximum: float | None = Field(default=None, ge=0.0, le=1.0)
+    secondary_trigger_minimum_score_minimum: float | None = Field(default=None, ge=0.0, le=1.0)
+    secondary_trigger_on_uncertain: bool = False
+
+    _validate_primary_filename = field_validator("primary_member_filename")(
+        validate_package_filename
+    )
+
+    @field_validator("secondary_trigger_selected_counts")
+    @classmethod
+    def validate_trigger_counts(cls, value: list[int]) -> list[int]:
+        if any(count < 1 for count in value) or len(value) != len(set(value)):
+            raise ValueError("detector cascade trigger counts must be unique positive integers")
+        return value
+
+    @model_validator(mode="after")
+    def validate_score_bands(self) -> "DetectorSelectiveCascadeMetadata":
+        if (
+            self.secondary_trigger_minimum_score_maximum is not None
+            and self.secondary_trigger_minimum_score_minimum is not None
+            and self.secondary_trigger_minimum_score_maximum
+            >= self.secondary_trigger_minimum_score_minimum
+        ):
+            raise ValueError("detector cascade score bands must leave a non-trigger interval")
+        return self
+
+
 class DetectorEnsembleMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -132,6 +164,7 @@ class DetectorEnsembleMetadata(BaseModel):
     ambiguity_union: list[DetectorAmbiguityRuleMetadata] = Field(min_length=1)
     class_verified_selector: DetectorClassVerifiedSelectorMetadata
     maximum_box_area_ratio: float = Field(gt=0.0, le=1.0)
+    selective_cascade: DetectorSelectiveCascadeMetadata | None = None
 
     @model_validator(mode="after")
     def validate_members(self) -> "DetectorEnsembleMetadata":
@@ -154,6 +187,13 @@ class DetectorEnsembleMetadata(BaseModel):
                 > len(self.policy_consensus.policies) + 1
             ):
                 raise ValueError("detector draft refinement agreement count exceeds policy count")
+        if self.selective_cascade is not None:
+            if len(self.members) != 2:
+                raise ValueError("detector selective cascade requires exactly two members")
+            if self.selective_cascade.primary_member_filename not in filenames:
+                raise ValueError("detector cascade primary must reference an ensemble member")
+            if self.parallel_execution:
+                raise ValueError("detector selective cascade must execute sequentially")
         return self
 
 
@@ -392,6 +432,7 @@ class CountVerifierMetadata(BaseModel):
     mean: tuple[float, float, float]
     std: tuple[float, float, float]
     count_labels: list[int] = Field(min_length=2)
+    comparison_mode: Literal["exact_count", "object_presence"] = "exact_count"
     confidence_threshold: float = Field(ge=0.0, le=1.0)
     temperature: float = Field(default=1.0, gt=0.0)
     resize_reducing_gap: float | None = Field(default=None, ge=1.0)
@@ -411,6 +452,12 @@ class CountVerifierMetadata(BaseModel):
         if any(count < 0 for count in value) or value != sorted(set(value)):
             raise ValueError("count_labels must contain sorted unique non-negative counts")
         return value
+
+    @model_validator(mode="after")
+    def validate_comparison_mode(self) -> "CountVerifierMetadata":
+        if self.comparison_mode == "object_presence" and self.count_labels != [0, 1]:
+            raise ValueError("object presence verification requires count labels [0, 1]")
+        return self
 
 
 class QualityMetadata(BaseModel):

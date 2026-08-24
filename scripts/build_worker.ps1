@@ -1,7 +1,9 @@
 param(
     [string]$PythonExecutable = "python",
     [string]$OutputDirectory = "artifacts/worker",
-    [long]$SourceDateEpoch = 0
+    [long]$SourceDateEpoch = 0,
+    [string]$OpenVinoLibraryDirectory = "",
+    [switch]$IncludeOpenVinoGpu
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,6 +71,34 @@ if ($LASTEXITCODE -ne 0) {
 $workerExecutable = Join-Path $resolvedOutput "bixolon-worker/bixolon-worker.exe"
 if (-not (Test-Path -LiteralPath $workerExecutable -PathType Leaf)) {
     throw "Packaged Worker executable was not created: $workerExecutable"
+}
+
+if (-not [string]::IsNullOrWhiteSpace($OpenVinoLibraryDirectory)) {
+    $resolvedOpenVinoLibraries = [System.IO.Path]::GetFullPath($OpenVinoLibraryDirectory)
+    if (-not (Test-Path -LiteralPath $resolvedOpenVinoLibraries -PathType Container)) {
+        throw "OpenVINO library directory is missing: $resolvedOpenVinoLibraries"
+    }
+    $internalDirectory = Join-Path $resolvedOutput "bixolon-worker/_internal"
+    $requiredOpenVinoFiles = @(
+        "cache.json",
+        "openvino.dll",
+        "openvino_intel_cpu_plugin.dll",
+        "openvino_onnx_frontend.dll",
+        "tbb12.dll",
+        "tbbbind_2_5.dll",
+        "tbbmalloc.dll",
+        "tbbmalloc_proxy.dll"
+    )
+    if ($IncludeOpenVinoGpu) {
+        $requiredOpenVinoFiles += "openvino_intel_gpu_plugin.dll"
+    }
+    foreach ($filename in $requiredOpenVinoFiles) {
+        $source = Join-Path $resolvedOpenVinoLibraries $filename
+        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+            throw "Required OpenVINO runtime file is missing: $source"
+        }
+        Copy-Item -LiteralPath $source -Destination $internalDirectory -Force
+    }
 }
 
 Write-Host "Packaged Worker: $workerExecutable"

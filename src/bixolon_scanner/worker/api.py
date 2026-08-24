@@ -93,6 +93,11 @@ def create_app(
                         expected_key_id=worker_settings.catalog_key_id,
                     )
                     provider = select_provider(worker_settings.provider)
+                    embedder_provider = (
+                        provider
+                        if worker_settings.embedder_provider == "same"
+                        else select_provider(worker_settings.embedder_provider)
+                    )
                     detector = build_detector_v2(
                         runtime_package,
                         provider,
@@ -103,7 +108,7 @@ def create_app(
                     managed_detector = detector
                     embedder = OnnxEmbedder(
                         runtime_package,
-                        provider,
+                        embedder_provider,
                         worker_settings.cuda_dll_dir,
                         cpu_intra_op_threads=(worker_settings.cpu_embedder_intra_op_threads),
                     )
@@ -115,6 +120,7 @@ def create_app(
                         classifier,
                         classifier.metadata,
                         runtime_package.metadata.quality,
+                        runtime_package.metadata.count_verifier,
                         worker_version=runtime_package.metadata.worker_version,
                         embedder_version=runtime_package.metadata.embedder.version,
                         detector_policy_version=runtime_package.metadata.detector_policy_version,
@@ -130,6 +136,7 @@ def create_app(
                         worker_settings.provider,
                         cuda_dll_dir=worker_settings.cuda_dll_dir,
                     )
+                    embedder_provider = provider
                     managed_detector = detector
                     managed_pipeline = DecisionPipeline(
                         detector,
@@ -141,7 +148,9 @@ def create_app(
                     )
                     app.state.pipeline = managed_pipeline
                     app.state.jpeg_draft_size = model_package.metadata.input.jpeg_draft_size
-                app.state.provider = provider
+                app.state.provider = (
+                    provider if provider == embedder_provider else f"{provider}+{embedder_provider}"
+                )
             else:
                 app.state.pipeline = injected_pipeline
                 app.state.provider = "injected"

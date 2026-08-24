@@ -146,3 +146,87 @@ def test_pair_probability_policy_requires_stricter_disagreement_threshold() -> N
 
     with pytest.raises(ValidationError):
         CatalogDecisionPolicy.model_validate(payload)
+
+
+def test_margin_policy_requires_stricter_disagreement_threshold() -> None:
+    payload = {
+        "version": "0.1.2",
+        "prototype_weight": 0.5,
+        "support_top_k": 3,
+        "approval_minimum_similarity": 1.0,
+        "approval_minimum_margin": 0.1,
+        "ood_maximum_similarity": -1.0,
+        "top3_minimum_similarity": -1.0,
+        "catalog_conflict_similarity": 0.95,
+        "ridge_approval_minimum_margin": 0.2,
+        "ridge_disagreement_minimum_margin": 0.19,
+    }
+
+    with pytest.raises(ValidationError):
+        CatalogDecisionPolicy.model_validate(payload)
+
+
+def test_detector_corroboration_requires_both_global_thresholds() -> None:
+    payload = {
+        "version": "0.1.2",
+        "prototype_weight": 0.5,
+        "support_top_k": 3,
+        "approval_minimum_similarity": 1.0,
+        "approval_minimum_margin": 0.1,
+        "ood_maximum_similarity": -1.0,
+        "top3_minimum_similarity": -1.0,
+        "catalog_conflict_similarity": 0.95,
+        "ridge_approval_minimum_margin": 0.0,
+        "detector_corroboration_minimum_score": 0.93,
+    }
+
+    with pytest.raises(ValidationError):
+        CatalogDecisionPolicy.model_validate(payload)
+
+
+def test_low_similarity_detector_corroboration_requires_all_thresholds() -> None:
+    payload = {
+        "version": "0.1.2",
+        "prototype_weight": 0.5,
+        "support_top_k": 3,
+        "approval_minimum_similarity": 1.0,
+        "approval_minimum_margin": 0.1,
+        "ood_maximum_similarity": -1.0,
+        "top3_minimum_similarity": -1.0,
+        "catalog_conflict_similarity": 0.95,
+        "ridge_approval_minimum_margin": 0.0,
+        "detector_corroboration_low_similarity_minimum_score": 0.7,
+        "detector_corroboration_low_similarity_maximum_retrieval": 0.8,
+    }
+
+    with pytest.raises(ValidationError):
+        CatalogDecisionPolicy.model_validate(payload)
+
+
+def test_runtime_package_v2_accepts_per_class_ridge_thresholds(tmp_path: Path) -> None:
+    payload = _metadata(tmp_path)
+    payload["classifier_policy"]["ridge_approval_thresholds"] = [0.715, None]
+
+    metadata = RuntimePackageV2Metadata.model_validate(payload)
+
+    assert metadata.classifier_policy.ridge_approval_thresholds == [0.715, None]
+
+
+@pytest.mark.parametrize(
+    "thresholds",
+    (
+        [0.7],
+        [0.7, None, 0.8],
+        [-0.1, None],
+        [1.1, None],
+    ),
+)
+def test_runtime_package_v2_rejects_invalid_per_class_ridge_thresholds(
+    tmp_path: Path,
+    thresholds: list[float | None],
+) -> None:
+    payload = _metadata(tmp_path)
+    payload["classifier_policy"]["ridge_approval_thresholds"] = thresholds
+
+    with pytest.raises(ValidationError):
+        RuntimePackageV2Metadata.model_validate(payload)

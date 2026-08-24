@@ -9,7 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from .catalog import SEMVER, SHA256, sha256_file
 from .errors import PackageValidationError
-from .model_package import DetectorMetadata, InputMetadata, ModelSource, QualityMetadata
+from .model_package import (
+    CountVerifierMetadata,
+    DetectorMetadata,
+    InputMetadata,
+    ModelSource,
+    QualityMetadata,
+)
 from .package_files import resolve_package_file, validate_package_filename
 
 
@@ -123,11 +129,26 @@ class CatalogDecisionPolicy(BaseModel):
     )
     ridge_approval_minimum_margin: float | None = Field(default=None, ge=0.0)
     ridge_approval_minimum_pair_probability: float | None = Field(default=None, ge=0.5, le=1.0)
+    ridge_approval_thresholds: list[float | None] | None = None
+    ridge_disagreement_minimum_margin: float | None = Field(default=None, ge=0.0, le=1.0)
     ridge_disagreement_minimum_pair_probability: float | None = Field(default=None, ge=0.5, le=1.0)
     ridge_pair_temperature: float = Field(default=1.0, gt=0.0)
     ridge_top3_minimum_inverse_entropy: float | None = Field(default=None, le=0.0)
     ridge_require_retrieval_agreement: bool = False
     ridge_retrieval_minimum_similarity: float | None = Field(default=None, ge=-1.0, le=1.0)
+    detector_corroboration_minimum_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    detector_corroboration_maximum_approval_score: float | None = Field(
+        default=None, ge=0.0, le=1.0
+    )
+    detector_corroboration_low_similarity_minimum_score: float | None = Field(
+        default=None, ge=0.0, le=1.0
+    )
+    detector_corroboration_low_similarity_maximum_retrieval: float | None = Field(
+        default=None, ge=-1.0, le=1.0
+    )
+    detector_corroboration_low_similarity_minimum_approval_score: float | None = Field(
+        default=None, ge=0.0, le=1.0
+    )
     ridge_alpha: float = Field(default=0.01, gt=0.0)
     support_augmentation: CatalogSupportAugmentationMetadata = Field(
         default_factory=CatalogSupportAugmentationMetadata
@@ -142,6 +163,23 @@ class CatalogDecisionPolicy(BaseModel):
 
     @model_validator(mode="after")
     def validate_threshold_order(self) -> "CatalogDecisionPolicy":
+        if (self.detector_corroboration_minimum_score is None) != (
+            self.detector_corroboration_maximum_approval_score is None
+        ):
+            raise ValueError(
+                "detector corroboration score and approval thresholds must be configured together"
+            )
+        low_similarity_thresholds = (
+            self.detector_corroboration_low_similarity_minimum_score,
+            self.detector_corroboration_low_similarity_maximum_retrieval,
+            self.detector_corroboration_low_similarity_minimum_approval_score,
+        )
+        if any(value is None for value in low_similarity_thresholds) and any(
+            value is not None for value in low_similarity_thresholds
+        ):
+            raise ValueError(
+                "low-similarity detector corroboration thresholds must be configured together"
+            )
         if self.ood_maximum_similarity > self.approval_minimum_similarity:
             raise ValueError("OOD similarity threshold cannot exceed approval similarity threshold")
         if self.top3_minimum_similarity > self.approval_minimum_similarity:
@@ -151,6 +189,8 @@ class CatalogDecisionPolicy(BaseModel):
                 raise ValueError("Top-2 pair approval requires a pair probability threshold")
             if self.ridge_approval_minimum_margin is not None:
                 raise ValueError("Top-2 pair approval cannot also configure the legacy margin")
+            if self.ridge_disagreement_minimum_margin is not None:
+                raise ValueError("Top-2 pair approval cannot configure a disagreement margin")
             if (
                 self.ridge_disagreement_minimum_pair_probability is not None
                 and self.ridge_disagreement_minimum_pair_probability
@@ -159,11 +199,23 @@ class CatalogDecisionPolicy(BaseModel):
                 raise ValueError(
                     "Ridge disagreement threshold cannot be lower than the base pair threshold"
                 )
-        elif (
-            self.ridge_approval_minimum_pair_probability is not None
-            or self.ridge_disagreement_minimum_pair_probability is not None
+        else:
+            if (
+                self.ridge_approval_minimum_pair_probability is not None
+                or self.ridge_disagreement_minimum_pair_probability is not None
+            ):
+                raise ValueError("Legacy Ridge margin approval cannot configure pair thresholds")
+            if (
+                self.ridge_disagreement_minimum_margin is not None
+                and self.ridge_approval_minimum_margin is not None
+                and self.ridge_disagreement_minimum_margin < self.ridge_approval_minimum_margin
+            ):
+                raise ValueError("Ridge disagreement margin cannot be lower than the base margin")
+        if self.ridge_approval_thresholds is not None and any(
+            threshold is not None and not 0.0 <= threshold <= 1.0
+            for threshold in self.ridge_approval_thresholds
         ):
-            raise ValueError("Legacy Ridge margin approval cannot configure pair thresholds")
+            raise ValueError("Ridge per-class approval thresholds must be in [0, 1]")
         return self
 
 
@@ -190,11 +242,17 @@ class DetectorAmbiguityPolicyMetadata(BaseModel):
     dense_selected_count_maximum: int = Field(default=6, ge=1)
     dense_agreement_count_minimum: int = Field(default=4, ge=1)
     dense_aspect_ratio_minimum: float = Field(default=1.5, ge=1.0)
+    low_agreement_count_maximum: int | None = Field(default=None, ge=0)
+    low_agreement_aspect_ratio_minimum: float | None = Field(default=None, ge=1.0)
 
     @model_validator(mode="after")
     def validate_count_range(self) -> "DetectorAmbiguityPolicyMetadata":
         if self.dense_selected_count_minimum > self.dense_selected_count_maximum:
             raise ValueError("dense selected count minimum cannot exceed maximum")
+        if (self.low_agreement_count_maximum is None) != (
+            self.low_agreement_aspect_ratio_minimum is None
+        ):
+            raise ValueError("low-agreement ambiguity thresholds must be configured together")
         return self
 
 
@@ -213,6 +271,7 @@ class RuntimePackageV2Metadata(BaseModel):
     detector_ambiguity: DetectorAmbiguityPolicyMetadata = Field(
         default_factory=DetectorAmbiguityPolicyMetadata
     )
+    count_verifier: CountVerifierMetadata | None = None
     embedder: EmbedderMetadata
     metric_projection: MetricProjectionMetadata
     classifier_policy: CatalogDecisionPolicy
@@ -229,6 +288,13 @@ class RuntimePackageV2Metadata(BaseModel):
         if not SEMVER.fullmatch(value):
             raise ValueError("runtime versions must use semantic versioning")
         return value
+
+    @model_validator(mode="after")
+    def validate_classifier_threshold_count(self) -> "RuntimePackageV2Metadata":
+        thresholds = self.classifier_policy.ridge_approval_thresholds
+        if thresholds is not None and len(thresholds) != self.detector_class_count:
+            raise ValueError("Ridge per-class approval thresholds must match detector classes")
+        return self
 
     @model_validator(mode="after")
     def validate_dimensions(self) -> "RuntimePackageV2Metadata":
@@ -255,6 +321,7 @@ class RuntimePackageV2:
     root: Path
     metadata: RuntimePackageV2Metadata
     detector_path: Path
+    count_verifier_path: Path | None
     embedder_path: Path
     metric_projection_path: Path | None
 
@@ -271,6 +338,8 @@ def load_runtime_package_v2(root: Path) -> RuntimePackageV2:
         required.update(member.filename for member in metadata.detector.ensemble.members)
     if metadata.detector_refinement is not None:
         required.add(metadata.detector_refinement.filename)
+    if metadata.count_verifier is not None:
+        required.add(metadata.count_verifier.filename)
     if metadata.metric_projection.filename is not None:
         required.add(metadata.metric_projection.filename)
     required.update(metadata.license_files)
@@ -293,6 +362,11 @@ def load_runtime_package_v2(root: Path) -> RuntimePackageV2:
         root=package_root,
         metadata=metadata,
         detector_path=resolved_files[metadata.detector.filename],
+        count_verifier_path=(
+            None
+            if metadata.count_verifier is None
+            else resolved_files[metadata.count_verifier.filename]
+        ),
         embedder_path=resolved_files[metadata.embedder.filename],
         metric_projection_path=projection_path,
     )

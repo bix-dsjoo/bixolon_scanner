@@ -180,9 +180,8 @@ class Counts:
 
 
 def evaluate(args: argparse.Namespace) -> dict:
-    signing_key = os.environ.get(args.signing_key_env, "").encode()
-    if len(signing_key) < 16:
-        raise ValueError("Catalog signing key must contain at least 16 bytes")
+    signing_key_value = os.environ.get(args.signing_key_env, "")
+    signing_key = signing_key_value.encode() if signing_key_value else None
     runtime = load_runtime_package_v2(args.runtime)
     catalog = load_store_catalog_package(
         args.catalog,
@@ -190,14 +189,28 @@ def evaluate(args: argparse.Namespace) -> dict:
         expected_store_id=args.store_id,
         expected_key_id=args.key_id,
     )
-    detector = RecordingDetector(build_detector_v2(runtime, args.provider, args.cuda_dll_dir))
-    embedder = OnnxEmbedder(runtime, args.provider, args.cuda_dll_dir)
+    detector = RecordingDetector(
+        build_detector_v2(
+            runtime,
+            args.provider,
+            args.cuda_dll_dir,
+            cpu_detector_workers=args.cpu_detector_workers,
+            cpu_intra_op_threads=args.cpu_detector_threads,
+        )
+    )
+    embedder = OnnxEmbedder(
+        runtime,
+        args.provider,
+        args.cuda_dll_dir,
+        cpu_intra_op_threads=args.cpu_embedder_threads,
+    )
     classifier = RecordingClassifier(OnnxCatalogClassifier(runtime, catalog, embedder))
     pipeline = DecisionPipeline(
         detector,
         classifier,
         classifier.metadata,
         runtime.metadata.quality,
+        runtime.metadata.count_verifier,
         worker_version=runtime.metadata.worker_version,
         embedder_version=runtime.metadata.embedder.version,
         detector_policy_version=runtime.metadata.detector_policy_version,
@@ -353,6 +366,19 @@ def evaluate(args: argparse.Namespace) -> dict:
             item_diagnostics.append(
                 {
                     "detection_index": detection_index,
+                    "detector_class_index": detections[detection_index].class_id,
+                    "detector_class_id": (
+                        None
+                        if detections[detection_index].class_id is None
+                        else f"bread_{detections[detection_index].class_id + 1:02d}"
+                    ),
+                    "detector_class_correct": (
+                        None
+                        if detections[detection_index].class_id is None
+                        else detections[detection_index].class_id + 1
+                        == int(record["annotations"][target_index]["category_id"])
+                    ),
+                    "detector_score": detections[detection_index].score,
                     "target_class_id": target,
                     "classifier_top1_class_id": predicted,
                     "classifier_top2_class_id": classifier.metadata.labels[
@@ -426,9 +452,9 @@ def evaluate(args: argparse.Namespace) -> dict:
         "maximum_fp_image_rate": 0.001,
         "maximum_approved_misrecognition_rate": 0.001,
         "maximum_candidate_out_rate": 0.001,
-        "maximum_mean_ms": 100.0,
-        "maximum_p95_ms": 100.0,
-        "maximum_p99_ms": 150.0,
+        "maximum_mean_ms": args.maximum_mean_ms,
+        "maximum_p95_ms": args.maximum_p95_ms,
+        "maximum_p99_ms": args.maximum_p99_ms,
     }
     performance = _latency(counts.latencies_ms)
     full_path_performance = _latency(counts.full_path_latencies_ms)
@@ -525,7 +551,7 @@ def evaluate(args: argparse.Namespace) -> dict:
     report = {
         "schema_version": "2.0",
         "evaluation": (
-            "scanner_2_0_development_300"
+            f"scanner_2_0_development_{counts.image_count}"
             if development_evaluation
             else "scanner_2_0_stress_regression"
         ),
@@ -552,7 +578,7 @@ def evaluate(args: argparse.Namespace) -> dict:
         "requested_metrics": requested,
         "performance": {
             **performance,
-            "scope": ("decode+preprocess+detector-ensemble+selective-refinement+embedder+decision"),
+            "scope": ("decode+preprocess+detector+selective-refinement+embedder+decision"),
             "warmup_count": args.warmup_count,
             "gate_path": "full_path_only",
             "full_path": full_path_performance,
@@ -583,6 +609,9 @@ def evaluate(args: argparse.Namespace) -> dict:
             "python": platform.python_version(),
             "platform": platform.platform(),
             "provider": args.provider,
+            "cpu_detector_workers": args.cpu_detector_workers,
+            "cpu_detector_threads": args.cpu_detector_threads,
+            "cpu_embedder_threads": args.cpu_embedder_threads,
         },
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -604,13 +633,19 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--trace-output", type=Path, required=True)
     parser.add_argument("--store-id", required=True)
-    parser.add_argument("--key-id", required=True)
+    parser.add_argument("--key-id")
     parser.add_argument("--signing-key-env", default="BIXOLON_CATALOG_SIGNING_KEY")
-    parser.add_argument("--provider", choices=("cuda", "cpu"), default="cuda")
+    parser.add_argument("--provider", choices=("cuda", "cpu", "openvino"), default="cuda")
     parser.add_argument("--cuda-dll-dir", type=Path)
+    parser.add_argument("--cpu-detector-workers", type=int, default=1)
+    parser.add_argument("--cpu-detector-threads", type=int, default=0)
+    parser.add_argument("--cpu-embedder-threads", type=int, default=0)
     parser.add_argument("--match-iou-threshold", type=float, default=0.5)
     parser.add_argument("--warmup-count", type=int, default=20)
     parser.add_argument("--expected-image-count", type=int, default=300)
+    parser.add_argument("--maximum-mean-ms", type=float, default=100.0)
+    parser.add_argument("--maximum-p95-ms", type=float, default=100.0)
+    parser.add_argument("--maximum-p99-ms", type=float, default=150.0)
     parser.add_argument(
         "--evidence-role",
         choices=("development_regression", "stress_regression"),

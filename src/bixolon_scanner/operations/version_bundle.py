@@ -187,13 +187,25 @@ def _rewrite_runtime(source: Path, target: Path, version: str) -> None:
             metadata["detector"]["filename"] = versioned_detector_name
         ensemble = metadata["detector"].get("ensemble")
         if isinstance(ensemble, dict):
-            for member in ensemble.get("members", []):
-                if member.get("filename") == legacy_detector_name:
-                    member["filename"] = versioned_detector_name
+            metadata["detector"]["ensemble"] = _replace_exact_string(
+                ensemble,
+                legacy_detector_name,
+                versioned_detector_name,
+            )
         metadata["checksums"][versioned_detector_name] = metadata["checksums"].pop(
             legacy_detector_name
         )
     _write_json(metadata_path, metadata)
+
+
+def _replace_exact_string(value: Any, old: str, new: str) -> Any:
+    """Rewrite filename references nested in detector ensemble policy metadata."""
+
+    if isinstance(value, dict):
+        return {key: _replace_exact_string(item, old, new) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_replace_exact_string(item, old, new) for item in value]
+    return new if value == old else value
 
 
 def _rewrite_catalog(source: Path, target: Path, version: str) -> None:

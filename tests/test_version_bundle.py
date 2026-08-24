@@ -15,6 +15,7 @@ from bixolon_scanner.contracts.catalog import (
 )
 from bixolon_scanner.operations.version_bundle import (
     VersionBundleConfig,
+    _rewrite_runtime,
     prepare_version_bundle,
     verify_prepared_version,
     write_final_bundle_manifest,
@@ -182,6 +183,53 @@ def test_version_bundle_relabels_only_metadata_and_keeps_payloads(tmp_path: Path
     assert (staging / "runtime" / "embedder.onnx").read_bytes() == b"embedder-graph"
     assert (staging / "catalog" / "supports.bin").read_bytes() == b"supports"
     assert verify_prepared_version(config, repository_root=tmp_path)["passed"] is True
+
+
+def test_version_bundle_rewrites_nested_detector_filename_references(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    source.mkdir()
+    production = source / "detector-production.onnx"
+    fold1 = source / "detector-fold1.onnx"
+    production.write_bytes(b"production")
+    fold1.write_bytes(b"fold1")
+    metadata = {
+        "worker_version": "candidate",
+        "detector_policy_version": "candidate",
+        "detector": {
+            "filename": "detector-fold1.onnx",
+            "version": "candidate",
+            "ensemble": {
+                "members": [
+                    {"filename": "detector-fold1.onnx"},
+                    {"filename": "detector-production.onnx"},
+                ],
+                "selective_cascade": {"primary_member_filename": "detector-production.onnx"},
+                "policy_consensus": {"policies": [{"member_filename": "detector-production.onnx"}]},
+            },
+        },
+        "embedder": {"version": "candidate"},
+        "classifier_policy": {"version": "candidate"},
+        "checksums": {
+            "detector-fold1.onnx": sha256_file(fold1),
+            "detector-production.onnx": sha256_file(production),
+        },
+    }
+    (source / "metadata.json").write_text(json.dumps(metadata), encoding="utf-8")
+
+    _rewrite_runtime(source, target, "0.1.1")
+
+    rewritten = json.loads((target / "metadata.json").read_text(encoding="utf-8"))
+    ensemble = rewritten["detector"]["ensemble"]
+    assert [member["filename"] for member in ensemble["members"]] == [
+        "detector-fold1.onnx",
+        "detector-reference.onnx",
+    ]
+    assert ensemble["selective_cascade"]["primary_member_filename"] == "detector-reference.onnx"
+    assert (
+        ensemble["policy_consensus"]["policies"][0]["member_filename"] == "detector-reference.onnx"
+    )
+    assert (target / "detector-reference.onnx").read_bytes() == b"production"
 
 
 def test_version_bundle_rejects_changed_source_or_prepared_payload(tmp_path: Path) -> None:

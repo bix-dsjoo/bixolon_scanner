@@ -22,8 +22,14 @@ from bixolon_scanner.contracts.errors import PackageValidationError
 from bixolon_scanner.contracts.runtime_package_v2 import (
     CatalogDecisionPolicy,
     CatalogSupportAugmentationMetadata,
+    RuntimePackageV2Metadata,
 )
-from bixolon_scanner.operations.catalog_activation import _adapter_features, fit_ridge_adapter
+from bixolon_scanner.operations.catalog_activation import (
+    _adapter_features,
+    _select_catalog_supports,
+    fit_ridge_adapter,
+)
+from bixolon_scanner.pipeline.ports import Detection
 from bixolon_scanner.runtime.catalog import OnnxCatalogClassifier
 
 SIGNING_KEY = b"test-only-catalog-signing-key"
@@ -259,6 +265,117 @@ def test_catalog_support_augmentation_is_deterministic() -> None:
     assert first[2]["feature_count"] == 6
 
 
+def test_catalog_support_selection_uses_ten_hash_ordered_images_per_class() -> None:
+    records = [
+        {"class_id": class_id, "image_sha256": f"{index:064x}"}
+        for class_id in ("bread_02", "bread_01")
+        for index in reversed(range(12))
+    ]
+
+    selected = _select_catalog_supports(records)
+
+    assert len(selected) == 20
+    assert [row["class_id"] for row in selected[:10]] == ["bread_01"] * 10
+    assert [row["image_sha256"] for row in selected[:10]] == [
+        f"{index:064x}" for index in range(10)
+    ]
+    assert [row["class_id"] for row in selected[10:]] == ["bread_02"] * 10
+
+
+def test_catalog_support_selection_can_use_all_twelve_images_per_class() -> None:
+    records = [
+        {"class_id": class_id, "image_sha256": f"{index:064x}"}
+        for class_id in ("bread_02", "bread_01")
+        for index in reversed(range(12))
+    ]
+
+    selected = _select_catalog_supports(records, supports_per_class=12)
+
+    assert len(selected) == 24
+    assert [row["class_id"] for row in selected[:12]] == ["bread_01"] * 12
+    assert [row["class_id"] for row in selected[12:]] == ["bread_02"] * 12
+    assert [row["image_sha256"] for row in selected[:12]] == [
+        f"{index:064x}" for index in range(12)
+    ]
+
+
+def test_catalog_classifier_exposes_runtime_per_class_thresholds(tmp_path: Path) -> None:
+    runtime_payload = {
+        "schema_version": "2.0",
+        "worker_version": "2.0.0",
+        "dataset_version": "test-dataset",
+        "detector_policy_version": "2.0.0",
+        "detector_class_count": 2,
+        "detector": {
+            "filename": "detector.onnx",
+            "version": "2.0.0",
+            "score_threshold": 0.5,
+            "nms_iou_threshold": 0.5,
+            "max_queries": 100,
+        },
+        "embedder": {
+            "filename": "embedder.onnx",
+            "embedder_id": "test-embedder",
+            "version": "2.0.0",
+            "embedding_dimension": 2,
+        },
+        "metric_projection": {"input_dimension": 2, "output_dimension": 2},
+        "classifier_policy": {
+            "version": "2.0.0",
+            "prototype_weight": 0.5,
+            "support_top_k": 1,
+            "approval_minimum_similarity": 0.5,
+            "approval_minimum_margin": 0.1,
+            "ood_maximum_similarity": 0.1,
+            "top3_minimum_similarity": 0.2,
+            "catalog_conflict_similarity": 0.9,
+            "ridge_approval_minimum_margin": 0.4,
+            "ridge_approval_thresholds": [0.715, None],
+            "ridge_top3_minimum_inverse_entropy": -2.96,
+        },
+        "quality": {},
+        "checksums": {"detector.onnx": "0" * 64, "embedder.onnx": "1" * 64},
+        "licenses": {"detector": "Apache-2.0", "classifier": "DINOv3"},
+    }
+    runtime = SimpleNamespace(metadata=RuntimePackageV2Metadata.model_validate(runtime_payload))
+    supports_path = tmp_path / "supports.bin"
+    prototypes_path = tmp_path / "prototypes.bin"
+    adapter_path = tmp_path / "adapter.npz"
+    with supports_path.open("wb") as stream:
+        np.save(stream, np.eye(2, dtype=np.float32), allow_pickle=False)
+    with prototypes_path.open("wb") as stream:
+        np.save(stream, np.eye(2, dtype=np.float32), allow_pickle=False)
+    np.savez(
+        adapter_path,
+        weight=np.eye(2, dtype=np.float32),
+        bias=np.zeros(2, dtype=np.float32),
+    )
+    labels = [
+        SimpleNamespace(class_id="bread_01", class_name="Bread 1"),
+        SimpleNamespace(class_id="bread_02", class_name="Bread 2"),
+    ]
+    catalog = SimpleNamespace(
+        metadata=SimpleNamespace(
+            embedder_id="test-embedder",
+            embedder_version="2.0.0",
+            classifier_policy_version="2.0.0",
+            support_count=2,
+            embedding_dimension=2,
+            labels=labels,
+        ),
+        activation=SimpleNamespace(restricted_class_ids=[], restricted_pairs=[]),
+        supports_path=supports_path,
+        prototypes_path=prototypes_path,
+        adapter_path=adapter_path,
+    )
+    embedder = SimpleNamespace(transform=SimpleNamespace(output_dimension=2))
+
+    classifier = OnnxCatalogClassifier(runtime, catalog, embedder)
+
+    assert classifier.metadata.approval_threshold == pytest.approx(0.4)
+    assert classifier.metadata.approval_thresholds == [0.715, None]
+
+
 def test_ridge_pair_probability_blocks_ambiguous_head_disagreement_and_low_retrieval() -> None:
     classifier = object.__new__(OnnxCatalogClassifier)
     classifier.policy = CatalogDecisionPolicy(
@@ -352,3 +469,104 @@ def test_ridge_margin_policy_requires_retrieval_agreement_and_minimum_similarity
         "BELOW_APPROVAL_THRESHOLD",
     )
     assert result.segment_recapture_reasons == (None, "CLASSIFIER_OUT_OF_CATALOG")
+
+
+def test_ridge_margin_policy_blocks_only_low_margin_head_disagreement() -> None:
+    classifier = object.__new__(OnnxCatalogClassifier)
+    classifier.policy = CatalogDecisionPolicy(
+        version="0.1.2",
+        prototype_weight=0.5,
+        support_top_k=3,
+        approval_minimum_similarity=1.0,
+        approval_minimum_margin=0.1,
+        ood_maximum_similarity=-1.0,
+        top3_minimum_similarity=-1.0,
+        catalog_conflict_similarity=0.95,
+        ridge_approval_minimum_margin=0.2,
+        ridge_disagreement_minimum_margin=0.6,
+        ridge_top3_minimum_inverse_entropy=-3.0,
+    )
+    classifier.labels = [
+        SimpleNamespace(class_id="bread_01"),
+        SimpleNamespace(class_id="bread_02"),
+        SimpleNamespace(class_id="bread_03"),
+    ]
+    classifier.restricted_ids = set()
+    classifier.restricted_pairs = set()
+    classifier.adapter_weight = np.eye(3, dtype=np.float32)
+    classifier.adapter_bias = np.zeros(3, dtype=np.float32)
+
+    result = classifier._classify_adapter(
+        np.asarray([[1.0, 0.0, 0.0], [1.0, 0.5, 0.0]], dtype=np.float32),
+        np.asarray([[0.5, 0.6, 0.1], [0.5, 0.6, 0.1]], dtype=np.float32),
+    )
+
+    assert result.approval_scores[0] > 0.6
+    assert not result.approval_blocked[0]
+    assert result.approval_scores[1] < 0.6
+    assert result.approval_blocked[1]
+    assert result.unknown_reasons[1] == "CLASSIFIER_AMBIGUOUS_TOP2"
+
+
+def test_ridge_detector_corroboration_promotes_only_high_score_top2() -> None:
+    classifier = object.__new__(OnnxCatalogClassifier)
+    classifier.policy = CatalogDecisionPolicy(
+        version="0.1.2",
+        prototype_weight=0.5,
+        support_top_k=3,
+        approval_minimum_similarity=1.0,
+        approval_minimum_margin=0.1,
+        ood_maximum_similarity=-1.0,
+        top3_minimum_similarity=-1.0,
+        catalog_conflict_similarity=0.95,
+        ridge_approval_minimum_margin=0.0,
+        ridge_top3_minimum_inverse_entropy=-3.0,
+        detector_corroboration_minimum_score=0.93,
+        detector_corroboration_maximum_approval_score=0.1,
+        detector_corroboration_low_similarity_minimum_score=0.7,
+        detector_corroboration_low_similarity_maximum_retrieval=0.8,
+        detector_corroboration_low_similarity_minimum_approval_score=0.5,
+    )
+    classifier.labels = [
+        SimpleNamespace(class_id="bread_01"),
+        SimpleNamespace(class_id="bread_02"),
+        SimpleNamespace(class_id="bread_03"),
+    ]
+    classifier.restricted_ids = set()
+    classifier.restricted_pairs = set()
+    classifier.adapter_weight = np.eye(3, dtype=np.float32)
+    classifier.adapter_bias = np.zeros(3, dtype=np.float32)
+    detections = [
+        Detection(0, 0, 10, 10, 0.95, class_id=1),
+        Detection(0, 0, 10, 10, 0.92, class_id=1),
+        Detection(0, 0, 10, 10, 0.99, class_id=1),
+        Detection(0, 0, 10, 10, 0.72, class_id=1),
+        Detection(0, 0, 10, 10, 0.72, class_id=1),
+    ]
+
+    result = classifier._classify_adapter(
+        np.asarray(
+            [
+                [1.0, 0.95, 0.0],
+                [1.0, 0.95, 0.0],
+                [1.0, 0.5, 0.0],
+                [1.0, 0.3, 0.0],
+                [1.0, 0.3, 0.0],
+            ],
+            dtype=np.float32,
+        ),
+        np.asarray(
+            [
+                [0.8, 0.7, 0.1],
+                [0.8, 0.7, 0.1],
+                [0.8, 0.7, 0.1],
+                [0.79, 0.7, 0.1],
+                [0.81, 0.7, 0.1],
+            ],
+            dtype=np.float32,
+        ),
+        detections,
+    )
+
+    ranking = np.argsort(-result.ranking_scores, axis=1, kind="stable")
+    assert ranking[:, 0].tolist() == [1, 0, 0, 1, 0]

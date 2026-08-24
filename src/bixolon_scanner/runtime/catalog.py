@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
 
 import numpy as np
 from PIL import Image
@@ -24,6 +23,7 @@ from .onnx import (
     classifier_neighbor_ownership_mask,
     prepare_rgb,
 )
+from .onnx_session import ExecutionProvider
 
 
 def l2_normalize(values: np.ndarray) -> np.ndarray:
@@ -91,7 +91,7 @@ class OnnxEmbedder:
     def __init__(
         self,
         package: RuntimePackageV2,
-        provider: Literal["cuda", "cpu"],
+        provider: ExecutionProvider,
         cuda_dll_dir: Path | None = None,
         *,
         cpu_intra_op_threads: int = 0,
@@ -108,7 +108,7 @@ class OnnxEmbedder:
 
     def warmup(self) -> None:
         height, width = self.metadata.input_size
-        batch_sizes = self.metadata.warmup_batch_sizes if self.runner.cuda else [1]
+        batch_sizes = self.metadata.warmup_batch_sizes if self.runner.accelerated else [1]
         for batch_size in batch_sizes:
             self.runner.run(
                 [self.metadata.output_name],
@@ -140,7 +140,7 @@ class OnnxEmbedder:
         (raw,) = self.runner.run(
             [self.metadata.output_name],
             self.metadata.input_name,
-            batch.astype(np.float32),
+            batch.astype(np.float32, copy=False),
         )
         raw = np.asarray(raw, dtype=np.float32)
         if raw.shape != (len(batch), self.metadata.embedding_dimension):
@@ -270,6 +270,7 @@ class OnnxCatalogClassifier:
             approval_threshold=(
                 1.0 if self.adapter_weight is None else self._ridge_approval_threshold()
             ),
+            approval_thresholds=self.policy.ridge_approval_thresholds,
             temperature=1.0,
             labels=[
                 ClassLabel(class_id=label.class_id, class_name=label.class_name)
@@ -329,7 +330,7 @@ class OnnxCatalogClassifier:
         embeddings = self.embedder.transform.apply(raw_embeddings)
         cosine_scores = self._class_scores(embeddings)
         if self.adapter_weight is not None:
-            return self._classify_adapter(raw_embeddings, cosine_scores)
+            return self._classify_adapter(raw_embeddings, cosine_scores, detections)
         order = np.argsort(-cosine_scores, axis=1, kind="stable")
         rows = np.arange(len(detections))
         top1 = cosine_scores[rows, order[:, 0]]
@@ -388,7 +389,10 @@ class OnnxCatalogClassifier:
         return (exponential / exponential.sum(axis=1, keepdims=True)).astype(np.float32)
 
     def _classify_adapter(
-        self, embeddings: np.ndarray, retrieval_scores: np.ndarray
+        self,
+        embeddings: np.ndarray,
+        retrieval_scores: np.ndarray,
+        detections: list[Detection] | None = None,
     ) -> ClassificationResult:
         if self.adapter_weight is None or self.adapter_bias is None:
             raise ValueError("Catalog adapter is not loaded")
@@ -429,7 +433,11 @@ class OnnxCatalogClassifier:
             pair = tuple(sorted(top_ids)) if len(top_ids) == 2 else None
             restricted = top_ids[0] in self.restricted_ids or pair in self.restricted_pairs
             heads_disagree = int(indices[0]) != int(retrieval_order[row, 0])
-            disagreement_threshold = self.policy.ridge_disagreement_minimum_pair_probability
+            disagreement_threshold = (
+                self.policy.ridge_disagreement_minimum_pair_probability
+                if self.policy.ridge_approval_metric == "top2_pair_probability"
+                else self.policy.ridge_disagreement_minimum_margin
+            )
             disagreement_ambiguous = (
                 heads_disagree
                 and disagreement_threshold is not None
@@ -456,6 +464,57 @@ class OnnxCatalogClassifier:
                 unknown_reasons.append("CLASSIFIER_AMBIGUOUS_TOP2")
             else:
                 unknown_reasons.append("BELOW_APPROVAL_THRESHOLD")
+        corroboration_minimum_score = self.policy.detector_corroboration_minimum_score
+        corroboration_maximum_approval = self.policy.detector_corroboration_maximum_approval_score
+        low_similarity_minimum_score = (
+            self.policy.detector_corroboration_low_similarity_minimum_score
+        )
+        low_similarity_maximum_retrieval = (
+            self.policy.detector_corroboration_low_similarity_maximum_retrieval
+        )
+        low_similarity_minimum_approval = (
+            self.policy.detector_corroboration_low_similarity_minimum_approval_score
+        )
+        if detections is not None and (
+            (corroboration_minimum_score is not None and corroboration_maximum_approval is not None)
+            or (
+                low_similarity_minimum_score is not None
+                and low_similarity_maximum_retrieval is not None
+                and low_similarity_minimum_approval is not None
+            )
+        ):
+            if len(detections) != len(embeddings):
+                raise ValueError("detector corroboration inputs do not match embeddings")
+            for row, detection in enumerate(detections):
+                detector_index = detection.class_id
+                low_approval_corroboration = (
+                    corroboration_minimum_score is not None
+                    and corroboration_maximum_approval is not None
+                    and detection.score >= corroboration_minimum_score
+                    and approval_scores[row] <= corroboration_maximum_approval
+                )
+                low_similarity_corroboration = (
+                    low_similarity_minimum_score is not None
+                    and low_similarity_maximum_retrieval is not None
+                    and low_similarity_minimum_approval is not None
+                    and detection.score >= low_similarity_minimum_score
+                    and retrieval_top1[row] <= low_similarity_maximum_retrieval
+                    and approval_scores[row] >= low_similarity_minimum_approval
+                )
+                if (
+                    detector_index is None
+                    or not 0 <= detector_index < logits.shape[1]
+                    or not (low_approval_corroboration or low_similarity_corroboration)
+                    or detector_index != int(logit_order[row, 1])
+                ):
+                    continue
+                top1_index = int(logit_order[row, 0])
+                ranking_logits[row, [top1_index, detector_index]] = ranking_logits[
+                    row, [detector_index, top1_index]
+                ]
+                ranking_scores[row, [top1_index, detector_index]] = ranking_scores[
+                    row, [detector_index, top1_index]
+                ]
         return ClassificationResult(
             logits=logits.astype(np.float32),
             ranking_logits=ranking_logits.astype(np.float32),

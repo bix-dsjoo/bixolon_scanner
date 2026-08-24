@@ -28,6 +28,9 @@ from ..training.synthetic_roi import (
     prepare_direct_roi_source,
 )
 
+CATALOG_DEFAULT_SUPPORTS_PER_CLASS = 10
+CATALOG_MIN_IMAGE_SIDE = 96
+
 
 def _canonical_json(payload: object) -> bytes:
     return (json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True) + "\n").encode()
@@ -37,14 +40,23 @@ def _records(path: Path) -> list[dict]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line]
 
 
-def _audit_records(dataset_root: Path, records: list[dict]) -> list[dict]:
+def _audit_records(
+    dataset_root: Path, records: list[dict], *, supports_per_class: int
+) -> list[dict]:
     if not records:
         raise ValueError("Catalog manifest is empty")
     counts = Counter(str(row["class_id"]) for row in records)
-    if set(counts.values()) != {10}:
-        raise ValueError("Catalog requires exactly ten valid images per SKU")
+    if len(set(counts.values())) != 1 or min(counts.values()) < supports_per_class:
+        raise ValueError(
+            "Catalog requires the same number of images per class and at least "
+            f"{supports_per_class}"
+        )
     hashes = [str(row["image_sha256"]) for row in records]
-    perceptual = [str(row["perceptual_group_id"]) for row in records]
+    perceptual = [
+        str(row.get("perceptual_group_id") or row.get("source_group") or "") for row in records
+    ]
+    if any(not value for value in perceptual):
+        raise ValueError("Catalog support images require a perceptual or source group ID")
     if len(hashes) != len(set(hashes)) or len(perceptual) != len(set(perceptual)):
         raise ValueError("Catalog support images must not contain exact or near duplicates")
     audited = []
@@ -58,10 +70,34 @@ def _audit_records(dataset_root: Path, records: list[dict]) -> list[dict]:
         if sha256_file(path) != row["image_sha256"]:
             raise ValueError("Catalog support image checksum mismatch")
         with Image.open(path) as image:
-            if image.format not in {"JPEG", "PNG"} or min(image.size) < 128:
+            if image.format not in {"JPEG", "PNG"} or min(image.size) < CATALOG_MIN_IMAGE_SIDE:
                 raise ValueError("Catalog support image format or size is invalid")
-        audited.append({**row, "resolved_path": path})
+        audited.append(
+            {
+                **row,
+                "perceptual_group_id": str(
+                    row.get("perceptual_group_id") or row.get("source_group")
+                ),
+                "resolved_path": path,
+            }
+        )
     return audited
+
+
+def _select_catalog_supports(
+    records: list[dict], *, supports_per_class: int = CATALOG_DEFAULT_SUPPORTS_PER_CLASS
+) -> list[dict]:
+    """Select a fixed number of hash-ordered supports without class-specific policy."""
+    by_class: dict[str, list[dict]] = defaultdict(list)
+    for row in records:
+        by_class[str(row["class_id"])].append(row)
+    return [
+        row
+        for class_id in sorted(by_class)
+        for row in sorted(by_class[class_id], key=lambda item: str(item["image_sha256"]))[
+            :supports_per_class
+        ]
+    ]
 
 
 def fit_ridge_adapter(
@@ -172,14 +208,20 @@ def build_catalog(
     signing_key: bytes | None,
     key_id: str | None,
     authentication: str = "CHECKSUM-SHA256",
+    supports_per_class: int = CATALOG_DEFAULT_SUPPORTS_PER_CLASS,
     provider: str,
     cuda_dll_dir: Path | None,
 ) -> dict:
     if output_dir.exists():
         raise FileExistsError(output_dir)
     runtime = load_runtime_package_v2(runtime_dir)
+    if not 10 <= supports_per_class <= 64:
+        raise ValueError("Catalog supports per class must be between 10 and 64")
+    audited_records = _audit_records(
+        dataset_root, _records(manifest_path), supports_per_class=supports_per_class
+    )
     records = sorted(
-        _audit_records(dataset_root, _records(manifest_path)),
+        _select_catalog_supports(audited_records, supports_per_class=supports_per_class),
         key=lambda row: (str(row["class_id"]), str(row["image_sha256"])),
     )
     embedder = OnnxEmbedder(runtime, provider, cuda_dll_dir)
@@ -274,7 +316,7 @@ def build_catalog(
         embedder_version=runtime.metadata.embedder.version,
         classifier_policy_version=runtime.metadata.classifier_policy.version,
         embedding_dimension=supports.shape[1],
-        support_count_per_class=10,
+        support_count_per_class=supports_per_class,
         support_count=len(records),
         labels=labels,
         source_manifest_sha256=sha256_file(source_manifest_path),
@@ -296,6 +338,11 @@ def build_catalog(
     statistics = {
         "schema_version": "2.0",
         "support_count": len(records),
+        "input_support_count": len(audited_records),
+        "support_selection": {
+            "method": "lowest_image_sha256_per_class",
+            "support_count_per_class": supports_per_class,
+        },
         "class_count": len(class_ids),
         "compactness": {label.class_id: label.compactness for label in labels},
         "nearest_similarity": {label.class_id: label.nearest_similarity for label in labels},
@@ -352,6 +399,11 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--store-id", required=True)
+    parser.add_argument(
+        "--supports-per-class",
+        type=int,
+        default=CATALOG_DEFAULT_SUPPORTS_PER_CLASS,
+    )
     parser.add_argument("--catalog-version", default="2.0.0")
     parser.add_argument(
         "--authentication",
@@ -374,6 +426,7 @@ def main(argv: list[str] | None = None) -> None:
         signing_key=secret,
         key_id=args.key_id,
         authentication=args.authentication,
+        supports_per_class=args.supports_per_class,
         provider=args.provider,
         cuda_dll_dir=args.cuda_dll_dir,
     )

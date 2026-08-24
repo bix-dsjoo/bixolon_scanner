@@ -148,6 +148,7 @@ def test_v2_runtime_warms_models_before_readiness(
             embedder=SimpleNamespace(version="2.0.0"),
             detector_policy_version="2.0.0",
             classifier_policy=SimpleNamespace(version="2.0.0"),
+            count_verifier=None,
             input=SimpleNamespace(jpeg_draft_size=1200),
         )
     )

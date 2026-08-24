@@ -5,11 +5,19 @@ from __future__ import annotations
 import ctypes
 import os
 from pathlib import Path
-from typing import Literal
+from typing import Literal, TypeAlias
 
 import numpy as np
 
 from ..contracts.errors import ModelExecutionError, ProviderInitializationError
+
+ExecutionProvider: TypeAlias = Literal[
+    "cuda",
+    "cpu",
+    "directml",
+    "openvino",
+    "openvino_gpu",
+]
 
 
 class OrtRunner:
@@ -18,7 +26,7 @@ class OrtRunner:
     def __init__(
         self,
         model_path: Path,
-        provider: Literal["cuda", "cpu"],
+        provider: ExecutionProvider,
         cuda_dll_dir: Path | None = None,
         *,
         enable_cuda_graph: bool = False,
@@ -68,9 +76,13 @@ class OrtRunner:
                 else:
                     ort.preload_dlls(directory=str(cuda_dll_dir))
             available = ort.get_available_providers()
-            provider_name = (
-                "CUDAExecutionProvider" if provider == "cuda" else "CPUExecutionProvider"
-            )
+            provider_name = {
+                "cuda": "CUDAExecutionProvider",
+                "cpu": "CPUExecutionProvider",
+                "directml": "DmlExecutionProvider",
+                "openvino": "OpenVINOExecutionProvider",
+                "openvino_gpu": "OpenVINOExecutionProvider",
+            }[provider]
             if provider_name not in available:
                 raise ProviderInitializationError
             options = ort.SessionOptions()
@@ -79,12 +91,31 @@ class OrtRunner:
             options.inter_op_num_threads = 1
             if provider == "cpu" and cpu_intra_op_threads > 0:
                 options.intra_op_num_threads = cpu_intra_op_threads
+            if provider == "directml":
+                # DirectML requires sequential execution and does not support ORT's
+                # memory-pattern optimization for sessions with dynamic input shapes.
+                options.enable_mem_pattern = False
+            if provider == "openvino_gpu":
+                # A GPU diagnostic must fail if ORT cannot assign the complete graph
+                # to OpenVINO. Otherwise an unsupported node could make a nominal GPU
+                # profile silently run on the generic CPU EP.
+                options.add_session_config_entry("session.disable_cpu_ep_fallback", "1")
             options.log_severity_level = 3
-            provider_options = {"use_tf32": "0"}
+            provider_options: dict[str, str] = {}
+            if provider == "cuda":
+                provider_options["use_tf32"] = "0"
             if enable_cuda_graph and provider == "cuda":
                 provider_options["enable_cuda_graph"] = "1"
+            if provider == "directml":
+                provider_options["device_id"] = "0"
+            if provider in {"openvino", "openvino_gpu"}:
+                provider_options["device_type"] = "GPU" if provider == "openvino_gpu" else "CPU"
+                if provider == "openvino" and cpu_intra_op_threads > 0:
+                    provider_options["num_of_threads"] = str(cpu_intra_op_threads)
             providers = (
-                [(provider_name, provider_options)] if provider == "cuda" else [provider_name]
+                [(provider_name, provider_options)]
+                if provider in {"cuda", "directml", "openvino", "openvino_gpu"}
+                else [provider_name]
             )
             self.session = ort.InferenceSession(
                 str(model_path), sess_options=options, providers=providers
@@ -92,6 +123,12 @@ class OrtRunner:
             if self.session.get_providers()[0] != provider_name:
                 raise ProviderInitializationError
             self.cuda = provider == "cuda"
+            self.accelerated = provider in {
+                "cuda",
+                "directml",
+                "openvino",
+                "openvino_gpu",
+            }
             self.cuda_graph = self.cuda and enable_cuda_graph
             self.cuda_graph_output_shapes = cuda_graph_output_shapes or {}
             self._graph_binding = None
@@ -171,20 +208,33 @@ class OrtRunner:
         return [value.numpy() for value in self._graph_output_values]
 
 
-def select_provider(mode: Literal["auto", "cuda", "cpu"]) -> Literal["cuda", "cpu"]:
-    """Resolve the requested provider without silently downgrading explicit CUDA."""
+def select_provider(
+    mode: Literal["auto", "cuda", "cpu", "directml", "openvino", "openvino_gpu"],
+) -> ExecutionProvider:
+    """Resolve the requested provider without silently downgrading explicit acceleration."""
 
     if mode == "cpu":
         return "cpu"
     try:
         import onnxruntime as ort
 
-        has_cuda = "CUDAExecutionProvider" in ort.get_available_providers()
+        available = ort.get_available_providers()
+        has_cuda = "CUDAExecutionProvider" in available
+        has_directml = "DmlExecutionProvider" in available
+        has_openvino = "OpenVINOExecutionProvider" in available
     except Exception as exc:
         raise ProviderInitializationError from exc
     if mode == "cuda" and not has_cuda:
         raise ProviderInitializationError
+    if mode == "directml" and not has_directml:
+        raise ProviderInitializationError
+    if mode in {"openvino", "openvino_gpu"} and not has_openvino:
+        raise ProviderInitializationError
+    if mode == "directml":
+        return "directml"
+    if mode in {"openvino", "openvino_gpu"}:
+        return mode
     return "cuda" if has_cuda else "cpu"
 
 
-__all__ = ["OrtRunner", "select_provider"]
+__all__ = ["ExecutionProvider", "OrtRunner", "select_provider"]

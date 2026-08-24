@@ -495,6 +495,72 @@ def test_verified_count_allows_classifier(classifier_metadata, quality_metadata)
     assert classifier.calls == 1
 
 
+def test_object_presence_verifier_accepts_multiple_detections(
+    classifier_metadata, quality_metadata
+):
+    classifier = FakeClassifier([[10.0, 0.0, 0.0], [10.0, 0.0, 0.0]])
+    result = DetectionResult(
+        [
+            Detection(10, 10, 40, 40, 0.95),
+            Detection(50, 50, 80, 80, 0.94),
+        ],
+        verified_count=1,
+        count_confidence=0.99,
+    )
+    metadata = CountVerifierMetadata(
+        filename="presence_verifier.onnx",
+        version="1.0.0",
+        mean=(0.485, 0.456, 0.406),
+        std=(0.229, 0.224, 0.225),
+        count_labels=[0, 1],
+        comparison_mode="object_presence",
+        confidence_threshold=0.5,
+    )
+    pipeline = DecisionPipeline(
+        FakeDetector(result),
+        classifier,
+        classifier_metadata,
+        quality_metadata,
+        metadata,
+    )
+
+    response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "presence")
+
+    assert response.status is Status.APPROVED
+    assert classifier.calls == 1
+
+
+def test_object_presence_verifier_recaptures_false_detection(classifier_metadata, quality_metadata):
+    classifier = FakeClassifier([])
+    result = DetectionResult(
+        [Detection(10, 10, 40, 40, 0.95)],
+        verified_count=0,
+        count_confidence=0.99,
+    )
+    metadata = CountVerifierMetadata(
+        filename="presence_verifier.onnx",
+        version="1.0.0",
+        mean=(0.485, 0.456, 0.406),
+        std=(0.229, 0.224, 0.225),
+        count_labels=[0, 1],
+        comparison_mode="object_presence",
+        confidence_threshold=0.5,
+    )
+    pipeline = DecisionPipeline(
+        FakeDetector(result),
+        classifier,
+        classifier_metadata,
+        quality_metadata,
+        metadata,
+    )
+
+    response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "presence-empty")
+
+    assert response.status is Status.RECAPTURE
+    assert response.reason_codes == ["DETECTOR_COUNT_MISMATCH"]
+    assert classifier.calls == 0
+
+
 def test_uncertain_detector_candidate_recaptures_before_classifier(
     classifier_metadata, quality_metadata
 ):

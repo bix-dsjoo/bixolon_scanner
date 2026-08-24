@@ -32,7 +32,7 @@ class CatalogLabel(BaseModel):
     class_id: str = Field(min_length=1)
     class_name: str = Field(min_length=1)
     support_offset: int = Field(ge=0)
-    support_count: int = Field(ge=10, le=10)
+    support_count: int = Field(ge=10, le=64)
     compactness: float = Field(ge=-1.0, le=1.0)
     nearest_class_id: str | None = None
     nearest_similarity: float | None = Field(default=None, ge=-1.0, le=1.0)
@@ -87,7 +87,7 @@ class CatalogMetadata(BaseModel):
     classifier_policy_version: str
     embedding_dimension: int = Field(gt=0)
     l2_normalized: Literal[True] = True
-    support_count_per_class: int = Field(ge=10, le=10)
+    support_count_per_class: int = Field(ge=10, le=64)
     support_count: int = Field(gt=0)
     labels: list[CatalogLabel] = Field(min_length=1)
     source_manifest_sha256: str
@@ -117,6 +117,8 @@ class CatalogMetadata(BaseModel):
             raise ValueError("catalog labels must have unique sorted class IDs")
         expected_offset = 0
         for label in self.labels:
+            if label.support_count != self.support_count_per_class:
+                raise ValueError("catalog labels must use the declared support count per class")
             if label.support_offset != expected_offset:
                 raise ValueError("catalog support offsets must be contiguous")
             expected_offset += label.support_count
