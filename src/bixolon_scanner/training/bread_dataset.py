@@ -171,7 +171,7 @@ def audit_bread_dataset(
         "multi_object_scenes",
         "annotations",
     }
-    optional_top_level = {"operational_collections"}
+    optional_top_level = {"operational_collections", "multi_object_scenes.zip"}
     actual_top_level = {path.name for path in root.iterdir()}
     unexpected = actual_top_level - required_top_level - optional_top_level
     missing = required_top_level - actual_top_level

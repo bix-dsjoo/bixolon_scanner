@@ -46,7 +46,9 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def load_single_objects_records(manifest: Path) -> list[dict[str, Any]]:
+def load_single_objects_records(
+    manifest: Path, *, classifier_source: str = "single_objects"
+) -> list[dict[str, Any]]:
     records = [
         row
         for row in read_manifest(manifest)
@@ -55,8 +57,12 @@ def load_single_objects_records(manifest: Path) -> list[dict[str, Any]]:
     if not records:
         raise ValueError("classifier manifest contains no development records")
     sources = {Path(str(row["image_path"])).parts[0] for row in records}
-    if sources != {"single_objects"}:
-        raise ValueError(f"classifier source must be single_objects only, got {sorted(sources)}")
+    if classifier_source not in {"single_objects", "single_objects_3"}:
+        raise ValueError("classifier source must be single_objects or single_objects_3")
+    if sources != {classifier_source}:
+        raise ValueError(
+            f"classifier source must be {classifier_source} only, got {sorted(sources)}"
+        )
     if len({str(row["image_sha256"]) for row in records}) != len(records):
         raise ValueError("classifier manifest contains duplicate source images")
     if set(int(row["fold"]) for row in records) != {0, 1, 2}:
@@ -181,8 +187,9 @@ def _prepare_tensor_cache(
     seed: int,
     recipe: ClutterRoiRecipe,
     apply_neighbor_mask: bool,
+    classifier_source: str = "single_objects",
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[dict[str, Any]]]:
-    records = load_single_objects_records(manifest)
+    records = load_single_objects_records(manifest, classifier_source=classifier_source)
     expected_count = len(records) * views_per_source
     labels_path = cache_path.with_suffix(".labels.npy")
     folds_path = cache_path.with_suffix(".folds.npy")
@@ -196,6 +203,7 @@ def _prepare_tensor_cache(
         "source_count": len(records),
         "views_per_source": views_per_source,
         "apply_neighbor_mask": apply_neighbor_mask,
+        "classifier_source": classifier_source,
         "neighbor_mask_margin_ratio": 0.05,
         "neighbor_mask_distance_bias": 0.0,
     }
@@ -378,7 +386,7 @@ def _train_epochs(
         ],
         weight_decay=0.0,
     )
-    generator = torch.Generator().manual_seed(args.seed)
+    generator = torch.Generator().manual_seed(args.training_seed)
     history = []
     for epoch in range(1, epochs + 1):
         model.train()
@@ -435,8 +443,10 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
     if args.validation_fold not in {0, 1, 2}:
         raise ValueError("validation_fold must be 0, 1, or 2")
     torch = require_torch()
-    torch.manual_seed(args.seed)
-    np.random.seed(args.seed)
+    requested_training_seed = getattr(args, "training_seed", None)
+    args.training_seed = args.seed if requested_training_seed is None else requested_training_seed
+    torch.manual_seed(args.training_seed)
+    np.random.seed(args.training_seed)
     device = torch.device("cpu" if args.cpu else "cuda")
     checkpoint = torch.load(args.checkpoint, map_location="cpu", weights_only=True)
     recipes = {
@@ -453,6 +463,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         seed=args.seed,
         recipe=recipe,
         apply_neighbor_mask=args.neighbor_mask,
+        classifier_source=args.classifier_source,
     )
     source_labels = np.asarray([int(row["category_id"]) - 1 for row in records], dtype=np.int64)
     source_folds = np.asarray([int(row["fold"]) for row in records], dtype=np.int64)
@@ -509,6 +520,9 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
             best = key
             best_epoch = epoch
 
+    final_epochs = best_epoch if args.final_epochs is None else args.final_epochs
+    if final_epochs < 1 or final_epochs > args.max_epochs:
+        raise ValueError("final_epochs must be between 1 and max_epochs")
     final_model = _build_model(torch, checkpoint, device)
     final_history = _train_epochs(
         final_model,
@@ -517,7 +531,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         selected=np.arange(len(tensors)),
         support=support,
         support_labels=source_labels,
-        epochs=best_epoch,
+        epochs=final_epochs,
         args=args,
         torch=torch,
         device=device,
@@ -540,17 +554,22 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
     np.savez_compressed(args.output_logits, base=evaluation_logits, targets=evaluation_targets)
     output_checkpoint = {
         **checkpoint,
+        "dataset_version": args.dataset_version,
+        "manifest_sha256": _sha256(args.manifest),
         "model_state_dict": copy.deepcopy(final_model.state_dict()),
         "robust_classifier_training": {
-            "source_dataset": "single_objects",
+            "source_dataset": args.classifier_source,
             "mixed_support_sources": False,
             "manifest_sha256": _sha256(args.manifest),
             "recipe_sha256": clutter_roi_recipe_sha256(recipe),
             "views_per_source": args.views_per_source,
             "recipe_profile": args.recipe_profile,
+            "augmentation_seed": args.seed,
+            "training_seed": args.training_seed,
             "neighbor_mask": args.neighbor_mask,
             "trainable_scope": args.trainable_scope,
             "selected_epoch_from_source_validation": best_epoch,
+            "final_training_epochs": final_epochs,
             "validation_fold": args.validation_fold,
             "development_evaluation_used_for_training_or_selection": False,
         },
@@ -571,12 +590,14 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
     report = {
         "schema_version": "1.0",
         "status": "candidate",
-        "training_source": "single_objects",
+        "training_source": args.classifier_source,
         "mixed_support_sources": False,
         "source_count": len(records),
         "derived_training_count": len(tensors),
         "recipe": asdict(recipe),
         "recipe_sha256": clutter_roi_recipe_sha256(recipe),
+        "augmentation_seed": args.seed,
+        "training_seed": args.training_seed,
         "neighbor_mask": args.neighbor_mask,
         "group_aware_calibration": {
             "validation_fold": args.validation_fold,
@@ -588,6 +609,9 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         },
         "final_training": {
             "all_allowed_source_rows": True,
+            "epoch_count": final_epochs,
+            "source_validation_selected_epoch": best_epoch,
+            "epoch_override": args.final_epochs,
             "history": final_history,
         },
         "development_evaluation_used_for_training_or_selection": False,
@@ -610,6 +634,12 @@ def main() -> None:
     )
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument(
+        "--classifier-source",
+        choices=("single_objects", "single_objects_3"),
+        default="single_objects",
+    )
+    parser.add_argument("--dataset-version", required=True)
     parser.add_argument("--checkpoint", type=Path, required=True)
     parser.add_argument("--evaluation-tensors", type=Path, required=True)
     parser.add_argument("--evaluation-records", type=Path, required=True)
@@ -619,10 +649,23 @@ def main() -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--views-per-source", type=int, default=8)
     parser.add_argument("--max-epochs", type=int, default=5)
+    parser.add_argument(
+        "--final-epochs",
+        type=int,
+        help=(
+            "Train the all-source candidate for this many epochs after group-aware "
+            "calibration; defaults to the source-validation-selected epoch."
+        ),
+    )
     parser.add_argument("--batch-size", type=int, default=48)
     parser.add_argument("--support-batch", type=int, default=48)
     parser.add_argument("--validation-fold", type=int, default=0)
     parser.add_argument("--seed", type=int, default=20260818)
+    parser.add_argument(
+        "--training-seed",
+        type=int,
+        help="Optimizer/order seed; defaults to --seed while reusing one augmentation cache.",
+    )
     parser.add_argument(
         "--recipe-profile", choices=("mild", "moderate", "hard"), default="moderate"
     )

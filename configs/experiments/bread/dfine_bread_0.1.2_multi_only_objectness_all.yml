@@ -1,0 +1,12 @@
+__include__:
+  - ./dfine_bread_0.1.2_multi_only_objectness_fold0.yml
+
+output_dir: artifacts/experiments/bread-0.1.2-multi-only-detector/final-all-data/training-objectness
+
+train_dataloader:
+  dataset:
+    ann_file: artifacts/experiments/bread-0.1.2-multi-only-detector/fold0/coco-objectness/instances_all.json
+
+val_dataloader:
+  dataset:
+    ann_file: artifacts/experiments/bread-0.1.2-multi-only-detector/fold0/coco-objectness/instances_all.json

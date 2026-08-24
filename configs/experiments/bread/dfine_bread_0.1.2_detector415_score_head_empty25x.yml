@@ -1,0 +1,24 @@
+__include__:
+  - ./dfine_bread_0.1.2_detector415_score_head_only.yml
+
+output_dir: artifacts/experiments/bread-0.1.2-detector415/score-head-empty25x/training
+epochs: 4
+
+optimizer:
+  type: AdamW
+  params:
+    - params: '^(?=.*(?:score_head|denoising_class_embed)).*$'
+      lr: 0.00005
+      weight_decay: 0.0
+    - params: '^(?!.*(?:score_head|denoising_class_embed)).*$'
+      lr: 0.0
+      weight_decay: 0.0
+  lr: 0.0
+  betas: [0.9, 0.999]
+  weight_decay: 0.0
+
+train_dataloader:
+  dataset:
+    ann_file: artifacts/experiments/bread-0.1.2-detector415/fold0/coco-class-aware/instances_all_empty25x.json
+  collate_fn:
+    stop_epoch: 4

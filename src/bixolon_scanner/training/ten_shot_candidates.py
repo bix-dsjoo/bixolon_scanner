@@ -93,6 +93,7 @@ def create_uniform_parameter_soup(
     output_path: Path,
     *,
     member_seeds: Iterable[int],
+    selection_scope: str = "development_capture_session_3fold_only",
 ) -> dict[str, Any]:
     """Average compatible strict 10-shot checkpoints into one deployable model."""
     torch = require_torch()
@@ -151,7 +152,7 @@ def create_uniform_parameter_soup(
         "history": [],
         "parameter_soup": {
             "recipe": "uniform_full_model_parameter_soup",
-            "selection_scope": "development_capture_session_3fold_only",
+            "selection_scope": selection_scope,
             "member_seeds": list(seeds),
             "member_checkpoint_sha256": member_hashes,
             "member_checkpoint_paths": [str(path) for path in paths],
@@ -162,6 +163,85 @@ def create_uniform_parameter_soup(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     torch.save(soup, output_path)
     return soup["parameter_soup"]
+
+
+def create_weighted_parameter_soup(
+    checkpoint_paths: Iterable[Path],
+    output_path: Path,
+    *,
+    weights: Iterable[float],
+    selection_scope: str,
+    dataset_version: str,
+    manifest_sha256: str,
+) -> dict[str, Any]:
+    """Interpolate compatible single-source candidates into one runtime model."""
+    torch = require_torch()
+    paths = tuple(Path(path) for path in checkpoint_paths)
+    coefficients = np.asarray(tuple(float(value) for value in weights), dtype=np.float64)
+    if len(paths) < 2 or coefficients.shape != (len(paths),):
+        raise ValueError("weighted parameter soup requires aligned checkpoints and weights")
+    if np.any(coefficients < 0.0) or not np.isclose(coefficients.sum(), 1.0):
+        raise ValueError("weighted parameter soup weights must be non-negative and sum to one")
+    checkpoints = [torch.load(path, map_location="cpu", weights_only=False) for path in paths]
+    reference = checkpoints[0]
+    required_equal = (
+        "architecture",
+        "adapter_spec",
+        "backbone_kind",
+        "source_revision",
+        "source_weight_sha256",
+        "image_size",
+        "num_classes",
+    )
+    for checkpoint in checkpoints[1:]:
+        if any(checkpoint.get(key) != reference.get(key) for key in required_equal):
+            raise ValueError("weighted parameter soup checkpoints have incompatible models")
+    states = [checkpoint.get("model_state_dict") for checkpoint in checkpoints]
+    if any(not isinstance(state, dict) for state in states):
+        raise ValueError("weighted parameter soup checkpoint is missing model_state_dict")
+    keys = set(states[0])
+    if any(set(state) != keys for state in states[1:]):
+        raise ValueError("weighted parameter soup state keys differ")
+    averaged = {}
+    for key in sorted(keys):
+        values = [state[key] for state in states]
+        if any(
+            value.shape != values[0].shape or value.dtype != values[0].dtype for value in values[1:]
+        ):
+            raise ValueError(f"weighted parameter soup tensor contract differs: {key}")
+        if values[0].is_floating_point():
+            averaged[key] = sum(
+                value.detach().float() * float(weight)
+                for value, weight in zip(values, coefficients, strict=True)
+            ).to(values[0].dtype)
+        else:
+            if any(not torch.equal(values[0], value) for value in values[1:]):
+                raise ValueError(f"weighted parameter soup non-floating tensor differs: {key}")
+            averaged[key] = values[0].detach().clone()
+    provenance = {
+        "recipe": "weighted_full_model_parameter_soup",
+        "selection_scope": selection_scope,
+        "weights": coefficients.tolist(),
+        "member_checkpoint_sha256": [sha256_file(path) for path in paths],
+        "member_checkpoint_paths": [str(path) for path in paths],
+        "floating_tensor_reduction": "float32_weighted_sum",
+        "runtime_model_count": 1,
+    }
+    soup = {
+        **{
+            key: value
+            for key, value in reference.items()
+            if key not in {"model_state_dict", "history", "parameter_soup"}
+        },
+        "dataset_version": dataset_version,
+        "manifest_sha256": manifest_sha256,
+        "model_state_dict": averaged,
+        "history": [],
+        "parameter_soup": provenance,
+    }
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    torch.save(soup, output_path)
+    return provenance
 
 
 def create_experiment_lock(

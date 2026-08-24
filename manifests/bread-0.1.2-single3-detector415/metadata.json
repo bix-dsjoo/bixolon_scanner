@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.1",
+  "dataset_version": "bread-1.1-bb5e8383e30c",
+  "dataset_digest_sha256": "bb5e8383e30c8972a480a5e932b0d4914d674e812cdce757229c1ef6b83e9283",
+  "classifier": {
+    "selected_source": "single_objects_3",
+    "allowed_sources": [
+      "single_objects",
+      "single_objects_2",
+      "single_objects_3"
+    ],
+    "mixed_sources": false,
+    "excluded_alternative_sources": [
+      "single_objects",
+      "single_objects_1",
+      "single_objects_2"
+    ],
+    "source_dataset_version": "bread-1.0-4bf6e8019c76",
+    "image_count": 240,
+    "duplicate_audit": {
+      "image_count": 240,
+      "group_count": 240,
+      "exact_duplicate_group_count": 0,
+      "near_duplicate_group_count": 0,
+      "maximum_hamming_distance": 2
+    },
+    "manifest_sha256": "63931e49b790cec9fd675b52126f115f2842a8bdeff4c6e42001400436f73511"
+  },
+  "detector": {
+    "image_count": 415,
+    "annotated_image_count": 415,
+    "expected_recapture_image_count": 0,
+    "annotation_count": 1914,
+    "sources": [
+      "multi_object_scenes",
+      "operational_collections/2026-08-18"
+    ],
+    "all_images_participate_in_cross_validation": true,
+    "duplicate_audit": {
+      "image_count": 415,
+      "group_count": 403,
+      "exact_duplicate_group_count": 0,
+      "near_duplicate_group_count": 9,
+      "maximum_hamming_distance": 2
+    },
+    "folds": {
+      "fold_count": 3,
+      "image_counts": [
+        139,
+        138,
+        138
+      ],
+      "group_counts": [
+        135,
+        134,
+        134
+      ],
+      "assignment_key": "perceptual_group_id"
+    },
+    "manifest_sha256": "b5ace06810d7b763d1ac1b0daaa52a530dd391b26c3a38763b56dec211a07443"
+  },
+  "evaluation_policy": {
+    "held_out_test_set": false,
+    "outer_validation": "3-fold out-of-fold",
+    "same_fold_train_validation_overlap_allowed": false,
+    "report_raw_and_selective_metrics": true,
+    "report_recapture_rates": true
+  }
+}

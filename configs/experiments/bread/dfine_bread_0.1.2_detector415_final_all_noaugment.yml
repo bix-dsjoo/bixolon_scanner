@@ -1,0 +1,37 @@
+__include__:
+  - ./dfine_bread_0.1.2_detector415_final_all.yml
+
+# Recovery fit from the 0.1.1 production checkpoint. The source and target
+# domains are already natural captures, so destructive crop/zoom augmentation
+# is disabled and a smaller learning rate protects the established 300-image fit.
+output_dir: artifacts/experiments/bread-0.1.2-detector415/final-all-production-source-frozen-backbone/training
+epochs: 4
+
+HGNetv2:
+  freeze_at: 3
+  freeze_norm: true
+
+optimizer:
+  type: AdamW
+  params:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.0000003
+    - params: '^(?=.*backbone)(?=.*norm|bn).*$'
+      lr: 0.0000003
+      weight_decay: 0.0
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.0
+  lr: 0.000003
+  betas: [0.9, 0.999]
+  weight_decay: 0.0001
+
+train_dataloader:
+  dataset:
+    transforms:
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: ConvertPILImage, dtype: float32, scale: true}
+        - {type: ConvertBoxes, fmt: cxcywh, normalize: true}
+  collate_fn:
+    stop_epoch: 8

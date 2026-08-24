@@ -1,0 +1,4 @@
+__include__:
+  - ./dfine_bread_0.1.2_multi_only_objectness_fold0.yml
+
+output_dir: artifacts/experiments/bread-0.1.2-multi-only-detector/fold0/training-objectness-seed12

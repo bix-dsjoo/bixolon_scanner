@@ -1,0 +1,68 @@
+{
+  "schema_version": "1.1",
+  "dataset_version": "bread-1.1-ae7202c9fc6d",
+  "dataset_digest_sha256": "ae7202c9fc6d974165482bafba884763b4803b24815cdb65d505c9c0c85c5468",
+  "classifier": {
+    "selected_source": "single_objects_3",
+    "allowed_sources": [
+      "single_objects",
+      "single_objects_2",
+      "single_objects_3"
+    ],
+    "mixed_sources": false,
+    "excluded_alternative_sources": [
+      "single_objects",
+      "single_objects_1",
+      "single_objects_2"
+    ],
+    "source_dataset_version": "bread-1.0-4bf6e8019c76",
+    "image_count": 240,
+    "duplicate_audit": {
+      "image_count": 240,
+      "group_count": 240,
+      "exact_duplicate_group_count": 0,
+      "near_duplicate_group_count": 0,
+      "maximum_hamming_distance": 2
+    },
+    "manifest_sha256": "63931e49b790cec9fd675b52126f115f2842a8bdeff4c6e42001400436f73511"
+  },
+  "detector": {
+    "image_count": 300,
+    "annotated_image_count": 300,
+    "expected_recapture_image_count": 0,
+    "annotation_count": 1410,
+    "sources": [
+      "multi_object_scenes"
+    ],
+    "all_images_participate_in_cross_validation": true,
+    "duplicate_audit": {
+      "image_count": 300,
+      "group_count": 300,
+      "exact_duplicate_group_count": 0,
+      "near_duplicate_group_count": 0,
+      "maximum_hamming_distance": 2
+    },
+    "folds": {
+      "fold_count": 3,
+      "image_counts": [
+        100,
+        101,
+        99
+      ],
+      "group_counts": [
+        100,
+        101,
+        99
+      ],
+      "assignment_key": "perceptual_group_id"
+    },
+    "manifest_sha256": "309a7b8a3f5072ced17106f26f1a5004b13218ed310b6bd012b5c29b6fcce406"
+  },
+  "evaluation_policy": {
+    "held_out_test_set": false,
+    "outer_validation": "3-fold out-of-fold",
+    "same_fold_train_validation_overlap_allowed": false,
+    "report_raw_and_selective_metrics": true,
+    "report_recapture_rates": true
+  }
+}

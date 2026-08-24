@@ -15,6 +15,15 @@ def test_checkpoint_model_state_prefers_ema_weights():
     model = {"weight": object()}
 
     assert checkpoint_model_state({"ema": {"module": ema}, "model": model}) is ema
+    assert (
+        checkpoint_model_state({"ema": {"module": ema}, "model": model}, weight_source="model")
+        is model
+    )
+
+
+def test_checkpoint_model_state_can_require_ema_weights():
+    with pytest.raises(ValueError, match="requested ema"):
+        checkpoint_model_state({"model": {}}, weight_source="ema")
 
 
 def test_checkpoint_model_state_falls_back_to_model_weights():

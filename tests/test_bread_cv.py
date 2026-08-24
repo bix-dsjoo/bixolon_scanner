@@ -45,10 +45,51 @@ def test_perceptual_groups_never_cross_detector_folds():
     assert sorted(metadata["detector"]["folds"]["image_counts"]) == [99, 100, 101]
 
 
-def test_disallowed_classifier_source_is_rejected():
-    with pytest.raises(ValueError, match="exactly single_objects or single_objects_2"):
+def test_registry_accepts_single_objects_3_without_mixing_sources():
+    classifier, detector, metadata = build_bread_cross_validation_registry(
+        DATASET_ROOT, classifier_source="single_objects_3", fold_count=3
+    )
+
+    assert len(classifier) == 240
+    assert {Path(row["image_path"]).parts[0] for row in classifier} == {"single_objects_3"}
+    assert len(detector) == 300
+    assert metadata["classifier"]["mixed_sources"] is False
+
+
+def test_registry_can_add_explicit_detector_operational_collection():
+    classifier, detector, metadata = build_bread_cross_validation_registry(
+        DATASET_ROOT,
+        classifier_source="single_objects_3",
+        detector_operational_collection=Path("2026-08-18"),
+        fold_count=3,
+    )
+
+    assert len(classifier) == 240
+    assert len(detector) == 415
+    assert sum(len(row["annotations"]) for row in detector) == 1914
+    assert {row["evaluation_set"] for row in detector} == {
+        "multi_object_scenes",
+        "operational_collections/2026-08-18",
+    }
+    assert metadata["detector"]["sources"] == [
+        "multi_object_scenes",
+        "operational_collections/2026-08-18",
+    ]
+    assert metadata["evaluation_policy"]["held_out_test_set"] is False
+
+
+def test_registry_rejects_detector_collection_outside_operational_root(tmp_path):
+    with pytest.raises(ValueError, match="inside operational_collections"):
         build_bread_cross_validation_registry(
-            DATASET_ROOT, classifier_source="single_objects_3", fold_count=3
+            DATASET_ROOT,
+            detector_operational_collection=tmp_path,
+        )
+
+
+def test_disallowed_classifier_source_is_rejected():
+    with pytest.raises(ValueError, match="supported single-object collection"):
+        build_bread_cross_validation_registry(
+            DATASET_ROOT, classifier_source="not_a_collection", fold_count=3
         )
 
 

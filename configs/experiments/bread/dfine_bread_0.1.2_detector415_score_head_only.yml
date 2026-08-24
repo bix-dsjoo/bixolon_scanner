@@ -1,0 +1,42 @@
+__include__:
+  - ./dfine_bread_0.1.2_detector415_final_all.yml
+
+# Preserve the production backbone, encoder and box heads exactly. Only the
+# classification/objectness score heads receive a non-zero learning rate so
+# that the 415-image positives and empty-image negatives calibrate detection
+# confidence without moving boxes.
+output_dir: artifacts/experiments/bread-0.1.2-detector415/score-head-only/training
+epochs: 10
+checkpoint_freq: 1
+
+ema:
+  type: ModelEMA
+  decay: 0.99
+  warmups: 1
+  start: 0
+
+optimizer:
+  type: AdamW
+  params:
+    - params: '^(?=.*(?:score_head|denoising_class_embed)).*$'
+      lr: 0.0001
+      weight_decay: 0.0
+    - params: '^(?!.*(?:score_head|denoising_class_embed)).*$'
+      lr: 0.0
+      weight_decay: 0.0
+  lr: 0.0
+  betas: [0.9, 0.999]
+  weight_decay: 0.0
+
+train_dataloader:
+  dataset:
+    transforms:
+      ops:
+        - {type: Resize, size: [640, 640]}
+        - {type: SanitizeBoundingBoxes, min_size: 1}
+        - {type: ConvertPILImage, dtype: float32, scale: true}
+        - {type: ConvertBoxes, fmt: cxcywh, normalize: true}
+  collate_fn:
+    stop_epoch: 10
+    ema_restart_decay: 0.99
+    base_size_repeat: null

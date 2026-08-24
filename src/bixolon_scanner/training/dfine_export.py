@@ -6,15 +6,21 @@ from pathlib import Path
 from typing import Any
 
 
-def checkpoint_model_state(checkpoint: dict[str, Any]) -> dict[str, Any]:
+def checkpoint_model_state(
+    checkpoint: dict[str, Any], *, weight_source: str = "auto"
+) -> dict[str, Any]:
     """Return the inference weights preferred by the official D-FINE exporter."""
+    if weight_source not in {"auto", "ema", "model"}:
+        raise ValueError(f"unsupported D-FINE weight source: {weight_source}")
     ema = checkpoint.get("ema")
-    if isinstance(ema, dict) and isinstance(ema.get("module"), dict):
+    if weight_source != "model" and isinstance(ema, dict) and isinstance(ema.get("module"), dict):
         return ema["module"]
     model = checkpoint.get("model")
-    if isinstance(model, dict):
+    if weight_source != "ema" and isinstance(model, dict):
         return model
-    raise ValueError("D-FINE checkpoint has neither EMA nor model weights")
+    if weight_source == "auto":
+        raise ValueError("D-FINE checkpoint has neither EMA nor model weights")
+    raise ValueError(f"D-FINE checkpoint does not contain requested {weight_source} weights")
 
 
 def compatible_checkpoint_state(
@@ -43,6 +49,7 @@ def export_dfine_onnx(
     output: Path,
     input_size: tuple[int, int] = (640, 640),
     opset: int = 16,
+    weight_source: str = "auto",
 ) -> None:
     """Export raw D-FINE queries to the canonical one-input detector contract."""
     repository = repository.resolve()
@@ -67,7 +74,10 @@ def export_dfine_onnx(
         if "HGNetv2" in cfg.yaml_cfg:
             cfg.yaml_cfg["HGNetv2"]["pretrained"] = False
         payload = torch.load(checkpoint, map_location="cpu", weights_only=False)
-        state = compatible_checkpoint_state(cfg.model.state_dict(), checkpoint_model_state(payload))
+        state = compatible_checkpoint_state(
+            cfg.model.state_dict(),
+            checkpoint_model_state(payload, weight_source=weight_source),
+        )
         missing, unexpected = cfg.model.load_state_dict(state, strict=False)
         allowed_missing = {"decoder.anchors", "decoder.valid_mask"}
         if set(missing) - allowed_missing or unexpected:
@@ -120,6 +130,7 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument("--input-height", type=int, default=640)
     parser.add_argument("--input-width", type=int, default=640)
     parser.add_argument("--opset", type=int, default=16)
+    parser.add_argument("--weight-source", choices=("auto", "ema", "model"), default="auto")
     return parser
 
 
@@ -132,6 +143,7 @@ def main(argv: list[str] | None = None) -> None:
         output=args.output,
         input_size=(args.input_height, args.input_width),
         opset=args.opset,
+        weight_source=args.weight_source,
     )
 
 

@@ -9,6 +9,7 @@ from bixolon_scanner.training.ten_shot_candidates import (
     CandidateResult,
     challenger_required,
     create_uniform_parameter_soup,
+    create_weighted_parameter_soup,
     select_candidate,
     validate_seed_matrix,
 )
@@ -97,3 +98,45 @@ def test_uniform_parameter_soup_rejects_incompatible_provenance(tmp_path: Path):
             tmp_path / "soup.pt",
             member_seeds=(20260813, 20260814),
         )
+
+
+def test_weighted_parameter_soup_uses_declared_current_manifest(tmp_path: Path):
+    torch = require_torch()
+    common = {
+        "architecture": "ten_shot_residual_cosine_challenger",
+        "adapter_spec": {"hidden_size": 2},
+        "backbone_kind": "dinov3_convnext_tiny",
+        "source_revision": "revision",
+        "source_weight_sha256": "weights",
+        "image_size": 224,
+        "num_classes": 2,
+    }
+    paths = []
+    for index, value in enumerate((1.0, 5.0)):
+        path = tmp_path / f"weighted-{index}.pt"
+        torch.save(
+            common
+            | {
+                "dataset_version": f"old-{index}",
+                "manifest_sha256": f"old-manifest-{index}",
+                "model_state_dict": {"weight": torch.tensor([value])},
+            },
+            path,
+        )
+        paths.append(path)
+
+    output = tmp_path / "weighted.pt"
+    provenance = create_weighted_parameter_soup(
+        paths,
+        output,
+        weights=(0.75, 0.25),
+        selection_scope="single_objects_3_validation",
+        dataset_version="current-data",
+        manifest_sha256="current-manifest",
+    )
+    checkpoint = torch.load(output, map_location="cpu", weights_only=False)
+
+    assert torch.equal(checkpoint["model_state_dict"]["weight"], torch.tensor([2.0]))
+    assert checkpoint["dataset_version"] == "current-data"
+    assert checkpoint["manifest_sha256"] == "current-manifest"
+    assert provenance["weights"] == [0.75, 0.25]

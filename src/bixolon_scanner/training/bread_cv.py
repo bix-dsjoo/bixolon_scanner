@@ -20,7 +20,7 @@ from .bread_dataset import (
 )
 
 SCHEMA_VERSION = "1.1"
-CLASSIFIER_SOURCES = ("single_objects", "single_objects_2")
+CLASSIFIER_SOURCES = ("single_objects", "single_objects_2", "single_objects_3")
 
 
 @lru_cache(maxsize=None)
@@ -182,12 +182,11 @@ def assign_balanced_folds(rows: list[dict[str, Any]], *, fold_count: int) -> dic
 
 def _detection_records(
     root: Path,
-    annotation_name: str,
+    annotation_path: Path,
     *,
     evaluation_set: str,
     image_id_offset: int,
 ) -> list[dict[str, Any]]:
-    annotation_path = root / "annotations" / annotation_name
     coco = _load_coco(annotation_path)
     annotations_by_image: dict[int, list[dict[str, Any]]] = defaultdict(list)
     for annotation in coco["annotations"]:
@@ -299,13 +298,14 @@ def build_bread_cross_validation_registry(
     dataset_root: Path,
     *,
     classifier_source: str = "single_objects",
+    detector_operational_collection: Path | None = None,
     fold_count: int = 3,
     maximum_hamming_distance: int = 2,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]], dict[str, Any]]:
     root = dataset_root.resolve()
     if classifier_source not in CLASSIFIER_SOURCES:
         raise ValueError(
-            "zero-error classifier source must be exactly single_objects or single_objects_2"
+            "zero-error classifier source must be one supported single-object collection"
         )
     classifier_rows, classifier_audit = _classifier_records(
         root,
@@ -315,10 +315,34 @@ def build_bread_cross_validation_registry(
     )
     detector_rows = _detection_records(
         root,
-        "multi_object_instances.json",
+        root / "annotations" / "multi_object_instances.json",
         evaluation_set="multi_object_scenes",
         image_id_offset=0,
     )
+    detector_sources = ["multi_object_scenes"]
+    if detector_operational_collection is not None:
+        collection_root = detector_operational_collection
+        if not collection_root.is_absolute():
+            collection_root = root / "operational_collections" / collection_root
+        collection_root = collection_root.resolve()
+        operational_root = (root / "operational_collections").resolve()
+        try:
+            collection_name = collection_root.relative_to(operational_root).as_posix()
+        except ValueError as error:
+            raise ValueError(
+                "detector operational collection must be inside operational_collections"
+            ) from error
+        if not collection_root.is_dir():
+            raise ValueError(f"detector operational collection is missing: {collection_name}")
+        detector_rows.extend(
+            _detection_records(
+                root,
+                collection_root / "annotations" / "instances.json",
+                evaluation_set=f"operational_collections/{collection_name}",
+                image_id_offset=1_000_000,
+            )
+        )
+        detector_sources.append(f"operational_collections/{collection_name}")
     detector_duplicate_audit = assign_perceptual_groups(
         detector_rows, maximum_hamming_distance=maximum_hamming_distance
     )
@@ -362,7 +386,7 @@ def build_bread_cross_validation_registry(
             "annotated_image_count": len(detector_rows) - recapture_count,
             "expected_recapture_image_count": recapture_count,
             "annotation_count": sum(len(row["annotations"]) for row in detector_rows),
-            "sources": ["multi_object_scenes"],
+            "sources": detector_sources,
             "all_images_participate_in_cross_validation": True,
             "duplicate_audit": detector_duplicate_audit,
             "folds": detector_fold_audit,
@@ -383,12 +407,14 @@ def write_bread_cross_validation_registry(
     output_dir: Path,
     *,
     classifier_source: str = "single_objects",
+    detector_operational_collection: Path | None = None,
     fold_count: int = 3,
     maximum_hamming_distance: int = 2,
 ) -> str:
     classifier_rows, detector_rows, metadata = build_bread_cross_validation_registry(
         dataset_root,
         classifier_source=classifier_source,
+        detector_operational_collection=detector_operational_collection,
         fold_count=fold_count,
         maximum_hamming_distance=maximum_hamming_distance,
     )
@@ -420,6 +446,11 @@ def main() -> None:
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--classifier-source", choices=CLASSIFIER_SOURCES, default="single_objects")
+    parser.add_argument(
+        "--detector-operational-collection",
+        type=Path,
+        help="Collection name below operational_collections to include in Detector development",
+    )
     parser.add_argument("--fold-count", type=int, default=3)
     parser.add_argument("--maximum-hamming-distance", type=int, default=2)
     args = parser.parse_args()
@@ -428,6 +459,7 @@ def main() -> None:
             args.dataset_root,
             args.output_dir,
             classifier_source=args.classifier_source,
+            detector_operational_collection=args.detector_operational_collection,
             fold_count=args.fold_count,
             maximum_hamming_distance=args.maximum_hamming_distance,
         )
