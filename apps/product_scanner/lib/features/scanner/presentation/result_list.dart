@@ -33,20 +33,26 @@ class _ResultPanelState extends State<_ResultPanel> {
   }
 
   void _continueKeyboardReview() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final target = controller.allConfirmed
-          ? _finalActionFocusNode
-          : _firstChoiceFocusNode;
-      if (target.canRequestFocus) target.requestFocus();
-    });
+    final target = controller.allConfirmed
+        ? _finalActionFocusNode
+        : _firstChoiceFocusNode;
+    _requestFocusAfterRebuild(target);
   }
 
   void closeSearchFromKeyboard() {
     controller.hideSearch();
+    _requestFocusAfterRebuild(_searchActionFocusNode);
+  }
+
+  void _requestFocusAfterRebuild(FocusNode target, [int attempts = 3]) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_searchActionFocusNode.canRequestFocus) return;
-      _searchActionFocusNode.requestFocus();
+      if (!mounted) return;
+      if (target.context != null &&
+          target.canRequestFocus &&
+          !target.hasFocus) {
+        FocusScope.of(context).requestFocus(target);
+      }
+      if (attempts > 1) _requestFocusAfterRebuild(target, attempts - 1);
     });
   }
 
@@ -55,7 +61,7 @@ class _ResultPanelState extends State<_ResultPanel> {
     final selectedDetection = controller.selectedDetection;
     final showReviewWorkspace =
         controller.processState == ProcessState.reviewing &&
-        !controller.isRecapture &&
+        (!controller.isRecapture || !controller.operatorRequiresRecapture) &&
         !controller.hasActiveCameraIssue &&
         !controller.isCameraCheckActive &&
         selectedDetection != null;
@@ -83,7 +89,6 @@ class _ResultPanelState extends State<_ResultPanel> {
           ),
           if ((controller.processState == ProcessState.reviewing ||
                   controller.processState == ProcessState.submitting) &&
-              !controller.isRecapture &&
               !controller.hasActiveCameraIssue &&
               !controller.isCameraCheckActive &&
               controller.hasResults)
@@ -98,7 +103,7 @@ class _ResultPanelState extends State<_ResultPanel> {
 
   String _reviewCompletionAnnouncement() {
     final total = controller.detections.length;
-    return '검수 상태. $total개 상품 확인 완료. 최종 확정할 수 있어요.';
+    return '검출 결과. $total개 상품 선택 완료. 결과를 저장할 수 있어요.';
   }
 
   Widget _resultBody() {
@@ -146,18 +151,7 @@ class _ResultPanelState extends State<_ResultPanel> {
       );
     }
     if (controller.isRecapture) {
-      final saveError = controller.recaptureLogError;
-      return _PanelMessage(
-        icon: Icons.center_focus_weak_rounded,
-        title: controller.recaptureTitle,
-        detail: saveError == null
-            ? controller.recaptureDetail
-            : '${controller.recaptureDetail}\n$saveError',
-        tone: AppColors.attention,
-        announce:
-            saveError != null ||
-            controller.recaptureLogSaveState == RecaptureLogSaveState.idle,
-      );
+      return _RecaptureReview(controller: controller);
     }
     if (!controller.hasResults) {
       if (controller.imageBytes != null) {
@@ -188,6 +182,141 @@ class _ResultPanelState extends State<_ResultPanel> {
       );
     }
     return _DetectionList(controller: controller);
+  }
+}
+
+class _RecaptureReview extends StatelessWidget {
+  const _RecaptureReview({required this.controller});
+
+  final ScannerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView(
+      padding: const EdgeInsets.all(AppSpacing.x6),
+      children: [
+        Semantics(
+          container: true,
+          liveRegion: true,
+          label: '${controller.recaptureTitle}. ${controller.recaptureDetail}',
+          child: ExcludeSemantics(
+            child: Column(
+              children: [
+                const Icon(
+                  Icons.center_focus_weak_rounded,
+                  color: AppColors.attention,
+                  size: 40,
+                ),
+                const SizedBox(height: AppSpacing.x4),
+                Text(
+                  controller.recaptureTitle,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: AppTypography.bold,
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.x2),
+                Text(
+                  controller.recaptureDetail,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(
+                    context,
+                  ).textTheme.bodyMedium?.copyWith(color: AppColors.muted),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: AppSpacing.x6),
+        Row(
+          key: const ValueKey('recapture-verdict-control'),
+          children: [
+            Expanded(
+              child: _RecaptureChoice(
+                label: '재촬영 필요',
+                icon: Icons.refresh_rounded,
+                selected: controller.operatorRequiresRecapture,
+                onPressed: controller.isBusy
+                    ? null
+                    : () => controller.setOperatorRequiresRecapture(true),
+              ),
+            ),
+            const SizedBox(width: AppSpacing.x2),
+            Expanded(
+              child: _RecaptureChoice(
+                label: '재촬영 아님',
+                icon: Icons.check_rounded,
+                selected: !controller.operatorRequiresRecapture,
+                onPressed: controller.isBusy
+                    ? null
+                    : () => controller.setOperatorRequiresRecapture(false),
+              ),
+            ),
+          ],
+        ),
+        if (!controller.operatorRequiresRecapture) ...[
+          const SizedBox(height: AppSpacing.x4),
+          const AppInlineNotice(
+            tone: AppColors.attention,
+            backgroundColor: AppColors.attentionSoft,
+            icon: Icons.add_box_outlined,
+            message: '박스를 추가하고 상품을 지정하면 결과로 저장할 수 있어요.',
+          ),
+          const SizedBox(height: AppSpacing.x3),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: FilledButton.icon(
+              onPressed: controller.isBusy
+                  ? null
+                  : () => _showBoxEditorDialog(context, controller: controller),
+              icon: const Icon(Icons.add_box_outlined, size: 19),
+              label: const Text('박스 추가'),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _RecaptureChoice extends StatelessWidget {
+  const _RecaptureChoice({
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onPressed,
+  });
+
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback? onPressed;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      selected: selected,
+      enabled: onPressed != null,
+      label: label,
+      child: ExcludeSemantics(
+        child: OutlinedButton.icon(
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            minimumSize: Size.fromHeight(context.appTokens.actionHeight),
+            backgroundColor: selected
+                ? AppColors.primarySoft
+                : AppColors.surface,
+            side: BorderSide(
+              color: selected ? AppColors.primary : AppColors.divider,
+              width: selected ? 2 : 1,
+            ),
+          ),
+          icon: Icon(icon, size: 19),
+          label: Text(label),
+        ),
+      ),
+    );
   }
 }
 
@@ -226,7 +355,12 @@ class _ReviewWorkspace extends StatelessWidget {
         final desiredListHeight =
             controller.detections.length * tokens.rowHeight + dividerCount;
         final maxListHeight =
-            (constraints.maxHeight - tokens.reviewInspectorReservedHeight)
+            (constraints.maxHeight -
+                    (tokens.reviewInspectorReservedHeight -
+                        AppSpacing.x4 -
+                        AppSpacing.x1) -
+                    tokens.headerHeight -
+                    AppSpacing.x6)
                 .clamp(tokens.rowHeight, constraints.maxHeight)
                 .toDouble();
         final listHeight = desiredListHeight
@@ -236,6 +370,7 @@ class _ReviewWorkspace extends StatelessWidget {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            _ImageReviewActions(controller: controller),
             SizedBox(
               key: const ValueKey('review-object-list-frame'),
               height: listHeight,
@@ -278,12 +413,10 @@ class _ResultHeader extends StatelessWidget {
         ? '카메라 확인 필요'
         : controller.isCameraCheckActive
         ? '카메라 확인 중'
-        : controller.hasResults
-        ? controller.allConfirmed
-              ? '검수 완료'
-              : '상품 검수'
         : controller.isRecapture
         ? '재촬영 필요'
+        : controller.hasResults
+        ? '검출 결과'
         : controller.processState == ProcessState.error
         ? '분석 오류'
         : controller.processState == ProcessState.capturing
@@ -301,11 +434,11 @@ class _ResultHeader extends StatelessWidget {
     final analysisTime = response == null || response.status == ScanStatus.error
         ? null
         : '분석 ${response.processingTimeMs.toStringAsFixed(1)} ms';
-    final subtitle = controller.hasResults
-        ? '${controller.confirmedCount}/${controller.detections.length}개 확인'
-              '${analysisTime == null ? '' : ' · $analysisTime'}'
-        : controller.isRecapture
+    final subtitle = controller.isRecapture
         ? analysisTime
+        : controller.hasResults
+        ? '${controller.confirmedCount}/${controller.detections.length}개 선택 완료'
+              '${analysisTime == null ? '' : ' · $analysisTime'}'
         : null;
     return AppPanelHeader(
       key: const ValueKey('scan-result-header'),
@@ -468,9 +601,13 @@ class _DetectionListState extends State<_DetectionList> {
     _revealSelectedRow();
   }
 
-  void _revealSelectedRow() {
+  void _revealSelectedRow([int attempts = 3]) {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_scrollController.hasClients) return;
+      if (!mounted) return;
+      if (!_scrollController.hasClients) {
+        if (attempts > 1) _revealSelectedRow(attempts - 1);
+        return;
+      }
       final selectedItemId = widget.controller.selectedItemId;
       final index = widget.controller.detections.indexWhere(
         (detection) => detection.source.itemId == selectedItemId,
@@ -479,6 +616,13 @@ class _DetectionListState extends State<_DetectionList> {
 
       final position = _scrollController.position;
       final rowExtent = context.appTokens.rowHeight + 1;
+      final contentExtent = widget.controller.detections.length * rowExtent - 1;
+      if (contentExtent > position.viewportDimension &&
+          position.maxScrollExtent <= 0 &&
+          attempts > 1) {
+        _revealSelectedRow(attempts - 1);
+        return;
+      }
       final centeredOffset =
           index * rowExtent -
           (position.viewportDimension - context.appTokens.rowHeight) / 2;
@@ -556,17 +700,22 @@ class _DetectionRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final needsReview = !detection.isConfirmed;
+    final removed = detection.removed;
+    final needsReview = !detection.isConfirmed && !removed;
     final reviewPresentation = presentSegmentReview(detection.source);
-    final tone = needsReview ? AppColors.attention : AppColors.success;
+    final tone = removed ? AppColors.error : _detectionStatusColor(detection);
     final confidence =
         '${(detection.source.confidence * 100).toStringAsFixed(0)}%';
-    final semanticLabel = needsReview
+    final semanticLabel = removed
+        ? '$index번 모델 박스, 삭제됨'
+        : needsReview
         ? '$index번 상품, ${reviewPresentation.shortLabel}'
         : '$index번 상품, ${detection.finalProduct!.displayName}, 확정, 신뢰도 $confidence';
     return AppSelectableSurface(
       selected: selected,
-      selectedBackgroundColor: AppColors.surface,
+      selectedBackgroundColor: tone.withValues(
+        alpha: AppOpacity.selectedStatusSurface,
+      ),
       selectedBorder: Border.all(color: tone, width: 2),
       enabled: !controller.isBusy,
       inMutuallyExclusiveGroup: true,
@@ -587,7 +736,9 @@ class _DetectionRow extends StatelessWidget {
             ),
           ),
           Icon(
-            needsReview
+            removed
+                ? Icons.delete_outline_rounded
+                : needsReview
                 ? Icons.help_outline_rounded
                 : Icons.check_circle_outline_rounded,
             size: 19,
@@ -596,9 +747,11 @@ class _DetectionRow extends StatelessWidget {
           const SizedBox(width: AppSpacing.x3),
           Expanded(
             child: Text(
-              needsReview
+              removed
+                  ? '삭제한 모델 박스'
+                  : needsReview
                   ? reviewPresentation.rowTitle
-                  : detection.finalProduct!.displayName,
+                  : detection.finalProduct?.displayName ?? '상품 확인 필요',
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
               style: Theme.of(
@@ -607,7 +760,11 @@ class _DetectionRow extends StatelessWidget {
             ),
           ),
           Text(
-            needsReview ? reviewPresentation.shortLabel : confidence,
+            removed
+                ? '삭제'
+                : needsReview
+                ? reviewPresentation.shortLabel
+                : confidence,
             maxLines: 1,
             softWrap: false,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(

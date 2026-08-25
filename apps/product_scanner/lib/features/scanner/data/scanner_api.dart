@@ -13,6 +13,39 @@ abstract interface class ScannerApi {
   });
 }
 
+/// Optional startup contract for APIs that need a local Worker to finish model
+/// loading before the first scan. Controllers can begin this work while the
+/// camera initializes instead of charging it to the first capture.
+abstract interface class ScannerApiPreflight {
+  bool get isPrepared;
+
+  Future<String?> prepare();
+}
+
+class ScannerApiTimings {
+  const ScannerApiTimings({
+    required this.totalMs,
+    required this.readinessMs,
+    required this.requestBuildMs,
+    required this.httpRoundTripMs,
+    required this.responseBodyReadMs,
+    required this.responseParseMs,
+    this.provider,
+  });
+
+  final double totalMs;
+  final double readinessMs;
+  final double requestBuildMs;
+  final double httpRoundTripMs;
+  final double responseBodyReadMs;
+  final double responseParseMs;
+  final String? provider;
+}
+
+abstract interface class ScannerApiTimingSource {
+  ScannerApiTimings? takeLastTimings();
+}
+
 enum ScannerErrorRecovery { retryAnalysis, replaceInput }
 
 class ScannerApiException implements Exception {
@@ -30,7 +63,8 @@ class ScannerApiException implements Exception {
   String toString() => message;
 }
 
-class WorkerScannerApi implements ScannerApi {
+class WorkerScannerApi
+    implements ScannerApi, ScannerApiPreflight, ScannerApiTimingSource {
   WorkerScannerApi({
     required this.baseUrl,
     http.Client? client,
@@ -48,16 +82,65 @@ class WorkerScannerApi implements ScannerApi {
   final Duration readinessTimeout;
   final Duration readinessPollInterval;
   final http.Client _client;
+  ScannerApiTimings? _lastTimings;
+  bool _prepared = false;
+  String? _preparedProvider;
+  Future<String?>? _preparation;
+
+  @override
+  bool get isPrepared => !waitForReady || _prepared;
+
+  @override
+  Future<String?> prepare() {
+    if (!waitForReady) return Future<String?>.value(null);
+    if (_prepared) return Future<String?>.value(_preparedProvider);
+    final active = _preparation;
+    if (active != null) return active;
+    final preparation = _prepareAndCache();
+    _preparation = preparation;
+    return preparation;
+  }
+
+  Future<String?> _prepareAndCache() async {
+    try {
+      final provider = await _waitUntilReady();
+      _preparedProvider = provider;
+      _prepared = true;
+      return provider;
+    } finally {
+      _preparation = null;
+    }
+  }
+
+  void _invalidatePreparation() {
+    _prepared = false;
+    _preparedProvider = null;
+  }
+
+  @override
+  ScannerApiTimings? takeLastTimings() {
+    final value = _lastTimings;
+    _lastTimings = null;
+    return value;
+  }
 
   @override
   Future<ScanResponse> scan({
     required Uint8List imageBytes,
     required String fileName,
   }) async {
+    _lastTimings = null;
+    final total = Stopwatch()..start();
     try {
+      var readinessMs = 0.0;
+      String? provider;
       if (waitForReady) {
-        await _waitUntilReady();
+        final readiness = Stopwatch()..start();
+        provider = await prepare();
+        readiness.stop();
+        readinessMs = readiness.elapsedMicroseconds / 1000.0;
       }
+      final requestBuild = Stopwatch()..start();
       final request =
           http.MultipartRequest('POST', Uri.parse('$baseUrl/v1/scan'))
             ..files.add(
@@ -67,9 +150,26 @@ class WorkerScannerApi implements ScannerApi {
                 filename: fileName,
               ),
             );
+      requestBuild.stop();
+      final httpRoundTrip = Stopwatch()..start();
       final streamed = await _client.send(request).timeout(timeout);
+      final responseBodyRead = Stopwatch()..start();
       final body = await streamed.stream.bytesToString();
+      responseBodyRead.stop();
+      httpRoundTrip.stop();
+      final responseParse = Stopwatch()..start();
       final response = ScanResponse.fromBody(body);
+      responseParse.stop();
+      total.stop();
+      _lastTimings = ScannerApiTimings(
+        totalMs: total.elapsedMicroseconds / 1000.0,
+        readinessMs: readinessMs,
+        requestBuildMs: requestBuild.elapsedMicroseconds / 1000.0,
+        httpRoundTripMs: httpRoundTrip.elapsedMicroseconds / 1000.0,
+        responseBodyReadMs: responseBodyRead.elapsedMicroseconds / 1000.0,
+        responseParseMs: responseParse.elapsedMicroseconds / 1000.0,
+        provider: provider,
+      );
       if (streamed.statusCode < 200 ||
           streamed.statusCode >= 300 ||
           response.status == ScanStatus.error) {
@@ -84,15 +184,18 @@ class WorkerScannerApi implements ScannerApi {
     } on ScannerApiException {
       rethrow;
     } on TimeoutException {
+      _invalidatePreparation();
       throw const ScannerApiException('분석 시간이 너무 오래 걸리고 있어요. 다시 분석해 주세요.');
     } on FormatException {
+      _invalidatePreparation();
       throw const ScannerApiException('분석 서버의 응답을 확인할 수 없어요.');
     } catch (_) {
+      _invalidatePreparation();
       throw const ScannerApiException('분석 서버에 연결할 수 없어요.');
     }
   }
 
-  Future<void> _waitUntilReady() async {
+  Future<String?> _waitUntilReady() async {
     final deadline = DateTime.now().add(readinessTimeout);
     final readyUrl = Uri.parse('$baseUrl/health/ready');
     while (true) {
@@ -101,6 +204,7 @@ class WorkerScannerApi implements ScannerApi {
             .get(readyUrl)
             .timeout(const Duration(seconds: 1));
         if (response.statusCode >= 200 && response.statusCode < 300) {
+          String? provider;
           if (expectedVersion != null) {
             final decoded = jsonDecode(response.body);
             if (decoded is! Map<String, dynamic>) {
@@ -126,8 +230,9 @@ class WorkerScannerApi implements ScannerApi {
                 reasonCodes: ['VERSION_MISMATCH'],
               );
             }
+            provider = decoded['provider'] as String?;
           }
-          return;
+          return provider;
         }
       } on ScannerApiException {
         rethrow;

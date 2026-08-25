@@ -323,7 +323,7 @@ class NeighborMaskClassifierView(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     name: str = Field(min_length=1)
-    distance_bias: float = Field(ge=0.0)
+    distance_bias: float = Field(ge=-1.0)
     weight: float = Field(gt=0.0, le=1.0)
     shared_scale: bool = False
 

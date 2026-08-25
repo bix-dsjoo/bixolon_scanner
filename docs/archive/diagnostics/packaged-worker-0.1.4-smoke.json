@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "product_version": "0.1.4",
+  "executed_at": "2026-08-25T10:19:12+09:00",
+  "environment": {
+    "scope": "current_development_pc",
+    "is_n100": false,
+    "note": "단일 실행 관찰값이며 N100 성능 또는 SLA 결과가 아니다."
+  },
+  "artifact": {
+    "setup": "artifacts/installers/0.1.4/BixolonScanner-N100-0.1.4-Setup.exe",
+    "worker_zip": "artifacts/installers/0.1.4/BixolonScanner-N100-0.1.4-Worker.zip"
+  },
+  "requested_devices": {
+    "detector": "OpenVINO CPU",
+    "embedder": "OpenVINO Intel GPU",
+    "embedder_fallback": "OpenVINO CPU"
+  },
+  "observed_devices": {
+    "detector": "OpenVINO CPU",
+    "embedder": "OpenVINO CPU fallback",
+    "gpu_attempt_succeeded": false,
+    "gpu_failure_code": "OPENVINO_GPU_MODEL_EXECUTION_FAILED"
+  },
+  "readiness": {
+    "ready": true,
+    "provider": "openvino",
+    "worker_version": "0.1.4",
+    "detector_version": "0.1.4",
+    "classifier_version": "0.1.4",
+    "embedder_version": "0.1.4",
+    "detector_policy_version": "0.1.4",
+    "classifier_policy_version": "0.1.4",
+    "catalog_version": "0.1.4"
+  },
+  "persistent_cache_observation": {
+    "files": 21,
+    "bytes": 926536488,
+    "first_start_ready_ms": 5160.978,
+    "cached_restart_ready_ms": 3981.134,
+    "note": "프로세스 로그 timestamp 기준 1회 관찰값이다. 캐시는 전달물에 포함하지 않고 실행 시 다시 생성한다."
+  },
+  "full_path_smoke": {
+    "input": "datasets/bread_dataset/multi_object_scenes/easy/easy_001.jpg",
+    "http_status": 200,
+    "response_status": "SEGMENTATION",
+    "segmentations": 3,
+    "decisions": {
+      "APPROVED": 3,
+      "UNKNOWN": 0,
+      "SEGMENT_RECAPTURE": 0
+    },
+    "error_count": 0,
+    "client_total_ms": 133.303,
+    "worker_processing_ms": 130.1575,
+    "stage_ms": {
+      "decode": 31.978,
+      "detector": 31.317,
+      "classifier": 51.975,
+      "pipeline": 83.483
+    }
+  },
+  "early_exit_smoke": {
+    "http_status": 200,
+    "response_status": "IMAGE_RECAPTURE",
+    "client_total_ms": 43.9,
+    "worker_processing_ms": 35.993
+  }
+}

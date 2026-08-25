@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.2",
+    [string]$Version = "0.1.3",
     [string]$Stamp = "20260824",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$Force
@@ -62,9 +62,9 @@ foreach ($required in @(
     (Join-Path $repositoryRoot "scripts/handoff/benchmark-n100.ps1"),
     (Join-Path $repositoryRoot "scripts/handoff/N100-STAGE-TEST.ps1"),
     (Join-Path $repositoryRoot "scripts/handoff/RUN-N100-TEST.cmd"),
-    (Join-Path $repositoryRoot "docs/diagnostics/n100-worker-0.0.2.json"),
+    (Join-Path $repositoryRoot "scripts/handoff/README-N100-KO.txt"),
     (Join-Path $repositoryRoot "configs/runtime/requirements-windows-openvino.lock"),
-    (Join-Path $repositoryRoot "artifacts/evaluations/scanner-0.1.2/development-415-current-pc-cpu.json")
+    (Join-Path $repositoryRoot "artifacts/evaluations/scanner-$Version/full-valid-openvino.json")
 )) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "Required N100 candidate input is missing: $required"
@@ -78,13 +78,14 @@ if ([string]$metadata.worker_version -ne $Version) {
 if (
     $null -ne $metadata.detector.ensemble -or
     [string]$metadata.detector.filename -ne "detector.onnx" -or
-    [double]$metadata.detector.score_threshold -ne 0.33 -or
-    $null -eq $metadata.count_verifier -or
-    [string]$metadata.count_verifier.comparison_mode -ne "object_presence" -or
-    [int]$metadata.count_verifier.input_size[0] -ne 192 -or
-    [string]$metadata.embedder.embedder_id -ne "dinov3-convnext-tiny-adapted"
+    [double]$metadata.detector.score_threshold -ne 0.65 -or
+    $null -ne $metadata.count_verifier -or
+    [string]$metadata.embedder.embedder_id -ne "dinov3-convnext-tiny" -or
+    $null -eq $metadata.classifier_verification -or
+    [double]$metadata.classifier_verification.ambiguity_maximum_approval_score -ne 0.5 -or
+    [int]$metadata.classifier_verification.independent_embedder.fixed_batch_size -ne 1
 ) {
-    throw "The 0.1.2 N100 candidate does not match the selected single-detector Runtime."
+    throw "The N100 candidate does not match the selected consensus Runtime."
 }
 
 [System.IO.Directory]::CreateDirectory($resolvedOutputRoot) | Out-Null
@@ -116,13 +117,13 @@ try {
         -Destination (Join-Path $temporaryRoot "N100-STAGE-TEST.ps1")
     Copy-Item -LiteralPath (Join-Path $repositoryRoot "scripts/handoff/RUN-N100-TEST.cmd") `
         -Destination $temporaryRoot
-    Copy-Item -LiteralPath (Join-Path $repositoryRoot "docs/diagnostics/n100-worker-0.0.2.json") `
-        -Destination (Join-Path $temporaryRoot "n100-0.0.2-baseline.json")
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot "scripts/handoff/README-N100-KO.txt") `
+        -Destination $temporaryRoot
     Copy-Item -LiteralPath (
         Join-Path $repositoryRoot "configs/runtime/requirements-windows-openvino.lock"
     ) -Destination $temporaryRoot
     Copy-Item -LiteralPath (
-        Join-Path $repositoryRoot "artifacts/evaluations/scanner-0.1.2/development-415-current-pc-cpu.json"
+        Join-Path $repositoryRoot "artifacts/evaluations/scanner-$Version/full-valid-openvino.json"
     ) -Destination (Join-Path $temporaryRoot "local-cpu-reference.json")
 
     $forbidden = Get-ChildItem -LiteralPath $temporaryRoot -File -Recurse | Where-Object {
@@ -131,27 +132,6 @@ try {
     if ($forbidden) {
         throw "CPU test candidate contains a GPU runtime file: $($forbidden[0].FullName)"
     }
-
-    $readme = @"
-BIXOLON Scanner $Version N100 CPU 성능 테스트
-================================================
-
-1. 이 폴더 전체를 N100 키오스크의 로컬 디스크에 복사합니다.
-2. C:\easy 폴더에 실제 촬영 JPEG/PNG 이미지 30장 이상을 넣습니다.
-3. RUN-N100-TEST.cmd를 더블클릭합니다.
-4. 테스트가 끝나면 n100-$Version-result.json을 USB에 복사합니다.
-5. 결과 JSON을 Codex에 전달합니다.
-
-CMD에서 직접 실행:
-C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\N100-STAGE-TEST.ps1" -ImageDirectory "C:\easy" -OutputPath ".\n100-$Version-result.json"
-
-고정 CPU 1x4 설정으로 평균과 p95 1초 목표를 확인합니다.
-결과의 passes, target.mean_within_1_second, target.p95_within_1_second가 모두 true이면 통과입니다.
-이미지 경로와 bytes는 결과 JSON에 기록하지 않습니다.
-이 후보는 N100 실측용이며 최종 Setup 설치 프로그램이 아닙니다.
-"@
-    Write-Utf8 -Path (Join-Path $temporaryRoot "README-N100-KO.txt") `
-        -Text ($readme + [Environment]::NewLine)
 
     $files = @(
         Get-ChildItem -LiteralPath $temporaryRoot -File -Recurse | Sort-Object FullName |
@@ -165,20 +145,19 @@ C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe -NoProfile -ExecutionP
     )
     $manifest = [ordered]@{
         schema_version = "1.0"
-        artifact = "n100_cpu_latency_candidate"
+        artifact = "n100_openvino_cpu_latency_candidate"
         product_version = $Version
-        provider = "CPUExecutionProvider"
+        provider = "OpenVINOExecutionProvider:CPU"
         detector_filename = [string]$metadata.detector.filename
-        count_verifier_filename = [string]$metadata.count_verifier.filename
+        classifier_verifier_filename = [string]$metadata.classifier_verification.independent_embedder.filename
         embedder_id = [string]$metadata.embedder.embedder_id
         default_profile = [ordered]@{
-            provider = "cpu"
+            provider = "openvino"
             detector_workers = 1
-            detector_threads_per_session = 4
-            embedder_threads = 4
+            detector_threads_per_session = 0
+            embedder_threads = 0
         }
-        target_full_path_latency_ms = 1000
-        baseline_reference = "n100-0.0.2-baseline.json"
+        target_full_path_latency_ms = 300
         current_pc_reference = "local-cpu-reference.json"
         file_count = $files.Count
         files = $files

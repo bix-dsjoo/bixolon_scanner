@@ -25,9 +25,7 @@ class _InputActionBar extends StatelessWidget {
     final hasImage = controller.imageBytes != null;
     final capturing = controller.processState == ProcessState.capturing;
     final analyzing = controller.processState == ProcessState.analyzing;
-    final reviewingSuccess =
-        controller.processState == ProcessState.reviewing &&
-        !controller.isRecapture;
+    final reviewingSuccess = controller.processState == ProcessState.reviewing;
     if (controller.processState == ProcessState.submitting) {
       return AppActionBar(
         child: Row(
@@ -138,7 +136,7 @@ class _InputActionBar extends StatelessWidget {
             Tooltip(
               message: controller.inputMode == InputMode.image
                   ? '${AppActionCopy.chooseAnotherImage} (Ctrl+O)'
-                  : '현재 검수를 버리고 ${AppActionCopy.recapture}',
+                  : '현재 결과를 버리고 ${AppActionCopy.recapture}',
               child: OutlinedButton.icon(
                 onPressed: !controller.canChooseImage
                     ? null
@@ -169,9 +167,7 @@ class _InputActionBar extends StatelessWidget {
               ),
             ),
             const Spacer(),
-            _RecaptureLogButton(controller: controller),
-            const SizedBox(width: AppSpacing.x2),
-            FilledButton.icon(
+            OutlinedButton.icon(
               focusNode: cameraPrimaryActionFocusNode,
               onPressed: controller.canChooseImage ? onPrepareRecapture : null,
               icon: const Icon(Icons.videocam_outlined, size: 18),
@@ -183,9 +179,7 @@ class _InputActionBar extends StatelessWidget {
               onPressed: controller.canChooseImage ? onReturnToCamera : null,
             ),
             const Spacer(),
-            _RecaptureLogButton(controller: controller),
-            const SizedBox(width: AppSpacing.x2),
-            FilledButton.icon(
+            OutlinedButton.icon(
               onPressed: controller.canChooseImage ? onChooseImage : null,
               icon: const Icon(Icons.image_outlined, size: 18),
               label: const Text(AppActionCopy.chooseAnotherImage),
@@ -239,15 +233,30 @@ class _InputActionBar extends StatelessWidget {
               ),
             ),
             const Spacer(),
-            if (controller.processState == ProcessState.error && hasImage)
+            if (controller.workerInitializing)
+              AppProgressActionButton(
+                onPressed: null,
+                progressing: true,
+                progressLabel: AppActionCopy.preparingWorker,
+                progressAnnouncement: AppActionCopy.preparingWorkerAnnouncement,
+                icon: const Icon(Icons.memory_outlined, size: 18),
+                label: AppActionCopy.preparingWorker,
+              )
+            else if (!controller.workerReady)
               FilledButton.icon(
-                onPressed: busy ? null : controller.analyze,
+                onPressed: controller.prepareWorker,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text(AppActionCopy.retryWorker),
+              )
+            else if (controller.processState == ProcessState.error && hasImage)
+              FilledButton.icon(
+                onPressed: controller.canAnalyze ? controller.analyze : null,
                 icon: const Icon(Icons.refresh_rounded, size: 18),
                 label: const Text(AppActionCopy.reanalyze),
               )
             else if (controller.inputMode == InputMode.image && hasImage)
               AppProgressActionButton(
-                onPressed: busy ? null : controller.analyze,
+                onPressed: controller.canAnalyze ? controller.analyze : null,
                 progressing: analyzing,
                 progressLabel: AppActionCopy.analyzing,
                 progressAnnouncement: AppActionCopy.analyzingAnnouncement,
@@ -266,7 +275,9 @@ class _InputActionBar extends StatelessWidget {
             else
               AppProgressActionButton(
                 focusNode: cameraPrimaryActionFocusNode,
-                onPressed: busy ? null : controller.captureAndAnalyze,
+                onPressed: controller.workerReady && !busy
+                    ? controller.captureAndAnalyze
+                    : null,
                 progressing: false,
                 progressLabel: AppActionCopy.capturing,
                 progressAnnouncement: AppActionCopy.capturingAnnouncement,
@@ -294,56 +305,6 @@ class _ReturnToCameraButton extends StatelessWidget {
         icon: const Icon(Icons.videocam_outlined, size: 18),
         label: const Text(AppActionCopy.returnToCamera),
       ),
-    );
-  }
-}
-
-class _RecaptureLogButton extends StatelessWidget {
-  const _RecaptureLogButton({required this.controller});
-
-  final ScannerController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    final state = controller.recaptureLogSaveState;
-    final saving = state == RecaptureLogSaveState.saving;
-    final saved = state == RecaptureLogSaveState.saved;
-    final failed = state == RecaptureLogSaveState.error;
-    final label = saved
-        ? AppActionCopy.recaptureLogSaved
-        : failed
-        ? AppActionCopy.retrySave
-        : saving
-        ? AppActionCopy.saving
-        : AppActionCopy.saveRecaptureLog;
-    final button = OutlinedButton.icon(
-      key: const ValueKey('save-recapture-log'),
-      onPressed: saving || saved ? null : controller.saveRecaptureLog,
-      icon: saving
-          ? AppProgressVisual(
-              size: context.appTokens.inlineProgressSize,
-              strokeWidth: 2,
-              color: AppColors.muted,
-            )
-          : Icon(
-              saved
-                  ? Icons.check_circle_outline_rounded
-                  : Icons.save_alt_rounded,
-              size: 18,
-            ),
-      label: Text(label),
-    );
-    if (!saving) {
-      return Tooltip(message: label, child: button);
-    }
-    return Semantics(
-      container: true,
-      excludeSemantics: true,
-      liveRegion: true,
-      button: true,
-      enabled: false,
-      label: AppActionCopy.savingAnnouncement,
-      child: button,
     );
   }
 }

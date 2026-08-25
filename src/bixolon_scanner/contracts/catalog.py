@@ -75,6 +75,37 @@ class CatalogActivation(BaseModel):
         return self
 
 
+class CatalogVerificationMetadata(BaseModel):
+    """Checksummed auxiliary Catalogs used by the selective classifier verifier."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    rotation_catalog_directory: str
+    rotation_checksums_sha256: str
+    independent_catalog_directory: str
+    independent_checksums_sha256: str
+
+    _validate_rotation_directory = field_validator("rotation_catalog_directory")(
+        validate_package_filename
+    )
+    _validate_independent_directory = field_validator("independent_catalog_directory")(
+        validate_package_filename
+    )
+
+    @field_validator("rotation_checksums_sha256", "independent_checksums_sha256")
+    @classmethod
+    def validate_checksum(cls, value: str) -> str:
+        if not SHA256.fullmatch(value):
+            raise ValueError("verification Catalog checksum must be lowercase SHA-256")
+        return value
+
+    @model_validator(mode="after")
+    def validate_directories(self) -> "CatalogVerificationMetadata":
+        if self.rotation_catalog_directory == self.independent_catalog_directory:
+            raise ValueError("verification Catalog directories must be distinct")
+        return self
+
+
 class CatalogMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -91,8 +122,10 @@ class CatalogMetadata(BaseModel):
     support_count: int = Field(gt=0)
     labels: list[CatalogLabel] = Field(min_length=1)
     source_manifest_sha256: str
-    decision_head: Literal["exact_retrieval", "ridge_adapter"] = "exact_retrieval"
+    decision_head: Literal["exact_retrieval", "ridge_adapter", "diagonal_lda"] = "exact_retrieval"
     adapter_filename: str | None = None
+    append_only_base_class_count: int | None = Field(default=None, ge=3)
+    verification: CatalogVerificationMetadata | None = None
 
     _validate_adapter_filename = field_validator("adapter_filename")(validate_package_filename)
 
@@ -124,8 +157,13 @@ class CatalogMetadata(BaseModel):
             expected_offset += label.support_count
         if expected_offset != self.support_count:
             raise ValueError("catalog support count does not match labels")
-        if (self.decision_head == "ridge_adapter") != (self.adapter_filename is not None):
-            raise ValueError("ridge Catalogs require exactly one adapter file")
+        if (self.decision_head != "exact_retrieval") != (self.adapter_filename is not None):
+            raise ValueError("linear-head Catalogs require exactly one adapter file")
+        if self.append_only_base_class_count is not None:
+            if self.decision_head != "ridge_adapter":
+                raise ValueError("append-only Catalogs require a ridge adapter")
+            if self.append_only_base_class_count >= len(self.labels):
+                raise ValueError("append-only Catalogs require at least one appended class")
         return self
 
 
@@ -155,6 +193,8 @@ class StoreCatalogPackage:
     statistics_path: Path
     source_manifest_path: Path
     adapter_path: Path | None
+    rotation_catalog_root: Path | None
+    independent_catalog_root: Path | None
 
 
 def sha256_file(path: Path) -> str:
@@ -229,6 +269,34 @@ def load_store_catalog_package(
     source_manifest = resolved_files["source-manifest.jsonl"]
     if sha256_file(source_manifest) != metadata.source_manifest_sha256:
         raise PackageValidationError
+    rotation_catalog_root = None
+    independent_catalog_root = None
+    if metadata.verification is not None:
+        verification = metadata.verification
+        auxiliary = (
+            (
+                verification.rotation_catalog_directory,
+                verification.rotation_checksums_sha256,
+            ),
+            (
+                verification.independent_catalog_directory,
+                verification.independent_checksums_sha256,
+            ),
+        )
+        roots: list[Path] = []
+        for directory, expected_checksum in auxiliary:
+            candidate = (catalog_root / directory).resolve()
+            try:
+                candidate.relative_to(catalog_root)
+            except ValueError as exc:
+                raise PackageValidationError from exc
+            if (
+                not candidate.is_dir()
+                or sha256_file(candidate / "checksums.json") != expected_checksum
+            ):
+                raise PackageValidationError
+            roots.append(candidate)
+        rotation_catalog_root, independent_catalog_root = roots
     return StoreCatalogPackage(
         root=catalog_root,
         metadata=metadata,
@@ -240,4 +308,6 @@ def load_store_catalog_package(
         adapter_path=(
             None if metadata.adapter_filename is None else resolved_files[metadata.adapter_filename]
         ),
+        rotation_catalog_root=rotation_catalog_root,
+        independent_catalog_root=independent_catalog_root,
     )

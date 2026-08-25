@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.2",
+    [string]$Version = "0.1.3",
     [string]$Python311Executable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$ReuseBuildEnvironment,
@@ -127,7 +127,7 @@ if (Test-Path -LiteralPath $n100DiagnosticPath -PathType Leaf) {
     $n100Diagnostic = Get-Content -Raw -LiteralPath $n100DiagnosticPath | ConvertFrom-Json
     if (
         [string]$n100Diagnostic.product_version -ne $Version -or
-        [string]$n100Diagnostic.provider -ne "cpu" -or
+        [string]$n100Diagnostic.provider -ne "openvino" -or
         -not [bool]$n100Diagnostic.response_contract_safe -or
         -not [bool]$n100Diagnostic.passes
     ) {
@@ -298,8 +298,8 @@ try {
     $defaultProfile = if ($null -eq $n100Diagnostic) {
         [ordered]@{
             detector_workers = 1
-            detector_intra_op_threads = 4
-            embedder_intra_op_threads = 4
+            detector_intra_op_threads = 0
+            embedder_intra_op_threads = 0
         }
     }
     else {
@@ -327,14 +327,14 @@ try {
             p99_ms = [double]$recommendedN100Profile.latency_ms.p99
             peak_working_set_bytes = [long]$recommendedN100Profile.peak_working_set_bytes
             response_contract_safe = [bool]$n100Diagnostic.response_contract_safe
-            mean_within_1_second = [bool]$n100Diagnostic.target.mean_within_1_second
-            p95_within_1_second = [bool]$n100Diagnostic.target.p95_within_1_second
+            mean_within_300ms = [bool]$n100Diagnostic.target.mean_within_300ms
+            p95_within_300ms = [bool]$n100Diagnostic.target.p95_within_300ms
             limitation = "Diagnostic measurement only; not an SLA or certification."
         }
     }
     $provenance | Add-Member -NotePropertyName "worker_handoff" -NotePropertyValue ([ordered]@{
         platform = "windows-x64"
-        provider = "CPUExecutionProvider"
+        provider = "OpenVINOExecutionProvider:CPU"
         onnxruntime_version = "1.24.1"
         dependency_lock_sha256 = (
             Get-FileHash -Algorithm SHA256 -LiteralPath $lockPath
@@ -372,7 +372,7 @@ try {
         schema_version = "1.0"
         product_version = $Version
         platform = "windows-x64"
-        provider = "CPUExecutionProvider"
+        provider = "OpenVINOExecutionProvider:CPU"
         file_count = $files.Count
         files = @($files)
         self_exclusion = "worker-manifest.json is covered by the external ZIP SHA-256"

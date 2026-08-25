@@ -79,6 +79,7 @@ class AppComponentColors extends ThemeExtension<AppComponentColors> {
     required this.selectionOutline,
     required this.selectionContent,
     required this.rowHover,
+    required this.pressedOverlay,
     required this.actionBarSurface,
     required this.toastSurface,
     required this.onToast,
@@ -95,6 +96,7 @@ class AppComponentColors extends ThemeExtension<AppComponentColors> {
   final Color selectionOutline;
   final Color selectionContent;
   final Color rowHover;
+  final Color pressedOverlay;
   final Color actionBarSurface;
   final Color toastSurface;
   final Color onToast;
@@ -111,6 +113,7 @@ class AppComponentColors extends ThemeExtension<AppComponentColors> {
     selectionOutline: AppPalette.brand,
     selectionContent: AppPalette.ink,
     rowHover: AppPalette.hover,
+    pressedOverlay: Color(0x0F171717),
     actionBarSurface: AppPalette.surface,
     toastSurface: AppPalette.ink,
     onToast: AppPalette.surface,
@@ -129,6 +132,7 @@ class AppComponentColors extends ThemeExtension<AppComponentColors> {
     Color? selectionOutline,
     Color? selectionContent,
     Color? rowHover,
+    Color? pressedOverlay,
     Color? actionBarSurface,
     Color? toastSurface,
     Color? onToast,
@@ -145,6 +149,7 @@ class AppComponentColors extends ThemeExtension<AppComponentColors> {
       selectionOutline: selectionOutline ?? this.selectionOutline,
       selectionContent: selectionContent ?? this.selectionContent,
       rowHover: rowHover ?? this.rowHover,
+      pressedOverlay: pressedOverlay ?? this.pressedOverlay,
       actionBarSurface: actionBarSurface ?? this.actionBarSurface,
       toastSurface: toastSurface ?? this.toastSurface,
       onToast: onToast ?? this.onToast,
@@ -178,6 +183,7 @@ class AppComponentColors extends ThemeExtension<AppComponentColors> {
         t,
       )!,
       rowHover: Color.lerp(rowHover, other.rowHover, t)!,
+      pressedOverlay: Color.lerp(pressedOverlay, other.pressedOverlay, t)!,
       actionBarSurface: Color.lerp(
         actionBarSurface,
         other.actionBarSurface,
@@ -685,6 +691,13 @@ abstract final class AppSpacing {
   static const x4 = 16.0;
   static const x6 = 24.0;
   static const x8 = 32.0;
+}
+
+/// Opacity roles shared by image annotations and quiet interaction feedback.
+/// Status tints stay deliberately faint so the photographed product remains
+/// readable underneath a selected detection.
+abstract final class AppOpacity {
+  static const selectedStatusSurface = .05;
 }
 
 abstract final class AppBreakpoints {

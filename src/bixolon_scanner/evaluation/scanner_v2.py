@@ -14,7 +14,7 @@ from ..contracts import ItemStatus, Status, load_runtime_package_v2, load_store_
 from ..contracts.catalog import sha256_file
 from ..pipeline import DecisionPipeline
 from ..pipeline.ports import ClassificationResult, Detection, DetectionResult
-from ..runtime.catalog import OnnxCatalogClassifier, OnnxEmbedder
+from ..runtime.catalog import build_catalog_classifier
 from ..runtime.detector_v2 import build_detector_v2
 from ..runtime.imaging import decode_image
 from ..runtime.onnx import box_iou
@@ -144,7 +144,7 @@ class RecordingDetector:
 
 
 class RecordingClassifier:
-    def __init__(self, classifier: OnnxCatalogClassifier):
+    def __init__(self, classifier):
         self.classifier = classifier
         self.version = classifier.version
         self.metadata = classifier.metadata
@@ -198,13 +198,14 @@ def evaluate(args: argparse.Namespace) -> dict:
             cpu_intra_op_threads=args.cpu_detector_threads,
         )
     )
-    embedder = OnnxEmbedder(
+    catalog_classifier, embedder = build_catalog_classifier(
         runtime,
+        catalog,
         args.provider,
         args.cuda_dll_dir,
         cpu_intra_op_threads=args.cpu_embedder_threads,
     )
-    classifier = RecordingClassifier(OnnxCatalogClassifier(runtime, catalog, embedder))
+    classifier = RecordingClassifier(catalog_classifier)
     pipeline = DecisionPipeline(
         detector,
         classifier,
@@ -224,6 +225,10 @@ def evaluate(args: argparse.Namespace) -> dict:
         raise ValueError(
             f"evaluation requires exactly {expected_image_count} images; observed {len(records)}"
         )
+    embedder.warmup()
+    classifier_warmup = getattr(catalog_classifier, "warmup", None)
+    if callable(classifier_warmup):
+        classifier_warmup()
     warmup_image = decode_image(
         records[0]["resolved_path"].read_bytes(),
         max_bytes=50_000_000,
@@ -237,7 +242,6 @@ def evaluate(args: argparse.Namespace) -> dict:
         warmup_image.close()
     counts = Counts()
     trace = []
-    classifier_diagnostics: list[dict] = []
     for ordinal, record in enumerate(records, start=1):
         # The public performance contract starts at API-internal decode. File I/O belongs to
         # the benchmark harness, not to the Worker request path, where multipart bytes are
@@ -355,14 +359,6 @@ def evaluate(args: argparse.Namespace) -> dict:
                 if classification.top3_safety_scores is None
                 else float(classification.top3_safety_scores[detection_index])
             )
-            classifier_diagnostics.append(
-                {
-                    "approval_score": approval_score,
-                    "top1_correct": classifier_correct,
-                    "top3_hit": top3_hit,
-                    "top3_safety_score": top3_safety_score,
-                }
-            )
             item_diagnostics.append(
                 {
                     "detection_index": detection_index,
@@ -446,124 +442,56 @@ def evaluate(args: argparse.Namespace) -> dict:
         "mean_speed_ms": float(np.mean(counts.latencies_ms)),
     }
     limits = {
-        "minimum_segmentation_rate": 0.90,
-        "minimum_approved_rate": 0.90,
-        "maximum_fn_image_rate": 0.001,
-        "maximum_fp_image_rate": 0.001,
-        "maximum_approved_misrecognition_rate": 0.001,
-        "maximum_candidate_out_rate": 0.001,
+        "minimum_correct_approved_rate": 0.99,
+        "maximum_false_negative_count": 0,
+        "maximum_false_positive_count": 0,
+        "maximum_approved_misrecognition_count": 0,
+        "maximum_unknown_candidate_out_count": 0,
         "maximum_mean_ms": args.maximum_mean_ms,
         "maximum_p95_ms": args.maximum_p95_ms,
-        "maximum_p99_ms": args.maximum_p99_ms,
     }
     performance = _latency(counts.latencies_ms)
     full_path_performance = _latency(counts.full_path_latencies_ms)
     recapture_performance = _latency(counts.image_recapture_latencies_ms)
     refinement_performance = _latency(counts.refinement_latencies_ms)
-    allowed_classifier_errors = int(np.floor(limits["maximum_approved_misrecognition_rate"] * gt))
-    threshold_prefix_count = 0
-    threshold_prefix_errors = 0
-    threshold_lower_bound = None
-    grouped_scores: dict[float, list[bool]] = {}
-    for row in classifier_diagnostics:
-        grouped_scores.setdefault(row["approval_score"], []).append(row["top1_correct"])
-    for score in sorted(grouped_scores, reverse=True):
-        correctness = grouped_scores[score]
-        next_errors = threshold_prefix_errors + sum(not correct for correct in correctness)
-        if next_errors > allowed_classifier_errors:
-            break
-        threshold_prefix_count += len(correctness)
-        threshold_prefix_errors = next_errors
-        threshold_lower_bound = score
-    top1_correct_count = sum(row["top1_correct"] for row in classifier_diagnostics)
-    nonapproved = [
-        row
-        for row in classifier_diagnostics
-        if threshold_lower_bound is None or row["approval_score"] < threshold_lower_bound
-    ]
-    top3_miss_safety = [
-        row["top3_safety_score"]
-        for row in nonapproved
-        if not row["top3_hit"] and row["top3_safety_score"] is not None
-    ]
-    top3_safety_lower_bound = (
-        None
-        if not top3_miss_safety
-        else float(
-            np.nextafter(
-                np.float32(max(top3_miss_safety)),
-                np.float32(np.inf),
-                dtype=np.float32,
-            )
-        )
-    )
-    safe_unknown = [
-        row
-        for row in nonapproved
-        if row["top3_safety_score"] is not None
-        and (top3_safety_lower_bound is None or row["top3_safety_score"] >= top3_safety_lower_bound)
-    ]
-    threshold_diagnostic = {
-        "role": "development_diagnostic_not_a_selected_policy",
-        "matched_classifier_sample_count": len(classifier_diagnostics),
-        "classifier_top1_correct_count": top1_correct_count,
-        "classifier_top1_accuracy": _rate(top1_correct_count, len(classifier_diagnostics)),
-        "allowed_classifier_error_count": allowed_classifier_errors,
-        "maximum_threshold_prefix_approved_count": threshold_prefix_count,
-        "maximum_threshold_prefix_approved_rate_over_all_gt": _rate(threshold_prefix_count, gt),
-        "classifier_error_count_at_prefix": threshold_prefix_errors,
-        "approval_score_lower_bound": threshold_lower_bound,
-        "top3_safety_lower_bound_for_zero_candidate_out": top3_safety_lower_bound,
-        "unknown_count_at_diagnostic_thresholds": len(safe_unknown),
-        "unknown_candidate_out_count_at_diagnostic_thresholds": sum(
-            not row["top3_hit"] for row in safe_unknown
+    target_results = {
+        "error_count": True,
+        "correct_approved_rate": (
+            requested["correct_approved_rate"] >= limits["minimum_correct_approved_rate"]
         ),
-        "segment_recapture_count_at_diagnostic_thresholds": len(nonapproved) - len(safe_unknown),
-    }
-    gates = {
-        "segmentation_rate": requested["segmentation_rate"] >= limits["minimum_segmentation_rate"],
-        "approved_rate": requested["approved_rate"] >= limits["minimum_approved_rate"],
-        "fn_image_rate": requested["segmentation_image_false_negative_rate"]
-        <= limits["maximum_fn_image_rate"],
-        "fp_image_rate": requested["segmentation_image_false_positive_rate"]
-        <= limits["maximum_fp_image_rate"],
-        "approved_misrecognition_rate": requested["approved_object_misrecognition_rate"]
-        <= limits["maximum_approved_misrecognition_rate"],
-        "candidate_out_rate": requested["unknown_top3_candidate_out_rate"]
-        <= limits["maximum_candidate_out_rate"],
-        "performance": full_path_performance["mean_ms"] <= limits["maximum_mean_ms"]
-        and full_path_performance["p95_ms"] <= limits["maximum_p95_ms"]
-        and full_path_performance["p99_ms"] <= limits["maximum_p99_ms"],
+        "false_negative_count": (
+            counts.false_negative_count <= limits["maximum_false_negative_count"]
+        ),
+        "false_positive_count": (
+            counts.false_positive_count <= limits["maximum_false_positive_count"]
+        ),
+        "approved_misrecognition_count": (
+            counts.approved_misrecognition_count <= limits["maximum_approved_misrecognition_count"]
+        ),
+        "unknown_candidate_out_count": (
+            counts.unknown_candidate_out_count <= limits["maximum_unknown_candidate_out_count"]
+        ),
+        "full_path_performance": (
+            full_path_performance["mean_ms"] <= limits["maximum_mean_ms"]
+            and full_path_performance["p95_ms"] <= limits["maximum_p95_ms"]
+        ),
     }
     args.trace_output.parent.mkdir(parents=True, exist_ok=True)
     args.trace_output.write_text(
         "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in trace),
         encoding="utf-8",
     )
-    all_regression_gates_met = all(gates.values())
-    development_evaluation = evidence_role == "development_regression"
-    gate_key = "development_gates" if development_evaluation else "stress_regression_gates"
-    diagnostic_key = (
-        "development_threshold_diagnostic"
-        if development_evaluation
-        else "stress_threshold_diagnostic"
-    )
     report = {
         "schema_version": "2.0",
-        "evaluation": (
-            f"scanner_2_0_development_{counts.image_count}"
-            if development_evaluation
-            else "scanner_2_0_stress_regression"
+        "evaluation": f"scanner_0_1_3_full_validation_{counts.image_count}",
+        "evaluation_scope": (
+            "full_valid_data" if evidence_role == "development_regression" else "stress_diagnostic"
         ),
-        "promotion_evidence": False,
-        "evidence_role": evidence_role,
         "dataset": {
             "manifest_sha256": sha256_file(args.manifest),
             "image_count": counts.image_count,
             "ground_truth_object_count": gt,
-            "overlaps_runtime_development": bool(
-                getattr(args, "overlaps_runtime_development", True)
-            ),
+            "held_out_test_set": False,
         },
         "versions": {
             "worker": runtime.metadata.worker_version,
@@ -575,34 +503,20 @@ def evaluate(args: argparse.Namespace) -> dict:
         "counts": {
             key: value for key, value in vars(counts).items() if not key.endswith("latencies_ms")
         },
-        "requested_metrics": requested,
+        "metrics": requested,
         "performance": {
             **performance,
             "scope": ("decode+preprocess+detector+selective-refinement+embedder+decision"),
             "warmup_count": args.warmup_count,
-            "gate_path": "full_path_only",
+            "measurement_path": "full_path_only",
             "full_path": full_path_performance,
             "image_recapture_early_exit": recapture_performance,
             "selective_refinement": refinement_performance,
         },
-        "limits": limits,
-        gate_key: {**gates, "all_met": all_regression_gates_met},
-        diagnostic_key: threshold_diagnostic,
-        "production_status": (
-            (
-                "development_gates_passed_rc_prerequisites_pending"
-                if all_regression_gates_met
-                else "development_gates_failed"
-            )
-            if development_evaluation
-            else (
-                "non_promotion_stress_regression_passed"
-                if all_regression_gates_met
-                else "non_promotion_stress_regression_failed"
-            )
-        ),
+        "targets": limits,
+        "target_results": {**target_results, "all_met": all(target_results.values())},
         "trace": {
-            "path": args.trace_output.resolve().as_posix(),
+            "path": args.trace_output.name,
             "sha256": sha256_file(args.trace_output),
         },
         "environment": {

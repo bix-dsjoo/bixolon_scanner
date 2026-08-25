@@ -474,6 +474,7 @@ void main() {
           ..imageBytes = _testInputImage.bytes
           ..imageFileName = _testInputImage.fileName
           ..imageSize = const Size(400, 400);
+    controller.setOperatorRequiresRecapture(true);
 
     await tester.pumpWidget(
       ProductScannerApp(
@@ -493,7 +494,10 @@ void main() {
     expect(find.text('재촬영 필요'), findsWidgets);
     expect(find.text('상품을 찾지 못했어요'), findsOneWidget);
     expect(find.bySemanticsLabel('입력 미리보기, 촬영 이미지'), findsOneWidget);
-    final returnToCapture = find.widgetWithText(FilledButton, '촬영 화면으로 돌아가기');
+    final returnToCapture = find.widgetWithText(
+      OutlinedButton,
+      AppActionCopy.recapture,
+    );
     expect(returnToCapture, findsOneWidget);
     expect(camera.captureCalls, 0);
     await expectLater(
@@ -502,6 +506,11 @@ void main() {
     );
 
     await tester.tap(returnToCapture);
+    await tester.pumpAndSettle();
+    expect(find.text('다시 촬영할까요?'), findsOneWidget);
+    await tester.tap(
+      find.widgetWithText(FilledButton, AppActionCopy.recapture),
+    );
     await tester.pumpAndSettle();
 
     expect(controller.processState, ProcessState.ready);

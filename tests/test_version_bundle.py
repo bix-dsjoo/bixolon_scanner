@@ -15,6 +15,7 @@ from bixolon_scanner.contracts.catalog import (
 )
 from bixolon_scanner.operations.version_bundle import (
     VersionBundleConfig,
+    _rewrite_catalog,
     _rewrite_runtime,
     prepare_version_bundle,
     verify_prepared_version,
@@ -28,6 +29,7 @@ def _write_runtime(root: Path) -> None:
     (root / "embedder.onnx").write_bytes(b"embedder-graph")
     licenses = {
         "licenses/APACHE-2.0.txt": "Apache License 2.0\n",
+        "licenses/AGPL-3.0.txt": "GNU Affero General Public License v3.0\n",
         "licenses/DINOV3-LICENSE.md": "DINOv3 license\n",
         "licenses/THIRD_PARTY_MODELS.md": "Third-party models\n",
     }
@@ -230,6 +232,45 @@ def test_version_bundle_rewrites_nested_detector_filename_references(tmp_path: P
         ensemble["policy_consensus"]["policies"][0]["member_filename"] == "detector-reference.onnx"
     )
     assert (target / "detector-reference.onnx").read_bytes() == b"production"
+
+
+def test_version_bundle_rewrites_and_rebinds_auxiliary_catalogs(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    _write_catalog(source)
+    rotation = source / "rotation-verifier"
+    independent = source / "independent-verifier"
+    _write_catalog(rotation)
+    _write_catalog(independent)
+    metadata_path = source / "catalog.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["verification"] = {
+        "rotation_catalog_directory": rotation.name,
+        "rotation_checksums_sha256": sha256_file(rotation / "checksums.json"),
+        "independent_catalog_directory": independent.name,
+        "independent_checksums_sha256": sha256_file(independent / "checksums.json"),
+    }
+    metadata_path.write_text(json.dumps(metadata), encoding="utf-8")
+    checksums_path = source / "checksums.json"
+    checksums = json.loads(checksums_path.read_text(encoding="utf-8"))
+    checksums["catalog.json"] = sha256_file(metadata_path)
+    checksums_path.write_text(json.dumps(checksums), encoding="utf-8")
+
+    _rewrite_catalog(source, target, "0.1.3")
+
+    rewritten = json.loads((target / "catalog.json").read_text(encoding="utf-8"))
+    for auxiliary_name, checksum_key in (
+        ("rotation-verifier", "rotation_checksums_sha256"),
+        ("independent-verifier", "independent_checksums_sha256"),
+    ):
+        auxiliary = target / auxiliary_name
+        auxiliary_metadata = json.loads((auxiliary / "catalog.json").read_text(encoding="utf-8"))
+        assert auxiliary_metadata["catalog_version"] == "0.1.3"
+        assert auxiliary_metadata["embedder_version"] == "0.1.3"
+        assert auxiliary_metadata["classifier_policy_version"] == "0.1.3"
+        assert auxiliary_metadata["authentication"] == "CHECKSUM-SHA256"
+        assert not (auxiliary / "signature.json").exists()
+        assert rewritten["verification"][checksum_key] == sha256_file(auxiliary / "checksums.json")
 
 
 def test_version_bundle_rejects_changed_source_or_prepared_payload(tmp_path: Path) -> None:

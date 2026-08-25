@@ -34,6 +34,12 @@ void main() {
 
     expect(response.status, ScanStatus.approved);
     expect(response.items.single.prediction?.classId, 'bread_06');
+    expect(response.stageTimings?.requestTotalMs, 31.4);
+    expect(response.stageTimings?.detectorMs, 11.2);
+    final timings = api.takeLastTimings();
+    expect(timings, isNotNull);
+    expect(timings!.totalMs, greaterThanOrEqualTo(0));
+    expect(timings.httpRoundTripMs, greaterThanOrEqualTo(0));
   });
 
   test('Worker 준비가 끝난 뒤 scan 요청을 전송한다', () async {
@@ -46,7 +52,7 @@ void main() {
         return http.Response(
           readinessChecks == 1
               ? '{"status":"not_ready"}'
-              : '{"status":"ready","worker_version":"1.0.0"}',
+              : '{"status":"ready","worker_version":"1.0.0","provider":"openvino"}',
           readinessChecks == 1 ? 503 : 200,
         );
       }
@@ -71,6 +77,36 @@ void main() {
       'GET /health/ready',
       'POST /v1/scan',
     ]);
+    expect(api.takeLastTimings()?.provider, 'openvino');
+  });
+
+  test('앱 시작 preflight는 첫 scan의 readiness 요청을 제거한다', () async {
+    final methods = <String>[];
+    final client = MockClient((request) async {
+      methods.add('${request.method} ${request.url.path}');
+      if (request.url.path == '/health/ready') {
+        return http.Response(
+          '{"status":"ready","worker_version":"1.0.0",'
+          '"provider":"openvino+openvino_gpu"}',
+          200,
+        );
+      }
+      return http.Response(_approvedBody, 200);
+    });
+    final api = WorkerScannerApi(
+      baseUrl: 'http://127.0.0.1:8000',
+      client: client,
+      waitForReady: true,
+      expectedVersion: '1.0.0',
+    );
+
+    expect(api.isPrepared, isFalse);
+    expect(await api.prepare(), 'openvino+openvino_gpu');
+    expect(api.isPrepared, isTrue);
+    await api.scan(imageBytes: Uint8List(2), fileName: 'scan.jpg');
+
+    expect(methods, ['GET /health/ready', 'POST /v1/scan']);
+    expect(api.takeLastTimings()?.provider, 'openvino+openvino_gpu');
   });
 
   test('앱과 다른 Worker 버전이면 스캔을 실행하지 않는다', () async {
@@ -237,6 +273,17 @@ const _approvedBody = '''
     "confidence":0.99
   }],
   "processing_time_ms":31.4,
+  "stage_timings_ms":{
+    "request_total_ms":31.4,
+    "upload_read_ms":0.2,
+    "decode_ms":2.1,
+    "queue_wait_ms":0.1,
+    "pipeline_ms":27.8,
+    "detector_ms":11.2,
+    "classifier_ms":15.4,
+    "decision_ms":1.2,
+    "server_overhead_ms":1.2
+  },
   "model_versions":{"detector":"0.1.1","classifier":"0.1.1"}
 }
 ''';

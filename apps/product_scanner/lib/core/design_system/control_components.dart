@@ -325,14 +325,21 @@ class _AppDisclosureState extends State<AppDisclosure> {
         ? Duration.zero
         : tokens.motionStandard;
     final content = _expanded
-        ? Padding(
-            padding: const EdgeInsets.fromLTRB(
-              AppSpacing.x4,
-              0,
-              AppSpacing.x4,
-              AppSpacing.x4,
+        ? DecoratedBox(
+            key: ValueKey('disclosure-content-surface-${widget.title}'),
+            decoration: const BoxDecoration(
+              color: AppColors.surface,
+              border: Border(bottom: BorderSide(color: AppColors.divider)),
             ),
-            child: Column(children: widget.children),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                AppSpacing.x4,
+                AppSpacing.x3,
+                AppSpacing.x4,
+                AppSpacing.x4,
+              ),
+              child: Column(children: widget.children),
+            ),
           )
         : const SizedBox(width: double.infinity);
 
@@ -357,6 +364,8 @@ class _AppDisclosureState extends State<AppDisclosure> {
               onTap: _toggle,
               focusColor: Colors.transparent,
               hoverColor: Colors.transparent,
+              splashFactory: NoSplash.splashFactory,
+              highlightColor: Colors.transparent,
               onHover: (hovered) {
                 if (_hovered != hovered) setState(() => _hovered = hovered);
               },
@@ -372,20 +381,20 @@ class _AppDisclosureState extends State<AppDisclosure> {
                   vertical: AppSpacing.x2,
                 ),
                 decoration: BoxDecoration(
-                  color: _hovered
-                      ? context.appComponents.rowHover
-                      : Colors.transparent,
+                  color: AppColors.elevated,
                   border: focused
                       ? Border.all(
                           color: context.appComponents.focusRing,
                           width: tokens.focusRingWidth,
                         )
-                      : null,
+                      : const Border(
+                          bottom: BorderSide(color: AppColors.divider),
+                        ),
                 ),
                 child: Row(
                   children: [
-                    Icon(widget.icon, size: 20, color: context.appColors.ink),
-                    const SizedBox(width: AppSpacing.x4),
+                    Icon(widget.icon, size: 20, color: context.appColors.muted),
+                    const SizedBox(width: AppSpacing.x3),
                     Expanded(
                       child: Column(
                         mainAxisAlignment: MainAxisAlignment.center,
@@ -393,7 +402,8 @@ class _AppDisclosureState extends State<AppDisclosure> {
                         children: [
                           Text(
                             widget.title,
-                            style: Theme.of(context).textTheme.bodyMedium,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(fontWeight: AppTypography.semibold),
                           ),
                           Text(
                             widget.description,
@@ -402,12 +412,19 @@ class _AppDisclosureState extends State<AppDisclosure> {
                         ],
                       ),
                     ),
-                    Icon(
-                      _expanded
-                          ? Icons.keyboard_arrow_up_rounded
-                          : Icons.keyboard_arrow_down_rounded,
-                      size: 22,
-                      color: context.appColors.ink,
+                    AnimatedRotation(
+                      turns: _expanded ? .5 : 0,
+                      duration: MediaQuery.disableAnimationsOf(context)
+                          ? Duration.zero
+                          : tokens.motionFast,
+                      curve: AppMotion.interactionCurve,
+                      child: Icon(
+                        Icons.keyboard_arrow_down_rounded,
+                        size: 22,
+                        color: _hovered
+                            ? context.appColors.ink
+                            : context.appColors.muted,
+                      ),
                     ),
                   ],
                 ),

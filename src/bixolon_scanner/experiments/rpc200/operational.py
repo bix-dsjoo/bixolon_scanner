@@ -1326,6 +1326,7 @@ def worker_eval(
                 image, detector.last_result, package.metadata
             )
             expected_hard_gate = bool(expected_hard_gate_reasons)
+            expected_public_reasons = ["IMAGE_RECAPTURE_REQUIRED"] if expected_hard_gate else []
             classifier_executed = classifier_call_delta > 0
             classifier_version_reported = response.model_versions.classifier
             execution_version_mismatch = classifier_executed != (
@@ -1342,7 +1343,7 @@ def worker_eval(
                 expected_hard_gate and classifier_version_reported is not None
             )
             reason_mismatch_violation = (
-                expected_hard_gate and response.reason_codes != expected_hard_gate_reasons
+                expected_hard_gate and response.reason_codes != expected_public_reasons
             )
             row = {
                 "schema_version": SCHEMA_VERSION,
@@ -1370,6 +1371,7 @@ def worker_eval(
                 "unknown_top3_correct_count": unknown_top3_correct,
                 "expected_hard_gate": expected_hard_gate,
                 "expected_hard_gate_reasons": expected_hard_gate_reasons,
+                "expected_public_reason_codes": expected_public_reasons,
                 "classifier_call_count_delta": classifier_call_delta,
                 "classifier_call_count_violation": classifier_call_count_violation,
                 "hard_gate_classifier_called_violation": classifier_called_violation,

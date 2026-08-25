@@ -17,6 +17,7 @@ class AppFilterChip extends StatefulWidget {
     required this.onSelected,
     this.choiceKey,
     this.focusNode,
+    this.enabled = true,
   });
 
   final String label;
@@ -25,6 +26,7 @@ class AppFilterChip extends StatefulWidget {
   final VoidCallback onSelected;
   final Key? choiceKey;
   final FocusNode? focusNode;
+  final bool enabled;
 
   @override
   State<AppFilterChip> createState() => _AppFilterChipState();
@@ -73,11 +75,12 @@ class _AppFilterChipState extends State<AppFilterChip> {
       container: true,
       excludeSemantics: true,
       button: true,
+      enabled: widget.enabled,
       selected: widget.selected,
-      focused: focused,
+      focused: widget.enabled && focused,
       inMutuallyExclusiveGroup: true,
       label: widget.semanticLabel,
-      onTap: widget.onSelected,
+      onTap: widget.enabled ? widget.onSelected : null,
       child: ChoiceChip(
         key: widget.choiceKey,
         focusNode: _focusNode,
@@ -104,7 +107,7 @@ class _AppFilterChipState extends State<AppFilterChip> {
               ? AppTypography.bold
               : AppTypography.semibold,
         ),
-        onSelected: (_) => widget.onSelected(),
+        onSelected: widget.enabled ? (_) => widget.onSelected() : null,
       ),
     );
   }
@@ -426,6 +429,12 @@ class _AppSelectableSurfaceState extends State<AppSelectableSurface> {
           borderRadius: radius,
           clipBehavior: Clip.antiAlias,
           child: InkWell(
+            overlayColor: WidgetStateProperty.resolveWith((states) {
+              if (states.contains(WidgetState.pressed)) {
+                return component.pressedOverlay;
+              }
+              return Colors.transparent;
+            }),
             onTapDown: widget.enabled ? (_) => _pointerTapPending = true : null,
             onTapCancel: widget.enabled
                 ? () => _pointerTapPending = false

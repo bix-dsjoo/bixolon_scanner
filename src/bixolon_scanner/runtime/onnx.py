@@ -127,20 +127,32 @@ def classifier_neighbor_ownership_mask(
     margin_ratio: float,
     distance_bias: float,
     shared_scale: bool,
+    crop_mode: str = "box_resize",
 ) -> np.ndarray:
     if not 0 <= target_index < len(detections):
         raise ValueError("target detection index is outside the detection list")
-    if output_size < 1 or margin_ratio < 0.0 or distance_bias < 0.0:
-        raise ValueError("mask size, margin, and distance bias must be non-negative")
+    if output_size < 1 or margin_ratio < 0.0 or distance_bias < -1.0:
+        raise ValueError("mask size, margin, and distance bias are invalid")
     target = detections[target_index]
     target_width = target.x2 - target.x1
     target_height = target.y2 - target.y1
     if target_width <= 0.0 or target_height <= 0.0:
         raise ValueError("target detection box is empty")
-    crop_x1 = max(0.0, target.x1 - target_width * margin_ratio)
-    crop_y1 = max(0.0, target.y1 - target_height * margin_ratio)
-    crop_x2 = min(float(image_width), target.x2 + target_width * margin_ratio)
-    crop_y2 = min(float(image_height), target.y2 + target_height * margin_ratio)
+    if crop_mode == "square_context":
+        crop_x1, crop_y1, crop_x2, crop_y2 = classifier_crop_box(
+            target,
+            image_width,
+            image_height,
+            margin_ratio=margin_ratio,
+            crop_mode=crop_mode,
+        )
+    elif crop_mode == "box_resize":
+        crop_x1 = max(0.0, target.x1 - target_width * margin_ratio)
+        crop_y1 = max(0.0, target.y1 - target_height * margin_ratio)
+        crop_x2 = min(float(image_width), target.x2 + target_width * margin_ratio)
+        crop_y2 = min(float(image_height), target.y2 + target_height * margin_ratio)
+    else:
+        raise ValueError(f"unsupported classifier crop mode: {crop_mode}")
     x = crop_x1 + (np.arange(output_size) + 0.5) * (crop_x2 - crop_x1) / output_size
     y = crop_y1 + (np.arange(output_size) + 0.5) * (crop_y2 - crop_y1) / output_size
     grid_x, grid_y = np.meshgrid(x, y)
@@ -236,6 +248,7 @@ class OnnxDetector:
         cuda_dll_dir: Path | None = None,
         *,
         cpu_intra_op_threads: int = 0,
+        openvino_cache_dir: Path | None = None,
     ):
         self.metadata = metadata
         self.runner = OrtRunner(
@@ -243,6 +256,7 @@ class OnnxDetector:
             provider,
             cuda_dll_dir,
             cpu_intra_op_threads=cpu_intra_op_threads,
+            openvino_cache_dir=openvino_cache_dir,
         )
         self.version = metadata.version
 
@@ -686,6 +700,7 @@ class OnnxCountVerifier:
         cuda_dll_dir: Path | None = None,
         *,
         cpu_intra_op_threads: int = 0,
+        openvino_cache_dir: Path | None = None,
     ):
         self.metadata = metadata
         self.runner = OrtRunner(
@@ -693,6 +708,7 @@ class OnnxCountVerifier:
             provider,
             cuda_dll_dir,
             cpu_intra_op_threads=cpu_intra_op_threads,
+            openvino_cache_dir=openvino_cache_dir,
         )
         self.version = metadata.version
 

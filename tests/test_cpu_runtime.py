@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import sys
 from pathlib import Path
 from types import SimpleNamespace
@@ -42,7 +43,10 @@ def _fake_ort():
 
     module = SimpleNamespace(
         SessionOptions=_FakeSessionOptions,
-        GraphOptimizationLevel=SimpleNamespace(ORT_ENABLE_ALL="all"),
+        GraphOptimizationLevel=SimpleNamespace(
+            ORT_ENABLE_ALL="all",
+            ORT_DISABLE_ALL="disabled",
+        ),
         ExecutionMode=SimpleNamespace(ORT_SEQUENTIAL="sequential"),
         InferenceSession=create_session,
         get_available_providers=lambda: [
@@ -129,9 +133,16 @@ def test_openvino_runner_applies_cpu_device_and_thread_contract(
     assert session.providers == [
         (
             "OpenVINOExecutionProvider",
-            {"device_type": "CPU", "num_of_threads": "4"},
+            {
+                "device_type": "CPU",
+                "load_config": (
+                    '{"CPU":{"PERFORMANCE_HINT":"LATENCY","NUM_STREAMS":"1",'
+                    '"INFERENCE_PRECISION_HINT":"f32","INFERENCE_NUM_THREADS":"4"}}'
+                ),
+            },
         )
     ]
+    assert session.options.graph_optimization_level == "disabled"
     assert runner.accelerated is True
 
 
@@ -164,6 +175,31 @@ def test_openvino_gpu_runner_selects_gpu_and_disables_cpu_fallback(
     ]
     assert session.options.config_entries == {"session.disable_cpu_ep_fallback": "1"}
     assert runner.accelerated is True
+
+
+@pytest.mark.parametrize(
+    ("provider", "device"),
+    [("openvino", "CPU"), ("openvino_gpu", "GPU")],
+)
+def test_openvino_runner_enables_persistent_speed_cache(
+    monkeypatch, tmp_path: Path, provider: str, device: str
+) -> None:
+    fake_ort, captured = _fake_ort()
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+    cache_root = tmp_path / "compiled-model-cache"
+
+    onnx_session.OrtRunner(
+        tmp_path / "model.onnx",
+        provider,
+        openvino_cache_dir=cache_root,
+    )
+
+    session = captured["session"]
+    provider_options = session.providers[0][1]
+    load_config = json.loads(provider_options["load_config"])
+    assert load_config[device]["CACHE_DIR"] == str((cache_root / device.lower()).resolve())
+    assert load_config[device]["CACHE_MODE"] == "OPTIMIZE_SPEED"
+    assert (cache_root / device.lower()).is_dir()
 
 
 def test_explicit_openvino_gpu_never_falls_back(monkeypatch) -> None:
@@ -205,10 +241,21 @@ def test_worker_settings_accept_explicit_openvino_provider() -> None:
 
 
 def test_worker_settings_accept_openvino_cpu_gpu_split() -> None:
-    settings = WorkerSettings(provider="openvino", embedder_provider="openvino_gpu")
+    settings = WorkerSettings(
+        provider="openvino",
+        embedder_provider="openvino_gpu",
+        embedder_fallback_provider="same",
+    )
 
     assert settings.provider == "openvino"
     assert settings.embedder_provider == "openvino_gpu"
+    assert settings.embedder_fallback_provider == "same"
+
+
+def test_worker_settings_accept_openvino_cache_directory(tmp_path: Path) -> None:
+    settings = WorkerSettings(openvino_cache_dir=tmp_path / "openvino-cache")
+
+    assert settings.openvino_cache_dir == tmp_path / "openvino-cache"
 
 
 class _WarmupRunner:
@@ -290,6 +337,128 @@ def test_embedder_reuses_float32_input_buffer() -> None:
 
     assert embedder.runner.tensor is batch
     assert result.shape == (2, 3)
+
+
+def test_embedder_fixed_batch_chunks_and_discards_padding() -> None:
+    class CaptureRunner:
+        def __init__(self) -> None:
+            self.batch_sizes: list[int] = []
+
+        def run(self, _outputs, _input_name, tensor):
+            self.batch_sizes.append(len(tensor))
+            values = tensor[:, 0, 0, 0][:, None]
+            return [np.repeat(values, 2, axis=1)]
+
+    embedder = object.__new__(OnnxEmbedder)
+    embedder.metadata = SimpleNamespace(
+        output_name="output",
+        input_name="input",
+        embedding_dimension=2,
+        fixed_batch_size=2,
+    )
+    embedder.runner = CaptureRunner()
+    batch = np.arange(3, dtype=np.float32).reshape(3, 1, 1, 1)
+
+    result = embedder._run_raw_tensors(batch)
+
+    assert embedder.runner.batch_sizes == [2, 2]
+    assert result.tolist() == [[0.0, 0.0], [1.0, 1.0], [2.0, 2.0]]
+
+
+def test_embedder_fixed_batch_warmup_uses_only_declared_shape() -> None:
+    embedder = object.__new__(OnnxEmbedder)
+    embedder.metadata = SimpleNamespace(
+        input_size=(16, 16),
+        warmup_batch_sizes=[1, 2, 4, 8],
+        fixed_batch_size=3,
+        output_name="output",
+        input_name="input",
+    )
+    embedder.runner = _WarmupRunner(cuda=True)
+
+    embedder.warmup()
+
+    assert embedder.runner.batch_sizes == [3]
+
+
+def test_embedder_horizontal_flip_tta_averages_two_generic_views() -> None:
+    class CaptureRunner:
+        def __init__(self) -> None:
+            self.tensor = None
+
+        def run(self, _outputs, _input_name, tensor):
+            self.tensor = tensor
+            features = tensor[:, 0, 0, :2]
+            return [np.asarray(features, dtype=np.float32)]
+
+    embedder = object.__new__(OnnxEmbedder)
+    embedder.metadata = SimpleNamespace(
+        output_name="output",
+        input_name="input",
+        embedding_dimension=2,
+        horizontal_flip_tta=True,
+    )
+    embedder.runner = CaptureRunner()
+    batch = np.asarray([[[[1.0, 2.0, 3.0]]]], dtype=np.float32)
+
+    result = embedder._run_view_averaged_tensors(batch)
+
+    assert embedder.runner.tensor.shape == (2, 1, 1, 3)
+    assert result.tolist() == [[2.0, 2.0]]
+
+
+def test_embedder_rotation_180_tta_averages_two_generic_views() -> None:
+    class CaptureRunner:
+        def __init__(self) -> None:
+            self.tensor = None
+
+        def run(self, _outputs, _input_name, tensor):
+            self.tensor = tensor
+            features = tensor[:, 0, 0, :2]
+            return [np.asarray(features, dtype=np.float32)]
+
+    embedder = object.__new__(OnnxEmbedder)
+    embedder.metadata = SimpleNamespace(
+        output_name="output",
+        input_name="input",
+        embedding_dimension=2,
+        rotation_180_tta=True,
+    )
+    embedder.runner = CaptureRunner()
+    batch = np.asarray([[[[1.0, 2.0], [3.0, 4.0]]]], dtype=np.float32)
+
+    result = embedder._run_view_averaged_tensors(batch)
+
+    assert embedder.runner.tensor.shape == (2, 1, 2, 2)
+    assert result.tolist() == [[2.5, 2.5]]
+
+
+def test_embedder_prepared_tensor_contract_validates_shape() -> None:
+    embedder = object.__new__(OnnxEmbedder)
+    embedder.metadata = SimpleNamespace(input_size=(8, 8))
+
+    with pytest.raises(ValueError, match="prepared embedder tensors"):
+        embedder.embed_prepared_tensors_raw(np.zeros((1, 3, 7, 8), dtype=np.float32))
+
+
+def test_embedder_prepared_tensor_contract_runs_contiguous_float32() -> None:
+    embedder = object.__new__(OnnxEmbedder)
+    embedder.metadata = SimpleNamespace(input_size=(2, 3))
+    captured = None
+
+    def run(batch):
+        nonlocal captured
+        captured = batch
+        return np.ones((len(batch), 4), dtype=np.float32)
+
+    embedder._run_view_averaged_tensors = run
+    source = np.zeros((2, 3, 2, 3), dtype=np.float64)[:, :, :, ::-1]
+
+    result = embedder.embed_prepared_tensors_raw(source)
+
+    assert captured.dtype == np.float32
+    assert captured.flags.c_contiguous
+    assert result.shape == (2, 4)
 
 
 def _ensemble_package(tmp_path: Path):

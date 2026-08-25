@@ -1,0 +1,240 @@
+{
+    "schema_version":  "1.1",
+    "evaluation":  "bixolon_worker_n100_openvino_cpu_vs_intel_gpu_embedder",
+    "product_version":  "0.1.3",
+    "completed":  true,
+    "passes":  false,
+    "hardware":  {
+                     "cpu_name":  "Intel(R) N100",
+                     "cores":  4,
+                     "logical_processors":  4,
+                     "total_physical_memory_bytes":  4006068224,
+                     "target_cpu_detected":  true,
+                     "target_intel_gpu_detected":  true,
+                     "video_controllers":  [
+                                               {
+                                                   "name":  "Intel(R) UHD Graphics",
+                                                   "adapter_ram_bytes":  2003034112,
+                                                   "driver_version":  "32.0.101.6299"
+                                               }
+                                           ],
+                     "openvino_gpu_device":  "GPU"
+                 },
+    "input":  {
+                  "sample_count":  100,
+                  "minimum_image_count":  30,
+                  "minimum_full_path_count":  10,
+                  "warmup_image_count":  3
+              },
+    "selection_policy":  {
+                             "minimum_mean_speedup_ratio":  1.05,
+                             "minimum_p95_speedup_ratio":  1.05,
+                             "maximum_startup_ms":  30000,
+                             "maximum_peak_working_set_bytes":  2147483648,
+                             "maximum_memory_increase_ratio":  1.35,
+                             "maximum_full_path_mean_ms":  300,
+                             "maximum_full_path_p95_ms":  300,
+                             "require_semantic_and_confidence_parity":  true
+                         },
+    "execution_contract":  {
+                               "same_worker_executable":  true,
+                               "same_runtime_catalog_and_policy":  true,
+                               "cpu_only":  {
+                                                "detector":  "OpenVINOExecutionProvider:CPU",
+                                                "primary_embedder":  "OpenVINOExecutionProvider:CPU",
+                                                "rotation_180_embedder":  "OpenVINOExecutionProvider:CPU",
+                                                "independent_verifier_embedder":  "OpenVINOExecutionProvider:CPU"
+                                            },
+                               "cpu_detector_gpu_embedder":  {
+                                                                 "detector":  "OpenVINOExecutionProvider:CPU",
+                                                                 "primary_embedder":  "OpenVINOExecutionProvider:GPU",
+                                                                 "rotation_180_embedder":  "OpenVINOExecutionProvider:GPU",
+                                                                 "independent_verifier_embedder":  "OpenVINOExecutionProvider:GPU",
+                                                                 "silent_cpu_fallback_allowed":  false
+                                                             }
+                           },
+    "integrity":  {
+                      "runtime_metadata_sha256":  "8636c1693d99c47b67ee50cdb6f8525d4e5a10253e3cf37d5d89267e382074c1",
+                      "catalog_checksums_sha256":  "19d96b345687a1d0138e335fb789b35606e38d7fb568d9ba5237cfa487615bca",
+                      "model_graph_or_weight_changed":  false,
+                      "decision_policy_changed":  false
+                  },
+    "profiles":  {
+                     "openvino_cpu_only":  {
+                                               "name":  "openvino-cpu-only",
+                                               "completed":  true,
+                                               "failure_code":  null,
+                                               "detector_provider":  "openvino",
+                                               "embedder_provider":  "same",
+                                               "detector_workers":  1,
+                                               "detector_threads_per_session":  4,
+                                               "embedder_threads":  4,
+                                               "startup_ms":  10610.99,
+                                               "client_total_ms":  {
+                                                                       "all_requests":  {
+                                                                                            "sample_count":  100,
+                                                                                            "mean":  585.789,
+                                                                                            "p50":  547.537,
+                                                                                            "p95":  966.292,
+                                                                                            "p99":  1091.324
+                                                                                        },
+                                                                       "full_path":  {
+                                                                                         "sample_count":  100,
+                                                                                         "mean":  585.789,
+                                                                                         "p50":  547.537,
+                                                                                         "p95":  966.292,
+                                                                                         "p99":  1091.324
+                                                                                     }
+                                                                   },
+                                               "worker_processing_ms":  {
+                                                                            "all_requests":  {
+                                                                                                 "sample_count":  100,
+                                                                                                 "mean":  582.808,
+                                                                                                 "p50":  544.267,
+                                                                                                 "p95":  963.495,
+                                                                                                 "p99":  1087.873
+                                                                                             },
+                                                                            "full_path":  {
+                                                                                              "sample_count":  100,
+                                                                                              "mean":  582.808,
+                                                                                              "p50":  544.267,
+                                                                                              "p95":  963.495,
+                                                                                              "p99":  1087.873
+                                                                                          }
+                                                                        },
+                                               "stage_latency_ms":  {
+                                                                        "detector":  {
+                                                                                         "sample_count":  100,
+                                                                                         "mean":  82.661,
+                                                                                         "p50":  80.733,
+                                                                                         "p95":  90.615,
+                                                                                         "p99":  103.952
+                                                                                     },
+                                                                        "classifier":  {
+                                                                                           "sample_count":  100,
+                                                                                           "mean":  426.543,
+                                                                                           "p50":  385.953,
+                                                                                           "p95":  810.943,
+                                                                                           "p99":  923.264
+                                                                                       }
+                                                                    },
+                                               "peak_working_set_bytes":  1392910336,
+                                               "status_counts":  {
+                                                                     "SEGMENTATION":  100,
+                                                                     "IMAGE_RECAPTURE":  0,
+                                                                     "ERROR":  0
+                                                                 },
+                                               "full_path_count":  100,
+                                               "error_count":  0,
+                                               "target":  {
+                                                              "maximum_full_path_latency_ms":  300,
+                                                              "mean_within_target":  false,
+                                                              "p95_within_target":  false
+                                                          }
+                                           },
+                     "openvino_cpu_detector_intel_gpu_embedder":  {
+                                                                      "name":  "openvino-cpu-detector-intel-gpu-embedder",
+                                                                      "completed":  true,
+                                                                      "failure_code":  null,
+                                                                      "detector_provider":  "openvino",
+                                                                      "embedder_provider":  "openvino_gpu",
+                                                                      "detector_workers":  1,
+                                                                      "detector_threads_per_session":  4,
+                                                                      "embedder_threads":  0,
+                                                                      "startup_ms":  17851.245,
+                                                                      "client_total_ms":  {
+                                                                                              "all_requests":  {
+                                                                                                                   "sample_count":  100,
+                                                                                                                   "mean":  445.48,
+                                                                                                                   "p50":  417.517,
+                                                                                                                   "p95":  751.534,
+                                                                                                                   "p99":  859.832
+                                                                                                               },
+                                                                                              "full_path":  {
+                                                                                                                "sample_count":  100,
+                                                                                                                "mean":  445.48,
+                                                                                                                "p50":  417.517,
+                                                                                                                "p95":  751.534,
+                                                                                                                "p99":  859.832
+                                                                                                            }
+                                                                                          },
+                                                                      "worker_processing_ms":  {
+                                                                                                   "all_requests":  {
+                                                                                                                        "sample_count":  100,
+                                                                                                                        "mean":  442.419,
+                                                                                                                        "p50":  414.715,
+                                                                                                                        "p95":  748.699,
+                                                                                                                        "p99":  856.445
+                                                                                                                    },
+                                                                                                   "full_path":  {
+                                                                                                                     "sample_count":  100,
+                                                                                                                     "mean":  442.419,
+                                                                                                                     "p50":  414.715,
+                                                                                                                     "p95":  748.699,
+                                                                                                                     "p99":  856.445
+                                                                                                                 }
+                                                                                               },
+                                                                      "stage_latency_ms":  {
+                                                                                               "detector":  {
+                                                                                                                "sample_count":  100,
+                                                                                                                "mean":  82.684,
+                                                                                                                "p50":  79.824,
+                                                                                                                "p95":  93.553,
+                                                                                                                "p99":  179.743
+                                                                                                            },
+                                                                                               "classifier":  {
+                                                                                                                  "sample_count":  100,
+                                                                                                                  "mean":  292.609,
+                                                                                                                  "p50":  267.261,
+                                                                                                                  "p95":  608.303,
+                                                                                                                  "p99":  689.022
+                                                                                                              }
+                                                                                           },
+                                                                      "peak_working_set_bytes":  1961054208,
+                                                                      "status_counts":  {
+                                                                                            "SEGMENTATION":  100,
+                                                                                            "IMAGE_RECAPTURE":  0,
+                                                                                            "ERROR":  0
+                                                                                        },
+                                                                      "full_path_count":  100,
+                                                                      "error_count":  0,
+                                                                      "target":  {
+                                                                                     "maximum_full_path_latency_ms":  300,
+                                                                                     "mean_within_target":  false,
+                                                                                     "p95_within_target":  false
+                                                                                 }
+                                                                  }
+                 },
+    "parity":  {
+                   "evaluated":  true,
+                   "safe":  false,
+                   "semantic_mismatch_count":  0,
+                   "semantic_mismatch_indexes":  [
+
+                                                 ],
+                   "confidence_vector_mismatch_count":  0,
+                   "confidence_vector_mismatch_indexes":  [
+
+                                                          ],
+                   "maximum_confidence_delta":  0.0085055232048034668,
+                   "confidence_tolerance":  1E-05
+               },
+    "comparison":  {
+                       "provider_initialization_safe":  true,
+                       "hybrid_mean_improved":  true,
+                       "hybrid_p95_improved":  true,
+                       "hybrid_meets_minimum_speedup":  true,
+                       "hybrid_resource_safe":  false,
+                       "cpu_only_target_met":  false,
+                       "gpu_embedder_target_met":  false,
+                       "target_met_by_any_profile":  false,
+                       "full_path_mean_speedup_ratio":  1.315,
+                       "full_path_p95_speedup_ratio":  1.286,
+                       "recommended_provider":  "openvino"
+                   },
+    "privacy":  {
+                    "image_paths_recorded":  false,
+                    "image_bytes_recorded":  false
+                },
+    "limitation":  "Diagnostic measurement only; not an SLA, certification, or deployment approval."
+}

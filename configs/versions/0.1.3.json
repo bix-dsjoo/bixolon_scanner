@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.3",
+  "app_build": 6,
+  "source_date_epoch": 1787529600,
+  "source_candidate": "yolo26-objectness-single3-consensus-openvino",
+  "runtime": {
+    "path": "artifacts/packages/bread-scanner-0.1.3-openvino-consensus-runtime",
+    "manifest_sha256": "d5150a515563e990dd39824f8519c8b64b3b8fccf51763d863a54db441067400"
+  },
+  "catalog": {
+    "path": "artifacts/catalogs/bread-store-0.1.3-consensus",
+    "manifest_sha256": "4c35abb9d03798c7df34983b6e401c1af6595cf1a71834efa944c85021e245ab",
+    "store_id": "bread-dev"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/releases/bixolon-scanner-2.0.0+4/worker/cuda-runtime",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/evaluations/scanner-0.1.3/full-valid-openvino.json",
+      "sha256": "d3ec056a414eac236642a1e33a3617849c2e59d3b4073eeefb9fa95401307438"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.3/full-valid-openvino-trace.jsonl",
+      "sha256": "4752894998e5059aca89ce16f22d7c49ab1c2a8ef9ff134d8eb6c281afd6d741"
+    },
+    {
+      "path": "artifacts/experiments/bread-0.1.3/detector/yolo26/oof-locked/report.json",
+      "sha256": "839ca042a0228e3cc43461b67a76ce80246b8452662e82b3fe687ab6b7139d71"
+    },
+    {
+      "path": "artifacts/experiments/bread-0.1.3/classifier/source-comparison.json",
+      "sha256": "12de3fe0bf7e4497f519a4ae1522e0f06303c89f12722debfbfe52c495178e06"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.3/incremental-new-sku.json",
+      "sha256": "3bb94c175767794dc4e019ee325b3198ba56acedc828ed6e369b7cd933089220"
+    },
+    {
+      "path": "artifacts/experiments/bread-0.1.3/classifier-vitb16-static-batch1/verifier-export-report.json",
+      "sha256": "79d8e60f4a7553907ef77d3c632a0022891bffa85d3ba2b9809fabed30ad5683"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.3/packaged-worker-smoke-openvino.json",
+      "sha256": "0861feae92640cf31b42f2f952311368d3e708b451d43824577c786a2535650d"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.3/packaged-worker-full-valid-http-openvino.json",
+      "sha256": "28fc5f27f74ea50b07e6aebf2f2b6306aea8eff508611555a8b28ad06dc9ab8d"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}

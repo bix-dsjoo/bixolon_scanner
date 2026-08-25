@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
+import 'dart:ui' show Size;
 
 import 'package:camera/camera.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +14,72 @@ import 'package:product_scanner/services/scanner_api.dart';
 import 'support/test_catalog.dart';
 
 void main() {
+  test('카메라 초기화와 Worker preflight를 함께 시작하고 준비 전 촬영을 막는다', () async {
+    final api = _DeferredPreflightScannerApi(_reviewResponse());
+    final camera = _ReconnectableCameraGateway();
+    final controller = ScannerController(
+      api,
+      camera,
+      _FakeImageFileGateway(_testImage),
+      _MemoryScanLogRepository(),
+      testCatalog,
+    );
+
+    final initialization = controller.initialize();
+    await Future<void>.delayed(Duration.zero);
+
+    expect(api.prepareCalls, 1);
+    expect(camera.initializeCalls, 1);
+    expect(controller.workerInitializing, isTrue);
+    expect(controller.workerReady, isFalse);
+    await controller.captureAndAnalyze();
+    expect(camera.captureCalls, 0);
+    expect(api.scanCalls, 0);
+
+    api.completePreparation();
+    await initialization;
+    expect(controller.workerInitializing, isFalse);
+    expect(controller.workerReady, isTrue);
+    controller.dispose();
+  });
+
+  test('이미지 선택부터 Worker·첫 결과 화면까지 성능 정보를 활동 로그에 저장한다', () async {
+    final logs = _MemoryScanLogRepository();
+    final controller = ScannerController(
+      _TimedScannerApi(),
+      _FakeCameraGateway(),
+      _FakeImageFileGateway(_timedTestImage),
+      logs,
+      testCatalog,
+    );
+
+    await controller.chooseImage();
+    await controller.analyze();
+    final beforeRender = controller.performanceMetrics!;
+    expect(beforeRender.fileReadMs, 35.4);
+    expect(beforeRender.imageWidth, 1);
+    expect(beforeRender.imageHeight, 1);
+    expect(beforeRender.provider, 'openvino');
+    expect(beforeRender.apiTotalMs, closeTo(713.0, 0.001));
+    expect(beforeRender.worker?.requestTotalMs, 606.2);
+    expect(beforeRender.worker?.classifierMs, 350.2);
+
+    controller.recordResultFirstFrame('request_timing_1234');
+    expect(
+      controller.performanceMetrics?.endToEndMs,
+      greaterThanOrEqualTo(748.4),
+    );
+    controller.confirmCandidate(
+      'item_002',
+      controller.detections[1].source.top3.first,
+    );
+    await controller.submit();
+
+    expect(logs.saved.single.performance?.provider, 'openvino');
+    expect(logs.saved.single.performance?.worker?.detectorMs, 210.4);
+    controller.dispose();
+  });
+
   test('동일 상품 재선택은 기존 자동·사용자 확정 근거를 변경하지 않는다', () {
     final response = _reviewResponse();
     final controller =
@@ -95,7 +162,11 @@ void main() {
     expect(controller.inputMode, InputMode.image);
     expect(controller.activityDataRevision, 1);
     expect(controller.latestSavedScanId, 'request_12345678');
-    expect(controller.completionMessage, '2개 상품을 확정했어요');
+    expect(controller.completionMessage, '결과를 저장했어요');
+    expect(
+      logs.saved.single.operatorReview?.verdict,
+      OperatorReviewVerdict.corrected,
+    );
     controller.dispose();
   });
 
@@ -124,7 +195,7 @@ void main() {
     expect(controller.processState, ProcessState.ready);
     expect(controller.inputMode, InputMode.camera);
     expect(controller.imageBytes, isNull);
-    expect(controller.completionMessage, '2개 상품을 확정했어요');
+    expect(controller.completionMessage, '결과를 저장했어요');
     controller.dispose();
   });
 
@@ -148,6 +219,11 @@ void main() {
           confirmationMethod: 'AUTO_APPROVED',
           classId: 'bread_13',
           className: 'Muffin',
+          modelProduct: Product(
+            classId: 'bread_13',
+            className: 'Muffin',
+            displayName: 'Muffin',
+          ),
         ),
         ScanLogItemSummary(
           itemId: 'item_002',
@@ -172,6 +248,7 @@ void main() {
     final localized = await controller.loadScanLogs();
 
     expect(localized.single.items.first.productName, '머핀');
+    expect(localized.single.items.first.modelProduct?.displayName, '머핀');
     expect(localized.single.items.last.productName, 'Retired product');
     expect(logs.logs.single.items.first.productName, 'Muffin');
     controller.dispose();
@@ -218,7 +295,7 @@ void main() {
     expect(controller.inputMode, InputMode.image);
     expect(controller.activityDataRevision, 1);
     expect(controller.latestSavedScanId, response.requestId);
-    expect(controller.completionMessage, '2개 상품을 확정했어요');
+    expect(controller.completionMessage, '결과를 저장했어요');
     controller.dispose();
   });
 
@@ -794,6 +871,135 @@ void main() {
     expect(controller.selectedItemId, 'item_001');
     controller.dispose();
   });
+
+  test('박스 이동은 이미지 경계로 clamp되고 Undo/Redo로 동일 상태를 복원한다', () {
+    final response = _reviewResponse();
+    final controller =
+        ScannerController(
+            _FakeScannerApi(response),
+            _FakeCameraGateway(),
+            _FakeImageFileGateway(_testImage),
+            _MemoryScanLogRepository(),
+            testCatalog,
+          )
+          ..processState = ProcessState.reviewing
+          ..response = response
+          ..imageSize = const Size(200, 100)
+          ..detections = response.items
+              .map(ReviewDetection.fromScanItem)
+              .toList(growable: false)
+          ..selectedItemId = 'item_001';
+
+    final original = controller.selectedDetection!.finalBbox;
+    controller.updateSelectedBbox(
+      const BoundingBox(x: -20, y: 90, width: 80, height: 40),
+      recordUndo: true,
+    );
+    expect(
+      controller.selectedDetection!.finalBbox,
+      const BoundingBox(x: 0, y: 60, width: 80, height: 40),
+    );
+    expect(
+      controller.inferredIssueCodes,
+      contains(OperatorIssueCode.bboxIncorrect),
+    );
+
+    controller.undoReviewEdit();
+    expect(controller.selectedDetection!.finalBbox, original);
+    controller.redoReviewEdit();
+    expect(
+      controller.selectedDetection!.finalBbox,
+      const BoundingBox(x: 0, y: 60, width: 80, height: 40),
+    );
+    controller.dispose();
+  });
+
+  test('박스 추가·상품 입력·삭제 행동에서 작업자 오류 유형을 추론한다', () {
+    final response = _reviewResponse();
+    final controller =
+        ScannerController(
+            _FakeScannerApi(response),
+            _FakeCameraGateway(),
+            _FakeImageFileGateway(_testImage),
+            _MemoryScanLogRepository(),
+            testCatalog,
+          )
+          ..processState = ProcessState.reviewing
+          ..response = response
+          ..imageSize = const Size(300, 200)
+          ..detections = response.items
+              .map(ReviewDetection.fromScanItem)
+              .toList(growable: false)
+          ..selectedItemId = 'item_001';
+
+    controller.addDetection(
+      const BoundingBox(x: 20, y: 30, width: 80, height: 60),
+    );
+    expect(
+      controller.inferredIssueCodes,
+      contains(OperatorIssueCode.missedObject),
+    );
+    expect(controller.canSaveReview, isFalse);
+    controller.confirmSearchProduct(
+      controller.selectedItemId!,
+      testCatalog.search('bread_13').single,
+    );
+    expect(controller.activeDetections.last.isConfirmed, isTrue);
+
+    controller.selectDetection('item_001');
+    controller.removeSelectedDetection();
+    expect(
+      controller.inferredIssueCodes,
+      contains(OperatorIssueCode.falsePositiveObject),
+    );
+    controller.undoReviewEdit();
+    expect(
+      controller.detections
+          .singleWhere((detection) => detection.source.itemId == 'item_001')
+          .removed,
+      isFalse,
+    );
+    controller.dispose();
+  });
+
+  test('IMAGE_RECAPTURE 이견은 박스·상품 완료 뒤 RECAPTURE_UNNECESSARY로 저장한다', () async {
+    final logs = _MemoryScanLogRepository();
+    final controller = ScannerController(
+      _FakeScannerApi(_recaptureResponse()),
+      _FakeCameraGateway(),
+      _FakeImageFileGateway(_testImage),
+      logs,
+      testCatalog,
+    );
+    await controller.chooseImage();
+    await controller.analyze();
+    expect(controller.operatorRequiresRecapture, isTrue);
+    expect(controller.canSaveReview, isTrue);
+
+    controller.setOperatorRequiresRecapture(false);
+    expect(controller.canSaveReview, isFalse);
+    expect(
+      controller.inferredIssueCodes,
+      contains(OperatorIssueCode.unnecessaryRecapture),
+    );
+    controller.addDetection(const BoundingBox(x: 0, y: 0, width: 1, height: 1));
+    controller.confirmSearchProduct(
+      controller.selectedItemId!,
+      testCatalog.search('bread_13').single,
+    );
+    expect(controller.canSaveReview, isTrue);
+
+    await controller.saveReview();
+    expect(
+      logs.saved.single.operatorReview?.verdict,
+      OperatorReviewVerdict.recaptureUnnecessary,
+    );
+    expect(
+      logs.saved.single.operatorReview?.issueCodes,
+      contains(OperatorIssueCode.unnecessaryRecapture),
+    );
+    controller.dispose();
+  });
 }
 
 final InputImage _testImage = InputImage(
@@ -801,6 +1007,12 @@ final InputImage _testImage = InputImage(
     'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
   ),
   fileName: 'test.png',
+);
+
+final InputImage _timedTestImage = InputImage(
+  bytes: _testImage.bytes,
+  fileName: _testImage.fileName,
+  fileReadMs: 35.4,
 );
 
 ScanResponse _reviewResponse() => const ScanResponse(
@@ -848,6 +1060,26 @@ ScanResponse _reviewResponse() => const ScanResponse(
   modelVersions: ModelVersions(detector: '0.1.1', classifier: '0.1.1'),
 );
 
+final ScanResponse _timedResponse = ScanResponse(
+  requestId: 'request_timing_1234',
+  status: ScanStatus.unknown,
+  reasonCodes: _reviewResponse().reasonCodes,
+  items: _reviewResponse().items,
+  processingTimeMs: 606.2,
+  modelVersions: const ModelVersions(detector: '0.1.1', classifier: '0.1.1'),
+  stageTimings: const WorkerStageTimings(
+    requestTotalMs: 606.2,
+    uploadReadMs: 2.0,
+    decodeMs: 31.0,
+    queueWaitMs: 0.1,
+    pipelineMs: 568.4,
+    detectorMs: 210.4,
+    classifierMs: 350.2,
+    decisionMs: 7.8,
+    serverOverheadMs: 4.7,
+  ),
+);
+
 ScanResponse _recaptureResponse() => const ScanResponse(
   requestId: 'request_87654321',
   status: ScanStatus.recapture,
@@ -884,6 +1116,64 @@ class _FakeScannerApi implements ScannerApi {
     required Uint8List imageBytes,
     required String fileName,
   }) async => response;
+}
+
+class _DeferredPreflightScannerApi implements ScannerApi, ScannerApiPreflight {
+  _DeferredPreflightScannerApi(this.response);
+
+  final ScanResponse response;
+  final Completer<String?> _preparation = Completer<String?>();
+  int prepareCalls = 0;
+  int scanCalls = 0;
+  bool _prepared = false;
+
+  @override
+  bool get isPrepared => _prepared;
+
+  void completePreparation() {
+    _prepared = true;
+    _preparation.complete('openvino+openvino_gpu');
+  }
+
+  @override
+  Future<String?> prepare() {
+    prepareCalls += 1;
+    return _preparation.future;
+  }
+
+  @override
+  Future<ScanResponse> scan({
+    required Uint8List imageBytes,
+    required String fileName,
+  }) async {
+    scanCalls += 1;
+    return response;
+  }
+}
+
+class _TimedScannerApi implements ScannerApi, ScannerApiTimingSource {
+  ScannerApiTimings? _timings = const ScannerApiTimings(
+    totalMs: 713.0,
+    readinessMs: 4.1,
+    requestBuildMs: 0.7,
+    httpRoundTripMs: 707.7,
+    responseBodyReadMs: 1.2,
+    responseParseMs: 0.5,
+    provider: 'openvino',
+  );
+
+  @override
+  Future<ScanResponse> scan({
+    required Uint8List imageBytes,
+    required String fileName,
+  }) async => _timedResponse;
+
+  @override
+  ScannerApiTimings? takeLastTimings() {
+    final value = _timings;
+    _timings = null;
+    return value;
+  }
 }
 
 class _CountingScannerApi implements ScannerApi {

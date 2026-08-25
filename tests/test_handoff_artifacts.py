@@ -8,7 +8,7 @@ import pytest
 from bixolon_scanner.contracts.api import ItemStatus, ScanResponse, Status
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLES = ROOT / "docs" / "contracts" / "examples" / "0.1.2"
+EXAMPLES = ROOT / "docs" / "contracts" / "examples" / "0.1.3"
 
 
 @pytest.mark.parametrize(
@@ -29,9 +29,9 @@ def test_handoff_examples_follow_python_contract(
     response = ScanResponse.model_validate_json((EXAMPLES / name).read_text(encoding="utf-8"))
 
     assert response.status is status
-    assert response.worker_version == "0.1.2"
+    assert response.worker_version == "0.1.3"
     assert all(
-        value == "0.1.2"
+        value == "0.1.3"
         for value in (
             response.detector_version,
             response.classifier_version,
@@ -92,22 +92,22 @@ def test_packaged_cpu_handoff_scripts_target_n100_cpu() -> None:
     assert "onnxruntime-openvino==1.24.1" in lock
     assert "openvino==2025.4.1" in lock
     assert "onnxruntime-gpu" not in lock.lower()
-    assert 'BIXOLON_PROVIDER = "cpu"' in start_script
+    assert 'BIXOLON_PROVIDER = "openvino"' in start_script
     assert 'BIXOLON_REQUEST_TIMEOUT_SECONDS = "60"' in start_script
     assert "BIXOLON_CPU_DETECTOR_WORKERS" in start_script
     assert "[int]$DetectorWorkers = 1" in start_script
-    assert "[int]$DetectorThreads = 4" in start_script
-    assert 'Name = "candidate-cpu-1x4"' in benchmark
+    assert "[int]$DetectorThreads = 0" in start_script
+    assert 'Name = "candidate-openvino-1xauto"' in benchmark
     assert "DetectorWorkers = 1" in benchmark
-    assert 'Provider = "cpu"' in benchmark
-    assert 'Provider = "openvino"' not in benchmark
+    assert "DetectorThreads = 0" in benchmark
+    assert 'Provider = "openvino"' in benchmark
     assert "segmentation_status_counts" in benchmark
     assert "response_contract_safe" in benchmark
     assert "cross_provider_parity_checked = $false" in benchmark
-    assert "candidate.P95Ms -le 1000" in benchmark
+    assert "candidate.P95Ms -le 300" in benchmark
     assert "$targetCpuDetected" in benchmark
-    assert "mean_within_1_second" in benchmark
-    assert "p95_within_1_second" in benchmark
+    assert "mean_within_300ms" in benchmark
+    assert "p95_within_300ms" in benchmark
     assert "image_paths_recorded = $false" in benchmark
     assert '[string]$OutputPath = ""' in benchmark
     assert 'Join-Path $PSScriptRoot "n100-benchmark-result.json"' in benchmark
@@ -121,7 +121,7 @@ def test_packaged_cpu_handoff_scripts_target_n100_cpu() -> None:
     )
     assert "onnxruntime_providers_(cuda|tensorrt|dml)" in build_script
     assert "requirements-windows-openvino.lock" in build_script
-    assert 'provider = "CPUExecutionProvider"' in build_script
+    assert 'provider = "OpenVINOExecutionProvider:CPU"' in build_script
     assert "worker-manifest.json" in build_script
     assert '"PENDING_FIELD_MEASUREMENT"' in build_script
     assert '"MEASURED_DIAGNOSTIC"' in build_script
@@ -135,8 +135,10 @@ def test_n100_candidate_exposes_double_click_and_requested_powershell_entrypoint
     command_script = (ROOT / "scripts" / "handoff" / "RUN-N100-TEST.cmd").read_text(
         encoding="utf-8"
     )
+    readme = (ROOT / "scripts" / "handoff" / "README-N100-KO.txt").read_text(encoding="utf-8")
 
     assert '"N100-STAGE-TEST.ps1"' in build_script
-    assert '-File ".\\N100-STAGE-TEST.ps1"' in build_script
+    assert '"scripts/handoff/README-N100-KO.txt"' in build_script
+    assert '-File ".\\N100-STAGE-TEST.ps1"' in readme
     assert "N100-STAGE-TEST.ps1" in command_script
-    assert "n100-0.1.2-result.json" in command_script
+    assert "n100-0.1.3-result.json" in command_script

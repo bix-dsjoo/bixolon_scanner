@@ -10,6 +10,7 @@ import 'package:product_scanner/models/scan_models.dart';
 import 'package:product_scanner/services/image_input.dart';
 import 'package:product_scanner/services/scan_log_repository.dart';
 import 'package:product_scanner/services/scanner_api.dart';
+import 'package:product_scanner/theme/app_tokens.dart';
 
 import 'support/test_catalog.dart';
 
@@ -54,7 +55,14 @@ void main() {
     expect(controller.selectedItemId, 'item_008');
     expect(find.text('8번 상품을 확인해 주세요'), findsOneWidget);
     expect(find.text('8 / 8'), findsOneWidget);
-    expect(find.text('머핀'), findsNWidgets(3));
+    expect(find.text('머핀'), findsAtLeastNWidgets(2));
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('review-inspector')),
+        matching: find.text('머핀'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('스콘'), findsOneWidget);
     expect(find.text('베이글'), findsOneWidget);
     final listRect = tester.getRect(
@@ -69,8 +77,15 @@ void main() {
     expect(selectedRect.top, greaterThanOrEqualTo(listRect.top));
     expect(selectedRect.bottom, lessThanOrEqualTo(listRect.bottom + 0.5));
     expect(
-      tester.getRect(find.text('다른 상품 검색')).bottom,
-      lessThanOrEqualTo(inspectorRect.bottom),
+      find.descendant(
+        of: find.byKey(const ValueKey('review-inspector')),
+        matching: find.text('다른 상품 검색'),
+      ),
+      findsOneWidget,
+    );
+    expect(
+      inspectorRect.height,
+      lessThanOrEqualTo(AppDesignTokens.standard.reviewInspectorMaxHeight),
     );
     await expectLater(
       find.byType(Scaffold).first,

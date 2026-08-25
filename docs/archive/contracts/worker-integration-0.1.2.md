@@ -1,6 +1,6 @@
 # BIXOLON Worker 연동 명세
 
-- 적용 제품 버전: `0.0.2`
+- 적용 제품 버전: `0.1.2`
 - 기본 주소: `http://127.0.0.1:8000`
 - 응답 형식: `application/json`
 
@@ -99,8 +99,8 @@ curl -X POST "http://127.0.0.1:8000/v1/scan" \
 | `classifier_policy_version` | string 또는 null | Detector 조기 종료에서는 `null`입니다. |
 | `catalog_version` | string 또는 null | Detector 조기 종료에서는 `null`입니다. |
 
-공개된 non-null 버전 값은 모두 같은 제품 버전이어야 합니다. `0.0.2` Worker에서는 실행된
-구성요소의 버전도 모두 `0.0.2`입니다.
+공개된 non-null 버전 값은 모두 같은 제품 버전이어야 합니다. `0.1.2` Worker에서는 실행된
+구성요소의 버전도 모두 `0.1.2`입니다.
 
 ### 2.3 이미지 `status`
 
@@ -175,13 +175,13 @@ Worker가 반환한 `status`를 최종 판정으로 사용해야 합니다.
     }
   ],
   "processing_time_ms": 72.143,
-  "worker_version": "0.0.2",
-  "detector_version": "0.0.2",
-  "classifier_version": "0.0.2",
-  "embedder_version": "0.0.2",
-  "detector_policy_version": "0.0.2",
-  "classifier_policy_version": "0.0.2",
-  "catalog_version": "0.0.2"
+  "worker_version": "0.1.2",
+  "detector_version": "0.1.2",
+  "classifier_version": "0.1.2",
+  "embedder_version": "0.1.2",
+  "detector_policy_version": "0.1.2",
+  "classifier_policy_version": "0.1.2",
+  "catalog_version": "0.1.2"
 }
 ```
 
@@ -225,13 +225,13 @@ Worker가 반환한 `status`를 최종 판정으로 사용해야 합니다.
     }
   ],
   "processing_time_ms": 75.804,
-  "worker_version": "0.0.2",
-  "detector_version": "0.0.2",
-  "classifier_version": "0.0.2",
-  "embedder_version": "0.0.2",
-  "detector_policy_version": "0.0.2",
-  "classifier_policy_version": "0.0.2",
-  "catalog_version": "0.0.2"
+  "worker_version": "0.1.2",
+  "detector_version": "0.1.2",
+  "classifier_version": "0.1.2",
+  "embedder_version": "0.1.2",
+  "detector_policy_version": "0.1.2",
+  "classifier_policy_version": "0.1.2",
+  "catalog_version": "0.1.2"
 }
 ```
 
@@ -247,11 +247,11 @@ Classifier, Embedder, Classifier policy 및 Catalog 버전은 `null`입니다.
   "reason_codes": ["DETECTOR_BLUR"],
   "segmentations": [],
   "processing_time_ms": 31.246,
-  "worker_version": "0.0.2",
-  "detector_version": "0.0.2",
+  "worker_version": "0.1.2",
+  "detector_version": "0.1.2",
   "classifier_version": null,
   "embedder_version": null,
-  "detector_policy_version": "0.0.2",
+  "detector_policy_version": "0.1.2",
   "classifier_policy_version": null,
   "catalog_version": null
 }
@@ -284,7 +284,7 @@ reason code가 아닙니다.
   "reason_codes": ["CORRUPT_IMAGE"],
   "segmentations": [],
   "processing_time_ms": 2.314,
-  "worker_version": "0.0.2",
+  "worker_version": "0.1.2",
   "detector_version": null,
   "classifier_version": null,
   "embedder_version": null,
@@ -332,5 +332,5 @@ reason code가 아닙니다.
 클라이언트가 알지 못하는 새 reason code를 받더라도 응답 전체를 실패 처리하지 않아야 합니다.
 판정 분기는 reason code 문자열이 아니라 이미지 `status`와 빵별 `status`를 기준으로 구현해야 합니다.
 
-정식 응답 JSON Schema는 [scan-response.schema.json](../../schemas/scan-response.schema.json)을
+정식 응답 JSON Schema는 [scan-response.schema.json](../../../schemas/scan-response.schema.json)을
 참조하십시오.

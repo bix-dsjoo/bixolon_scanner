@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from dataclasses import asdict
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,8 @@ from bixolon_scanner.experiments.bread.robust_classifier_training import (
     mild_clutter_recipe,
     moderate_clutter_recipe,
     prepare_clutter_tensor,
+    relational_similarity_loss,
+    rotation_invariant_clutter_recipe,
 )
 from bixolon_scanner.training.synthetic_roi import ClutterRoiRecipe, augment_clutter_roi
 
@@ -68,6 +71,19 @@ def test_mild_recipe_matches_dominant_target_training_contract() -> None:
     assert mild.maximum_target_occlusion < moderate.maximum_target_occlusion
 
 
+def test_rotation_invariant_recipe_changes_only_orientation_coverage() -> None:
+    moderate = moderate_clutter_recipe()
+    rotation_invariant = rotation_invariant_clutter_recipe()
+
+    rotation_invariant.validate()
+    assert rotation_invariant.maximum_rotation_degrees == 180.0
+    invariant_contract = asdict(rotation_invariant)
+    moderate_contract = asdict(moderate)
+    invariant_contract.pop("maximum_rotation_degrees")
+    moderate_contract.pop("maximum_rotation_degrees")
+    assert invariant_contract == moderate_contract
+
+
 def test_neighbor_masked_clutter_tensor_uses_production_shape() -> None:
     target = Image.new("RGBA", (80, 56), (0, 0, 0, 0))
     ImageDraw.Draw(target).ellipse((8, 8, 72, 48), fill=(190, 110, 45, 255))
@@ -87,3 +103,21 @@ def test_neighbor_masked_clutter_tensor_uses_production_shape() -> None:
     assert tensor.shape == (3, 224, 224)
     assert tensor.dtype.name == "float32"
     assert tensor.flags.c_contiguous
+
+
+def test_relational_similarity_loss_matches_geometry_without_labels() -> None:
+    torch = pytest.importorskip("torch")
+    teacher = torch.tensor([[1.0, 0.0], [0.0, 1.0], [1.0, 1.0]])
+    student = teacher.clone().requires_grad_(True)
+
+    matching = relational_similarity_loss(torch, student, teacher)
+    changed = relational_similarity_loss(
+        torch,
+        student,
+        torch.tensor([[1.0, 0.0], [1.0, 0.0], [0.0, 1.0]]),
+    )
+    matching.backward()
+
+    assert matching.item() == pytest.approx(0.0)
+    assert changed.item() > 0.0
+    assert student.grad is not None

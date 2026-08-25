@@ -43,6 +43,7 @@ class ProductScannerApp extends StatelessWidget {
               canChooseImageShortcut: canChooseImageShortcut,
               onChooseImageShortcut: onChooseImageShortcut,
               onNavigateToScan: onNavigateToScan,
+              exportLogs: controller.exportReviewArchive,
             ),
       ),
     );

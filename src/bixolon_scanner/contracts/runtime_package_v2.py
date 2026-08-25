@@ -36,8 +36,11 @@ class EmbedderMetadata(BaseModel):
     l2_normalized: bool = False
     resize_reducing_gap: float | None = Field(default=3.0, ge=1.0)
     warmup_batch_sizes: list[int] = Field(default_factory=lambda: [1, 3, 5, 8])
+    fixed_batch_size: int | None = Field(default=None, ge=1)
+    horizontal_flip_tta: bool = False
+    rotation_180_tta: bool = False
     neighbor_mask: bool = True
-    neighbor_distance_bias: float = Field(default=0.0, ge=0.0)
+    neighbor_distance_bias: float = Field(default=0.0, ge=-1.0)
     neighbor_shared_scale: bool = False
 
     _validate_filename = field_validator("filename")(validate_package_filename)
@@ -256,6 +259,26 @@ class DetectorAmbiguityPolicyMetadata(BaseModel):
         return self
 
 
+class ClassifierVerificationMetadata(BaseModel):
+    """Product-independent selective agreement policy for ambiguous classifications."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    ambiguity_maximum_approval_score: float = Field(ge=0.0, le=1.0)
+    rotation_degrees: Literal[180] = 180
+    independent_embedder: EmbedderMetadata
+    independent_metric_projection: MetricProjectionMetadata
+
+    @model_validator(mode="after")
+    def validate_dimensions(self) -> "ClassifierVerificationMetadata":
+        if (
+            self.independent_metric_projection.input_dimension
+            != self.independent_embedder.embedding_dimension
+        ):
+            raise ValueError("verification projection input must match its embedder output")
+        return self
+
+
 class RuntimePackageV2Metadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -275,6 +298,7 @@ class RuntimePackageV2Metadata(BaseModel):
     embedder: EmbedderMetadata
     metric_projection: MetricProjectionMetadata
     classifier_policy: CatalogDecisionPolicy
+    classifier_verification: ClassifierVerificationMetadata | None = None
     input: InputMetadata = Field(default_factory=InputMetadata)
     quality: QualityMetadata
     checksums: dict[str, str]
@@ -313,6 +337,12 @@ class RuntimePackageV2Metadata(BaseModel):
             for filename in self.license_files
         ):
             raise ValueError("runtime license files must be confined relative paths")
+        verification = self.classifier_verification
+        if verification is not None:
+            if verification.independent_embedder.filename == self.embedder.filename:
+                raise ValueError("verification embedder must use a distinct package filename")
+            if verification.independent_embedder.version != self.classifier_policy.version:
+                raise ValueError("verification embedder must use the product policy version")
         return self
 
 
@@ -324,6 +354,8 @@ class RuntimePackageV2:
     count_verifier_path: Path | None
     embedder_path: Path
     metric_projection_path: Path | None
+    verification_embedder_path: Path | None
+    verification_metric_projection_path: Path | None
 
 
 def load_runtime_package_v2(root: Path) -> RuntimePackageV2:
@@ -342,6 +374,11 @@ def load_runtime_package_v2(root: Path) -> RuntimePackageV2:
         required.add(metadata.count_verifier.filename)
     if metadata.metric_projection.filename is not None:
         required.add(metadata.metric_projection.filename)
+    if metadata.classifier_verification is not None:
+        required.add(metadata.classifier_verification.independent_embedder.filename)
+        verification_projection = metadata.classifier_verification.independent_metric_projection
+        if verification_projection.filename is not None:
+            required.add(verification_projection.filename)
     required.update(metadata.license_files)
     if set(metadata.checksums) != required:
         raise PackageValidationError
@@ -358,6 +395,12 @@ def load_runtime_package_v2(root: Path) -> RuntimePackageV2:
         if metadata.metric_projection.filename is None
         else resolved_files[metadata.metric_projection.filename]
     )
+    verification = metadata.classifier_verification
+    verification_projection_path = (
+        None
+        if verification is None or verification.independent_metric_projection.filename is None
+        else resolved_files[verification.independent_metric_projection.filename]
+    )
     return RuntimePackageV2(
         root=package_root,
         metadata=metadata,
@@ -369,4 +412,10 @@ def load_runtime_package_v2(root: Path) -> RuntimePackageV2:
         ),
         embedder_path=resolved_files[metadata.embedder.filename],
         metric_projection_path=projection_path,
+        verification_embedder_path=(
+            None
+            if verification is None
+            else resolved_files[verification.independent_embedder.filename]
+        ),
+        verification_metric_projection_path=verification_projection_path,
     )

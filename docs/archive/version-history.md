@@ -1,9 +1,9 @@
 # 버전 이력
 
-이 문서는 현재 단일 제품 버전 `0.1.1` 이전의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
+이 문서는 현재 단일 제품 버전 `0.1.3` 외의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
 archive 인덱스입니다. 아래의 `production`, promotion, waiver, certification, release lock 표현은
-당시 기록의 용어이며 현재 빌드 수명주기나 활성 기본값이 아닙니다. 기존 ignored binary 산출물도
-원래 위치에서 이동하거나 삭제하지 않았습니다.
+당시 기록의 용어이며 현재 빌드 수명주기나 활성 기본값이 아닙니다. Git 밖의 실험·평가 결과는
+보존하되 재생성 가능한 과거 전달물과 캐시는 정리할 수 있습니다.
 
 ## 0.x와 1.x
 
@@ -16,7 +16,7 @@ archive 인덱스입니다. 아래의 `production`, promotion, waiver, certifica
 - [과거 학습 파이프라인](guides/training-pipeline-1.0.0.md)
 - [과거 release 설정](../../configs/archive/releases/bixolon_scanner_1.1.0.json)
 
-이 계열의 수치와 예외는 현재 `0.1.1`의 독립 성능 근거로 사용하지 않습니다.
+이 계열의 수치와 예외는 현재 `0.1.3`의 독립 성능 근거로 사용하지 않습니다.
 
 ## Scanner 2.0.0
 
@@ -108,3 +108,13 @@ N100이 아닙니다. N100에서는 이미 수행한 `1×4`, `2×2`, `2×1` 조�
 `1×4`에서 CPU와 OpenVINO를 비교하며, OpenVINO 평균과 p95가 각각 1,000ms 이내인지
 `n100-0.1.1-result.json`으로 판정합니다. 현장 JSON이 돌아오기 전에는 목표 달성을 확정하지 않고
 최종 Setup을 만들지 않습니다.
+
+## `0.1.4` 미채택 후보
+
+`0.1.4` 이름으로 만든 로컬 후보는 제품 버전으로 채택하지 않았습니다. Runtime graph, weight,
+Catalog와 판정 threshold가 `0.1.3`과 같았고 앱 준비·상호작용 변경은 활성 `0.1.3+6` 소스에
+통합했습니다. 후보 설정·계약·전달물은 활성 경로에서 제거했습니다.
+
+당시 단일 packaged Worker 관찰 JSON은 실험 결과 보존 원칙에 따라
+[`archive/diagnostics`](diagnostics/packaged-worker-0.1.4-smoke.json)에 남겼습니다. 이는 N100 실측,
+현재 `0.1.3` binary 증빙 또는 SLA가 아닙니다.

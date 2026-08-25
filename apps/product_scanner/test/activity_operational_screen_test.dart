@@ -169,7 +169,7 @@ void main() {
           .isLiveRegion,
       isFalse,
     );
-    final completion = find.bySemanticsLabel('1개 상품을 확정했어요');
+    final completion = find.bySemanticsLabel('결과를 저장했어요');
     expect(
       tester
           .getSemantics(completion)
@@ -242,14 +242,14 @@ void main() {
           .isLiveRegion,
       isTrue,
     );
-    expect(find.text('1개 상품을 확정했어요'), findsNothing);
+    expect(find.text('결과를 저장했어요'), findsNothing);
 
     repository.completeSave();
     await submission;
     await tester.pump();
 
     expect(controller.activityDataRevision, 1);
-    final completion = find.bySemanticsLabel('1개 상품을 확정했어요');
+    final completion = find.bySemanticsLabel('결과를 저장했어요');
     expect(
       tester
           .getSemantics(completion)
@@ -412,7 +412,7 @@ void main() {
         .getSemanticsData();
     expect(automaticRefreshSemantics.flagsCollection.isLiveRegion, isFalse);
     expect(automaticRefreshSemantics.label, contains('활동 기록 새로고침 중'));
-    final completion = find.bySemanticsLabel('1개 상품을 확정했어요');
+    final completion = find.bySemanticsLabel('결과를 저장했어요');
     expect(completion, findsOneWidget);
     expect(
       tester
@@ -492,8 +492,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(repository.listCalls, 2);
-    expect(find.text('1개 상품을 확정했어요'), findsOneWidget);
-    const syncFailure = '방금 확정한 기록은 저장됐어요. 활동 화면만 갱신하지 못했어요.';
+    expect(find.text('결과를 저장했어요'), findsOneWidget);
+    const syncFailure = '방금 검수한 기록은 저장됐어요. 활동 화면만 갱신하지 못했어요.';
     expect(find.text(syncFailure), findsOneWidget);
     expect(find.text('새로고침하지 못했어요. 기존 활동을 표시하고 있어요.'), findsNothing);
     expect(find.text('상품 19'), findsWidgets);
@@ -563,7 +563,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('활동 화면을 갱신하지 못했어요'), findsOneWidget);
-    expect(find.text('방금 확정한 기록은 저장됐어요. 잠시 후 새로고침해 주세요.'), findsOneWidget);
+    expect(find.text('방금 검수한 기록은 저장됐어요. 잠시 후 새로고침해 주세요.'), findsOneWidget);
     expect(find.text('활동 기록을 불러오지 못했어요'), findsNothing);
     expect(find.widgetWithText(FilledButton, '새로고침'), findsOneWidget);
 
@@ -625,7 +625,7 @@ void main() {
       ActivitySortOrder.oldest,
     );
     expect(find.text('상품 20'), findsWidgets);
-    expect(find.text('자동 확정'), findsWidgets);
+    expect(find.text('기존 기록'), findsWidgets);
     await expectLater(
       find.byType(Scaffold).first,
       matchesGoldenFile('goldens/activity_long_list_1280x720.png'),
@@ -769,7 +769,7 @@ void main() {
     expect(tester.widget<InkWell>(lastInkWell).focusNode!.hasFocus, isFalse);
     expect(
       tester
-          .getSemantics(find.bySemanticsLabel('진단 정보'))
+          .getSemantics(find.bySemanticsLabel('상품 결과'))
           .getSemanticsData()
           .flagsCollection
           .isFocused,
@@ -787,7 +787,7 @@ void main() {
     expect(tester.widget<InkWell>(lastInkWell).focusNode!.hasFocus, isTrue);
     expect(
       tester
-          .getSemantics(find.bySemanticsLabel('진단 정보'))
+          .getSemantics(find.bySemanticsLabel('상품 결과'))
           .getSemanticsData()
           .flagsCollection
           .isFocused,
@@ -836,7 +836,7 @@ void main() {
     expect(progressData.flagsCollection.isButton, isTrue);
     expect(progressData.hasAction(SemanticsAction.tap), isFalse);
     expect(find.text('상품 20'), findsWidgets);
-    expect(find.text('확정 상품'), findsOneWidget);
+    expect(find.text('저장 기록'), findsOneWidget);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.f5);
     await tester.pump(const Duration(milliseconds: 600));
@@ -974,6 +974,69 @@ void main() {
     controller.dispose();
   });
 
+  testWidgets('같은 상품의 영문 모델명과 한글 표시명을 상품 변경으로 기록하지 않는다', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final reviewedAt = DateTime.utc(2026, 8, 24, 1, 1);
+    final repository = _ControlledLogRepository([
+      ScanLogSummary(
+        scanId: 'same_product_localized',
+        analyzedAt: DateTime.utc(2026, 8, 24, 1),
+        confirmedAt: reviewedAt,
+        inputMode: InputMode.camera,
+        processingTimeMs: 50,
+        modelVersions: const ModelVersions(
+          detector: '0.1.1',
+          classifier: '0.1.1',
+        ),
+        logSchemaVersion: 5,
+        operatorReview: OperatorReview(
+          verdict: OperatorReviewVerdict.accepted,
+          reviewedAt: reviewedAt,
+          inferredIssueCodes: const {},
+          issueCodes: const {},
+          objects: const [],
+        ),
+        items: const [
+          ScanLogItemSummary(
+            itemId: 'item_001',
+            productName: 'Muffin',
+            confidence: .9,
+            userModified: false,
+            confirmationMethod: 'AUTO_APPROVED',
+            classId: 'bread_13',
+            className: 'Muffin',
+            modelProduct: Product(
+              classId: 'bread_13',
+              className: 'Muffin',
+              displayName: 'Muffin',
+            ),
+          ),
+        ],
+      ),
+    ]);
+    final controller = _controller(repository);
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.tap(find.text('활동'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('그대로 저장'), findsWidgets);
+    expect(find.text('1번 상품'), findsOneWidget);
+    expect(find.text('머핀'), findsWidgets);
+    expect(find.textContaining('상품 변경'), findsNothing);
+    expect(find.text('수정 없음'), findsOneWidget);
+
+    controller.dispose();
+  });
+
   testWidgets('구버전 Activity는 한국어 fallback과 영문 검색 일치 상품을 표시한다', (tester) async {
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1;
@@ -1022,8 +1085,13 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('상품 정보 없음 외 1개'), findsOneWidget);
-    expect(find.text('상품 정보 없음'), findsOneWidget);
+    expect(find.textContaining('상품 정보 없음'), findsWidgets);
     expect(find.text('Unknown'), findsNothing);
+    await tester.drag(
+      find.byKey(const ValueKey('activity-detail-legacy_log')),
+      const Offset(0, -360),
+    );
+    await tester.pumpAndSettle();
     await tester.tap(find.text('진단 정보'));
     await tester.pumpAndSettle();
     expect(find.textContaining('확정 방식 확인 불가'), findsOneWidget);

@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:file_selector/file_selector.dart';
 
 import '../../../core/design_system/components.dart';
 import '../../../core/design_system/copy.dart';
@@ -9,6 +10,7 @@ import '../../../core/design_system/theme.dart';
 import '../../../core/design_system/tokens.dart';
 import '../../../shared/models/scan_models.dart';
 import '../../../shared/logging/scan_log_repository.dart';
+import '../../../shared/version_info.dart';
 import '../domain/activity_filters.dart';
 import 'activity_presentation.dart';
 
@@ -27,6 +29,7 @@ class ActivityScreen extends StatefulWidget {
     required this.canChooseImageShortcut,
     required this.onChooseImageShortcut,
     required this.onNavigateToScan,
+    this.exportLogs,
   });
 
   final Future<List<ScanLogSummary>> Function() loadLogs;
@@ -36,6 +39,11 @@ class ActivityScreen extends StatefulWidget {
   final bool canChooseImageShortcut;
   final VoidCallback onChooseImageShortcut;
   final VoidCallback onNavigateToScan;
+  final Future<void> Function({
+    required String targetPath,
+    List<ScanLogSummary>? records,
+  })?
+  exportLogs;
 
   @override
   State<ActivityScreen> createState() => _ActivityScreenState();
@@ -53,8 +61,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
   final FocusNode _retryRefreshFocusNode = FocusNode(
     debugLabel: 'activity-retry-refresh',
   );
+  final FocusNode _resultDisclosureFocusNode = FocusNode(
+    debugLabel: 'activity-result-disclosure',
+  );
   final FocusNode _detailDisclosureFocusNode = FocusNode(
     debugLabel: 'activity-detail-disclosure',
+  );
+  final FocusNode _performanceDisclosureFocusNode = FocusNode(
+    debugLabel: 'activity-performance-disclosure',
   );
   final TextEditingController _searchController = TextEditingController();
 
@@ -71,6 +85,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
   ActivityInputFilter _inputFilter = ActivityInputFilter.all;
   ActivityDateFilter _dateFilter = ActivityDateFilter.all;
   ActivitySortOrder _sortOrder = ActivitySortOrder.newest;
+  ActivityReviewFilter _reviewFilter = ActivityReviewFilter.all;
+  bool _exporting = false;
   int _loadedDataRevision = -1;
 
   @override
@@ -133,7 +149,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
     _searchFocusNode.dispose();
     _toolbarRefreshFocusNode.dispose();
     _retryRefreshFocusNode.dispose();
+    _resultDisclosureFocusNode.dispose();
     _detailDisclosureFocusNode.dispose();
+    _performanceDisclosureFocusNode.dispose();
     _searchController.dispose();
     super.dispose();
   }
@@ -187,13 +205,13 @@ class _ActivityScreenState extends State<ActivityScreen> {
         if (_logs.isEmpty) {
           _error = savedRecordSync ? '활동 화면을 갱신하지 못했어요' : '활동 기록을 불러오지 못했어요';
           _errorDetail = savedRecordSync
-              ? '방금 확정한 기록은 저장됐어요. 잠시 후 새로고침해 주세요.'
+              ? '방금 검수한 기록은 저장됐어요. 잠시 후 새로고침해 주세요.'
               : '저장된 기록은 그대로 유지됩니다. 잠시 후 새로고침해 주세요.';
         } else {
           _error = null;
           _errorDetail = null;
           _refreshError = savedRecordSync
-              ? '방금 확정한 기록은 저장됐어요. 활동 화면만 갱신하지 못했어요.'
+              ? '방금 검수한 기록은 저장됐어요. 활동 화면만 갱신하지 못했어요.'
               : '새로고침하지 못했어요. 기존 활동을 표시하고 있어요.';
         }
       });
@@ -230,6 +248,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
       inputFilter: _inputFilter,
       dateFilter: _dateFilter,
       sortOrder: _sortOrder,
+      reviewFilter: _reviewFilter,
     );
   }
 
@@ -244,12 +263,14 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _query.isNotEmpty ||
       _inputFilter != ActivityInputFilter.all ||
       _dateFilter != ActivityDateFilter.all ||
+      _reviewFilter != ActivityReviewFilter.all ||
       _sortOrder != ActivitySortOrder.newest;
 
   bool get _hasResultFilters =>
       _query.isNotEmpty ||
       _inputFilter != ActivityInputFilter.all ||
-      _dateFilter != ActivityDateFilter.all;
+      _dateFilter != ActivityDateFilter.all ||
+      _reviewFilter != ActivityReviewFilter.all;
 
   void _clearSearch() {
     _searchController.clear();
@@ -264,8 +285,49 @@ class _ActivityScreenState extends State<ActivityScreen> {
       _inputFilter = ActivityInputFilter.all;
       _dateFilter = ActivityDateFilter.all;
       _sortOrder = ActivitySortOrder.newest;
+      _reviewFilter = ActivityReviewFilter.all;
       _selectedId = _logs.isEmpty ? null : _logs.first.scanId;
     });
+  }
+
+  Future<void> _export({required bool filteredOnly}) async {
+    if (_exporting) return;
+    final exportLogs = widget.exportLogs;
+    if (exportLogs == null) return;
+    final date = DateTime.now();
+    final stamp =
+        '${date.year.toString().padLeft(4, '0')}'
+        '${date.month.toString().padLeft(2, '0')}'
+        '${date.day.toString().padLeft(2, '0')}';
+    final location = await getSaveLocation(
+      suggestedName: 'BixolonScanner-review-${VersionInfo.current}-$stamp.zip',
+      acceptedTypeGroups: const [
+        XTypeGroup(label: 'ZIP archive', extensions: ['zip']),
+      ],
+      confirmButtonText: '내보내기',
+    );
+    if (location == null || !mounted) return;
+    setState(() {
+      _exporting = true;
+      _refreshError = null;
+    });
+    try {
+      await exportLogs(
+        targetPath: location.path,
+        records: filteredOnly ? _filteredLogs : null,
+      );
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(filteredOnly ? '현재 표시 기록을 내보냈어요.' : '전체 기록을 내보냈어요.'),
+        ),
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _refreshError = '내보내지 못했어요. USB 연결과 쓰기 권한을 확인해 주세요.');
+    } finally {
+      if (mounted) setState(() => _exporting = false);
+    }
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
@@ -339,6 +401,12 @@ class _ActivityScreenState extends State<ActivityScreen> {
                       setState(() => _dateFilter = value),
                   sortOrder: _sortOrder,
                   onSortChanged: (value) => setState(() => _sortOrder = value),
+                  reviewFilter: _reviewFilter,
+                  onReviewFilterChanged: (value) =>
+                      setState(() => _reviewFilter = value),
+                  exporting: _exporting,
+                  onExportFiltered: () => _export(filteredOnly: true),
+                  onExportAll: () => _export(filteredOnly: false),
                   hasActiveFilters: _hasActiveFilters && filtered.isNotEmpty,
                   onResetFilters: _resetFilters,
                 )
@@ -399,10 +467,10 @@ class _ActivityScreenState extends State<ActivityScreen> {
             : Icons.search_off_rounded,
         title: _logs.isEmpty ? '저장된 활동이 없어요' : '조건에 맞는 기록이 없어요',
         detail: _logs.isEmpty
-            ? '상품을 최종 확정하면 이곳에서 확인할 수 있어요.'
+            ? '결과를 저장하면 이곳에서 확인할 수 있어요.'
             : '검색어나 필터를 바꾸거나 모두 초기화해 보세요.',
         announcement: _logs.isEmpty
-            ? '저장된 활동이 없어요. 상품을 최종 확정하면 이곳에서 확인할 수 있어요.'
+            ? '저장된 활동이 없어요. 결과를 저장하면 이곳에서 확인할 수 있어요.'
             : '조건에 맞는 기록이 없어요. 검색어나 필터를 바꾸거나 모두 초기화해 보세요.',
         action: _logs.isEmpty
             ? FilledButton.icon(
@@ -444,7 +512,7 @@ class _ActivityScreenState extends State<ActivityScreen> {
                 filtered: _hasResultFilters,
                 query: _query,
                 selectedId: selected.scanId,
-                onExitForward: _detailDisclosureFocusNode.requestFocus,
+                onExitForward: _resultDisclosureFocusNode.requestFocus,
                 onSelected: (log) => setState(() => _selectedId = log.scanId),
               ),
             ),
@@ -453,7 +521,9 @@ class _ActivityScreenState extends State<ActivityScreen> {
               flex: 5,
               child: _LogDetail(
                 log: selected,
+                resultDisclosureFocusNode: _resultDisclosureFocusNode,
                 disclosureFocusNode: _detailDisclosureFocusNode,
+                performanceDisclosureFocusNode: _performanceDisclosureFocusNode,
                 onExitBackward: () =>
                     _logListKey.currentState?.requestTraversalFocus(),
               ),

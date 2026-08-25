@@ -8,6 +8,19 @@ from ..contracts.catalog import sha256_file
 from .models import require_torch
 
 
+def dinov2_variant(*, hidden_size: int, layer_count: int) -> str:
+    variants = {
+        (384, 12): "dinov2_small",
+        (768, 12): "dinov2_base",
+        (1024, 24): "dinov2_large",
+        (1536, 40): "dinov2_giant",
+    }
+    try:
+        return variants[(hidden_size, layer_count)]
+    except KeyError as exc:
+        raise ValueError("unsupported DINOv2 hidden-size/layer-count combination") from exc
+
+
 def export_dinov2_embedder(model_dir: Path, output_path: Path, *, opset: int = 18) -> dict:
     torch = require_torch()
     from transformers import AutoModel
@@ -21,6 +34,10 @@ def export_dinov2_embedder(model_dir: Path, output_path: Path, *, opset: int = 1
     ).eval()
     if getattr(model.config, "model_type", None) != "dinov2":
         raise ValueError("the selected checkpoint is not a DINOv2 model")
+    variant = dinov2_variant(
+        hidden_size=int(model.config.hidden_size),
+        layer_count=int(model.config.num_hidden_layers),
+    )
 
     class EmbedderExport(torch.nn.Module):
         def __init__(self, backbone):
@@ -48,10 +65,14 @@ def export_dinov2_embedder(model_dir: Path, output_path: Path, *, opset: int = 1
     snapshot_revision = resolved.name if len(resolved.name) == 40 else None
     return {
         "schema_version": "2.0",
-        "backbone_kind": "dinov2_base",
+        "backbone_kind": variant,
+        "training_architecture": f"DINOv2 {variant.removeprefix('dinov2_')} frozen CLS backbone",
+        "training_scope": "frozen_backbone",
         "source_revision": snapshot_revision,
         "source_weight_filename": weights.name,
         "source_weight_sha256": sha256_file(weights),
+        "training_dataset_version": None,
+        "training_manifest_sha256": None,
         "onnx_sha256": sha256_file(output_path),
         "image_size": 224,
         "embedding_dimension": int(model.config.hidden_size),

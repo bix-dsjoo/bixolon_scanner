@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import json
 import os
 from pathlib import Path
 from typing import Literal, TypeAlias
@@ -32,6 +33,7 @@ class OrtRunner:
         enable_cuda_graph: bool = False,
         cuda_graph_output_shapes: dict[str, tuple[int, ...]] | None = None,
         cpu_intra_op_threads: int = 0,
+        openvino_cache_dir: Path | None = None,
     ):
         if cpu_intra_op_threads < 0:
             raise ValueError("CPU intra-op thread count must be non-negative")
@@ -86,7 +88,11 @@ class OrtRunner:
             if provider_name not in available:
                 raise ProviderInitializationError
             options = ort.SessionOptions()
-            options.graph_optimization_level = ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            options.graph_optimization_level = (
+                ort.GraphOptimizationLevel.ORT_DISABLE_ALL
+                if provider in {"openvino", "openvino_gpu"}
+                else ort.GraphOptimizationLevel.ORT_ENABLE_ALL
+            )
             options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
             options.inter_op_num_threads = 1
             if provider == "cpu" and cpu_intra_op_threads > 0:
@@ -109,9 +115,28 @@ class OrtRunner:
             if provider == "directml":
                 provider_options["device_id"] = "0"
             if provider in {"openvino", "openvino_gpu"}:
-                provider_options["device_type"] = "GPU" if provider == "openvino_gpu" else "CPU"
-                if provider == "openvino" and cpu_intra_op_threads > 0:
-                    provider_options["num_of_threads"] = str(cpu_intra_op_threads)
+                device = "GPU" if provider == "openvino_gpu" else "CPU"
+                provider_options["device_type"] = device
+                device_config: dict[str, str] = {}
+                if provider == "openvino":
+                    device_config.update(
+                        {
+                            "PERFORMANCE_HINT": "LATENCY",
+                            "NUM_STREAMS": "1",
+                            "INFERENCE_PRECISION_HINT": "f32",
+                        }
+                    )
+                    if cpu_intra_op_threads > 0:
+                        device_config["INFERENCE_NUM_THREADS"] = str(cpu_intra_op_threads)
+                if openvino_cache_dir is not None:
+                    cache_dir = openvino_cache_dir.resolve() / device.lower()
+                    cache_dir.mkdir(parents=True, exist_ok=True)
+                    device_config["CACHE_DIR"] = str(cache_dir)
+                    device_config["CACHE_MODE"] = "OPTIMIZE_SPEED"
+                if device_config:
+                    provider_options["load_config"] = json.dumps(
+                        {device: device_config}, separators=(",", ":")
+                    )
             providers = (
                 [(provider_name, provider_options)]
                 if provider in {"cuda", "directml", "openvino", "openvino_gpu"}

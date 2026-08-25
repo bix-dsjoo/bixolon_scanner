@@ -58,6 +58,15 @@ def test_training_sources_are_audited_independently(training_source, shots_per_c
     assert training_source not in metadata["ignored_top_level_entries"]
 
 
+def test_alternative_classifier_sources_share_physical_item_identity():
+    first, _ = audit_bread_dataset(DATASET_ROOT, training_source="single_objects")
+    third, _ = audit_bread_dataset(DATASET_ROOT, training_source="single_objects_3")
+
+    assert {row["physical_item_id"] for row in first} == {row["physical_item_id"] for row in third}
+    assert len({row["physical_item_id"] for row in first}) == 20
+    assert len({row["capture_session_id"] for row in first}) == 20
+
+
 def test_evaluation_manifest_is_grouped_and_detector_training_forbidden():
     records = build_detection_evaluation_records(DATASET_ROOT)
 

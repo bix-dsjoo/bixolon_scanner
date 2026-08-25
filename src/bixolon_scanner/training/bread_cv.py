@@ -19,8 +19,8 @@ from .bread_dataset import (
     audit_bread_dataset,
 )
 
-SCHEMA_VERSION = "1.1"
-CLASSIFIER_SOURCES = ("single_objects", "single_objects_2", "single_objects_3")
+SCHEMA_VERSION = "1.2"
+CLASSIFIER_SOURCES = ("single_objects", "single_objects_3")
 
 
 @lru_cache(maxsize=None)
@@ -266,27 +266,47 @@ def _classifier_records(
     duplicate_audit = assign_perceptual_groups(
         rows, maximum_hamming_distance=maximum_hamming_distance
     )
-    # Classifier folds are used to audit support-image leakage. Model selection
-    # remains on natural ROI records and never mixes the alternative support source.
-    for index, row in enumerate(
-        sorted(rows, key=lambda value: (value["source_group"], value["image_path"]))
-    ):
-        row["fold"] = index % fold_count
-    groups: dict[str, set[int]] = defaultdict(set)
+    # A category directory is a multi-view capture of one physical item.  Assigning
+    # individual views round-robin leaks the same item and session into train and
+    # validation.  Physical identity is the outer group; perceptual duplicates and
+    # capture sessions are therefore kept together as well.
+    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
-        groups[str(row["perceptual_group_id"])].add(int(row["fold"]))
-    if any(len(folds) != 1 for folds in groups.values()):
-        # Keep near duplicates in one fold even when the initial round-robin would split them.
-        for group_rows in (
-            [row for row in rows if row["perceptual_group_id"] == group_id] for group_id in groups
-        ):
-            selected = min(int(row["fold"]) for row in group_rows)
-            for row in group_rows:
-                row["fold"] = selected
+        grouped[str(row["physical_item_id"])].append(row)
+    fold_images = [0] * fold_count
+    fold_groups = [0] * fold_count
+    for group_id in sorted(grouped, key=lambda value: (-len(grouped[value]), value)):
+        selected = min(range(fold_count), key=lambda fold: (fold_images[fold], fold))
+        for row in grouped[group_id]:
+            row["fold"] = selected
+            row["validation_group_id"] = group_id
+        fold_images[selected] += len(grouped[group_id])
+        fold_groups[selected] += 1
+
+    leakage_keys = ("physical_item_id", "capture_session_id", "perceptual_group_id")
+    for key in leakage_keys:
+        assigned: dict[str, set[int]] = defaultdict(set)
+        for row in rows:
+            assigned[str(row[key])].add(int(row["fold"]))
+        leaked = sorted(group for group, folds in assigned.items() if len(folds) != 1)
+        if leaked:
+            raise ValueError(f"classifier {key} groups cross folds: {leaked[:3]}")
     return rows, {
         "source_dataset_version": source_metadata["dataset_version"],
         "image_count": len(rows),
         "duplicate_audit": duplicate_audit,
+        "provenance": {
+            "physical_item_interpretation": "one-category-directory-one-physical-item",
+            "capture_session_interpretation": "one-source-category-directory-one-session",
+            "finer_capture_session_ledger_available": False,
+        },
+        "folds": {
+            "fold_count": fold_count,
+            "image_counts": fold_images,
+            "group_counts": fold_groups,
+            "assignment_key": "physical_item_id",
+            "leakage_keys": list(leakage_keys),
+        },
     }
 
 

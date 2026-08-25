@@ -81,6 +81,19 @@ def test_allowlist_rejects_source_outside_single_objects(tmp_path: Path) -> None
         _audit(tmp_path, manifest)
 
 
+def test_allowlist_rejects_physical_item_crossing_folds(tmp_path: Path) -> None:
+    manifest = _write_dataset(tmp_path)
+    rows = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()]
+    for row in rows:
+        row["physical_item_id"] = f"item-{row['category_id']}"
+    manifest.write_text(
+        "".join(json.dumps(row, sort_keys=True) + "\n" for row in rows), encoding="utf-8"
+    )
+
+    with pytest.raises(ValueError, match="physical_item_id groups cross folds"):
+        _audit(tmp_path, manifest)
+
+
 def test_upstream_checkpoint_manifest_must_have_exact_same_source_set(tmp_path: Path) -> None:
     manifest = _write_dataset(tmp_path)
     allowlist = _audit(tmp_path, manifest)

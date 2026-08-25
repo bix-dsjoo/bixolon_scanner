@@ -1,19 +1,19 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import numpy as np
 from PIL import Image
 
-from ..contracts.catalog import StoreCatalogPackage
+from ..contracts.catalog import StoreCatalogPackage, load_store_catalog_package
 from ..contracts.model_package import (
     ClassifierMetadata,
     ClassLabel,
     NeighborMaskClassifierMetadata,
     NeighborMaskClassifierView,
 )
-from ..contracts.runtime_package_v2 import RuntimePackageV2
+from ..contracts.runtime_package_v2 import RuntimePackageV2, RuntimePackageV2Metadata
 from ..pipeline.ports import ClassificationResult, Detection
 from .imaging import image_original_size
 from .onnx import (
@@ -95,6 +95,7 @@ class OnnxEmbedder:
         cuda_dll_dir: Path | None = None,
         *,
         cpu_intra_op_threads: int = 0,
+        openvino_cache_dir: Path | None = None,
     ):
         self.metadata = package.metadata.embedder
         self.runner = OrtRunner(
@@ -102,19 +103,40 @@ class OnnxEmbedder:
             provider,
             cuda_dll_dir,
             cpu_intra_op_threads=cpu_intra_op_threads,
+            openvino_cache_dir=openvino_cache_dir,
         )
         self.transform = load_metric_transform(package)
         self.version = self.metadata.version
 
     def warmup(self) -> None:
         height, width = self.metadata.input_size
-        batch_sizes = self.metadata.warmup_batch_sizes if self.runner.accelerated else [1]
+        fixed_batch_size = getattr(self.metadata, "fixed_batch_size", None)
+        batch_sizes = (
+            [fixed_batch_size]
+            if fixed_batch_size is not None
+            else self.metadata.warmup_batch_sizes
+            if self.runner.accelerated
+            else [1]
+        )
         for batch_size in batch_sizes:
+            inference_batch_size = batch_size * self._view_count
             self.runner.run(
                 [self.metadata.output_name],
                 self.metadata.input_name,
-                np.zeros((batch_size, 3, height, width), dtype=np.float32),
+                np.zeros((inference_batch_size, 3, height, width), dtype=np.float32),
             )
+
+    @property
+    def _horizontal_flip_tta(self) -> bool:
+        return bool(getattr(self.metadata, "horizontal_flip_tta", False))
+
+    @property
+    def _rotation_180_tta(self) -> bool:
+        return bool(getattr(self.metadata, "rotation_180_tta", False))
+
+    @property
+    def _view_count(self) -> int:
+        return 1 + int(self._horizontal_flip_tta) + int(self._rotation_180_tta)
 
     def embed_images(self, images: list[Image.Image]) -> np.ndarray:
         return self.transform.apply(self.embed_images_raw(images))
@@ -134,18 +156,60 @@ class OnnxEmbedder:
                 for image in images
             ]
         )
-        return self._run_raw_tensors(batch)
+        return self.embed_prepared_tensors_raw(batch)
+
+    def embed_prepared_tensors_raw(self, batch: np.ndarray) -> np.ndarray:
+        """Run already normalized NCHW classifier tensors through the embedder."""
+        values = np.asarray(batch, dtype=np.float32)
+        height, width = self.metadata.input_size
+        if values.ndim != 4 or values.shape[1:] != (3, height, width):
+            raise ValueError("prepared embedder tensors do not match runtime metadata")
+        return self._run_view_averaged_tensors(np.ascontiguousarray(values))
 
     def _run_raw_tensors(self, batch: np.ndarray) -> np.ndarray:
-        (raw,) = self.runner.run(
-            [self.metadata.output_name],
-            self.metadata.input_name,
-            batch.astype(np.float32, copy=False),
-        )
-        raw = np.asarray(raw, dtype=np.float32)
+        values = batch.astype(np.float32, copy=False)
+        fixed_batch_size = getattr(self.metadata, "fixed_batch_size", None)
+        if fixed_batch_size is None:
+            (raw,) = self.runner.run(
+                [self.metadata.output_name],
+                self.metadata.input_name,
+                values,
+            )
+            raw = np.asarray(raw, dtype=np.float32)
+        else:
+            chunks: list[np.ndarray] = []
+            for start in range(0, len(values), fixed_batch_size):
+                chunk = values[start : start + fixed_batch_size]
+                valid_count = len(chunk)
+                if valid_count < fixed_batch_size:
+                    padding = np.zeros(
+                        (fixed_batch_size - valid_count, *values.shape[1:]),
+                        dtype=np.float32,
+                    )
+                    chunk = np.concatenate((chunk, padding), axis=0)
+                (chunk_raw,) = self.runner.run(
+                    [self.metadata.output_name],
+                    self.metadata.input_name,
+                    np.ascontiguousarray(chunk),
+                )
+                chunks.append(np.asarray(chunk_raw, dtype=np.float32)[:valid_count])
+            raw = np.concatenate(chunks, axis=0)
         if raw.shape != (len(batch), self.metadata.embedding_dimension):
             raise ValueError("embedder output shape does not match runtime metadata")
         return raw
+
+    def _run_view_averaged_tensors(self, batch: np.ndarray) -> np.ndarray:
+        if self._view_count == 1:
+            return self._run_raw_tensors(batch)
+        views = [batch]
+        if self._horizontal_flip_tta:
+            views.append(np.ascontiguousarray(batch[:, :, :, ::-1]))
+        if self._rotation_180_tta:
+            views.append(np.ascontiguousarray(batch[:, :, ::-1, ::-1]))
+        raw = self._run_raw_tensors(np.concatenate(views, axis=0))
+        return np.asarray(
+            raw.reshape(self._view_count, len(batch), -1).mean(axis=0), dtype=np.float32
+        )
 
     def _embed_tensors(self, batch: np.ndarray) -> np.ndarray:
         return self.transform.apply(self._run_raw_tensors(batch))
@@ -158,6 +222,15 @@ class OnnxEmbedder:
     def embed_detections_raw(
         self, image: np.ndarray | Image.Image, detections: list[Detection]
     ) -> np.ndarray:
+        return self.embed_prepared_tensors_raw(self.prepare_detection_tensors(image, detections))
+
+    def prepare_detection_tensors(
+        self, image: np.ndarray | Image.Image, detections: list[Detection]
+    ) -> np.ndarray:
+        """Apply the runtime crop and neighbor-mask policy without inference."""
+        if not detections:
+            height, width = self.metadata.input_size
+            return np.empty((0, 3, height, width), dtype=np.float32)
         if isinstance(image, Image.Image):
             source = image
             original_width, original_height = image_original_size(image)
@@ -204,12 +277,13 @@ class OnnxEmbedder:
                         margin_ratio=self.metadata.crop_margin_ratio,
                         distance_bias=self.metadata.neighbor_distance_bias,
                         shared_scale=self.metadata.neighbor_shared_scale,
+                        crop_mode=self.metadata.crop_mode,
                     )
                     for index in range(len(detections))
                 ]
             )
             batch = apply_classifier_background_masks(batch, masks)
-        return self._run_raw_tensors(batch)
+        return np.ascontiguousarray(batch, dtype=np.float32)
 
 
 def _load_array(path: Path) -> np.ndarray:
@@ -234,6 +308,9 @@ class OnnxCatalogClassifier:
         self.policy = runtime.metadata.classifier_policy
         self.version = self.policy.version
         self.labels = catalog.metadata.labels
+        self.append_only_base_class_count = getattr(
+            catalog.metadata, "append_only_base_class_count", None
+        )
         self.supports = _load_array(catalog.supports_path)
         self.prototypes = _load_array(catalog.prototypes_path)
         expected = (catalog.metadata.support_count, catalog.metadata.embedding_dimension)
@@ -327,12 +404,40 @@ class OnnxCatalogClassifier:
         self, image: np.ndarray | Image.Image, detections: list[Detection]
     ) -> ClassificationResult:
         raw_embeddings = self.embedder.embed_detections_raw(image, detections)
+        return self.classify_embeddings(raw_embeddings, detections)
+
+    def classify_embeddings(
+        self,
+        raw_embeddings: np.ndarray,
+        detections: list[Detection] | None = None,
+        *,
+        class_limit: int | None = None,
+    ) -> ClassificationResult:
+        """Classify raw embeddings produced by the compatible runtime embedder."""
+        raw_embeddings = np.asarray(raw_embeddings, dtype=np.float32)
+        if (
+            raw_embeddings.ndim != 2
+            or raw_embeddings.shape[1] != self.embedder.metadata.embedding_dimension
+        ):
+            raise ValueError("raw embeddings do not match the Catalog embedder dimension")
+        if detections is not None and len(detections) != len(raw_embeddings):
+            raise ValueError("detections and raw embeddings are not aligned")
         embeddings = self.embedder.transform.apply(raw_embeddings)
         cosine_scores = self._class_scores(embeddings)
+        if class_limit is not None:
+            if not 1 <= class_limit <= len(self.labels):
+                raise ValueError("Catalog class limit is invalid")
+            cosine_scores = cosine_scores[:, :class_limit]
         if self.adapter_weight is not None:
-            return self._classify_adapter(raw_embeddings, cosine_scores, detections)
+            return self._classify_adapter(
+                raw_embeddings,
+                cosine_scores,
+                detections,
+                class_limit=class_limit,
+            )
+        labels = self.labels if class_limit is None else self.labels[:class_limit]
         order = np.argsort(-cosine_scores, axis=1, kind="stable")
-        rows = np.arange(len(detections))
+        rows = np.arange(len(raw_embeddings))
         top1 = cosine_scores[rows, order[:, 0]]
         top2 = (
             cosine_scores[rows, order[:, 1]]
@@ -351,9 +456,9 @@ class OnnxCatalogClassifier:
         approval_scores = np.minimum(similarity_safety, margin_safety).astype(np.float32)
         recapture_reasons: list[str | None] = []
         unknown_reasons: list[str | None] = []
-        approval_blocked = np.zeros(len(detections), dtype=bool)
+        approval_blocked = np.zeros(len(raw_embeddings), dtype=bool)
         for row, indices in enumerate(order):
-            top_ids = tuple(self.labels[int(index)].class_id for index in indices[:2])
+            top_ids = tuple(labels[int(index)].class_id for index in indices[:2])
             pair = tuple(sorted(top_ids)) if len(top_ids) == 2 else None
             restricted = top_ids[0] in self.restricted_ids or pair in self.restricted_pairs
             approval_blocked[row] = restricted
@@ -393,6 +498,8 @@ class OnnxCatalogClassifier:
         embeddings: np.ndarray,
         retrieval_scores: np.ndarray,
         detections: list[Detection] | None = None,
+        *,
+        class_limit: int | None = None,
     ) -> ClassificationResult:
         if self.adapter_weight is None or self.adapter_bias is None:
             raise ValueError("Catalog adapter is not loaded")
@@ -400,7 +507,12 @@ class OnnxCatalogClassifier:
         minimum_entropy = self.policy.ridge_top3_minimum_inverse_entropy
         if minimum_entropy is None:
             raise ValueError("ridge Catalog policy is incomplete")
-        logits = l2_normalize(embeddings) @ self.adapter_weight + self.adapter_bias
+        labels = self.labels if class_limit is None else self.labels[:class_limit]
+        weight = (
+            self.adapter_weight if class_limit is None else self.adapter_weight[:, :class_limit]
+        )
+        bias = self.adapter_bias if class_limit is None else self.adapter_bias[:class_limit]
+        logits = l2_normalize(embeddings) @ weight + bias
         logit_order = np.argsort(-logits, axis=1, kind="stable")
         sorted_logits = np.take_along_axis(logits, logit_order, axis=1)
         logit_gap = sorted_logits[:, 0] - sorted_logits[:, 1]
@@ -429,7 +541,7 @@ class OnnxCatalogClassifier:
         unknown_reasons: list[str | None] = []
         approval_blocked = np.zeros(len(embeddings), dtype=bool)
         for row, indices in enumerate(logit_order):
-            top_ids = tuple(self.labels[int(index)].class_id for index in indices[:2])
+            top_ids = tuple(labels[int(index)].class_id for index in indices[:2])
             pair = tuple(sorted(top_ids)) if len(top_ids) == 2 else None
             restricted = top_ids[0] in self.restricted_ids or pair in self.restricted_pairs
             heads_disagree = int(indices[0]) != int(retrieval_order[row, 0])
@@ -526,3 +638,378 @@ class OnnxCatalogClassifier:
             unknown_reasons=tuple(unknown_reasons),
             approval_blocked=approval_blocked,
         )
+
+
+def verification_runtime_package(package: RuntimePackageV2) -> RuntimePackageV2:
+    """Create the checksum-validated independent-embedder view of a Runtime package."""
+    verification = package.metadata.classifier_verification
+    if verification is None or package.verification_embedder_path is None:
+        raise ValueError("runtime does not contain an independent classifier verifier")
+    payload = package.metadata.model_dump(mode="json")
+    payload["embedder"] = verification.independent_embedder.model_dump(mode="json")
+    payload["metric_projection"] = verification.independent_metric_projection.model_dump(
+        mode="json"
+    )
+    payload["classifier_verification"] = None
+    metadata = RuntimePackageV2Metadata.model_validate(payload)
+    return RuntimePackageV2(
+        root=package.root,
+        metadata=metadata,
+        detector_path=package.detector_path,
+        count_verifier_path=package.count_verifier_path,
+        embedder_path=package.verification_embedder_path,
+        metric_projection_path=package.verification_metric_projection_path,
+        verification_embedder_path=None,
+        verification_metric_projection_path=None,
+    )
+
+
+class ConsensusCatalogClassifier:
+    """Selectively require geometric and independent-backbone agreement."""
+
+    def __init__(
+        self,
+        primary: OnnxCatalogClassifier,
+        rotation: OnnxCatalogClassifier,
+        independent: OnnxCatalogClassifier,
+        *,
+        ambiguity_maximum_approval_score: float,
+    ):
+        if not 0.0 <= ambiguity_maximum_approval_score <= 1.0:
+            raise ValueError("classifier verification ambiguity score must be in [0, 1]")
+        label_ids = tuple(label.class_id for label in primary.labels)
+        if tuple(label.class_id for label in rotation.labels) != label_ids:
+            raise ValueError("rotation verifier labels differ from the primary Catalog")
+        if tuple(label.class_id for label in independent.labels) != label_ids:
+            raise ValueError("independent verifier labels differ from the primary Catalog")
+        if primary.embedder._view_count != 1:
+            raise ValueError("selective rotation verification requires a single-view primary")
+        if independent.embedder.metadata.fixed_batch_size is None:
+            raise ValueError("independent verifier must declare its fixed ONNX batch size")
+        append_only_counts = {
+            primary.append_only_base_class_count,
+            rotation.append_only_base_class_count,
+            independent.append_only_base_class_count,
+        }
+        if len(append_only_counts) != 1:
+            raise ValueError("consensus Catalogs differ in append-only base class count")
+        self.primary = primary
+        self.rotation = rotation
+        self.independent = independent
+        self.ambiguity_maximum_approval_score = ambiguity_maximum_approval_score
+        self.append_only_base_class_count = primary.append_only_base_class_count
+        self.version = primary.version
+        self.metadata = primary.metadata
+
+    def warmup(self) -> None:
+        self.independent.embedder.warmup()
+
+    @staticmethod
+    def _top1(result: ClassificationResult) -> np.ndarray:
+        return np.argsort(-result.ranking_logits, axis=1, kind="stable")[:, 0]
+
+    @staticmethod
+    def _merge_class_matrix(
+        base: np.ndarray | None,
+        extended: np.ndarray | None,
+        use_extended: np.ndarray,
+        *,
+        fill_value: float,
+    ) -> np.ndarray | None:
+        if base is None or extended is None:
+            if base is not extended:
+                raise ValueError("base and extended classifier result fields differ")
+            return None
+        merged = np.full(extended.shape, fill_value, dtype=extended.dtype)
+        merged[:, : base.shape[1]] = base
+        merged[use_extended] = extended[use_extended]
+        return merged
+
+    @staticmethod
+    def _merge_row_array(
+        base: np.ndarray | None,
+        extended: np.ndarray | None,
+        use_extended: np.ndarray,
+    ) -> np.ndarray | None:
+        if base is None or extended is None:
+            if base is not extended:
+                raise ValueError("base and extended classifier result fields differ")
+            return None
+        merged = np.asarray(base).copy()
+        merged[use_extended] = np.asarray(extended)[use_extended]
+        return merged
+
+    @staticmethod
+    def _merge_row_tuple(
+        base: tuple[str | None, ...] | None,
+        extended: tuple[str | None, ...] | None,
+        use_extended: np.ndarray,
+    ) -> tuple[str | None, ...] | None:
+        if base is None or extended is None:
+            if base is not extended:
+                raise ValueError("base and extended classifier result fields differ")
+            return None
+        merged = list(base)
+        for index in np.flatnonzero(use_extended):
+            merged[int(index)] = extended[int(index)]
+        return tuple(merged)
+
+    @classmethod
+    def _merge_append_only_results(
+        cls,
+        base: ClassificationResult,
+        extended: ClassificationResult,
+        use_extended: np.ndarray,
+    ) -> ClassificationResult:
+        return ClassificationResult(
+            logits=cls._merge_class_matrix(
+                base.logits, extended.logits, use_extended, fill_value=-np.inf
+            ),
+            ranking_logits=cls._merge_class_matrix(
+                base.ranking_logits,
+                extended.ranking_logits,
+                use_extended,
+                fill_value=-np.inf,
+            ),
+            retrieval_logits=cls._merge_class_matrix(
+                base.retrieval_logits,
+                extended.retrieval_logits,
+                use_extended,
+                fill_value=-np.inf,
+            ),
+            approval_scores=cls._merge_row_array(
+                base.approval_scores, extended.approval_scores, use_extended
+            ),
+            top3_safety_scores=cls._merge_row_array(
+                base.top3_safety_scores, extended.top3_safety_scores, use_extended
+            ),
+            ranking_scores=cls._merge_class_matrix(
+                base.ranking_scores,
+                extended.ranking_scores,
+                use_extended,
+                fill_value=0.0,
+            ),
+            segment_recapture_reasons=cls._merge_row_tuple(
+                base.segment_recapture_reasons,
+                extended.segment_recapture_reasons,
+                use_extended,
+            ),
+            unknown_reasons=cls._merge_row_tuple(
+                base.unknown_reasons, extended.unknown_reasons, use_extended
+            ),
+            approval_blocked=cls._merge_row_array(
+                base.approval_blocked, extended.approval_blocked, use_extended
+            ),
+        )
+
+    def _apply_append_only_consensus(
+        self,
+        image: np.ndarray | Image.Image,
+        detections: list[Detection],
+        prepared: np.ndarray,
+        primary_raw: np.ndarray,
+        extended_result: ClassificationResult,
+    ) -> ClassificationResult:
+        base_count = self.append_only_base_class_count
+        if base_count is None:
+            return extended_result
+        base_result = self.primary.classify_embeddings(
+            primary_raw,
+            detections,
+            class_limit=base_count,
+        )
+        base_result = self._apply_selective_verification(
+            image,
+            detections,
+            prepared,
+            primary_raw,
+            base_result,
+            class_limit=base_count,
+        )
+        primary_top1 = self._top1(extended_result)
+        candidate_indices = np.flatnonzero(primary_top1 >= base_count)
+        use_extended = np.zeros(len(detections), dtype=bool)
+        if not len(candidate_indices):
+            return self._merge_append_only_results(base_result, extended_result, use_extended)
+
+        rotated = np.ascontiguousarray(prepared[candidate_indices, :, ::-1, ::-1], dtype=np.float32)
+        rotated_raw = self.primary.embedder.embed_prepared_tensors_raw(rotated)
+        rotation_raw = np.asarray(
+            (primary_raw[candidate_indices] + rotated_raw) * np.float32(0.5),
+            dtype=np.float32,
+        )
+        rotation_result = self.rotation.classify_embeddings(rotation_raw)
+        selected_detections = [detections[int(index)] for index in candidate_indices]
+        independent_prepared = self.independent.embedder.prepare_detection_tensors(
+            image, detections
+        )[candidate_indices]
+        independent_raw = self.independent.embedder.embed_prepared_tensors_raw(independent_prepared)
+        independent_result = self.independent.classify_embeddings(
+            independent_raw, selected_detections
+        )
+        extension_ids = primary_top1[candidate_indices]
+        accepted = (self._top1(rotation_result) == extension_ids) & (
+            self._top1(independent_result) == extension_ids
+        )
+        use_extended[candidate_indices[accepted]] = True
+        return self._merge_append_only_results(base_result, extended_result, use_extended)
+
+    def _apply_selective_verification(
+        self,
+        image: np.ndarray | Image.Image,
+        detections: list[Detection],
+        prepared: np.ndarray,
+        primary_raw: np.ndarray,
+        result: ClassificationResult,
+        *,
+        class_limit: int | None = None,
+    ) -> ClassificationResult:
+        if result.approval_scores is None:
+            raise ValueError("selective verification requires explicit approval scores")
+        approval_blocked = (
+            np.zeros(len(detections), dtype=bool)
+            if result.approval_blocked is None
+            else np.asarray(result.approval_blocked, dtype=bool).copy()
+        )
+        recapture_reasons = result.segment_recapture_reasons or (None,) * len(detections)
+        candidate_indices = np.flatnonzero(
+            (result.approval_scores < self.ambiguity_maximum_approval_score)
+            & (result.approval_scores >= self.metadata.approval_threshold)
+            & ~approval_blocked
+            & np.asarray([reason is None for reason in recapture_reasons], dtype=bool)
+        )
+        if not len(candidate_indices):
+            return result
+
+        rotated = np.ascontiguousarray(prepared[candidate_indices, :, ::-1, ::-1], dtype=np.float32)
+        rotated_raw = self.primary.embedder.embed_prepared_tensors_raw(rotated)
+        rotation_raw = np.asarray(
+            (primary_raw[candidate_indices] + rotated_raw) * np.float32(0.5),
+            dtype=np.float32,
+        )
+        rotation_result = self.rotation.classify_embeddings(rotation_raw, class_limit=class_limit)
+        selected_detections = [detections[int(index)] for index in candidate_indices]
+        independent_prepared = self.independent.embedder.prepare_detection_tensors(
+            image, detections
+        )[candidate_indices]
+        independent_raw = self.independent.embedder.embed_prepared_tensors_raw(independent_prepared)
+        independent_result = self.independent.classify_embeddings(
+            independent_raw,
+            selected_detections,
+            class_limit=class_limit,
+        )
+        if (
+            independent_result.approval_scores is None
+            or independent_result.retrieval_logits is None
+        ):
+            raise ValueError("independent verifier must expose approval and retrieval scores")
+
+        primary_top1 = self._top1(result)[candidate_indices]
+        rotation_top1 = self._top1(rotation_result)
+        independent_top1 = self._top1(independent_result)
+        independent_retrieval_top1 = np.argmax(independent_result.retrieval_logits, axis=1)
+        verifier_threshold = self.independent.metadata.approval_threshold
+        rejected = np.zeros(len(candidate_indices), dtype=bool)
+        rotation_disagreement = rotation_top1 != primary_top1
+        independently_corroborated = (independent_top1 == primary_top1) & (
+            independent_retrieval_top1 == primary_top1
+        )
+        rejected[rotation_disagreement] = ~independently_corroborated[rotation_disagreement]
+        rotation_agreement = ~rotation_disagreement
+        independent_disagreement = independent_top1 != primary_top1
+        strong_independent_disagreement = (
+            independent_result.approval_scores >= verifier_threshold
+        ) | (independent_retrieval_top1 != primary_top1)
+        rejected[rotation_agreement] = (independent_disagreement & strong_independent_disagreement)[
+            rotation_agreement
+        ]
+
+        rejected_indices = candidate_indices[rejected]
+        if not len(rejected_indices):
+            return result
+        approval_blocked[rejected_indices] = True
+        unknown_reasons = list(result.unknown_reasons or (None,) * len(detections))
+        for index in rejected_indices:
+            unknown_reasons[int(index)] = "CLASSIFIER_AMBIGUOUS_TOP2"
+        return replace(
+            result,
+            approval_blocked=approval_blocked,
+            unknown_reasons=tuple(unknown_reasons),
+        )
+
+    def classify(
+        self, image: np.ndarray | Image.Image, detections: list[Detection]
+    ) -> ClassificationResult:
+        prepared = self.primary.embedder.prepare_detection_tensors(image, detections)
+        primary_raw = self.primary.embedder.embed_prepared_tensors_raw(prepared)
+        result = self.primary.classify_embeddings(primary_raw, detections)
+        if self.append_only_base_class_count is not None:
+            return self._apply_append_only_consensus(
+                image,
+                detections,
+                prepared,
+                primary_raw,
+                result,
+            )
+        return self._apply_selective_verification(
+            image,
+            detections,
+            prepared,
+            primary_raw,
+            result,
+        )
+
+
+def build_catalog_classifier(
+    runtime: RuntimePackageV2,
+    catalog: StoreCatalogPackage,
+    provider: ExecutionProvider,
+    cuda_dll_dir: Path | None = None,
+    *,
+    cpu_intra_op_threads: int = 0,
+    openvino_cache_dir: Path | None = None,
+) -> tuple[OnnxCatalogClassifier | ConsensusCatalogClassifier, OnnxEmbedder]:
+    """Build the primary Catalog classifier and its optional selective verifier."""
+    primary_embedder = OnnxEmbedder(
+        runtime,
+        provider,
+        cuda_dll_dir,
+        cpu_intra_op_threads=cpu_intra_op_threads,
+        openvino_cache_dir=openvino_cache_dir,
+    )
+    primary = OnnxCatalogClassifier(runtime, catalog, primary_embedder)
+    verification = runtime.metadata.classifier_verification
+    catalog_has_verification = catalog.metadata.verification is not None
+    if (verification is None) != (not catalog_has_verification):
+        raise ValueError("Runtime and Catalog classifier verification contracts differ")
+    if verification is None:
+        return primary, primary_embedder
+    if catalog.rotation_catalog_root is None or catalog.independent_catalog_root is None:
+        raise ValueError("Catalog verification payloads are missing")
+    rotation_catalog = load_store_catalog_package(
+        catalog.rotation_catalog_root,
+        expected_store_id=catalog.metadata.store_id,
+    )
+    independent_catalog = load_store_catalog_package(
+        catalog.independent_catalog_root,
+        expected_store_id=catalog.metadata.store_id,
+    )
+    independent_runtime = verification_runtime_package(runtime)
+    independent_embedder = OnnxEmbedder(
+        independent_runtime,
+        provider,
+        cuda_dll_dir,
+        cpu_intra_op_threads=cpu_intra_op_threads,
+        openvino_cache_dir=openvino_cache_dir,
+    )
+    classifier = ConsensusCatalogClassifier(
+        primary,
+        OnnxCatalogClassifier(runtime, rotation_catalog, primary_embedder),
+        OnnxCatalogClassifier(
+            independent_runtime,
+            independent_catalog,
+            independent_embedder,
+        ),
+        ambiguity_maximum_approval_score=verification.ambiguity_maximum_approval_score,
+    )
+    return classifier, primary_embedder

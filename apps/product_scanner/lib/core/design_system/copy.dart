@@ -18,6 +18,9 @@ abstract final class AppActionCopy {
   static const reconnect = '다시 연결';
   static const checkingConnection = '연결 확인 중';
   static const checkingConnectionAnnouncement = '카메라 연결 확인 중. 완료될 때까지 기다려 주세요';
+  static const preparingWorker = '분석 엔진 준비 중';
+  static const preparingWorkerAnnouncement = '분석 엔진 준비 중. 촬영 전에 완료됩니다';
+  static const retryWorker = '분석 엔진 다시 확인';
   static const refresh = '새로고침';
   static const refreshing = '새로고침 중';
   static const refreshingAnnouncement = '활동 기록 새로고침 중. 완료될 때까지 기다려 주세요';

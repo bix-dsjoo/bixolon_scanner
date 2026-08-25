@@ -12,6 +12,7 @@ from PIL import Image
 
 from bixolon_scanner.api import create_app
 from bixolon_scanner.config import WorkerSettings
+from bixolon_scanner.contracts.errors import ProviderInitializationError
 from bixolon_scanner.inference import Detection, DetectionResult
 from bixolon_scanner.pipeline import DecisionPipeline
 from bixolon_scanner.worker import api as worker_api
@@ -182,8 +183,11 @@ def test_v2_runtime_warms_models_before_readiness(
         "build_detector_v2",
         lambda *args, **kwargs: WarmDetector(),
     )
-    monkeypatch.setattr(worker_api, "OnnxEmbedder", WarmEmbedder)
-    monkeypatch.setattr(worker_api, "OnnxCatalogClassifier", CatalogClassifier)
+    monkeypatch.setattr(
+        worker_api,
+        "build_catalog_classifier",
+        lambda *args, **kwargs: (CatalogClassifier(), WarmEmbedder()),
+    )
 
     app = create_app(
         settings=WorkerSettings(package_dir=package_dir, catalog_dir=catalog_dir),
@@ -193,3 +197,78 @@ def test_v2_runtime_warms_models_before_readiness(
         response = client.get("/health/ready")
         assert response.status_code == 200
         assert response.json()["worker_version"] == "2.0.0"
+
+
+def test_v2_runtime_falls_back_to_detector_provider_when_gpu_embedder_fails(
+    tmp_path,
+    monkeypatch,
+    classifier_metadata,
+    quality_metadata,
+):
+    package_dir = tmp_path / "runtime"
+    package_dir.mkdir()
+    (package_dir / "metadata.json").write_text(
+        json.dumps({"schema_version": "2.0"}),
+        encoding="utf-8",
+    )
+    catalog_dir = tmp_path / "catalog"
+    catalog_dir.mkdir()
+    runtime = SimpleNamespace(
+        metadata=SimpleNamespace(
+            quality=quality_metadata,
+            worker_version="2.0.0",
+            embedder=SimpleNamespace(version="2.0.0"),
+            detector_policy_version="2.0.0",
+            classifier_policy=SimpleNamespace(version="2.0.0"),
+            count_verifier=None,
+            input=SimpleNamespace(jpeg_draft_size=1200),
+        )
+    )
+    catalog = SimpleNamespace(metadata=SimpleNamespace(catalog_version="2.0.0"))
+    attempted_providers: list[str] = []
+
+    class WarmDetector(Detector):
+        version = "2.0.0"
+
+        def warmup(self):
+            return None
+
+    class WarmEmbedder:
+        def warmup(self):
+            return None
+
+    class CatalogClassifier(Classifier):
+        version = "2.0.0"
+
+        def __init__(self):
+            self.metadata = classifier_metadata
+
+    def build_classifier(*args, **kwargs):
+        del kwargs
+        selected_provider = args[2]
+        attempted_providers.append(selected_provider)
+        if selected_provider == "openvino_gpu":
+            raise ProviderInitializationError
+        return CatalogClassifier(), WarmEmbedder()
+
+    monkeypatch.setattr(worker_api, "load_runtime_package_v2", lambda _: runtime)
+    monkeypatch.setattr(worker_api, "load_store_catalog_package", lambda *args, **kwargs: catalog)
+    monkeypatch.setattr(worker_api, "select_provider", lambda value: value)
+    monkeypatch.setattr(worker_api, "build_detector_v2", lambda *args, **kwargs: WarmDetector())
+    monkeypatch.setattr(worker_api, "build_catalog_classifier", build_classifier)
+
+    app = create_app(
+        settings=WorkerSettings(
+            package_dir=package_dir,
+            catalog_dir=catalog_dir,
+            provider="openvino",
+            embedder_provider="openvino_gpu",
+            embedder_fallback_provider="same",
+        ),
+    )
+    with TestClient(app) as client:
+        response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    assert response.json()["provider"] == "openvino"
+    assert attempted_providers == ["openvino_gpu", "openvino"]

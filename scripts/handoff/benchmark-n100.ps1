@@ -161,7 +161,7 @@ function Invoke-Profile {
                 throw "Worker warm-up response contract failed for profile $($Profile.Name)."
             }
         }
-        $latencies = [System.Collections.Generic.List[double]]::new()
+        $fullPathLatencies = [System.Collections.Generic.List[double]]::new()
         $statusCounts = [ordered]@{
             SEGMENTATION = 0
             IMAGE_RECAPTURE = 0
@@ -175,10 +175,12 @@ function Invoke-Profile {
         $errorCount = 0
         foreach ($image in $Images) {
             $scan = Invoke-Scan -Client $client -Image $image -BaseUrl $baseUrl
-            $latencies.Add($scan.ElapsedMs)
             $responseContractValid = $statusCounts.Contains([string]$scan.Body.status)
             if ($responseContractValid) {
                 $statusCounts[[string]$scan.Body.status]++
+                if ([string]$scan.Body.status -eq "SEGMENTATION") {
+                    $fullPathLatencies.Add($scan.ElapsedMs)
+                }
             }
             foreach ($segmentation in @($scan.Body.segmentations)) {
                 $segmentationStatus = [string]$segmentation.status
@@ -202,7 +204,7 @@ function Invoke-Profile {
         }
 
         $process.Refresh()
-        $values = $latencies.ToArray()
+        $values = $fullPathLatencies.ToArray()
         return [pscustomobject]@{
             Name = $Profile.Name
             Provider = $Profile.Provider
@@ -262,12 +264,13 @@ $script:ExpectedVersion = [string]$metadata.worker_version
 if (
     $null -ne $metadata.detector.ensemble -or
     [string]$metadata.detector.filename -ne "detector.onnx" -or
-    [double]$metadata.detector.score_threshold -ne 0.33 -or
-    $null -eq $metadata.count_verifier -or
-    [string]$metadata.count_verifier.comparison_mode -ne "object_presence" -or
-    [int]$metadata.count_verifier.input_size[0] -ne 192
+    [double]$metadata.detector.score_threshold -ne 0.65 -or
+    $null -ne $metadata.count_verifier -or
+    $null -eq $metadata.classifier_verification -or
+    [double]$metadata.classifier_verification.ambiguity_maximum_approval_score -ne 0.5 -or
+    [int]$metadata.classifier_verification.independent_embedder.fixed_batch_size -ne 1
 ) {
-    throw "N100 benchmark Runtime does not match the selected 0.1.2 single-detector policy."
+    throw "N100 benchmark Runtime does not match the selected consensus policy."
 }
 if (-not (Test-Path -LiteralPath $resolvedImageDirectory -PathType Container)) {
     throw "Benchmark image directory is missing: $resolvedImageDirectory"
@@ -284,11 +287,11 @@ if ($images.Count -lt $MinimumImages) {
 $profiles = [System.Collections.Generic.List[object]]::new()
 $profiles.Add(
     [pscustomobject]@{
-        Name = "candidate-cpu-1x4"
-        Provider = "cpu"
+        Name = "candidate-openvino-1xauto"
+        Provider = "openvino"
         DetectorWorkers = 1
-        DetectorThreads = 4
-        EmbedderThreads = 4
+        DetectorThreads = 0
+        EmbedderThreads = 0
     }
 )
 $internalResults = [System.Collections.Generic.List[object]]::new()
@@ -305,7 +308,7 @@ foreach ($profile in $profiles) {
 
 $candidate = $internalResults[0]
 $recommended = $candidate
-$selectionResult = "CPU 1x4 is accepted only when errors and the one-second mean/p95 target all pass."
+$selectionResult = "OpenVINO CPU 1xauto is accepted only when errors and the 300ms mean/p95 target all pass."
 
 $processor = Get-CimInstance Win32_Processor | Select-Object -First 1
 $computer = Get-CimInstance Win32_ComputerSystem
@@ -341,14 +344,14 @@ $passes = (
     $targetCpuDetected -and
     $responseContractSafe -and
     $candidate.FullPathCount -ge $MinimumFullPathImages -and
-    $candidate.MeanMs -le 1000 -and
-    $candidate.P95Ms -le 1000
+    $candidate.MeanMs -le 300 -and
+    $candidate.P95Ms -le 300
 )
 $report = [ordered]@{
     schema_version = "1.0"
-    evaluation = "bixolon_worker_n100_cpu_1x4"
+    evaluation = "bixolon_worker_n100_openvino_1xauto"
     product_version = $script:ExpectedVersion
-    provider = "cpu"
+    provider = "openvino"
     hardware = [ordered]@{
         cpu_name = $processor.Name
         cores = $processor.NumberOfCores
@@ -370,13 +373,13 @@ $report = [ordered]@{
         embedder_threads = $recommended.EmbedderThreads
     }
     target = [ordered]@{
-        full_path_latency_ms = 1000
+        full_path_latency_ms = 300
         recommended_mean_ms = $recommended.MeanMs
         recommended_p95_ms = $recommended.P95Ms
-        mean_within_1_second = ($recommended.MeanMs -le 1000)
-        p95_within_1_second = ($recommended.P95Ms -le 1000)
+        mean_within_300ms = ($recommended.MeanMs -le 300)
+        p95_within_300ms = ($recommended.P95Ms -le 300)
     }
-    selection = "fixed CPU 1x4"
+    selection = "fixed OpenVINO CPU 1xauto"
     selection_result = $selectionResult
     passes = $passes
     privacy = [ordered]@{
@@ -400,5 +403,5 @@ $json = $report | ConvertTo-Json -Depth 12
 Write-Host $json
 Write-Host "N100 benchmark result: $resolvedOutput"
 if (-not $passes) {
-    throw "N100 benchmark did not satisfy the hardware, full-path, response, and one-second checks."
+    throw "N100 benchmark did not satisfy the hardware, full-path, response, and 300ms checks."
 }

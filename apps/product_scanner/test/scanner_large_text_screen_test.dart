@@ -62,7 +62,10 @@ void main() {
       matchesGoldenFile('goldens/activity_text_125_1280x720.png'),
     );
 
-    final search = find.widgetWithText(TextField, '상품명, Scan ID 또는 사유 코드');
+    final search = find.widgetWithText(
+      TextField,
+      '상품명, Scan ID, Worker·작업자 오류 코드',
+    );
     await tester.enterText(search, '스콘');
     await tester.pumpAndSettle();
     expect(find.text('검색 결과'), findsOneWidget);

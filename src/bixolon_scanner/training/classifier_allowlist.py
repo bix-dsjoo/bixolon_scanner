@@ -85,13 +85,17 @@ def _validate_manifest_rows(
         raise ValueError(
             f"classifier allowlist folds must be {sorted(expected_folds)}, got {sorted(folds)}"
         )
-    group_folds: dict[str, set[int]] = defaultdict(set)
-    for row in rows:
-        group = str(row.get("perceptual_group_id", row["image_sha256"]))
-        group_folds[group].add(int(row["fold"]))
-    leaked = sorted(group for group, assigned in group_folds.items() if len(assigned) != 1)
-    if leaked:
-        raise ValueError(f"classifier perceptual groups cross folds: {leaked[:3]}")
+    for key in ("physical_item_id", "capture_session_id", "perceptual_group_id"):
+        if not any(row.get(key) is not None for row in rows):
+            continue
+        if any(row.get(key) is None for row in rows):
+            raise ValueError(f"classifier {key} must be present on every row when used")
+        group_folds: dict[str, set[int]] = defaultdict(set)
+        for row in rows:
+            group_folds[str(row[key])].add(int(row["fold"]))
+        leaked = sorted(group for group, assigned in group_folds.items() if len(assigned) != 1)
+        if leaked:
+            raise ValueError(f"classifier {key} groups cross folds: {leaked[:3]}")
     return sorted(
         rows,
         key=lambda row: (int(row["category_id"]), str(row["image_path"]).replace("\\", "/")),

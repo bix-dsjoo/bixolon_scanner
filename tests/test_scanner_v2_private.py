@@ -57,7 +57,7 @@ def _item(ordinal: int, status: ItemStatus, class_id: str | None = None) -> Scan
         segmentation_id=f"segmentation_{ordinal:03d}",
         bbox=BoundingBox(x=ordinal, y=ordinal, width=10, height=10),
         status=status,
-        reason_codes=([] if status is ItemStatus.APPROVED else ["CLASSIFIER_OUT_OF_CATALOG"]),
+        reason_codes=([] if status is ItemStatus.APPROVED else ["SEGMENT_RECAPTURE_REQUIRED"]),
         prediction=(
             Prediction(class_id=class_id, class_name=class_id)
             if status is ItemStatus.APPROVED and class_id is not None

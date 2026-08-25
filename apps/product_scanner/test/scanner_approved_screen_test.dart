@@ -51,7 +51,7 @@ void main() {
     await tester.pumpAndSettle();
 
     final reviewComplete = find.bySemanticsLabel(
-      '검수 상태. 1개 상품 확인 완료. 최종 확정할 수 있어요.',
+      '검출 결과. 1개 상품 선택 완료. 결과를 저장할 수 있어요.',
     );
     expect(reviewComplete, findsOneWidget);
     expect(
@@ -68,7 +68,7 @@ void main() {
       matchesGoldenFile('goldens/scanner_approved_1280x720.png'),
     );
 
-    expect(find.widgetWithText(FilledButton, '1개 상품 최종 확정'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '결과 저장'), findsOneWidget);
     expect(find.widgetWithText(OutlinedButton, '카메라로 돌아가기'), findsOneWidget);
     expect(find.byType(FilledButton), findsOneWidget);
     expect(find.byKey(const ValueKey('step-navigator')), findsNothing);
@@ -215,11 +215,11 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('저장하지 못했어요. 확인 결과는 유지됐어요.'), findsOneWidget);
+    expect(find.text('저장하지 못했어요. 수정한 결과는 유지됐어요.'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '다시 저장'), findsOneWidget);
     expect(find.byType(FilledButton), findsOneWidget);
     expect(controller.detections.single.isConfirmed, isTrue);
-    final error = find.bySemanticsLabel('저장하지 못했어요. 확인 결과는 유지됐어요.');
+    final error = find.bySemanticsLabel(RegExp('저장하지 못했어요. 수정한 결과는 유지됐어요.'));
     expect(error, findsOneWidget);
     expect(
       tester
@@ -238,7 +238,7 @@ void main() {
     tester.platformDispatcher.textScaleFactorTestValue = 1.5;
     addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
     await tester.pumpAndSettle();
-    expect(find.text('저장하지 못했어요. 확인 결과는 유지됐어요.'), findsOneWidget);
+    expect(find.text('저장하지 못했어요. 수정한 결과는 유지됐어요.'), findsOneWidget);
     expect(
       tester.getSize(find.widgetWithText(FilledButton, '다시 저장')).height,
       greaterThanOrEqualTo(48),
@@ -250,7 +250,7 @@ void main() {
 
     expect(logs.saveCalls, 2);
     expect(controller.processState, ProcessState.ready);
-    expect(find.text('1개 상품을 확정했어요'), findsOneWidget);
+    expect(find.text('결과를 저장했어요'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '다시 저장'), findsNothing);
     controller.dispose();
     semantics.dispose();
@@ -291,7 +291,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final finalAction = find.bySemanticsLabel('1개 상품 최종 확정');
+    final finalAction = find.bySemanticsLabel('결과 저장');
     var finalActionFocused = false;
     for (var index = 0; index < 12 && !finalActionFocused; index += 1) {
       await tester.sendKeyEvent(LogicalKeyboardKey.tab);
@@ -319,7 +319,9 @@ void main() {
     );
     expect(
       tester
-          .getSemantics(find.bySemanticsLabel('저장하지 못했어요. 확인 결과는 유지됐어요.'))
+          .getSemantics(
+            find.bySemanticsLabel(RegExp('저장하지 못했어요. 수정한 결과는 유지됐어요.')),
+          )
           .getSemanticsData()
           .flagsCollection
           .isLiveRegion,
@@ -337,7 +339,7 @@ void main() {
     expect(controller.processState, ProcessState.ready);
     expect(controller.inputMode, InputMode.image);
     expect(find.bySemanticsLabel('다시 저장'), findsNothing);
-    final completion = find.bySemanticsLabel('1개 상품을 확정했어요');
+    final completion = find.bySemanticsLabel('결과를 저장했어요');
     expect(completion, findsOneWidget);
     expect(
       tester

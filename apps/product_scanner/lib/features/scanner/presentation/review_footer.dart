@@ -11,36 +11,16 @@ class _ReviewFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final totalCount = controller.detections.length;
-    final remainingCount = totalCount - controller.confirmedCount;
     final submitting = controller.processState == ProcessState.submitting;
-    final feedbackState = controller.missedDetectionLogSaveState;
-    final feedbackSaving = feedbackState == MissedDetectionLogSaveState.saving;
-    final feedbackSaved = feedbackState == MissedDetectionLogSaveState.saved;
-    final feedbackFailed = feedbackState == MissedDetectionLogSaveState.error;
-    final visibleError =
-        controller.errorMessage ?? controller.missedDetectionLogError;
-    final feedbackLabel = feedbackSaved
-        ? AppActionCopy.missedDetectionLogSaved
-        : feedbackFailed
-        ? AppActionCopy.retrySave
-        : feedbackSaving
-        ? AppActionCopy.saving
-        : AppActionCopy.saveMissedDetectionLog;
-    final feedbackIcon = feedbackSaving
-        ? AppProgressVisual(
-            size: context.appTokens.inlineProgressSize,
-            strokeWidth: 2,
-            color: AppColors.muted,
-          )
-        : Icon(
-            feedbackSaved
-                ? Icons.check_circle_outline_rounded
-                : Icons.report_problem_outlined,
-            size: 18,
-          );
-    final compactFeedbackAction =
-        MediaQuery.textScalerOf(context).scale(1) > 1.25;
+    final incomplete = controller.incompleteCount;
+    final visibleError = controller.errorMessage;
+    final status =
+        visibleError ??
+        (controller.operatorRequiresRecapture
+            ? '재촬영 결과로 저장합니다'
+            : incomplete == 0
+            ? '${controller.confirmedCount}개 상품 선택 완료'
+            : '$incomplete개 상품 선택 필요');
     return AppActionBar(
       child: Row(
         children: [
@@ -48,22 +28,18 @@ class _ReviewFooter extends StatelessWidget {
             const Icon(
               Icons.error_outline_rounded,
               color: AppColors.error,
-              size: 17,
+              size: 18,
             ),
             const SizedBox(width: AppSpacing.x2),
           ],
           Expanded(
             child: Semantics(
-              container: visibleError != null,
-              excludeSemantics: visibleError != null,
+              container: visibleError != null || incomplete > 0,
               liveRegion: visibleError != null,
-              label: visibleError,
+              label: status,
               child: Text(
-                visibleError ??
-                    (controller.allConfirmed
-                        ? '$totalCount개 상품 확인 완료'
-                        : '${controller.confirmedCount} / $totalCount 상품 확인 완료'),
-                maxLines: visibleError == null ? 1 : 2,
+                status,
+                maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                   fontWeight: AppTypography.bold,
@@ -73,46 +49,26 @@ class _ReviewFooter extends StatelessWidget {
             ),
           ),
           const SizedBox(width: AppSpacing.x3),
-          if (compactFeedbackAction)
-            IconButton.outlined(
-              key: const ValueKey('save-missed-detection-log'),
-              tooltip: feedbackLabel,
-              onPressed: controller.canSaveMissedDetectionLog
-                  ? controller.saveMissedDetectionLog
-                  : null,
-              icon: feedbackIcon,
-            )
-          else
-            OutlinedButton.icon(
-              key: const ValueKey('save-missed-detection-log'),
-              onPressed: controller.canSaveMissedDetectionLog
-                  ? controller.saveMissedDetectionLog
-                  : null,
-              icon: feedbackIcon,
-              label: Text(feedbackLabel),
-            ),
-          const SizedBox(width: AppSpacing.x2),
           AppProgressActionButton(
+            key: const ValueKey('save-operator-review'),
             focusNode: finalActionFocusNode,
-            onPressed: controller.allConfirmed && !submitting
-                ? controller.submit
-                : null,
+            onPressed: controller.canSaveReview ? controller.saveReview : null,
             progressing: submitting,
             progressLabel: AppActionCopy.saving,
             progressAnnouncement: AppActionCopy.savingAnnouncement,
             icon: Icon(
-              controller.errorMessage != null
+              visibleError != null
                   ? Icons.refresh_rounded
-                  : controller.allConfirmed
-                  ? Icons.check_rounded
-                  : Icons.lock_outline_rounded,
+                  : incomplete > 0 && !controller.operatorRequiresRecapture
+                  ? Icons.touch_app_outlined
+                  : Icons.save_outlined,
               size: 19,
             ),
-            label: controller.errorMessage != null
+            label: visibleError != null
                 ? AppActionCopy.retrySave
-                : controller.allConfirmed
-                ? '$totalCount개 상품 최종 확정'
-                : '$remainingCount개 상품 확인 필요',
+                : incomplete > 0 && !controller.operatorRequiresRecapture
+                ? '$incomplete개 상품 선택 필요'
+                : '결과 저장',
           ),
         ],
       ),

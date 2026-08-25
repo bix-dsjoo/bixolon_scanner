@@ -26,7 +26,7 @@
     },
     "reason_codes": {
       "type": "array",
-      "description": "SEGMENTATION aggregate reasons use SEGMENT_BELOW_APPROVAL_THRESHOLD, SEGMENT_DUPLICATE_REVIEW_REQUIRED, and SEGMENT_RECAPTURE_REQUIRED in decision order.",
+      "description": "IMAGE_RECAPTURE uses only IMAGE_RECAPTURE_REQUIRED. SEGMENTATION aggregate reasons use SEGMENT_BELOW_APPROVAL_THRESHOLD, SEGMENT_DUPLICATE_REVIEW_REQUIRED, and SEGMENT_RECAPTURE_REQUIRED in decision order.",
       "items": {"type": "string"}
     },
     "segmentations": {
@@ -97,7 +97,7 @@
         },
         "reason_codes": {
           "type": "array",
-          "description": "UNKNOWN uses one review reason including BELOW_APPROVAL_THRESHOLD, CLASSIFIER_AMBIGUOUS_TOP2, CLASSIFIER_CATALOG_CONFLICT, or DETECTOR_CONTAINED_DUPLICATE. SEGMENT_RECAPTURE uses an action-specific quality, border, OOD, or Top-3 safety reason.",
+          "description": "UNKNOWN uses one review reason including BELOW_APPROVAL_THRESHOLD, CLASSIFIER_AMBIGUOUS_TOP2, CLASSIFIER_CATALOG_CONFLICT, or DETECTOR_CONTAINED_DUPLICATE. SEGMENT_RECAPTURE uses only SEGMENT_RECAPTURE_REQUIRED.",
           "items": {"type": "string"}
         },
         "prediction": {

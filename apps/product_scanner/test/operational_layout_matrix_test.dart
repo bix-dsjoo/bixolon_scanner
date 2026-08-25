@@ -120,7 +120,8 @@ void _expectAccessibleTapTargets(WidgetTester tester) {
     final accessibleName = '${data.label} ${data.hint}'.trim();
     if (accessibleName.isEmpty) {
       unnamedTargets.add(
-        '<레이블 없음>: ${rect.width.toStringAsFixed(1)}×${rect.height.toStringAsFixed(1)}',
+        '<레이블 없음>: ${rect.width.toStringAsFixed(1)}×${rect.height.toStringAsFixed(1)} '
+        '@ ${rect.left.toStringAsFixed(1)},${rect.top.toStringAsFixed(1)}',
       );
     }
     if (rect.width < 44 || rect.height < 44) {
@@ -189,6 +190,9 @@ ScannerController _scanController({
     ..processState = processState
     ..response = response
     ..completionMessage = completionMessage;
+  if (response?.status == ScanStatus.recapture) {
+    controller.operatorRequiresRecapture = true;
+  }
   if (response != null && response.items.isNotEmpty) {
     controller
       ..detections = testReviewDetections(response)
@@ -251,7 +255,7 @@ final _scanScenarios = <_ScanScenario>[
   ),
   _ScanScenario(
     'APPROVED',
-    '검수 완료',
+    '검출 결과',
     () => _scanController(
       processState: ProcessState.reviewing,
       response: _approvedResponse,
@@ -306,7 +310,7 @@ class _ActivityScenario {
 }
 
 final _activityScenarios = <_ActivityScenario>[
-  _ActivityScenario('Activity 목록·상세', '확정 상품', logs: <ScanLogSummary>[_log]),
+  _ActivityScenario('Activity 목록·상세', '저장 기록', logs: <ScanLogSummary>[_log]),
   _ActivityScenario('Activity 빈 상태', '저장된 활동이 없어요'),
   _ActivityScenario('Activity 오류', '활동 기록을 불러오지 못했어요', failList: true),
 ];

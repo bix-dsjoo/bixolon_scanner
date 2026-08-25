@@ -17,10 +17,12 @@ from ..contracts.catalog import (
     CatalogMetadata,
     CatalogRestrictedPair,
     CatalogSignature,
+    load_store_catalog_package,
     sha256_file,
 )
 from ..contracts.runtime_package_v2 import load_runtime_package_v2
 from ..runtime.catalog import OnnxEmbedder, l2_normalize
+from ..runtime.onnx_session import ExecutionProvider
 from ..training.synthetic_roi import (
     DirectRoiRecipe,
     augment_direct_roi,
@@ -127,6 +129,83 @@ def fit_ridge_adapter(
     return coefficients[:-1].astype(np.float32), coefficients[-1].astype(np.float32)
 
 
+def fit_append_only_ridge_adapter(
+    base_weight: np.ndarray,
+    base_bias: np.ndarray,
+    features: np.ndarray,
+    labels: np.ndarray,
+    *,
+    alpha: float,
+    class_count: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Append independently fitted outputs while preserving every base coefficient bit-for-bit."""
+    old_weight = np.asarray(base_weight, dtype=np.float32)
+    old_bias = np.asarray(base_bias, dtype=np.float32)
+    values = np.asarray(features, dtype=np.float64)
+    targets = np.asarray(labels, dtype=np.int64)
+    if old_weight.ndim != 2 or old_bias.shape != (old_weight.shape[1],):
+        raise ValueError("append-only base adapter shapes are invalid")
+    base_class_count = old_weight.shape[1]
+    if (
+        alpha <= 0
+        or class_count <= base_class_count
+        or values.ndim != 2
+        or values.shape[1] != old_weight.shape[0]
+        or targets.shape != (len(values),)
+        or np.any(targets < 0)
+        or np.any(targets >= class_count)
+    ):
+        raise ValueError("append-only ridge inputs are invalid")
+    if set(np.unique(targets).tolist()) != set(range(class_count)):
+        raise ValueError("append-only ridge requires support for every class")
+
+    design = np.concatenate([values, np.ones((len(values), 1), dtype=np.float64)], axis=1)
+    regularization = np.eye(design.shape[1], dtype=np.float64) * alpha
+    regularization[-1, -1] = 0.0
+    system = design.T @ design + regularization
+    appended_weight = []
+    appended_bias = []
+    for class_index in range(base_class_count, class_count):
+        binary_target = (targets == class_index).astype(np.float64)
+        coefficients = np.linalg.solve(system, design.T @ binary_target)
+        appended_weight.append(coefficients[:-1].astype(np.float32))
+        appended_bias.append(np.float32(coefficients[-1]))
+    return (
+        np.concatenate([old_weight, np.stack(appended_weight, axis=1)], axis=1),
+        np.concatenate([old_bias, np.asarray(appended_bias, dtype=np.float32)]),
+    )
+
+
+def fit_diagonal_lda_adapter(
+    features: np.ndarray,
+    labels: np.ndarray,
+    *,
+    class_count: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    """Fit a deterministic shared-diagonal LDA head for small support sets."""
+    values = np.asarray(features, dtype=np.float64)
+    targets = np.asarray(labels, dtype=np.int64)
+    if values.ndim != 2 or targets.shape != (len(values),):
+        raise ValueError("Catalog diagonal LDA inputs have invalid shapes")
+    if len(values) == 0 or class_count <= 0:
+        raise ValueError("Catalog diagonal LDA configuration is invalid")
+    if np.any(targets < 0) or np.any(targets >= class_count):
+        raise ValueError("Catalog diagonal LDA labels are invalid")
+    counts = np.bincount(targets, minlength=class_count)
+    if np.any(counts == 0):
+        raise ValueError("Catalog diagonal LDA requires every configured class")
+    means = np.stack([values[targets == index].mean(axis=0) for index in range(class_count)])
+    residuals = values - means[targets]
+    degrees_of_freedom = max(1, len(values) - class_count)
+    variance = np.square(residuals).sum(axis=0) / degrees_of_freedom
+    variance_floor = max(float(variance.mean()) * 1e-3, np.finfo(np.float64).eps)
+    variance = np.maximum(variance, variance_floor)
+    weight = (means / variance).T
+    log_prior = np.log(counts / counts.sum())
+    bias = -0.5 * np.square(means / np.sqrt(variance)).sum(axis=1) + log_prior
+    return weight.astype(np.float32), bias.astype(np.float32)
+
+
 def _adapter_features(
     embedder: OnnxEmbedder,
     images: list[Image.Image],
@@ -209,8 +288,10 @@ def build_catalog(
     key_id: str | None,
     authentication: str = "CHECKSUM-SHA256",
     supports_per_class: int = CATALOG_DEFAULT_SUPPORTS_PER_CLASS,
-    provider: str,
+    provider: ExecutionProvider,
     cuda_dll_dir: Path | None,
+    decision_head: str = "ridge_adapter",
+    append_only_base_catalog_dir: Path | None = None,
 ) -> dict:
     if output_dir.exists():
         raise FileExistsError(output_dir)
@@ -245,12 +326,53 @@ def build_catalog(
     adapter_features, adapter_source_indices, augmentation_statistics = _adapter_features(
         embedder, images, records, runtime
     )
-    weight, bias = fit_ridge_adapter(
-        adapter_features,
-        labels_array[adapter_source_indices],
-        alpha=runtime.metadata.classifier_policy.ridge_alpha,
-        class_count=len(class_ids),
-    )
+    adapter_labels = labels_array[adapter_source_indices]
+    append_only_base_class_count = None
+    if append_only_base_catalog_dir is not None:
+        if decision_head != "ridge_adapter":
+            raise ValueError("append-only Catalog extension requires a ridge adapter")
+        base_catalog = load_store_catalog_package(append_only_base_catalog_dir)
+        if base_catalog.metadata.append_only_base_class_count is not None:
+            raise ValueError("append-only Catalog extensions cannot be chained")
+        base_ids = [label.class_id for label in base_catalog.metadata.labels]
+        if class_ids[: len(base_ids)] != base_ids or len(class_ids) <= len(base_ids):
+            raise ValueError("append-only Catalog labels must preserve the sorted base prefix")
+        if (
+            base_catalog.metadata.embedder_id != runtime.metadata.embedder.embedder_id
+            or base_catalog.metadata.embedding_dimension != supports.shape[1]
+            or base_catalog.metadata.support_count_per_class != supports_per_class
+            or base_catalog.metadata.decision_head != "ridge_adapter"
+            or base_catalog.adapter_path is None
+        ):
+            raise ValueError("append-only base Catalog is not structurally compatible")
+        with base_catalog.adapter_path.open("rb") as stream:
+            with np.load(stream, allow_pickle=False) as payload:
+                base_weight = np.asarray(payload["weight"], dtype=np.float32)
+                base_bias = np.asarray(payload["bias"], dtype=np.float32)
+        append_only_base_class_count = len(base_ids)
+        weight, bias = fit_append_only_ridge_adapter(
+            base_weight,
+            base_bias,
+            adapter_features,
+            adapter_labels,
+            alpha=runtime.metadata.classifier_policy.ridge_alpha,
+            class_count=len(class_ids),
+        )
+    elif decision_head == "ridge_adapter":
+        weight, bias = fit_ridge_adapter(
+            adapter_features,
+            adapter_labels,
+            alpha=runtime.metadata.classifier_policy.ridge_alpha,
+            class_count=len(class_ids),
+        )
+    elif decision_head == "diagonal_lda":
+        weight, bias = fit_diagonal_lda_adapter(
+            adapter_features,
+            adapter_labels,
+            class_count=len(class_ids),
+        )
+    else:
+        raise ValueError("unsupported Catalog decision head")
     similarities = prototypes @ prototypes.T
     restricted_pairs = []
     restricted_ids: set[str] = set()
@@ -320,8 +442,9 @@ def build_catalog(
         support_count=len(records),
         labels=labels,
         source_manifest_sha256=sha256_file(source_manifest_path),
-        decision_head="ridge_adapter",
+        decision_head=decision_head,
         adapter_filename="adapter.bin",
+        append_only_base_class_count=append_only_base_class_count,
     )
     activation = CatalogActivation(
         state="active_restricted" if restricted_ids else "active",
@@ -347,8 +470,18 @@ def build_catalog(
         "compactness": {label.class_id: label.compactness for label in labels},
         "nearest_similarity": {label.class_id: label.nearest_similarity for label in labels},
         "adapter_fit": {
-            "algorithm": "closed_form_ridge_with_unregularized_bias",
-            "alpha": runtime.metadata.classifier_policy.ridge_alpha,
+            "algorithm": (
+                "append_only_ridge_adapter"
+                if append_only_base_class_count is not None
+                else decision_head
+            ),
+            "append_only_base_class_count": append_only_base_class_count,
+            "embedding_execution_provider": provider,
+            "alpha": (
+                runtime.metadata.classifier_policy.ridge_alpha
+                if decision_head == "ridge_adapter"
+                else None
+            ),
             "feature_space": "l2_normalized_frozen_embedder_output",
             "source_manifest_sha256": sha256_file(manifest_path),
             "support_augmentation": augmentation_statistics,
@@ -389,6 +522,7 @@ def build_catalog(
         "restricted_class_count": len(restricted_ids),
         "restricted_pair_count": len(restricted_pairs),
         "authentication": authentication,
+        "append_only_base_class_count": append_only_base_class_count,
     }
 
 
@@ -412,8 +546,18 @@ def main(argv: list[str] | None = None) -> None:
     )
     parser.add_argument("--signing-key-env", default="BIXOLON_CATALOG_SIGNING_KEY")
     parser.add_argument("--key-id")
-    parser.add_argument("--provider", choices=("cuda", "cpu"), default="cuda")
+    parser.add_argument(
+        "--provider",
+        choices=("cuda", "cpu", "openvino"),
+        default="cuda",
+    )
     parser.add_argument("--cuda-dll-dir", type=Path)
+    parser.add_argument(
+        "--decision-head",
+        choices=("ridge_adapter", "diagonal_lda"),
+        default="ridge_adapter",
+    )
+    parser.add_argument("--append-only-base-catalog", type=Path)
     args = parser.parse_args(argv)
     secret = os.environ.get(args.signing_key_env, "").encode() or None
     report = build_catalog(
@@ -429,6 +573,8 @@ def main(argv: list[str] | None = None) -> None:
         supports_per_class=args.supports_per_class,
         provider=args.provider,
         cuda_dll_dir=args.cuda_dll_dir,
+        decision_head=args.decision_head,
+        append_only_base_catalog_dir=args.append_only_base_catalog,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

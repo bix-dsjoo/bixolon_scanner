@@ -21,6 +21,7 @@ FINAL_BUNDLE_REQUIRED_FILES = (
     "worker/store-catalog/catalog.json",
     "worker/store-catalog/checksums.json",
     "worker/model-package/licenses/APACHE-2.0.txt",
+    "worker/model-package/licenses/AGPL-3.0.txt",
     "worker/model-package/licenses/DINOV3-LICENSE.md",
     "worker/model-package/licenses/THIRD_PARTY_MODELS.md",
     "worker/cuda-runtime/cudart64_13.dll",
@@ -178,6 +179,9 @@ def _rewrite_runtime(source: Path, target: Path, version: str) -> None:
     metadata["detector"]["version"] = version
     metadata["embedder"]["version"] = version
     metadata["classifier_policy"]["version"] = version
+    verification = metadata.get("classifier_verification")
+    if isinstance(verification, dict):
+        verification["independent_embedder"]["version"] = version
     legacy_detector_name = "detector-production.onnx"
     versioned_detector_name = "detector-reference.onnx"
     legacy_detector = target / legacy_detector_name
@@ -208,10 +212,18 @@ def _replace_exact_string(value: Any, old: str, new: str) -> Any:
     return new if value == old else value
 
 
-def _rewrite_catalog(source: Path, target: Path, version: str) -> None:
-    shutil.copytree(source, target)
+def _rewrite_catalog_directory(target: Path, version: str) -> None:
     metadata_path = target / "catalog.json"
     metadata = _read_json(metadata_path)
+    verification = metadata.get("verification")
+    if isinstance(verification, dict):
+        for directory_key, checksum_key in (
+            ("rotation_catalog_directory", "rotation_checksums_sha256"),
+            ("independent_catalog_directory", "independent_checksums_sha256"),
+        ):
+            auxiliary = target / verification[directory_key]
+            _rewrite_catalog_directory(auxiliary, version)
+            verification[checksum_key] = sha256_file(auxiliary / "checksums.json")
     metadata["authentication"] = "CHECKSUM-SHA256"
     metadata["catalog_version"] = version
     metadata["embedder_version"] = version
@@ -224,6 +236,11 @@ def _rewrite_catalog(source: Path, target: Path, version: str) -> None:
     signature_path = target / "signature.json"
     if signature_path.exists():
         signature_path.unlink()
+
+
+def _rewrite_catalog(source: Path, target: Path, version: str) -> None:
+    shutil.copytree(source, target)
+    _rewrite_catalog_directory(target, version)
 
 
 def _immutable_payload_hashes(root: Path, excluded: set[str]) -> list[str]:
@@ -244,7 +261,12 @@ def _assert_immutable_payloads(
         runtime_target, {"metadata.json"}
     ):
         raise ValueError("runtime model payload changed while assigning the product version")
-    excluded = {"catalog.json", "checksums.json", "signature.json"}
+    excluded = {
+        path.relative_to(root).as_posix()
+        for root in (catalog_source, catalog_target)
+        for path in root.rglob("*")
+        if path.is_file() and path.name in {"catalog.json", "checksums.json", "signature.json"}
+    }
     if _immutable_payload_hashes(catalog_source, excluded) != _immutable_payload_hashes(
         catalog_target, excluded
     ):
@@ -261,7 +283,7 @@ def _validate_composition(
         catalog_path,
         expected_store_id=config.catalog.store_id,
     )
-    versions = (
+    versions = [
         runtime.metadata.worker_version,
         runtime.metadata.detector.version,
         runtime.metadata.embedder.version,
@@ -270,7 +292,30 @@ def _validate_composition(
         catalog.metadata.catalog_version,
         catalog.metadata.embedder_version,
         catalog.metadata.classifier_policy_version,
-    )
+    ]
+    if runtime.metadata.classifier_verification is not None:
+        versions.append(runtime.metadata.classifier_verification.independent_embedder.version)
+    auxiliary_catalogs = []
+    if catalog.rotation_catalog_root is not None:
+        auxiliary_catalogs.append(catalog.rotation_catalog_root)
+    if catalog.independent_catalog_root is not None:
+        auxiliary_catalogs.append(catalog.independent_catalog_root)
+    for auxiliary_root in auxiliary_catalogs:
+        auxiliary = load_store_catalog_package(
+            auxiliary_root,
+            expected_store_id=config.catalog.store_id,
+        )
+        versions.extend(
+            (
+                auxiliary.metadata.catalog_version,
+                auxiliary.metadata.embedder_version,
+                auxiliary.metadata.classifier_policy_version,
+            )
+        )
+        if auxiliary.metadata.authentication != "CHECKSUM-SHA256":
+            raise ValueError("prepared auxiliary Catalog must use checksum-only validation")
+        if (auxiliary_root / "signature.json").exists():
+            raise ValueError("prepared auxiliary Catalog must not contain a signature")
     if any(value != config.version for value in versions):
         raise ValueError("prepared bundle contains mixed product versions")
     runtime_metadata = _read_json(runtime_path / "metadata.json")

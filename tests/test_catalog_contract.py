@@ -27,6 +27,8 @@ from bixolon_scanner.contracts.runtime_package_v2 import (
 from bixolon_scanner.operations.catalog_activation import (
     _adapter_features,
     _select_catalog_supports,
+    fit_append_only_ridge_adapter,
+    fit_diagonal_lda_adapter,
     fit_ridge_adapter,
 )
 from bixolon_scanner.pipeline.ports import Detection
@@ -205,6 +207,42 @@ def test_catalog_ridge_adapter_is_deterministic_and_fits_support_labels() -> Non
 
     first = fit_ridge_adapter(features, labels, alpha=0.01, class_count=2)
     second = fit_ridge_adapter(features, labels, alpha=0.01, class_count=2)
+
+    assert np.array_equal(first[0], second[0])
+    assert np.array_equal(first[1], second[1])
+    logits = features @ first[0] + first[1]
+    assert np.array_equal(np.argmax(logits, axis=1), labels)
+
+
+def test_append_only_ridge_preserves_base_coefficients_bit_for_bit() -> None:
+    features = np.asarray(
+        [[1.0, 0.0], [0.9, 0.1], [0.0, 1.0], [0.1, 0.9], [-1.0, -1.0]],
+        dtype=np.float32,
+    )
+    labels = np.asarray([0, 0, 1, 1, 2], dtype=np.int64)
+    base_weight, base_bias = fit_ridge_adapter(features[:4], labels[:4], alpha=0.01, class_count=2)
+
+    extended_weight, extended_bias = fit_append_only_ridge_adapter(
+        base_weight,
+        base_bias,
+        features,
+        labels,
+        alpha=0.01,
+        class_count=3,
+    )
+
+    assert np.array_equal(extended_weight[:, :2], base_weight)
+    assert np.array_equal(extended_bias[:2], base_bias)
+    assert extended_weight.shape == (2, 3)
+    assert extended_bias.shape == (3,)
+
+
+def test_catalog_diagonal_lda_is_deterministic_and_fits_support_labels() -> None:
+    features = np.asarray([[1.0, 0.0], [0.9, 0.1], [0.0, 1.0], [0.1, 0.9]], dtype=np.float32)
+    labels = np.asarray([0, 0, 1, 1], dtype=np.int64)
+
+    first = fit_diagonal_lda_adapter(features, labels, class_count=2)
+    second = fit_diagonal_lda_adapter(features, labels, class_count=2)
 
     assert np.array_equal(first[0], second[0])
     assert np.array_equal(first[1], second[1])

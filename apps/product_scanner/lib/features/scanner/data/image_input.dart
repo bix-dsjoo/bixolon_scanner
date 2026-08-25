@@ -4,10 +4,17 @@ import 'package:camera/camera.dart';
 import 'package:file_selector/file_selector.dart';
 
 class InputImage {
-  const InputImage({required this.bytes, required this.fileName});
+  const InputImage({
+    required this.bytes,
+    required this.fileName,
+    this.cameraCaptureMs = 0.0,
+    this.fileReadMs = 0.0,
+  });
 
   final Uint8List bytes;
   final String fileName;
+  final double cameraCaptureMs;
+  final double fileReadMs;
 }
 
 abstract interface class CameraGateway {
@@ -57,8 +64,18 @@ class WindowsCameraGateway implements CameraGateway {
     if (active == null || !active.value.isInitialized) {
       throw CameraException('CAMERA_NOT_READY', '카메라가 준비되지 않았습니다.');
     }
+    final capture = Stopwatch()..start();
     final image = await active.takePicture();
-    return InputImage(bytes: await image.readAsBytes(), fileName: image.name);
+    capture.stop();
+    final fileRead = Stopwatch()..start();
+    final bytes = await image.readAsBytes();
+    fileRead.stop();
+    return InputImage(
+      bytes: bytes,
+      fileName: image.name,
+      cameraCaptureMs: capture.elapsedMicroseconds / 1000.0,
+      fileReadMs: fileRead.elapsedMicroseconds / 1000.0,
+    );
   }
 
   @override
@@ -82,6 +99,13 @@ class WindowsImageFileGateway implements ImageFileGateway {
   Future<InputImage?> pick() async {
     final file = await openFile(acceptedTypeGroups: const [_images]);
     if (file == null) return null;
-    return InputImage(bytes: await file.readAsBytes(), fileName: file.name);
+    final fileRead = Stopwatch()..start();
+    final bytes = await file.readAsBytes();
+    fileRead.stop();
+    return InputImage(
+      bytes: bytes,
+      fileName: file.name,
+      fileReadMs: fileRead.elapsedMicroseconds / 1000.0,
+    );
   }
 }

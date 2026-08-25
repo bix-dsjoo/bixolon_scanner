@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "product_version": "0.1.3",
+  "app_build": 6,
+  "executed_at": "2026-08-25T13:59:26+09:00",
+  "environment": {
+    "scope": "current_development_pc",
+    "is_n100": false,
+    "note": "계약 smoke이며 N100 성능 또는 SLA 결과가 아니다."
+  },
+  "artifacts": {
+    "bundle_manifest_sha256": "9716acc824607b925be0e4be7c3179dcd9de9a57f8f00d22f49c6217c580cad2",
+    "n100_setup_sha256": "4ff5fbb698f3fe76dc5cc3d80bf6eed73164bfb54a2b21380fa1bad19f01206a",
+    "n100_worker_zip_sha256": "938e86c40da305a11b7179eeb5fb4cca81ec3eaa5c302d8dcc3fabf3e004d5d3",
+    "openvino_handoff_zip_sha256": "63d7d99e3914b64a01aa2420ac8182fba9413efb136f7ab699a98e9ee6f6d682",
+    "n100_device_test_zip_sha256": "3aca625e993bbedaa4497e532a60ec4783227bec65b8e27e5c0e854c8b56176d"
+  },
+  "installer_worker": {
+    "content_manifest_sha256": "6a42e65490122002fbe070fb79982b76c26da67276f5be142477063e6bccadcd",
+    "file_count": 125,
+    "executable_sha256": "33161c883db7ee20580b03f64a03e7101c6f15c717e9355640876309e5e2960a",
+    "provider": "openvino"
+  },
+  "cases": {
+    "ready": {
+      "http_status": 200,
+      "status": "ready",
+      "all_non_null_versions": "0.1.3"
+    },
+    "valid_scan": {
+      "http_status": 200,
+      "status": "SEGMENTATION"
+    },
+    "corrupt_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": ["CORRUPT_IMAGE"]
+    },
+    "missing_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": ["MISSING_IMAGE_FIELD"]
+    },
+    "unsupported_image": {
+      "http_status": 415,
+      "status": "ERROR",
+      "reason_codes": ["UNSUPPORTED_IMAGE_FORMAT"]
+    }
+  },
+  "privacy": {
+    "image_paths_recorded": false,
+    "image_bytes_recorded": false
+  },
+  "passes": true
+}

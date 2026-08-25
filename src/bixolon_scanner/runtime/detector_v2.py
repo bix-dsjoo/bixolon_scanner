@@ -91,6 +91,7 @@ class CrossScaleOnnxDetector:
         cuda_dll_dir: Path | None = None,
         *,
         cpu_intra_op_threads: int = 0,
+        openvino_cache_dir: Path | None = None,
     ):
         if package.metadata.detector_refinement is None:
             raise ValueError("cross-scale detector requires refinement metadata")
@@ -102,12 +103,14 @@ class CrossScaleOnnxDetector:
             provider,
             cuda_dll_dir,
             cpu_intra_op_threads=cpu_intra_op_threads,
+            openvino_cache_dir=openvino_cache_dir,
         )
         self.refinement = OrtRunner(
             package.root / self.refinement_metadata.filename,
             provider,
             cuda_dll_dir,
             cpu_intra_op_threads=cpu_intra_op_threads,
+            openvino_cache_dir=openvino_cache_dir,
         )
         self.version = self.primary_metadata.version
 
@@ -233,6 +236,7 @@ class FixedEnsembleOnnxDetector:
         *,
         cpu_detector_workers: int = 1,
         cpu_intra_op_threads: int = 0,
+        openvino_cache_dir: Path | None = None,
     ):
         metadata = package.metadata.detector
         if metadata.ensemble is None:
@@ -256,6 +260,7 @@ class FixedEnsembleOnnxDetector:
                 enable_cuda_graph=self.ensemble.cuda_graph_execution,
                 cuda_graph_output_shapes=output_shapes,
                 cpu_intra_op_threads=cpu_intra_op_threads,
+                openvino_cache_dir=openvino_cache_dir,
             )
             for member in self.ensemble.members
         ]
@@ -530,6 +535,7 @@ def build_detector_v2(
     *,
     cpu_detector_workers: int = 1,
     cpu_intra_op_threads: int = 0,
+    openvino_cache_dir: Path | None = None,
 ) -> OnnxDetector | CrossScaleOnnxDetector | FixedEnsembleOnnxDetector | CountVerifiedDetector:
     if package.metadata.detector.ensemble is not None:
         detector = FixedEnsembleOnnxDetector(
@@ -538,6 +544,7 @@ def build_detector_v2(
             cuda_dll_dir,
             cpu_detector_workers=cpu_detector_workers,
             cpu_intra_op_threads=cpu_intra_op_threads,
+            openvino_cache_dir=openvino_cache_dir,
         )
     elif package.metadata.detector_refinement is None:
         detector = OnnxDetector(
@@ -546,6 +553,7 @@ def build_detector_v2(
             provider,
             cuda_dll_dir,
             cpu_intra_op_threads=cpu_intra_op_threads,
+            openvino_cache_dir=openvino_cache_dir,
         )
     else:
         detector = CrossScaleOnnxDetector(
@@ -553,6 +561,7 @@ def build_detector_v2(
             provider,
             cuda_dll_dir,
             cpu_intra_op_threads=cpu_intra_op_threads,
+            openvino_cache_dir=openvino_cache_dir,
         )
     if package.metadata.count_verifier is None:
         return detector
@@ -564,5 +573,6 @@ def build_detector_v2(
         provider,
         cuda_dll_dir,
         cpu_intra_op_threads=cpu_intra_op_threads,
+        openvino_cache_dir=openvino_cache_dir,
     )
     return CountVerifiedDetector(detector, verifier)

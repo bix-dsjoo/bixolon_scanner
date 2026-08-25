@@ -21,6 +21,16 @@ RecapturePresentation presentRecaptureReasons({
     orElse: () => '',
   );
   final guidance = switch (reason) {
+    'IMAGE_RECAPTURE_REQUIRED' => (
+      title: '이미지를 다시 촬영해 주세요',
+      cameraDetail: '상품이 화면 안에 선명하게 보이도록 위치와 조명을 조정해 주세요.',
+      imageDetail: '상품이 모두 선명하게 보이는 다른 이미지를 선택해 주세요.',
+    ),
+    'SEGMENT_RECAPTURE_REQUIRED' => (
+      title: '상품을 다시 촬영해 주세요',
+      cameraDetail: '해당 상품의 전체 모양과 앞면이 선명하게 보이도록 조정해 주세요.',
+      imageDetail: '해당 상품의 전체 모양이 선명한 다른 이미지를 선택해 주세요.',
+    ),
     'DETECTOR_NO_OBJECT' => (
       title: '상품을 찾지 못했어요',
       cameraDetail: '상품이 화면 안에 모두 보이도록 위치를 조정해 주세요.',
@@ -88,6 +98,8 @@ RecapturePresentation presentRecaptureReasons({
 }
 
 const _reasonPriority = <String>[
+  'IMAGE_RECAPTURE_REQUIRED',
+  'SEGMENT_RECAPTURE_REQUIRED',
   'DETECTOR_NO_OBJECT',
   'DETECTOR_CAPACITY_EXCEEDED',
   'DETECTOR_OBJECT_TOO_SMALL',

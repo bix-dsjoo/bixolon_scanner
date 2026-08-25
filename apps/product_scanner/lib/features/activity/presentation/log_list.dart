@@ -267,7 +267,7 @@ class _LogTableHeader extends StatelessWidget {
           Expanded(flex: 3, child: Text('기록 시각', style: style)),
           Expanded(flex: 4, child: Text('상품', style: style)),
           Expanded(flex: 2, child: Text('입력원', style: style)),
-          Expanded(flex: 2, child: Text('검수 결과', style: style)),
+          Expanded(flex: 2, child: Text('저장 상태', style: style)),
           const SizedBox(width: AppSpacing.x8),
         ],
       ),
@@ -378,29 +378,26 @@ class _ReviewSummary extends StatelessWidget {
   Widget build(BuildContext context) {
     final modifiedCount = _modifiedItemCount(log.items);
     final modified = modifiedCount > 0;
-    final recapture = log.isRecapture;
+    final label = activityLogResultLabel(log);
+    final attention = log.isRecapture || modified || log.isLegacy;
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
         Icon(
-          recapture
+          log.isLegacy
+              ? Icons.history_rounded
+              : log.isRecapture
               ? Icons.center_focus_weak_rounded
               : modified
               ? Icons.edit_outlined
               : Icons.check_circle_outline_rounded,
           size: 17,
-          color: recapture || modified
-              ? AppColors.attention
-              : AppColors.success,
+          color: attention ? AppColors.attention : AppColors.success,
         ),
         const SizedBox(width: AppSpacing.x2),
         Flexible(
           child: Text(
-            recapture
-                ? '재촬영'
-                : modified
-                ? '$modifiedCount개 수정'
-                : '자동 확정',
+            label,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: Theme.of(context).textTheme.bodySmall?.copyWith(

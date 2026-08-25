@@ -432,6 +432,34 @@ void main() {
     expect(border.left.width, border.top.width);
   });
 
+  testWidgets('선택 표면을 길게 눌러도 주황색이 아닌 중립 오버레이를 사용한다', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: AppSelectableSurface(
+            selected: true,
+            onTap: _noop,
+            child: const Text('승인 상품'),
+          ),
+        ),
+      ),
+    );
+
+    final inkWell = tester.widget<InkWell>(
+      find.descendant(
+        of: find.byType(AppSelectableSurface),
+        matching: find.byType(InkWell),
+      ),
+    );
+    final pressed = inkWell.overlayColor!.resolve({WidgetState.pressed});
+
+    expect(pressed, AppComponentColors.light.pressedOverlay);
+    expect(pressed, isNot(AppPalette.brand));
+    expect(pressed, isNot(AppPalette.attention));
+    expect(inkWell.overlayColor!.resolve(<WidgetState>{}), Colors.transparent);
+  });
+
   testWidgets('마우스 hover는 토큰 면을 사용하고 선택 면을 덮지 않는다', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -1207,6 +1235,15 @@ void main() {
     expect(data.flagsCollection.isExpanded, Tristate.isFalse);
     expect(data.hasAction(SemanticsAction.expand), isTrue);
 
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    addTearDown(mouse.removePointer);
+    await mouse.addPointer();
+    await mouse.moveTo(tester.getCenter(surface));
+    await tester.pump();
+    final hoveredDecoration =
+        tester.widget<AnimatedContainer>(surface).decoration! as BoxDecoration;
+    expect(hoveredDecoration.color, AppPalette.elevated);
+
     focusNode.requestFocus();
     await tester.pump();
     final decoration =
@@ -1231,6 +1268,14 @@ void main() {
     expect(data.hasAction(SemanticsAction.collapse), isTrue);
     expect(content, findsOneWidget);
     expect(find.byType(AnimatedSize), findsNothing);
+    final contentSurface = tester.widget<DecoratedBox>(
+      find.byKey(const ValueKey('disclosure-content-surface-진단 정보')),
+    );
+    final contentDecoration = contentSurface.decoration as BoxDecoration;
+    final contentBorder = contentDecoration.border! as Border;
+    expect(contentDecoration.color, AppPalette.surface);
+    expect(contentBorder.top, BorderSide.none);
+    expect(contentBorder.bottom.color, AppPalette.outline);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.space);
     await tester.pump();

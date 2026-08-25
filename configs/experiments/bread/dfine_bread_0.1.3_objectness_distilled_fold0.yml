@@ -1,0 +1,31 @@
+__include__:
+  - ./dfine_bread_0.1.3_objectness_fold0.yml
+
+# Stage 1 calibrates only the one-class score heads. Geometry stays exactly at
+# the 0.1.2 teacher initialization until object-query selection is reliable.
+output_dir: artifacts/experiments/bread-0.1.3/detector/fold0-distilled/training
+epochs: 6
+
+lr_warmup_scheduler:
+  type: LinearWarmup
+  warmup_duration: 1
+
+optimizer:
+  type: AdamW
+  params:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.0
+    - params: '^(?=.*backbone)(?=.*norm|bn).*$'
+      lr: 0.0
+      weight_decay: 0.0
+    - params: '^(?=.*score_head)(?!.*bias).*$'
+      lr: 0.00005
+    - params: '^(?=.*score_head)(?=.*bias).*$'
+      lr: 0.00005
+      weight_decay: 0.0
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn|bias))(?!.*score_head).*$'
+      lr: 0.0
+      weight_decay: 0.0
+  lr: 0.0
+  betas: [0.9, 0.999]
+  weight_decay: 0.0

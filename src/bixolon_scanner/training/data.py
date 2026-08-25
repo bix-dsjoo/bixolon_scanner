@@ -32,7 +32,19 @@ class ClassifierDataset:
         self.samples: list[tuple[Path, int, list[float] | None, str]] = []
         for record in records:
             if record["record_type"] == "classification":
-                if mode in ("train", "final_train"):
+                include = (
+                    mode == "validation"
+                    and record["split"] == "development"
+                    and record["fold"] == fold
+                    or mode == "train"
+                    and record["split"] == "development"
+                    and record["fold"] != fold
+                    or mode == "final_train"
+                    and record["split"] == "development"
+                    or mode == "test"
+                    and record["split"] == "test"
+                )
+                if include:
                     self.samples.append(
                         (
                             dataset_root / record["image_path"],

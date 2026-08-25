@@ -1,6 +1,8 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:camera/camera.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
@@ -15,6 +17,7 @@ import 'segment_review_presentation.dart';
 
 part 'top_navigation.dart';
 part 'preview.dart';
+part 'box_editor_dialog.dart';
 part 'input_actions.dart';
 part 'result_list.dart';
 part 'review_inspector.dart';
@@ -88,6 +91,10 @@ class _ScannerScreenState extends State<ScannerScreen>
 
   void _handleControllerChanged() {
     final currentState = widget.controller.processState;
+    final completedAnalysis =
+        _previousProcessState == ProcessState.analyzing &&
+        currentState == ProcessState.reviewing &&
+        widget.controller.response != null;
     final completedImageSave =
         _previousProcessState == ProcessState.submitting &&
         currentState == ProcessState.ready &&
@@ -95,6 +102,12 @@ class _ScannerScreenState extends State<ScannerScreen>
         widget.controller.imageBytes == null &&
         widget.controller.completionMessage != null;
     _previousProcessState = currentState;
+    if (completedAnalysis) {
+      final requestId = widget.controller.response!.requestId;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) widget.controller.recordResultFirstFrame(requestId);
+      });
+    }
     if (!completedImageSave ||
         _section != _WorkspaceSection.scan ||
         FocusManager.instance.primaryFocus?.debugLabel !=
@@ -130,6 +143,10 @@ class _ScannerScreenState extends State<ScannerScreen>
       confirmLabel: AppActionCopy.recapture,
     )) {
       widget.controller.resetSession();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_cameraPrimaryActionFocusNode.canRequestFocus) return;
+        _cameraPrimaryActionFocusNode.requestFocus();
+      });
     }
   }
 
@@ -184,12 +201,12 @@ class _ScannerScreenState extends State<ScannerScreen>
     required String confirmLabel,
   }) async {
     final controller = widget.controller;
-    if (!controller.hasUserChanges) return true;
+    if (!controller.hasUnsavedReview) return true;
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) => AppConfirmDialog(
         title: title,
-        description: '지금까지 확인한 상품 선택이 사라져요.',
+        description: '저장하지 않은 검출 결과와 수정 내용이 사라져요.',
         confirmLabel: confirmLabel,
         onCancel: () => Navigator.of(context).pop(false),
         onConfirm: () => Navigator.of(context).pop(true),
@@ -202,6 +219,14 @@ class _ScannerScreenState extends State<ScannerScreen>
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final key = event.logicalKey;
     final controlPressed = HardwareKeyboard.instance.isControlPressed;
+    if (controlPressed && key == LogicalKeyboardKey.keyZ) {
+      widget.controller.undoReviewEdit();
+      return KeyEventResult.handled;
+    }
+    if (controlPressed && key == LogicalKeyboardKey.keyY) {
+      widget.controller.redoReviewEdit();
+      return KeyEventResult.handled;
+    }
     if (controlPressed && key == LogicalKeyboardKey.keyO) {
       if (!widget.controller.canChooseImage) return KeyEventResult.ignored;
       _chooseImage(showScanOnSelection: true);
@@ -213,6 +238,11 @@ class _ScannerScreenState extends State<ScannerScreen>
     final controller = widget.controller;
     if (controller.isBusy && key != LogicalKeyboardKey.escape) {
       return KeyEventResult.ignored;
+    }
+    if (key == LogicalKeyboardKey.delete &&
+        controller.selectedDetection != null) {
+      controller.removeSelectedDetection();
+      return KeyEventResult.handled;
     }
     if (key == LogicalKeyboardKey.arrowUp) {
       controller.selectPreviousDetection();

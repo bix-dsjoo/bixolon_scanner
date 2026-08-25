@@ -24,6 +24,11 @@ def test_registry_uses_single_objects_and_multi_object_scenes_only(tmp_path):
     assert len(classifier) == 200
     assert {Path(row["image_path"]).parts[0] for row in classifier} == {"single_objects"}
     assert metadata["classifier"]["mixed_sources"] is False
+    assert metadata["classifier"]["allowed_sources"] == [
+        "single_objects",
+        "single_objects_3",
+    ]
+    assert metadata["classifier"]["folds"]["assignment_key"] == "physical_item_id"
     assert len(detector) == 300
     assert {row["evaluation_set"] for row in detector} == {"multi_object_scenes"}
     assert metadata["detector"]["annotated_image_count"] == 300
@@ -54,6 +59,29 @@ def test_registry_accepts_single_objects_3_without_mixing_sources():
     assert {Path(row["image_path"]).parts[0] for row in classifier} == {"single_objects_3"}
     assert len(detector) == 300
     assert metadata["classifier"]["mixed_sources"] is False
+
+
+@pytest.mark.parametrize("classifier_source", ["single_objects", "single_objects_3"])
+def test_classifier_physical_session_and_perceptual_groups_never_cross_folds(
+    classifier_source,
+):
+    classifier, _, metadata = build_bread_cross_validation_registry(
+        DATASET_ROOT, classifier_source=classifier_source, fold_count=3
+    )
+
+    for key in ("physical_item_id", "capture_session_id", "perceptual_group_id"):
+        folds_by_group: dict[str, set[int]] = {}
+        for row in classifier:
+            folds_by_group.setdefault(row[key], set()).add(row["fold"])
+        assert all(len(folds) == 1 for folds in folds_by_group.values())
+    assert sorted(metadata["classifier"]["folds"]["group_counts"]) == [6, 7, 7]
+
+
+def test_single_objects_2_is_not_a_classifier_candidate():
+    with pytest.raises(ValueError, match="supported single-object collection"):
+        build_bread_cross_validation_registry(
+            DATASET_ROOT, classifier_source="single_objects_2", fold_count=3
+        )
 
 
 def test_registry_can_add_explicit_detector_operational_collection():

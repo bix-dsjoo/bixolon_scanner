@@ -75,21 +75,30 @@ class _ReviewInspectorState extends State<_ReviewInspector> {
           primary: false,
           padding: const EdgeInsets.fromLTRB(
             AppSpacing.x4,
-            AppSpacing.x3,
             AppSpacing.x4,
-            AppSpacing.x3,
+            AppSpacing.x4,
+            AppSpacing.x4,
           ),
-          child:
-              widget.controller.searchItemId == widget.detection.source.itemId
-              ? _SearchProducts(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _ObjectEditActions(
+                controller: widget.controller,
+                detection: widget.detection,
+                searchActionFocusNode: widget.searchActionFocusNode,
+              ),
+              const SizedBox(height: AppSpacing.x4),
+              if (widget.controller.searchItemId ==
+                  widget.detection.source.itemId)
+                _SearchProducts(
                   controller: widget.controller,
                   detection: widget.detection,
                   firstChoiceFocusNode: widget.firstChoiceFocusNode,
                   onKeyboardChoiceConfirmed: widget.onKeyboardChoiceConfirmed,
                   onKeyboardExit: widget.onKeyboardSearchClosed,
                 )
-              : widget.detection.source.top3.isNotEmpty
-              ? _CandidatePicker(
+              else if (widget.detection.source.top3.isNotEmpty)
+                _CandidatePicker(
                   controller: widget.controller,
                   detection: widget.detection,
                   firstChoiceFocusNode: widget.firstChoiceFocusNode,
@@ -97,32 +106,170 @@ class _ReviewInspectorState extends State<_ReviewInspector> {
                   onExitBackward: widget.onCandidateExitBackward,
                   onKeyboardChoiceConfirmed: widget.onKeyboardChoiceConfirmed,
                 )
-              : widget.detection.source.status == ItemStatus.segmentRecapture
-              ? _SegmentRecaptureReview(
+              else if (widget.detection.source.status ==
+                  ItemStatus.segmentRecapture)
+                _SegmentRecaptureReview(
                   controller: widget.controller,
                   detection: widget.detection,
                   searchActionFocusNode: widget.searchActionFocusNode,
                 )
-              : Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        widget.detection.finalProduct?.displayName ?? '',
-                        style: Theme.of(context).textTheme.bodyMedium,
-                      ),
-                    ),
-                    TextButton(
-                      focusNode: widget.searchActionFocusNode,
-                      onPressed: widget.controller.isBusy
-                          ? null
-                          : () => widget.controller.showSearch(
-                              widget.detection.source.itemId,
-                            ),
-                      child: const Text('상품 변경'),
-                    ),
-                  ],
+              else if (widget.detection.finalProduct case final product?)
+                Text(
+                  '최종 상품 · ${product.displayName}',
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
+            ],
+          ),
         ),
+      ),
+    );
+  }
+}
+
+class _ObjectEditActions extends StatelessWidget {
+  const _ObjectEditActions({
+    required this.controller,
+    required this.detection,
+    required this.searchActionFocusNode,
+  });
+
+  final ScannerController controller;
+  final ReviewDetection detection;
+  final FocusNode searchActionFocusNode;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          '선택한 상품 수정',
+          style: Theme.of(context).textTheme.bodySmall?.copyWith(
+            color: AppColors.muted,
+            fontWeight: AppTypography.semibold,
+          ),
+        ),
+        const SizedBox(height: AppSpacing.x2),
+        Wrap(
+          spacing: AppSpacing.x2,
+          runSpacing: AppSpacing.x2,
+          children: [
+            OutlinedButton.icon(
+              focusNode: searchActionFocusNode,
+              onPressed: controller.isBusy
+                  ? null
+                  : () => controller.showSearch(detection.source.itemId),
+              icon: const Icon(Icons.manage_search_rounded, size: 18),
+              label: const Text('상품 변경'),
+            ),
+            OutlinedButton.icon(
+              onPressed: controller.isBusy
+                  ? null
+                  : () => _showBoxEditorDialog(
+                      context,
+                      controller: controller,
+                      detection: detection,
+                    ),
+              icon: const Icon(Icons.crop_free_rounded, size: 18),
+              label: const Text('박스 수정'),
+            ),
+            OutlinedButton.icon(
+              onPressed: controller.isBusy
+                  ? null
+                  : controller.removeSelectedDetection,
+              icon: const Icon(Icons.delete_outline_rounded, size: 18),
+              label: const Text('검출 삭제'),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
+class _ImageReviewActions extends StatelessWidget {
+  const _ImageReviewActions({required this.controller});
+
+  final ScannerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const ValueKey('image-review-actions'),
+      constraints: BoxConstraints(
+        minHeight: context.appTokens.headerHeight + AppSpacing.x6,
+      ),
+      padding: const EdgeInsets.fromLTRB(
+        AppSpacing.x4,
+        AppSpacing.x3,
+        AppSpacing.x4,
+        AppSpacing.x3,
+      ),
+      decoration: const BoxDecoration(
+        color: AppColors.surface,
+        border: Border(bottom: BorderSide(color: AppColors.divider)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(
+            '전체 이미지 작업',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AppColors.muted,
+              fontWeight: AppTypography.semibold,
+            ),
+          ),
+          const SizedBox(height: AppSpacing.x2),
+          Wrap(
+            spacing: AppSpacing.x2,
+            runSpacing: AppSpacing.x2,
+            crossAxisAlignment: WrapCrossAlignment.center,
+            children: [
+              OutlinedButton.icon(
+                onPressed: controller.isBusy
+                    ? null
+                    : () =>
+                          _showBoxEditorDialog(context, controller: controller),
+                icon: const Icon(Icons.add_box_outlined, size: 18),
+                label: const Text('박스 추가'),
+              ),
+              if (!controller.isRecapture)
+                OutlinedButton.icon(
+                  onPressed: controller.isBusy
+                      ? null
+                      : () => controller.setOperatorRequiresRecapture(
+                          !controller.operatorRequiresRecapture,
+                        ),
+                  icon: Icon(
+                    controller.operatorRequiresRecapture
+                        ? Icons.undo_rounded
+                        : Icons.refresh_rounded,
+                    size: 18,
+                  ),
+                  label: Text(
+                    controller.operatorRequiresRecapture
+                        ? '재촬영 취소'
+                        : '재촬영으로 변경',
+                  ),
+                ),
+              IconButton.outlined(
+                tooltip: '실행 취소 (Ctrl+Z)',
+                onPressed: !controller.isBusy && controller.canUndoReviewEdit
+                    ? controller.undoReviewEdit
+                    : null,
+                icon: const Icon(Icons.undo_rounded, size: 19),
+              ),
+              IconButton.outlined(
+                tooltip: '다시 실행 (Ctrl+Y)',
+                onPressed: !controller.isBusy && controller.canRedoReviewEdit
+                    ? controller.redoReviewEdit
+                    : null,
+                icon: const Icon(Icons.redo_rounded, size: 19),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -253,12 +400,25 @@ class _SegmentRecaptureReview extends StatelessWidget {
         const SizedBox(height: AppSpacing.x2),
         Align(
           alignment: Alignment.centerLeft,
-          child: TextButton(
-            focusNode: searchActionFocusNode,
-            onPressed: controller.isBusy
-                ? null
-                : () => controller.showSearch(detection.source.itemId),
-            child: const Text('상품 직접 확인'),
+          child: Wrap(
+            spacing: AppSpacing.x2,
+            runSpacing: AppSpacing.x2,
+            children: [
+              OutlinedButton.icon(
+                onPressed: controller.isBusy
+                    ? null
+                    : () => controller.setOperatorRequiresRecapture(true),
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('재촬영으로 저장'),
+              ),
+              TextButton(
+                focusNode: searchActionFocusNode,
+                onPressed: controller.isBusy
+                    ? null
+                    : () => controller.showSearch(detection.source.itemId),
+                child: const Text('상품 지정'),
+              ),
+            ],
           ),
         ),
       ],

@@ -23,7 +23,7 @@
 AppId={{49706D67-B995-4B71-A49F-9F311D65165C}
 AppName={#AppName}
 AppVersion={#AppVersion}
-AppVerName={#AppName} {#AppVersion} (N100 CPU)
+AppVerName={#AppName} {#AppVersion} (N100 CPU Detector + Intel GPU Embedder)
 AppPublisher={#AppPublisher}
 DefaultDirName={autopf}\BIXOLON Scanner
 DefaultGroupName=BIXOLON Scanner
@@ -44,7 +44,7 @@ RestartApplications=no
 WizardStyle=modern
 VersionInfoVersion={#AppVersion}
 VersionInfoCompany={#AppPublisher}
-VersionInfoDescription={#AppName} N100 CPU Installer
+VersionInfoDescription={#AppName} N100 Hybrid OpenVINO Installer
 VersionInfoProductName={#AppName}
 VersionInfoProductVersion={#AppVersion}
 VersionInfoTextVersion={#AppVersion}
@@ -61,9 +61,9 @@ Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 Source: "{#VcRedistPath}"; DestDir: "{tmp}"; DestName: "vc_redist.x64.exe"; Flags: deleteafterinstall
 
 [Icons]
-Name: "{autoprograms}\BIXOLON Scanner"; Filename: "{#PowerShellPath}"; Parameters: "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\start-bixolon-scanner.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "BIXOLON Scanner N100 CPU"
+Name: "{autoprograms}\BIXOLON Scanner"; Filename: "{#PowerShellPath}"; Parameters: "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\start-bixolon-scanner.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "BIXOLON Scanner N100 Hybrid OpenVINO"
 Name: "{autoprograms}\BIXOLON Scanner 설치 안내"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\INSTALL-N100-KO.txt"""; WorkingDir: "{app}"
-Name: "{autodesktop}\BIXOLON Scanner"; Filename: "{#PowerShellPath}"; Parameters: "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\start-bixolon-scanner.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "BIXOLON Scanner N100 CPU"; Tasks: desktopicon
+Name: "{autodesktop}\BIXOLON Scanner"; Filename: "{#PowerShellPath}"; Parameters: "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\start-bixolon-scanner.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "BIXOLON Scanner N100 Hybrid OpenVINO"; Tasks: desktopicon
 
 [Run]
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Microsoft Visual C++ Runtime을 설치하는 중입니다..."; Flags: runhidden waituntilterminated

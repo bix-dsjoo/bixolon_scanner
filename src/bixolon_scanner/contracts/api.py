@@ -82,8 +82,14 @@ class ScanItem(BaseModel):
             scores = [candidate.confidence for candidate in self.top3]
             if scores != sorted(scores, reverse=True):
                 raise ValueError("top3 must be sorted by descending confidence")
-        elif self.prediction is not None or self.top3 or not self.reason_codes:
-            raise ValueError("SEGMENT_RECAPTURE requires reasons and no prediction or candidates")
+        elif (
+            self.prediction is not None
+            or self.top3
+            or self.reason_codes != ["SEGMENT_RECAPTURE_REQUIRED"]
+        ):
+            raise ValueError(
+                "SEGMENT_RECAPTURE requires the common reason and no prediction or candidates"
+            )
         return self
 
 
@@ -131,6 +137,10 @@ class ScanResponse(BaseModel):
                 raise ValueError(f"{self.status} response requires reason_codes")
             if self.status is Status.IMAGE_RECAPTURE and self.detector_version is None:
                 raise ValueError("IMAGE_RECAPTURE requires detector_version")
+            if self.status is Status.IMAGE_RECAPTURE and self.reason_codes != [
+                "IMAGE_RECAPTURE_REQUIRED"
+            ]:
+                raise ValueError("IMAGE_RECAPTURE requires exactly the common reason")
             return self
         if not self.segmentations:
             raise ValueError("SEGMENTATION response requires segmentations")

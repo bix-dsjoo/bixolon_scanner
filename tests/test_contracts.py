@@ -33,7 +33,7 @@ def test_image_recapture_requires_empty_segmentations_and_direct_versions():
     response = ScanResponse(
         request_id="12345678",
         status=Status.IMAGE_RECAPTURE,
-        reason_codes=["DETECTOR_NO_OBJECT"],
+        reason_codes=["IMAGE_RECAPTURE_REQUIRED"],
         segmentations=[],
         processing_time_ms=1.0,
         worker_version="1.0.0",

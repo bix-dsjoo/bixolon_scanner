@@ -8,12 +8,23 @@ enum ActivityDateFilter { all, today, sevenDays, thirtyDays }
 
 enum ActivitySortOrder { newest, oldest }
 
+enum ActivityReviewFilter {
+  all,
+  accepted,
+  corrected,
+  recaptureAgreed,
+  recaptureUnnecessary,
+  recaptureRequired,
+  legacy,
+}
+
 List<ScanLogSummary> filterActivityLogs({
   required List<ScanLogSummary> logs,
   required String query,
   required ActivityInputFilter inputFilter,
   required ActivityDateFilter dateFilter,
   required ActivitySortOrder sortOrder,
+  ActivityReviewFilter reviewFilter = ActivityReviewFilter.all,
   DateTime? now,
 }) {
   final normalized = query.trim().toLowerCase();
@@ -39,10 +50,27 @@ List<ScanLogSummary> filterActivityLogs({
           ActivityInputFilter.image => log.inputMode == InputMode.image,
         };
         final recordedAt = log.recordedAt.toLocal();
+        final reviewMatches = switch (reviewFilter) {
+          ActivityReviewFilter.all => true,
+          ActivityReviewFilter.accepted =>
+            log.operatorReview?.verdict == OperatorReviewVerdict.accepted,
+          ActivityReviewFilter.corrected =>
+            log.operatorReview?.verdict == OperatorReviewVerdict.corrected,
+          ActivityReviewFilter.recaptureAgreed =>
+            log.operatorReview?.verdict ==
+                OperatorReviewVerdict.recaptureAgreed,
+          ActivityReviewFilter.recaptureUnnecessary =>
+            log.operatorReview?.verdict ==
+                OperatorReviewVerdict.recaptureUnnecessary,
+          ActivityReviewFilter.recaptureRequired =>
+            log.operatorReview?.verdict ==
+                OperatorReviewVerdict.recaptureRequired,
+          ActivityReviewFilter.legacy => log.isLegacy,
+        };
         final dateMatches =
             start == null ||
             (!recordedAt.isBefore(start) && recordedAt.isBefore(endExclusive!));
-        return queryMatches && inputMatches && dateMatches;
+        return queryMatches && inputMatches && reviewMatches && dateMatches;
       })
       .toList(growable: false);
 

@@ -10,20 +10,30 @@ def test_n100_gpu_cmd_runs_versioned_openvino_device_benchmark() -> None:
     benchmark = (ROOT / "scripts/handoff/N100-GPU-BENCHMARK.ps1").read_text(encoding="utf-8")
 
     assert "N100-GPU-BENCHMARK.ps1" in command
-    assert "n100-0.1.1-openvino-device-matrix.json" in command
-    assert 'ExpectedVersion = "0.1.1"' in benchmark
+    assert "n100-0.1.3-openvino-device-matrix.json" in command
+    assert 'ExpectedVersion = "0.1.3"' in benchmark
     assert "BIXOLON_PROVIDER = [string]$Profile.DetectorProvider" in benchmark
     assert 'DetectorProvider = "openvino"' in benchmark
     assert 'EmbedderProvider = "same"' in benchmark
     assert 'EmbedderProvider = "openvino_gpu"' in benchmark
     assert 'ExpectedProvider = "openvino+openvino_gpu"' in benchmark
+    assert 'Name = "openvino-cpu-only"' in benchmark
+    assert 'Name = "openvino-cpu-detector-intel-gpu-embedder"' in benchmark
     assert 'BIXOLON_CPU_DETECTOR_WORKERS = "1"' in benchmark
     assert 'BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS = "4"' in benchmark
     assert "semantic_mismatch_count" in benchmark
     assert "maximum_confidence_delta" in benchmark
     assert "minimum_mean_speedup_ratio" in benchmark
     assert "maximum_peak_working_set_bytes" in benchmark
+    assert "MaximumWorkingSetBytes = 2147483648" in benchmark
+    assert "MaximumFullPathLatencyMs = 300.0" in benchmark
+    assert "mean_within_target" in benchmark
+    assert "p95_within_target" in benchmark
+    assert "gpu_embedder_target_met" in benchmark
     assert "hybrid_resource_safe" in benchmark
+    assert "same_runtime_catalog_and_policy = $true" in benchmark
+    assert 'independent_verifier_embedder = "OpenVINOExecutionProvider:GPU"' in benchmark
+    assert "silent_cpu_fallback_allowed = $false" in benchmark
     assert "image_paths_recorded = $false" in benchmark
     assert "image_bytes_recorded = $false" in benchmark
 
@@ -47,5 +57,11 @@ def test_n100_gpu_builder_preserves_models_and_packages_openvino_gpu() -> None:
     assert "IncludeOpenVinoGpu" in build_script
     assert "candidate-manifest.json" in build_script
     assert "package-manifest.json" in build_script
+    assert '[string]$Version = "0.1.3"' in build_script
+    assert 'candidate_primary_embedder = "OpenVINOExecutionProvider:GPU"' in build_script
+    assert 'candidate_rotation_180_embedder = "OpenVINOExecutionProvider:GPU"' in build_script
+    assert (
+        'candidate_independent_verifier_embedder = "OpenVINOExecutionProvider:GPU"' in build_script
+    )
     assert "Get-RelativePackagePath" in build_script
     assert "[System.IO.Path]::GetRelativePath" not in build_script

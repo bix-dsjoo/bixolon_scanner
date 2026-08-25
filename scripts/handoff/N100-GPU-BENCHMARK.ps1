@@ -12,17 +12,19 @@ param(
     [ValidateRange(1, 600000)]
     [int]$MaximumStartupMs = 30000,
     [ValidateRange(1, 8589934592)]
-    [long]$MaximumWorkingSetBytes = 1288490188,
+    [long]$MaximumWorkingSetBytes = 2147483648,
     [ValidateRange(1.0, 10.0)]
     [double]$MaximumMemoryIncreaseRatio = 1.35,
-    [string]$ExpectedVersion = "0.1.1"
+    [ValidateRange(1.0, 60000.0)]
+    [double]$MaximumFullPathLatencyMs = 300.0,
+    [string]$ExpectedVersion = "0.1.3"
 )
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Net.Http
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $PSScriptRoot "n100-0.1.1-openvino-device-matrix.json"
+    $OutputPath = Join-Path $PSScriptRoot "n100-0.1.3-openvino-device-matrix.json"
 }
 
 function Get-Percentile {
@@ -385,7 +387,7 @@ function Invoke-Profile {
 }
 
 function Get-PublicProfile {
-    param($Result)
+    param($Result, [double]$MaximumLatencyMs)
     return [ordered]@{
         name = $Result.Name
         completed = ($null -eq $Result.FailureCode)
@@ -412,6 +414,17 @@ function Get-PublicProfile {
         status_counts = $Result.StatusCounts
         full_path_count = $Result.FullPathCount
         error_count = $Result.ErrorCount
+        target = [ordered]@{
+            maximum_full_path_latency_ms = $MaximumLatencyMs
+            mean_within_target = (
+                $null -ne $Result.ClientFullPath.mean -and
+                $Result.ClientFullPath.mean -le $MaximumLatencyMs
+            )
+            p95_within_target = (
+                $null -ne $Result.ClientFullPath.p95 -and
+                $Result.ClientFullPath.p95 -le $MaximumLatencyMs
+            )
+        }
     }
 }
 
@@ -446,14 +459,14 @@ if ($images.Count -lt $MinimumImages) {
 
 $profiles = @(
     [pscustomobject]@{
-        Name = "openvino-cpu-baseline"
+        Name = "openvino-cpu-only"
         DetectorProvider = "openvino"
         EmbedderProvider = "same"
         EmbedderThreads = 4
         ExpectedProvider = "openvino"
     },
     [pscustomobject]@{
-        Name = "openvino-cpu-gpu-hybrid"
+        Name = "openvino-cpu-detector-intel-gpu-embedder"
         DetectorProvider = "openvino"
         EmbedderProvider = "openvino_gpu"
         EmbedderThreads = 0
@@ -483,7 +496,7 @@ try {
         -WarmupCount $WarmupImageCount
 }
 catch {
-    Write-Warning "OpenVINO GPU profile failed; the result will recommend the CPU baseline."
+    Write-Warning "OpenVINO Intel GPU Embedder profile failed; the result will recommend the CPU-only profile."
     $emptySummary = Get-LatencySummary -Values ([double[]]@())
     $hybridResult = [pscustomobject]@{
         Name = $hybridProfile.Name
@@ -577,6 +590,18 @@ $resourceSafe = (
         $baselineResult.PeakWorkingSetBytes * $MaximumMemoryIncreaseRatio
     )
 )
+$baselineTargetMet = (
+    $null -ne $baselineMean -and
+    $null -ne $baselineP95 -and
+    $baselineMean -le $MaximumFullPathLatencyMs -and
+    $baselineP95 -le $MaximumFullPathLatencyMs
+)
+$hybridTargetMet = (
+    $null -ne $hybridMean -and
+    $null -ne $hybridP95 -and
+    $hybridMean -le $MaximumFullPathLatencyMs -and
+    $hybridP95 -le $MaximumFullPathLatencyMs
+)
 
 $processor = Get-CimInstance Win32_Processor | Select-Object -First 1
 $computer = Get-CimInstance Win32_ComputerSystem
@@ -602,7 +627,9 @@ $passes = (
     $hybridResult.ErrorCount -eq 0 -and
     $paritySafe
 )
-$recommendedProvider = if ($passes -and $hybridBeneficial -and $resourceSafe) {
+$recommendedProvider = if (
+    $passes -and $hybridBeneficial -and $resourceSafe -and $hybridTargetMet
+) {
     "openvino+openvino_gpu"
 }
 else {
@@ -610,8 +637,8 @@ else {
 }
 
 $report = [ordered]@{
-    schema_version = "1.0"
-    evaluation = "bixolon_worker_n100_openvino_cpu_vs_cpu_gpu"
+    schema_version = "1.1"
+    evaluation = "bixolon_worker_n100_openvino_cpu_vs_intel_gpu_embedder"
     product_version = $ExpectedVersion
     completed = $true
     passes = $passes
@@ -637,7 +664,26 @@ $report = [ordered]@{
         maximum_startup_ms = $MaximumStartupMs
         maximum_peak_working_set_bytes = $MaximumWorkingSetBytes
         maximum_memory_increase_ratio = $MaximumMemoryIncreaseRatio
+        maximum_full_path_mean_ms = $MaximumFullPathLatencyMs
+        maximum_full_path_p95_ms = $MaximumFullPathLatencyMs
         require_semantic_and_confidence_parity = $true
+    }
+    execution_contract = [ordered]@{
+        same_worker_executable = $true
+        same_runtime_catalog_and_policy = $true
+        cpu_only = [ordered]@{
+            detector = "OpenVINOExecutionProvider:CPU"
+            primary_embedder = "OpenVINOExecutionProvider:CPU"
+            rotation_180_embedder = "OpenVINOExecutionProvider:CPU"
+            independent_verifier_embedder = "OpenVINOExecutionProvider:CPU"
+        }
+        cpu_detector_gpu_embedder = [ordered]@{
+            detector = "OpenVINOExecutionProvider:CPU"
+            primary_embedder = "OpenVINOExecutionProvider:GPU"
+            rotation_180_embedder = "OpenVINOExecutionProvider:GPU"
+            independent_verifier_embedder = "OpenVINOExecutionProvider:GPU"
+            silent_cpu_fallback_allowed = $false
+        }
     }
     integrity = [ordered]@{
         runtime_metadata_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $runtimeMetadataPath).Hash.ToLowerInvariant()
@@ -646,8 +692,12 @@ $report = [ordered]@{
         decision_policy_changed = $false
     }
     profiles = [ordered]@{
-        openvino_cpu_baseline = Get-PublicProfile -Result $baselineResult
-        openvino_cpu_gpu_hybrid = Get-PublicProfile -Result $hybridResult
+        openvino_cpu_only = Get-PublicProfile `
+            -Result $baselineResult `
+            -MaximumLatencyMs $MaximumFullPathLatencyMs
+        openvino_cpu_detector_intel_gpu_embedder = Get-PublicProfile `
+            -Result $hybridResult `
+            -MaximumLatencyMs $MaximumFullPathLatencyMs
     }
     parity = [ordered]@{
         evaluated = $parityEvaluated
@@ -665,6 +715,9 @@ $report = [ordered]@{
         hybrid_p95_improved = ($null -ne $p95Speedup -and $p95Speedup -gt 1.0)
         hybrid_meets_minimum_speedup = $hybridBeneficial
         hybrid_resource_safe = $resourceSafe
+        cpu_only_target_met = $baselineTargetMet
+        gpu_embedder_target_met = $hybridTargetMet
+        target_met_by_any_profile = ($baselineTargetMet -or $hybridTargetMet)
         full_path_mean_speedup_ratio = $meanSpeedup
         full_path_p95_speedup_ratio = $p95Speedup
         recommended_provider = $recommendedProvider
@@ -685,10 +738,10 @@ $json = $report | ConvertTo-Json -Depth 20
 )
 
 Write-Host ""
-Write-Host "OpenVINO CPU full-path mean/p95: $baselineMean / $baselineP95 ms"
-Write-Host "OpenVINO CPU+GPU full-path mean/p95: $hybridMean / $hybridP95 ms"
-Write-Host "Hybrid mean/p95 speedup: $meanSpeedup x / $p95Speedup x"
-Write-Host "Hybrid resource safe: $resourceSafe"
+Write-Host "OpenVINO CPU-only full-path mean/p95: $baselineMean / $baselineP95 ms"
+Write-Host "CPU Detector + Intel GPU Embedder full-path mean/p95: $hybridMean / $hybridP95 ms"
+Write-Host "GPU Embedder mean/p95 speedup: $meanSpeedup x / $p95Speedup x"
+Write-Host "GPU Embedder resource safe: $resourceSafe"
 Write-Host "Parity safe: $paritySafe"
 Write-Host "Recommended provider: $recommendedProvider"
 Write-Host "Result: $resolvedOutputPath"

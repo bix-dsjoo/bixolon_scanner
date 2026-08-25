@@ -24,6 +24,7 @@ from ...training.fewshot_adapter import (
     adapter_spec_from_dict,
     build_ten_shot_classifier,
     compatible_proxy_state_dict,
+    supervised_contrastive_loss,
 )
 from ...training.models import require_torch
 from ...training.synthetic_roi import (
@@ -111,6 +112,16 @@ def moderate_clutter_recipe() -> ClutterRoiRecipe:
     )
 
 
+def rotation_invariant_clutter_recipe() -> ClutterRoiRecipe:
+    """Match ordinary clutter while covering every in-plane product orientation."""
+    return ClutterRoiRecipe(
+        **{
+            **asdict(moderate_clutter_recipe()),
+            "maximum_rotation_degrees": 180.0,
+        }
+    )
+
+
 def mild_clutter_recipe() -> ClutterRoiRecipe:
     """Keep the target dominant while exposing ordinary detector-boundary neighbors."""
     return ClutterRoiRecipe(
@@ -188,6 +199,8 @@ def _prepare_tensor_cache(
     recipe: ClutterRoiRecipe,
     apply_neighbor_mask: bool,
     classifier_source: str = "single_objects",
+    crop_margin_ratio: float = 0.05,
+    neighbor_distance_bias: float = 0.0,
 ) -> tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray, list[dict[str, Any]]]:
     records = load_single_objects_records(manifest, classifier_source=classifier_source)
     expected_count = len(records) * views_per_source
@@ -204,8 +217,8 @@ def _prepare_tensor_cache(
         "views_per_source": views_per_source,
         "apply_neighbor_mask": apply_neighbor_mask,
         "classifier_source": classifier_source,
-        "neighbor_mask_margin_ratio": 0.05,
-        "neighbor_mask_distance_bias": 0.0,
+        "neighbor_mask_margin_ratio": crop_margin_ratio,
+        "neighbor_mask_distance_bias": neighbor_distance_bias,
     }
     cache_files = (cache_path, labels_path, folds_path, support_path, metadata_path)
     if all(path.is_file() for path in cache_files):
@@ -262,6 +275,8 @@ def _prepare_tensor_cache(
             tensors[tensor_index] = prepare_clutter_tensor(
                 sample,
                 apply_neighbor_mask=apply_neighbor_mask,
+                margin_ratio=crop_margin_ratio,
+                distance_bias=neighbor_distance_bias,
             ).astype(np.float16)
             labels[tensor_index] = int(record["category_id"]) - 1
             folds[tensor_index] = int(record["fold"])
@@ -297,6 +312,22 @@ def top3_margin_loss(torch, logits, labels, *, margin: float):
     return torch.nn.functional.softplus(third_negative - true_logits + margin).mean()
 
 
+def relational_similarity_loss(torch, student_features, teacher_features):
+    """Match label-free pairwise geometry between student and frozen teacher views."""
+    student = torch.nn.functional.normalize(student_features, dim=-1)
+    teacher = torch.nn.functional.normalize(teacher_features, dim=-1)
+    if student.ndim != 2 or teacher.ndim != 2 or len(student) != len(teacher):
+        raise ValueError("relational distillation features must be aligned matrices")
+    if len(student) < 2:
+        return student.sum() * 0.0
+    student_similarity = student @ student.transpose(0, 1)
+    teacher_similarity = teacher @ teacher.transpose(0, 1)
+    off_diagonal = ~torch.eye(len(student), dtype=torch.bool, device=student.device)
+    return torch.nn.functional.mse_loss(
+        student_similarity[off_diagonal], teacher_similarity[off_diagonal]
+    )
+
+
 def _build_model(torch, checkpoint: dict[str, Any], device):
     model = build_ten_shot_classifier(
         backbone_kind=str(checkpoint["backbone_kind"]),
@@ -308,12 +339,29 @@ def _build_model(torch, checkpoint: dict[str, Any], device):
     return model.to(device)
 
 
+def _build_teacher(torch, weights: Path, device):
+    teacher = torch.hub.load(
+        "facebookresearch/dinov3:6876159a11b4df116f30f667f8c9888617df0751",
+        "dinov3_vitb16",
+        source="github",
+        trust_repo=True,
+        verbose=False,
+        pretrained=False,
+    )
+    teacher.load_state_dict(torch.load(weights, map_location="cpu", weights_only=True), strict=True)
+    for parameter in teacher.parameters():
+        parameter.requires_grad = False
+    return teacher.to(device).eval()
+
+
 def _configure_trainable(model, scope: str) -> list[Any]:
     for parameter in model.parameters():
         parameter.requires_grad = False
-    if scope == "last_stage":
-        for parameter in model.backbone.stages[-1].parameters():
-            parameter.requires_grad = True
+    if scope in {"last_stage", "last_two_stages"}:
+        stage_count = 1 if scope == "last_stage" else 2
+        for stage in model.backbone.stages[-stage_count:]:
+            for parameter in stage.parameters():
+                parameter.requires_grad = True
         for parameter in model.backbone.norm.parameters():
             parameter.requires_grad = True
     elif scope != "head":
@@ -361,16 +409,18 @@ def _train_epochs(
     args: argparse.Namespace,
     torch,
     device,
+    teacher_model=None,
 ) -> list[dict[str, float]]:
     trainable = _configure_trainable(model, args.trainable_scope)
     reference = [parameter.detach().clone() for parameter in trainable]
+    stage_count = 2 if args.trainable_scope == "last_two_stages" else 1
     backbone_parameters = (
         {
             id(parameter)
-            for module in (model.backbone.stages[-1], model.backbone.norm)
+            for module in (*model.backbone.stages[-stage_count:], model.backbone.norm)
             for parameter in module.parameters()
         }
-        if args.trainable_scope == "last_stage"
+        if args.trainable_scope in {"last_stage", "last_two_stages"}
         else set()
     )
     optimizer = torch.optim.AdamW(
@@ -391,7 +441,7 @@ def _train_epochs(
     for epoch in range(1, epochs + 1):
         model.train()
         order = selected[torch.randperm(len(selected), generator=generator).numpy()]
-        totals = np.zeros(4, dtype=np.float64)
+        totals = np.zeros(6, dtype=np.float64)
         for step, start in enumerate(range(0, len(order), args.batch_size)):
             indices = order[start : start + args.batch_size]
             pixels = torch.from_numpy(np.array(tensors[indices], dtype=np.float32, copy=True)).to(
@@ -407,9 +457,34 @@ def _train_epochs(
             ).to(device)
             clean_targets = torch.from_numpy(support_labels[support_indices]).to(device)
             optimizer.zero_grad(set_to_none=True)
-            logits = model(pixels)
+            features = model.extract_features(pixels)
+            logits = (
+                model.classifier(*features)
+                if isinstance(features, tuple)
+                else model.classifier(features)
+            )
             clutter_loss = torch.nn.functional.cross_entropy(logits, targets)
             rank_loss = top3_margin_loss(torch, logits, targets, margin=args.top3_margin)
+            if args.contrastive_weight or (
+                teacher_model is not None and args.teacher_relation_weight
+            ):
+                adapted = (
+                    model.classifier.adapt(*features)
+                    if isinstance(features, tuple)
+                    else model.classifier.adapt(features)
+                )
+            if args.contrastive_weight:
+                contrastive_loss = supervised_contrastive_loss(
+                    adapted, targets, temperature=args.contrastive_temperature
+                )
+            else:
+                contrastive_loss = logits.sum() * 0.0
+            if teacher_model is not None and args.teacher_relation_weight:
+                with torch.no_grad():
+                    teacher_features = teacher_model(pixels)
+                teacher_relation_loss = relational_similarity_loss(torch, adapted, teacher_features)
+            else:
+                teacher_relation_loss = logits.sum() * 0.0
             clean_loss = torch.nn.functional.cross_entropy(model(support_pixels), clean_targets)
             l2_loss = sum(
                 (parameter - initial).square().mean()
@@ -418,6 +493,8 @@ def _train_epochs(
             loss = (
                 clutter_loss
                 + args.top3_weight * rank_loss
+                + args.contrastive_weight * contrastive_loss
+                + args.teacher_relation_weight * teacher_relation_loss
                 + args.support_weight * clean_loss
                 + args.l2_weight * l2_loss
             )
@@ -425,7 +502,14 @@ def _train_epochs(
             torch.nn.utils.clip_grad_norm_(trainable, 1.0)
             optimizer.step()
             totals += np.asarray(
-                [loss.item(), clutter_loss.item(), rank_loss.item(), clean_loss.item()]
+                [
+                    loss.item(),
+                    clutter_loss.item(),
+                    rank_loss.item(),
+                    clean_loss.item(),
+                    contrastive_loss.item(),
+                    teacher_relation_loss.item(),
+                ]
             )
         row = {
             "epoch": float(epoch),
@@ -433,6 +517,10 @@ def _train_epochs(
             "clutter_loss": float(totals[1] / max(1, math.ceil(len(order) / args.batch_size))),
             "top3_margin_loss": float(totals[2] / max(1, math.ceil(len(order) / args.batch_size))),
             "support_loss": float(totals[3] / max(1, math.ceil(len(order) / args.batch_size))),
+            "contrastive_loss": float(totals[4] / max(1, math.ceil(len(order) / args.batch_size))),
+            "teacher_relation_loss": float(
+                totals[5] / max(1, math.ceil(len(order) / args.batch_size))
+            ),
         }
         history.append(row)
         print(json.dumps(row), flush=True)
@@ -442,6 +530,12 @@ def _train_epochs(
 def train(args: argparse.Namespace) -> dict[str, Any]:
     if args.validation_fold not in {0, 1, 2}:
         raise ValueError("validation_fold must be 0, 1, or 2")
+    if args.contrastive_weight < 0.0 or args.contrastive_temperature <= 0.0:
+        raise ValueError("contrastive weight and temperature are invalid")
+    if args.teacher_relation_weight < 0.0:
+        raise ValueError("teacher relation weight cannot be negative")
+    if args.teacher_relation_weight and args.teacher_weights is None:
+        raise ValueError("teacher relation distillation requires teacher weights")
     torch = require_torch()
     requested_training_seed = getattr(args, "training_seed", None)
     args.training_seed = args.seed if requested_training_seed is None else requested_training_seed
@@ -452,6 +546,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
     recipes = {
         "mild": mild_clutter_recipe,
         "moderate": moderate_clutter_recipe,
+        "rotation_invariant": rotation_invariant_clutter_recipe,
         "hard": hard_clutter_recipe,
     }
     recipe = recipes[args.recipe_profile]()
@@ -464,9 +559,16 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         recipe=recipe,
         apply_neighbor_mask=args.neighbor_mask,
         classifier_source=args.classifier_source,
+        crop_margin_ratio=args.crop_margin_ratio,
+        neighbor_distance_bias=args.neighbor_distance_bias,
     )
     source_labels = np.asarray([int(row["category_id"]) - 1 for row in records], dtype=np.int64)
     source_folds = np.asarray([int(row["fold"]) for row in records], dtype=np.int64)
+    teacher_model = (
+        None
+        if args.teacher_relation_weight == 0.0
+        else _build_teacher(torch, args.teacher_weights, device)
+    )
     train_groups = {
         str(row["perceptual_group_id"])
         for row in records
@@ -499,6 +601,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
             args=args,
             torch=torch,
             device=device,
+            teacher_model=teacher_model,
         )
         validation_logits = _predict(
             calibration_model,
@@ -523,6 +626,9 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
     final_epochs = best_epoch if args.final_epochs is None else args.final_epochs
     if final_epochs < 1 or final_epochs > args.max_epochs:
         raise ValueError("final_epochs must be between 1 and max_epochs")
+    del calibration_model
+    if device.type == "cuda":
+        torch.cuda.empty_cache()
     final_model = _build_model(torch, checkpoint, device)
     final_history = _train_epochs(
         final_model,
@@ -535,6 +641,7 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         args=args,
         torch=torch,
         device=device,
+        teacher_model=teacher_model,
     )
     evaluation_tensors = np.load(args.evaluation_tensors, mmap_mode="r")
     evaluation_rows = [
@@ -567,6 +674,14 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
             "augmentation_seed": args.seed,
             "training_seed": args.training_seed,
             "neighbor_mask": args.neighbor_mask,
+            "crop_margin_ratio": args.crop_margin_ratio,
+            "neighbor_distance_bias": args.neighbor_distance_bias,
+            "contrastive_weight": args.contrastive_weight,
+            "contrastive_temperature": args.contrastive_temperature,
+            "teacher_relation_weight": args.teacher_relation_weight,
+            "teacher_weights_sha256": (
+                None if args.teacher_weights is None else _sha256(args.teacher_weights)
+            ),
             "trainable_scope": args.trainable_scope,
             "selected_epoch_from_source_validation": best_epoch,
             "final_training_epochs": final_epochs,
@@ -599,6 +714,14 @@ def train(args: argparse.Namespace) -> dict[str, Any]:
         "augmentation_seed": args.seed,
         "training_seed": args.training_seed,
         "neighbor_mask": args.neighbor_mask,
+        "crop_margin_ratio": args.crop_margin_ratio,
+        "neighbor_distance_bias": args.neighbor_distance_bias,
+        "contrastive_weight": args.contrastive_weight,
+        "contrastive_temperature": args.contrastive_temperature,
+        "teacher_relation_weight": args.teacher_relation_weight,
+        "teacher_weights_sha256": (
+            None if args.teacher_weights is None else _sha256(args.teacher_weights)
+        ),
         "group_aware_calibration": {
             "validation_fold": args.validation_fold,
             "train_group_count": len(train_groups),
@@ -667,14 +790,26 @@ def main() -> None:
         help="Optimizer/order seed; defaults to --seed while reusing one augmentation cache.",
     )
     parser.add_argument(
-        "--recipe-profile", choices=("mild", "moderate", "hard"), default="moderate"
+        "--recipe-profile",
+        choices=("mild", "moderate", "rotation_invariant", "hard"),
+        default="moderate",
     )
     parser.add_argument("--neighbor-mask", action="store_true")
-    parser.add_argument("--trainable-scope", choices=("head", "last_stage"), default="head")
+    parser.add_argument("--crop-margin-ratio", type=float, default=0.05)
+    parser.add_argument("--neighbor-distance-bias", type=float, default=0.0)
+    parser.add_argument(
+        "--trainable-scope",
+        choices=("head", "last_stage", "last_two_stages"),
+        default="head",
+    )
     parser.add_argument("--backbone-learning-rate", type=float, default=1e-6)
     parser.add_argument("--head-learning-rate", type=float, default=1e-5)
     parser.add_argument("--top3-margin", type=float, default=1.0)
     parser.add_argument("--top3-weight", type=float, default=0.75)
+    parser.add_argument("--contrastive-weight", type=float, default=0.0)
+    parser.add_argument("--contrastive-temperature", type=float, default=0.1)
+    parser.add_argument("--teacher-weights", type=Path)
+    parser.add_argument("--teacher-relation-weight", type=float, default=0.0)
     parser.add_argument("--support-weight", type=float, default=0.35)
     parser.add_argument("--l2-weight", type=float, default=0.001)
     parser.add_argument("--cpu", action="store_true")

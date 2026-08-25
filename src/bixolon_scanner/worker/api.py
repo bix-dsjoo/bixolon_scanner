@@ -19,10 +19,15 @@ from ..contracts import (
     load_runtime_package_v2,
     load_store_catalog_package,
 )
-from ..contracts.errors import MissingImageError, ModelExecutionError, ScannerError
+from ..contracts.errors import (
+    MissingImageError,
+    ModelExecutionError,
+    ProviderInitializationError,
+    ScannerError,
+)
 from ..contracts.model_package import load_model_package
 from ..pipeline import DecisionPipeline
-from ..runtime.catalog import OnnxCatalogClassifier, OnnxEmbedder
+from ..runtime.catalog import build_catalog_classifier
 from ..runtime.detector_v2 import build_detector_v2
 from ..runtime.imaging import decode_image
 from ..runtime.onnx import build_onnx_adapters, select_provider
@@ -104,17 +109,45 @@ def create_app(
                         worker_settings.cuda_dll_dir,
                         cpu_detector_workers=worker_settings.cpu_detector_workers,
                         cpu_intra_op_threads=(worker_settings.cpu_detector_intra_op_threads),
+                        openvino_cache_dir=worker_settings.openvino_cache_dir,
                     )
                     managed_detector = detector
-                    embedder = OnnxEmbedder(
-                        runtime_package,
-                        embedder_provider,
-                        worker_settings.cuda_dll_dir,
-                        cpu_intra_op_threads=(worker_settings.cpu_embedder_intra_op_threads),
-                    )
-                    classifier = OnnxCatalogClassifier(runtime_package, catalog, embedder)
                     detector.warmup()
-                    embedder.warmup()
+
+                    def build_and_warm_classifier(selected_provider):
+                        selected_classifier, selected_embedder = build_catalog_classifier(
+                            runtime_package,
+                            catalog,
+                            selected_provider,
+                            worker_settings.cuda_dll_dir,
+                            cpu_intra_op_threads=(worker_settings.cpu_embedder_intra_op_threads),
+                            openvino_cache_dir=worker_settings.openvino_cache_dir,
+                        )
+                        selected_embedder.warmup()
+                        classifier_warmup = getattr(selected_classifier, "warmup", None)
+                        if callable(classifier_warmup):
+                            classifier_warmup()
+                        return selected_classifier, selected_embedder
+
+                    try:
+                        classifier, embedder = build_and_warm_classifier(embedder_provider)
+                    except (ProviderInitializationError, ModelExecutionError) as exc:
+                        fallback_enabled = (
+                            worker_settings.embedder_fallback_provider == "same"
+                            and embedder_provider != provider
+                        )
+                        if not fallback_enabled:
+                            raise
+                        LOGGER.warning(
+                            "embedder_provider_fallback",
+                            extra={
+                                "requested_provider": embedder_provider,
+                                "fallback_provider": provider,
+                                "exception_type": type(exc).__name__,
+                            },
+                        )
+                        embedder_provider = provider
+                        classifier, embedder = build_and_warm_classifier(embedder_provider)
                     managed_pipeline = DecisionPipeline(
                         detector,
                         classifier,

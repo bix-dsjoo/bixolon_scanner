@@ -240,8 +240,15 @@ def audit_bread_dataset(
                 "category_id": category_id,
                 "class_id": str(label["class_id"]),
                 "class_name": str(label["class_name"]),
-                "capture_session_id": f"bread_dataset:{training_source}",
-                "physical_item_id": f"bread_{category_id:02d}:{training_source}:original_item",
+                # The source tree contains one physical item per category and collection,
+                # photographed from several views.  Keep the item identity stable across
+                # alternative collections because some originals are copied verbatim
+                # between them.  The dataset has no finer capture-session ledger, so the
+                # narrowest defensible session is the per-item collection directory.
+                "capture_session_id": (
+                    f"bread_{category_id:02d}:{training_source}:capture_session"
+                ),
+                "physical_item_id": f"bread_{category_id:02d}:original_item",
                 "side": slot[0],
                 "view": slot[1],
                 "source_group": f"bread_{category_id:02d}:{slot[0]}:{slot[1]}",

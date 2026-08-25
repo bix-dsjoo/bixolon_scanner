@@ -1,0 +1,12 @@
+__include__:
+  - ./dfine_bread_0.1.3_objectness_fold0.yml
+
+output_dir: artifacts/experiments/bread-0.1.3/detector/fold2/training
+
+train_dataloader:
+  dataset:
+    ann_file: artifacts/experiments/bread-0.1.3/detector/fold2/coco-objectness/instances_train.json
+
+val_dataloader:
+  dataset:
+    ann_file: artifacts/experiments/bread-0.1.3/detector/fold2/coco-objectness/instances_validation.json

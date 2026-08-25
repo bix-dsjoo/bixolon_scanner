@@ -17,7 +17,7 @@ import 'package:product_scanner/theme/app_tokens.dart';
 import 'support/test_catalog.dart';
 
 void main() {
-  testWidgets('밀집 객체에서도 현재 검수 box와 44px 선택 영역을 유지한다', (tester) async {
+  testWidgets('밀집 객체에서도 현재 결과 box와 44px 선택 영역을 유지한다', (tester) async {
     tester.view.physicalSize = const Size(1280, 720);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
@@ -52,34 +52,66 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text(AppPreviewCopy.selectedImage), findsOneWidget);
-    expect(find.text('2  현재 검수'), findsOneWidget);
     expect(find.text('2 / 6'), findsOneWidget);
-    expect(find.text('3  ?'), findsOneWidget);
 
-    BoxDecoration visualDecoration(String itemId) {
+    Decoration? visualDecoration(String itemId) {
       return tester
-              .widget<Container>(
-                find.byKey(ValueKey('detection-visual-$itemId')),
+          .widget<Container>(find.byKey(ValueKey('detection-visual-$itemId')))
+          .decoration;
+    }
+
+    BoxDecoration outlineDecoration(String itemId) {
+      return tester
+              .widget<DecoratedBox>(
+                find.byKey(ValueKey('detection-outline-$itemId')),
               )
-              .decoration!
+              .decoration
           as BoxDecoration;
     }
 
+    expect(visualDecoration('item_002'), isNull);
+    expect(visualDecoration('item_001'), isNull);
     expect(
-      visualDecoration('item_002').color,
-      AppPalette.attention.withValues(alpha: .06),
+      outlineDecoration('item_002').color,
+      AppPalette.attention.withValues(alpha: AppOpacity.selectedStatusSurface),
     );
-    expect(visualDecoration('item_001').color, isNull);
-    expect(visualDecoration('item_002').border!.top.width, 2);
-    expect(visualDecoration('item_001').border!.top.width, 1.5);
+    expect(outlineDecoration('item_001').color, isNull);
+    expect(outlineDecoration('item_002').border!.top.width, 3);
+    expect(
+      outlineDecoration('item_002').border!.top.color,
+      AppPalette.attention,
+    );
+    expect(outlineDecoration('item_001').border!.top.width, 2);
+    expect(outlineDecoration('item_001').border!.top.color, AppPalette.success);
+    expect(outlineDecoration('item_004').border!.top.width, 2);
+    expect(outlineDecoration('item_004').border!.top.color, AppPalette.error);
+    final selectedOutlineRect = tester.getRect(
+      find.byKey(const ValueKey('detection-outline-item_002')),
+    );
+    final selectedLabelRect = tester.getRect(
+      find.byKey(const ValueKey('detection-label-item_002')),
+    );
+    expect(selectedLabelRect.left, selectedOutlineRect.left);
+    expect(selectedLabelRect.top, selectedOutlineRect.top);
+    expect(selectedLabelRect.width, AppSpacing.x6);
+    expect(selectedLabelRect.height, AppSpacing.x6);
 
     controller.selectDetection('item_001');
     await tester.pumpAndSettle();
+    expect(visualDecoration('item_001'), isNull);
+    expect(visualDecoration('item_002'), isNull);
     expect(
-      visualDecoration('item_001').color,
-      AppPalette.success.withValues(alpha: .06),
+      outlineDecoration('item_001').color,
+      AppPalette.success.withValues(alpha: AppOpacity.selectedStatusSurface),
     );
-    expect(visualDecoration('item_002').color, isNull);
+    expect(outlineDecoration('item_002').color, isNull);
+    expect(outlineDecoration('item_001').border!.top.width, 3);
+    expect(outlineDecoration('item_001').border!.top.color, AppPalette.success);
+    expect(outlineDecoration('item_002').border!.top.width, 2);
+    expect(
+      outlineDecoration('item_002').border!.top.color,
+      AppPalette.attention,
+    );
 
     controller.selectDetection('item_002');
     await tester.pumpAndSettle();
@@ -190,7 +222,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester
-          .getSemantics(find.bySemanticsLabel('2번 현재 검수, 확인 필요 상품 영역'))
+          .getSemantics(find.bySemanticsLabel('2번 현재 선택, 확인 필요 상품 영역'))
           .getSemanticsData()
           .flagsCollection
           .isSelected,
@@ -241,7 +273,7 @@ void main() {
     expect(controller.selectedItemId, 'item_002');
     expect(previewFocusNodes['item_001']!.skipTraversal, isTrue);
     expect(previewFocusNodes['item_002']!.skipTraversal, isFalse);
-    final movedSelection = find.bySemanticsLabel('2번 현재 검수, 확인 필요 상품 영역');
+    final movedSelection = find.bySemanticsLabel('2번 현재 선택, 확인 필요 상품 영역');
     expect(
       tester
           .getSemantics(movedSelection)
@@ -381,15 +413,11 @@ const _denseResponse = ScanResponse(
     ScanItem(
       itemId: 'item_004',
       bbox: BoundingBox(x: 136, y: 170, width: 16, height: 16),
-      status: ItemStatus.approved,
-      reasonCodes: [],
-      prediction: Product(
-        classId: 'bread_03',
-        className: 'Waffle',
-        displayName: 'Waffle',
-      ),
-      top3: [],
-      confidence: .96,
+      status: ItemStatus.segmentRecapture,
+      reasonCodes: ['CLASSIFIER_QUALITY_CLASS'],
+      prediction: null,
+      top3: _candidates,
+      confidence: .32,
     ),
     ScanItem(
       itemId: 'item_005',

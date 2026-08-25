@@ -1,5 +1,6 @@
 import '../../../core/design_system/copy.dart';
 import '../../../shared/logging/scan_log_repository.dart';
+import '../../../shared/models/scan_models.dart';
 import '../../../shared/presentation/recapture_presentation.dart';
 
 String activityProductLabel(ScanLogItemSummary item) {
@@ -29,6 +30,17 @@ bool activityLogMatchesQuery(ScanLogSummary log, String query) {
       log.reasonCodes.any(
         (reason) => reason.toLowerCase().contains(normalized),
       ) ||
+      (log.operatorReview?.issueCodes.any(
+            (code) =>
+                operatorIssueCodeValue(
+                  code,
+                ).toLowerCase().contains(normalized) ||
+                activityOperatorIssueLabel(
+                  code,
+                ).toLowerCase().contains(normalized),
+          ) ??
+          false) ||
+      activityLogResultLabel(log).toLowerCase().contains(normalized) ||
       log.items.any((item) => activityItemMatchesQuery(item, normalized))) {
     return true;
   }
@@ -52,10 +64,27 @@ String activityLogContentLabel(ScanLogSummary log, {required String query}) {
 }
 
 String activityLogResultLabel(ScanLogSummary log) {
-  if (log.isRecapture) return '재촬영';
-  final modifiedCount = log.items.where((item) => item.userModified).length;
-  return modifiedCount > 0 ? '$modifiedCount개 수정' : '자동 확정';
+  if (log.isLegacy) return '기존 기록';
+  return switch (log.operatorReview!.verdict) {
+    OperatorReviewVerdict.accepted => '그대로 저장',
+    OperatorReviewVerdict.corrected =>
+      '${log.items.where((item) => item.userModified).length}건 수정',
+    OperatorReviewVerdict.recaptureAgreed => '재촬영 저장',
+    OperatorReviewVerdict.recaptureUnnecessary => '재촬영 해제',
+    OperatorReviewVerdict.recaptureRequired => '재촬영으로 변경',
+  };
 }
+
+String activityOperatorIssueLabel(OperatorIssueCode code) => switch (code) {
+  OperatorIssueCode.bboxIncorrect => '박스 잘못 검출',
+  OperatorIssueCode.missedObject => '객체 미검출',
+  OperatorIssueCode.falsePositiveObject => '없는 객체 검출',
+  OperatorIssueCode.wrongTop1 => '상품 오예측',
+  OperatorIssueCode.candidateMissing => '후보에 없음',
+  OperatorIssueCode.unnecessarySegmentRecapture => '객체 재촬영 불필요',
+  OperatorIssueCode.unnecessaryRecapture => '전체 재촬영 불필요',
+  OperatorIssueCode.missedRecapture => '놓친 재촬영',
+};
 
 String summarizeActivityProducts(
   List<ScanLogItemSummary> items, {

@@ -302,6 +302,26 @@ class _SearchProductsState extends State<_SearchProducts> {
   final FocusNode _backFocusNode = FocusNode(
     debugLabel: 'close-product-search',
   );
+  final FocusNode _fieldFocusNode = FocusNode(
+    debugLabel: 'product-search-field',
+  );
+
+  void _focusSearchField() {
+    _fieldFocusNode.requestFocus();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final fieldContext = _fieldFocusNode.context;
+      if (fieldContext == null) return;
+      Scrollable.ensureVisible(
+        fieldContext,
+        duration: MediaQuery.disableAnimationsOf(context)
+            ? Duration.zero
+            : context.appTokens.motionFast,
+        curve: AppMotion.interactionCurve,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtStart,
+      );
+    });
+  }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
     if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
@@ -335,6 +355,7 @@ class _SearchProductsState extends State<_SearchProducts> {
   @override
   void dispose() {
     _backFocusNode.dispose();
+    _fieldFocusNode.dispose();
     super.dispose();
   }
 
@@ -397,6 +418,7 @@ class _SearchProductsState extends State<_SearchProducts> {
               ),
               Expanded(
                 child: TextField(
+                  focusNode: _fieldFocusNode,
                   autofocus: true,
                   enabled: !controller.isBusy,
                   onChanged: controller.updateSearch,
@@ -501,6 +523,7 @@ class _SearchProductsState extends State<_SearchProducts> {
                   ],
                   enabled: !controller.isBusy,
                   entryFocusNode: firstChoiceFocusNode,
+                  onExitBackward: _focusSearchField,
                   onKeyboardConfirmed: onKeyboardChoiceConfirmed,
                 ),
               ],

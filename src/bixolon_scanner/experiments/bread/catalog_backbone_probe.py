@@ -20,10 +20,14 @@ def _load_records(manifest: Path, dataset_root: Path) -> tuple[list[dict], list[
     records = [
         json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line
     ]
-    if len(records) != 200:
-        raise ValueError("the Catalog backbone probe requires exactly 20 classes x 10 images")
     if sorted({int(row["category_id"]) for row in records}) != list(range(1, 21)):
         raise ValueError("the Catalog backbone probe requires categories 1 through 20")
+    counts = {
+        category_id: sum(int(row["category_id"]) == category_id for row in records)
+        for category_id in range(1, 21)
+    }
+    if len(set(counts.values())) != 1 or min(counts.values()) < 10:
+        raise ValueError("the Catalog backbone probe requires balanced 10+ shot classes")
     images = []
     for row in records:
         path = (dataset_root / str(row["image_path"])).resolve()
@@ -35,16 +39,26 @@ def _load_records(manifest: Path, dataset_root: Path) -> tuple[list[dict], list[
 
 
 def _extract_features(
-    images: list[Image.Image], model_dir: Path, *, family: str, batch_size: int
+    images: list[Image.Image],
+    model_dir: Path,
+    *,
+    family: str,
+    batch_size: int,
+    model_name: str | None,
 ) -> np.ndarray:
     import torch
-    from transformers import AutoModel
 
-    model = (
-        AutoModel.from_pretrained(model_dir.resolve().as_posix(), local_files_only=True)
-        .cuda()
-        .eval()
-    )
+    if family == "timm":
+        import timm
+
+        if not model_name:
+            raise ValueError("timm backbone probe requires a model name")
+        model = timm.create_model(f"hf_hub:{model_name}", pretrained=True, num_classes=0)
+    else:
+        from transformers import AutoModel
+
+        model = AutoModel.from_pretrained(model_dir.resolve().as_posix(), local_files_only=True)
+    model = model.cuda().eval()
     features = []
     mean = (0.5, 0.5, 0.5) if family == "siglip" else (0.485, 0.456, 0.406)
     std = (0.5, 0.5, 0.5) if family == "siglip" else (0.229, 0.224, 0.225)
@@ -65,6 +79,8 @@ def _extract_features(
             pixel_values = torch.from_numpy(tensors).cuda(non_blocking=True)
             if family == "siglip":
                 output = model.vision_model(pixel_values=pixel_values).pooler_output
+            elif family == "timm":
+                output = model(pixel_values)
             else:
                 output = model(pixel_values=pixel_values).last_hidden_state[:, 0]
             features.append(output.float().cpu().numpy())
@@ -75,7 +91,11 @@ def run(args: argparse.Namespace) -> dict:
     records, images = _load_records(args.manifest, args.dataset_root)
     try:
         features = _extract_features(
-            images, args.model_dir, family=args.family, batch_size=args.batch_size
+            images,
+            args.model_dir,
+            family=args.family,
+            batch_size=args.batch_size,
+            model_name=args.model_name,
         )
     finally:
         for image in images:
@@ -125,10 +145,8 @@ def run(args: argparse.Namespace) -> dict:
     weights = args.model_dir / "model.safetensors"
     report = {
         "schema_version": "2.0",
-        "candidate_id": f"catalog-{args.family}-original-10shot-probe",
-        "lifecycle": "rejected" if policy["approved_rate"] < 0.9 else "active",
+        "candidate_id": f"catalog-{args.family}-original-balanced-source-probe",
         "evidence_role": "support_leave-group-out_development_probe",
-        "promotion_evidence": False,
         "limitations": [
             "same 10-shot source supplies fold-separated fit and validation",
             "original views only; no ROI-domain evaluation or ONNX latency measurement",
@@ -142,6 +160,7 @@ def run(args: argparse.Namespace) -> dict:
             "manifest_sha256": sha256_file(args.manifest),
             "image_count": len(records),
             "model_weights_sha256": sha256_file(weights),
+            "model_name": args.model_name,
         },
         "feature_shape": list(features.shape),
         "adapter_checkpoint_sha256": adapter_sha256,
@@ -174,7 +193,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--model-dir", type=Path, required=True)
-    parser.add_argument("--family", choices=("siglip", "dinov2"), required=True)
+    parser.add_argument("--family", choices=("siglip", "dinov2", "timm"), required=True)
+    parser.add_argument("--model-name")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--adapter-checkpoint", type=Path)
     parser.add_argument("--batch-size", type=int, default=32)

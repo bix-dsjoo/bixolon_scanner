@@ -17,7 +17,9 @@ class WorkerSettings(BaseSettings):
     catalog_signing_key: SecretStr | None = None
     provider: Literal["auto", "cuda", "cpu", "openvino", "openvino_gpu"] = "auto"
     embedder_provider: Literal["same", "directml", "openvino_gpu"] = "same"
+    embedder_fallback_provider: Literal["none", "same"] = "none"
     cuda_dll_dir: Path | None = None
+    openvino_cache_dir: Path | None = None
     cpu_detector_workers: int = Field(default=1, ge=1, le=4)
     cpu_detector_intra_op_threads: int = Field(default=0, ge=0)
     cpu_embedder_intra_op_threads: int = Field(default=0, ge=0)

@@ -54,13 +54,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester.widget<MaterialApp>(find.byType(MaterialApp)).title,
-      'BIXOLON Scanner v0.1.2',
+      'BIXOLON Scanner v0.1.3',
     );
 
     await tester.tap(find.widgetWithText(OutlinedButton, '다른 이미지 선택'));
     await tester.pumpAndSettle();
     expect(find.text('다른 이미지를 선택할까요?'), findsOneWidget);
-    expect(find.text('지금까지 확인한 상품 선택이 사라져요.'), findsOneWidget);
+    expect(find.text('저장하지 않은 검출 결과와 수정 내용이 사라져요.'), findsOneWidget);
     expect(find.byType(AppConfirmDialog), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '다른 이미지 선택'), findsOneWidget);
     expect(find.text('다시 촬영할까요?'), findsNothing);

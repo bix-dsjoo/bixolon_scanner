@@ -4,37 +4,37 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:product_scanner/shared/models/scan_models.dart';
 
 void main() {
-  String sample(String name) => File(
-    '../../docs/contracts/examples/0.1.2/$name.json',
-  ).readAsStringSync();
+  String sample(String name) =>
+      File('../../docs/contracts/examples/0.1.3/$name.json').readAsStringSync();
 
-  test('0.1.2 APPROVED sample parses', () {
+  test('0.1.3 APPROVED sample parses', () {
     final response = ScanResponse.fromBody(sample('approved'));
 
     expect(response.status, ScanStatus.approved);
     expect(response.items.single.status, ItemStatus.approved);
-    expect(response.modelVersions.worker, '0.1.2');
+    expect(response.modelVersions.worker, '0.1.3');
   });
 
-  test('0.1.2 UNKNOWN sample parses with ordered Top-3', () {
+  test('0.1.3 UNKNOWN sample parses with ordered Top-3', () {
     final response = ScanResponse.fromBody(sample('unknown'));
 
     expect(response.status, ScanStatus.unknown);
     expect(response.items.single.status, ItemStatus.unknown);
-    expect(
-      response.items.single.top3.map((candidate) => candidate.classId),
-      ['bread_02', 'bread_03', 'bread_19'],
-    );
+    expect(response.items.single.top3.map((candidate) => candidate.classId), [
+      'bread_02',
+      'bread_03',
+      'bread_19',
+    ]);
   });
 
-  test('0.1.2 SEGMENT_RECAPTURE sample parses', () {
+  test('0.1.3 SEGMENT_RECAPTURE sample parses', () {
     final response = ScanResponse.fromBody(sample('segment-recapture'));
 
     expect(response.status, ScanStatus.unknown);
     expect(response.items.single.status, ItemStatus.segmentRecapture);
   });
 
-  test('0.1.2 IMAGE_RECAPTURE sample parses separately from ERROR', () {
+  test('0.1.3 IMAGE_RECAPTURE sample parses separately from ERROR', () {
     final recapture = ScanResponse.fromBody(sample('image-recapture'));
     final error = ScanResponse.fromBody(sample('error'));
 

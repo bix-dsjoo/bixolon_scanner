@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.1",
+    [string]$Version = "0.1.3",
     [string]$Python311Executable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$ReuseBuildEnvironment,
@@ -245,7 +245,7 @@ try {
     )
     $candidateManifest = [ordered]@{
         schema_version = "1.0"
-        artifact = "n100_openvino_cpu_vs_cpu_gpu_diagnostic"
+        artifact = "n100_openvino_cpu_vs_intel_gpu_embedder_diagnostic"
         product_version = $Version
         provider = "openvino+openvino_gpu"
         provider_contract = [ordered]@{
@@ -253,6 +253,9 @@ try {
             baseline_embedder = "OpenVINOExecutionProvider:CPU"
             candidate_detector = "OpenVINOExecutionProvider:CPU"
             candidate_embedder = "OpenVINOExecutionProvider:GPU"
+            candidate_primary_embedder = "OpenVINOExecutionProvider:GPU"
+            candidate_rotation_180_embedder = "OpenVINOExecutionProvider:GPU"
+            candidate_independent_verifier_embedder = "OpenVINOExecutionProvider:GPU"
             silent_fallback_allowed = $false
         }
         transformation = [ordered]@{
@@ -281,7 +284,7 @@ try {
     $payloadManifest = [ordered]@{
         schema_version = "1.0"
         product_version = $Version
-        artifact = "n100_openvino_cpu_vs_cpu_gpu_diagnostic_payload"
+        artifact = "n100_openvino_cpu_vs_intel_gpu_embedder_diagnostic_payload"
         file_count = $payloadRecords.Count
         files = $payloadRecords
     }

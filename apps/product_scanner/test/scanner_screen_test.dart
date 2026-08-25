@@ -56,7 +56,7 @@ void main() {
       ),
     );
     await tester.pumpAndSettle();
-    expect(find.text('1/2개 확인 · 분석 70.0 ms'), findsOneWidget);
+    expect(find.text('1/2개 선택 완료 · 분석 70.0 ms'), findsOneWidget);
 
     expect(find.byType(SvgPicture), findsOneWidget);
     expect(find.bySemanticsLabel('BIXOLON'), findsOneWidget);
@@ -186,29 +186,29 @@ void main() {
       greaterThanOrEqualTo(60),
     );
     expect(find.byIcon(Icons.arrow_forward_rounded), findsOneWidget);
-    expect(find.text('1 / 2 상품 확인 완료'), findsOneWidget);
-    final incompleteAction = find.widgetWithText(FilledButton, '1개 상품 확인 필요');
+    expect(find.text('1/2개 선택 완료 · 분석 70.0 ms'), findsOneWidget);
+    final incompleteAction = find.widgetWithText(FilledButton, '1개 상품 선택 필요');
     expect(incompleteAction, findsOneWidget);
     expect(tester.widget<FilledButton>(incompleteAction).onPressed, isNull);
 
     await tester.tap(find.text('머핀'));
     await tester.pumpAndSettle();
-    expect(find.text('2개 상품 확인 완료'), findsOneWidget);
+    expect(find.text('2개 상품 선택 완료'), findsOneWidget);
     expect(find.byKey(const ValueKey('step-navigator')), findsNothing);
-    final submitAction = find.widgetWithText(FilledButton, '2개 상품 최종 확정');
+    final submitAction = find.widgetWithText(FilledButton, '결과 저장');
     expect(submitAction, findsOneWidget);
     expect(tester.widget<FilledButton>(submitAction).onPressed, isNotNull);
     expect(tester.getSize(submitAction).height, greaterThanOrEqualTo(48));
     expect(
       tester
-          .getSemantics(find.bySemanticsLabel('2개 상품 최종 확정'))
+          .getSemantics(find.bySemanticsLabel('결과 저장'))
           .getSemanticsData()
           .flagsCollection
           .isFocused,
       Tristate.isFalse,
     );
     expect(
-      find.bySemanticsLabel('검수 상태. 2개 상품 확인 완료. 최종 확정할 수 있어요.'),
+      find.bySemanticsLabel('검출 결과. 2개 상품 선택 완료. 결과를 저장할 수 있어요.'),
       findsOneWidget,
     );
 
@@ -241,19 +241,12 @@ void main() {
       find.byType(Scaffold).first,
       matchesGoldenFile('goldens/scanner_candidate_selected_1440x900.png'),
     );
-    final missedDetectionAction = find.widgetWithText(
-      OutlinedButton,
-      AppActionCopy.saveMissedDetectionLog,
-    );
-    expect(missedDetectionAction, findsOneWidget);
-    await tester.tap(missedDetectionAction);
-    await tester.pumpAndSettle();
-    expect(repository.saved, hasLength(1));
     expect(
-      repository.saved.single.operatorFeedback,
-      ScanOperatorFeedback.missedObject,
+      find.widgetWithText(OutlinedButton, AppActionCopy.saveMissedDetectionLog),
+      findsNothing,
     );
-    expect(find.text(AppActionCopy.missedDetectionLogSaved), findsOneWidget);
+    expect(find.bySemanticsLabel('박스 추가'), findsOneWidget);
+    expect(repository.saved, isEmpty);
     semantics.dispose();
     controller.dispose();
   });
@@ -316,7 +309,7 @@ void main() {
     );
     expect(
       tester
-          .getSemantics(find.bySemanticsLabel('2번 현재 검수, 머핀, 확정 상품 영역'))
+          .getSemantics(find.bySemanticsLabel('2번 현재 선택, 머핀, 확정 상품 영역'))
           .getSemanticsData()
           .flagsCollection
           .isEnabled,
@@ -423,7 +416,7 @@ void main() {
     expect(controller.selectedItemId, isNull);
     expect(
       tester
-          .getSemantics(find.bySemanticsLabel('8개 상품 최종 확정'))
+          .getSemantics(find.bySemanticsLabel('결과 저장'))
           .getSemanticsData()
           .flagsCollection
           .isFocused,
@@ -495,9 +488,13 @@ void main() {
       inspectorRect.height,
       lessThanOrEqualTo(AppDesignTokens.standard.reviewInspectorMaxHeight),
     );
-    final searchActionRect = tester.getRect(find.text('다른 상품 검색'));
-    expect(searchActionRect.top, greaterThanOrEqualTo(inspectorRect.top));
-    expect(searchActionRect.bottom, lessThanOrEqualTo(inspectorRect.bottom));
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey('review-inspector')),
+        matching: find.text('다른 상품 검색'),
+      ),
+      findsOneWidget,
+    );
     expect(find.text('8번 상품을 확인해 주세요'), findsOneWidget);
     expect(tester.takeException(), isNull);
     controller.dispose();
@@ -617,6 +614,7 @@ void main() {
             processingTimeMs: 40,
             modelVersions: ModelVersions(detector: '0.1.1'),
           );
+    controller.setOperatorRequiresRecapture(true);
 
     await tester.pumpWidget(
       ProductScannerApp(
@@ -632,13 +630,9 @@ void main() {
       matchesGoldenFile('goldens/scanner_recapture_1280x720.png'),
     );
 
-    expect(find.text('상품 일부가 잘렸어요'), findsOneWidget);
     expect(find.text('분석 40.0 ms'), findsOneWidget);
-    expect(
-      find.widgetWithText(OutlinedButton, AppActionCopy.saveRecaptureLog),
-      findsOneWidget,
-    );
-    expect(find.widgetWithText(FilledButton, '다른 이미지 선택'), findsOneWidget);
+    expect(find.widgetWithText(FilledButton, '결과 저장'), findsOneWidget);
+    expect(find.widgetWithText(OutlinedButton, '다른 이미지 선택'), findsOneWidget);
     expect(find.text('분석하기'), findsNothing);
     final recaptureMessage = find.bySemanticsLabel(
       '상품 일부가 잘렸어요. 상품 전체가 이미지 안에 있는 다른 이미지를 선택해 주세요.',
@@ -656,14 +650,11 @@ void main() {
           .hasAction(SemanticsAction.tap),
       isTrue,
     );
-    await tester.tap(
-      find.widgetWithText(OutlinedButton, AppActionCopy.saveRecaptureLog),
-    );
+    await tester.tap(find.widgetWithText(FilledButton, '결과 저장'));
     await tester.pumpAndSettle();
     expect(repository.saved, hasLength(1));
     expect(repository.saved.single.workerStatus, ScanStatus.recapture);
-    expect(find.text(AppActionCopy.recaptureLogSaved), findsOneWidget);
-    expect(find.text('상품 일부가 잘렸어요'), findsOneWidget);
+    expect(find.text('결과를 저장했어요'), findsOneWidget);
     controller.dispose();
     semantics.dispose();
   });
@@ -704,7 +695,7 @@ void main() {
     expect(find.text('중복 박스 확인'), findsOneWidget);
     expect(find.text('1번 중복으로 검출된 상품인지 확인해 주세요'), findsOneWidget);
     expect(find.textContaining('같은 상품을 가리키는 박스'), findsOneWidget);
-    expect(find.text('재촬영 필요'), findsNothing);
+    expect(find.text('재촬영으로 변경'), findsOneWidget);
     expect(find.text('머핀'), findsOneWidget);
     expect(find.text('다른 상품 검색'), findsOneWidget);
 
@@ -746,7 +737,9 @@ void main() {
 
     expect(
       tester
-          .getSize(find.widgetWithText(TextField, '상품명, Scan ID 또는 사유 코드'))
+          .getSize(
+            find.widgetWithText(TextField, '상품명, Scan ID, Worker·작업자 오류 코드'),
+          )
           .width,
       AppDesignTokens.standard.activitySearchWidth,
     );
@@ -757,10 +750,11 @@ void main() {
     );
 
     expect(find.text('머핀 외 2개'), findsOneWidget);
-    expect(find.text('3개'), findsOneWidget);
-    expect(find.text('머핀'), findsWidgets);
-    expect(find.text('확정 상품'), findsOneWidget);
-    expect(find.text('2개 수정'), findsOneWidget);
+    expect(find.textContaining('3개'), findsWidgets);
+    expect(find.textContaining('머핀'), findsWidgets);
+    expect(find.text('1번 상품'), findsOneWidget);
+    expect(find.text('수정 없음'), findsOneWidget);
+    expect(find.text('기존 기록'), findsWidgets);
     expect(find.text('카메라 미연결'), findsOneWidget);
     expect(find.text('카메라 확인 필요'), findsNothing);
     expect(find.byIcon(Icons.arrow_forward_rounded), findsOneWidget);
@@ -815,7 +809,7 @@ void main() {
     expect(find.text('스캔·모델·객체 판정 정보'), findsOneWidget);
     expect(find.text('모델 버전'), findsOneWidget);
     expect(find.text('request_activity_1234'), findsOneWidget);
-    expect(find.text('객체별 판정'), findsOneWidget);
+    expect(find.text('객체별 모델 진단'), findsOneWidget);
     expect(find.textContaining('item_001'), findsOneWidget);
     expect(find.textContaining('item_002'), findsOneWidget);
     expect(find.textContaining('item_003'), findsOneWidget);
@@ -886,12 +880,96 @@ void main() {
       findsOneWidget,
     );
     expect(find.bySemanticsLabel(RegExp('저장 이미지 있음')), findsOneWidget);
-    expect(find.bySemanticsLabel('저장된 스캔 이미지'), findsOneWidget);
+    expect(find.bySemanticsLabel('저장된 이미지와 최종 상품 박스'), findsOneWidget);
     expect(find.text('저장 이미지를 불러올 수 없어요'), findsNothing);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump();
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();
+    controller.dispose();
+  });
+
+  testWidgets('Activity 최종 박스도 상태색 단일선만 표시한다', (tester) async {
+    tester.view.physicalSize = const Size(1280, 720);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final log = ScanLogSummary(
+      scanId: 'activity-box-statuses',
+      analyzedAt: DateTime.utc(2026, 8, 11, 1),
+      confirmedAt: DateTime.utc(2026, 8, 11, 1, 1),
+      inputMode: InputMode.image,
+      processingTimeMs: 52,
+      modelVersions: const ModelVersions(
+        detector: '0.1.1',
+        classifier: '0.1.1',
+      ),
+      performance: _activityOverlayPerformance,
+      items: _activityOverlayItems,
+    );
+    final controller = ScannerController(
+      _UnusedApi(),
+      _EmptyCameraGateway(),
+      _EmptyFileGateway(),
+      _MemoryLogRepository(logs: [log]),
+      testCatalog,
+    )..cameraInitializing = false;
+
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.tap(find.text('활동'));
+    await tester.pumpAndSettle();
+
+    await expectLater(
+      find.byType(Scaffold).first,
+      matchesGoldenFile('goldens/activity_box_statuses_1280x720.png'),
+    );
+    controller.dispose();
+  });
+
+  testWidgets('Activity 상세에서 촬영부터 Worker 내부까지 성능 분석을 확인한다', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller = ScannerController(
+      _UnusedApi(),
+      _EmptyCameraGateway(),
+      _EmptyFileGateway(),
+      _MemoryLogRepository(logs: [_performanceLogSummary]),
+      testCatalog,
+    )..cameraInitializing = false;
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.tap(find.text('활동'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('성능 분석'), findsOneWidget);
+    expect(find.text('촬영부터 결과 화면까지 단계별 시간'), findsOneWidget);
+    expect(find.text('전체 체감시간'), findsNothing);
+    await tester.tap(find.bySemanticsLabel('성능 분석'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('전체 체감시간'), findsOneWidget);
+    expect(find.text('1498.7 ms'), findsOneWidget);
+    expect(find.text('4032 × 3024  ·  3.0 MB'), findsOneWidget);
+    expect(find.text('openvino'), findsOneWidget);
+    expect(find.text('Worker 내부'), findsOneWidget);
+    expect(find.text('Detector'), findsOneWidget);
+    expect(find.text('210.4 ms'), findsOneWidget);
+    expect(find.text('Classifier'), findsOneWidget);
+    expect(find.text('350.2 ms'), findsOneWidget);
     controller.dispose();
   });
 
@@ -932,9 +1010,9 @@ void main() {
     await tester.tap(find.text('활동'));
     await tester.pumpAndSettle();
 
-    expect(find.text('재촬영 기록'), findsOneWidget);
+    expect(find.text('저장 기록'), findsOneWidget);
     expect(find.text('상품 수를 확인하기 어려워요'), findsWidgets);
-    expect(find.text('재촬영'), findsWidgets);
+    expect(find.text('기존 기록'), findsWidgets);
     expect(find.text('저장 이미지를 불러올 수 없어요'), findsOneWidget);
     await expectLater(
       find.byType(Scaffold).first,
@@ -963,6 +1041,8 @@ void main() {
             testCatalog,
           )
           ..cameraInitializing = false
+          ..imageBytes = _testInputImage.bytes
+          ..imageFileName = _testInputImage.fileName
           ..processState = ProcessState.reviewing
           ..response = _response
           ..detections = testReviewDetections(_response)
@@ -975,6 +1055,7 @@ void main() {
         disposeController: false,
       ),
     );
+    await tester.ensureVisible(find.text('다른 상품 검색'));
     await tester.tap(find.text('다른 상품 검색'));
     await tester.pumpAndSettle();
 
@@ -1029,14 +1110,13 @@ void main() {
     );
     await tester.sendKeyEvent(LogicalKeyboardKey.enter);
     await tester.pumpAndSettle();
-    expect(find.text('2개 상품 확인 완료'), findsOneWidget);
+    expect(find.text('2개 상품 선택 완료'), findsOneWidget);
     expect(
       tester
-          .getSemantics(find.bySemanticsLabel('2개 상품 최종 확정'))
-          .getSemanticsData()
-          .flagsCollection
-          .isFocused,
-      Tristate.isTrue,
+          .widget<FilledButton>(find.widgetWithText(FilledButton, '결과 저장'))
+          .focusNode
+          ?.hasFocus,
+      isTrue,
     );
     controller.dispose();
   });
@@ -1056,6 +1136,8 @@ void main() {
             testCatalog,
           )
           ..cameraInitializing = false
+          ..imageBytes = _testInputImage.bytes
+          ..imageFileName = _testInputImage.fileName
           ..processState = ProcessState.reviewing
           ..response = _response
           ..detections = testReviewDetections(_response)
@@ -1073,6 +1155,7 @@ void main() {
         disposeController: false,
       ),
     );
+    await tester.ensureVisible(find.text('다른 상품 검색'));
     await tester.tap(find.text('다른 상품 검색'));
     await tester.pumpAndSettle();
 
@@ -1134,11 +1217,10 @@ void main() {
     );
     expect(
       tester
-          .getSemantics(find.bySemanticsLabel('2개 상품 최종 확정'))
-          .getSemanticsData()
-          .flagsCollection
-          .isFocused,
-      Tristate.isTrue,
+          .widget<FilledButton>(find.widgetWithText(FilledButton, '결과 저장'))
+          .focusNode
+          ?.hasFocus,
+      isTrue,
     );
     controller.dispose();
   });
@@ -1158,6 +1240,8 @@ void main() {
             testCatalog,
           )
           ..cameraInitializing = false
+          ..imageBytes = _testInputImage.bytes
+          ..imageFileName = _testInputImage.fileName
           ..processState = ProcessState.reviewing
           ..response = _response
           ..detections = testReviewDetections(_response)
@@ -1170,6 +1254,7 @@ void main() {
         disposeController: false,
       ),
     );
+    await tester.ensureVisible(find.text('다른 상품 검색'));
     await tester.tap(find.text('다른 상품 검색'));
     await tester.pumpAndSettle();
 
@@ -1262,11 +1347,10 @@ void main() {
     expect(controller.allConfirmed, isTrue);
     expect(
       tester
-          .getSemantics(find.bySemanticsLabel('2개 상품 최종 확정'))
-          .getSemanticsData()
-          .flagsCollection
-          .isFocused,
-      Tristate.isTrue,
+          .widget<FilledButton>(find.widgetWithText(FilledButton, '결과 저장'))
+          .focusNode
+          ?.hasFocus,
+      isTrue,
     );
     controller.dispose();
   });
@@ -1431,7 +1515,7 @@ void main() {
 
     expect(find.text('저장된 활동이 없어요'), findsOneWidget);
     final emptyMessage = find.bySemanticsLabel(
-      '저장된 활동이 없어요. 상품을 최종 확정하면 이곳에서 확인할 수 있어요.',
+      '저장된 활동이 없어요. 결과를 저장하면 이곳에서 확인할 수 있어요.',
     );
     expect(emptyMessage, findsOneWidget);
     expect(
@@ -1442,7 +1526,7 @@ void main() {
           .isLiveRegion,
       isTrue,
     );
-    expect(find.text('상품을 최종 확정하면 이곳에서 확인할 수 있어요.'), findsOneWidget);
+    expect(find.text('결과를 저장하면 이곳에서 확인할 수 있어요.'), findsOneWidget);
     expect(find.widgetWithText(FilledButton, '스캔 화면으로 이동'), findsOneWidget);
     expect(find.byType(TextField), findsNothing);
     expect(find.byType(ChoiceChip), findsNothing);
@@ -1490,7 +1574,7 @@ void main() {
       closeTo(1280 * AppDesignTokens.standard.scanResultPanelFraction, .01),
     );
     expect(find.text('2번 상품을 확인해 주세요'), findsOneWidget);
-    expect(find.text('1 / 2 상품 확인 완료'), findsOneWidget);
+    expect(find.text('1/2개 선택 완료 · 분석 70.0 ms'), findsOneWidget);
     controller.dispose();
   });
 
@@ -1585,12 +1669,208 @@ void main() {
     );
     expect(
       tester
-          .getSemantics(find.bySemanticsLabel('상품 변경'))
-          .getSemanticsData()
-          .flagsCollection
-          .isFocused,
-      Tristate.isTrue,
+          .widget<OutlinedButton>(find.widgetWithText(OutlinedButton, '상품 변경'))
+          .focusNode
+          ?.hasFocus,
+      isTrue,
     );
+    controller.dispose();
+  });
+
+  testWidgets('별도 편집 창은 핸들 수정을 적용할 때 한 번에 반영하고 실행 취소한다', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final semantics = tester.ensureSemantics();
+
+    final controller =
+        ScannerController(
+            _UnusedApi(),
+            _EmptyCameraGateway(),
+            _EmptyFileGateway(),
+            _MemoryLogRepository(),
+            testCatalog,
+          )
+          ..cameraInitializing = false
+          ..inputMode = InputMode.image
+          ..imageBytes = _testInputImage.bytes
+          ..imageFileName = _testInputImage.fileName
+          ..imageSize = const Size(400, 400)
+          ..processState = ProcessState.reviewing
+          ..response = _response
+          ..detections = testReviewDetections(_response)
+          ..selectedItemId = 'item_002';
+
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(OutlinedButton, '박스 수정'));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('box-editor-dialog')), findsOneWidget);
+    expect(find.bySemanticsLabel(RegExp(r'박스 크기 조절$')), findsNWidgets(8));
+    final draft = tester.widget<Container>(
+      find.byKey(const ValueKey('box-editor-draft')),
+    );
+    expect(
+      find.byKey(const ValueKey('box-editor-draft-label')),
+      findsOneWidget,
+    );
+    final draftRect = tester.getRect(
+      find.byKey(const ValueKey('box-editor-draft')),
+    );
+    final draftLabelRect = tester.getRect(
+      find.byKey(const ValueKey('box-editor-draft-label')),
+    );
+    expect(draftLabelRect.left, draftRect.left + AppSpacing.x3);
+    expect(draftLabelRect.top, draftRect.top + AppSpacing.x3);
+    final draftDecoration = draft.decoration! as BoxDecoration;
+    final draftBorder = draftDecoration.border! as Border;
+    expect(
+      draftDecoration.color,
+      AppPalette.brand.withValues(alpha: AppOpacity.selectedStatusSurface),
+    );
+    expect(draftDecoration.boxShadow, isNull);
+    expect(draftBorder.top.color, AppPalette.brand);
+    expect(draftBorder.top.width, 3);
+    for (final handle in [
+      'topLeft',
+      'top',
+      'topRight',
+      'right',
+      'bottomRight',
+      'bottom',
+      'bottomLeft',
+      'left',
+    ]) {
+      final handleDecoration =
+          tester
+                  .widget<Container>(
+                    find.byKey(ValueKey('box-editor-handle-$handle')),
+                  )
+                  .decoration!
+              as BoxDecoration;
+      expect(handleDecoration.color, AppPalette.surface);
+      expect(handleDecoration.boxShadow, isNull);
+    }
+    expect(find.text('모델'), findsNothing);
+    expect(find.text('검수 결과'), findsNothing);
+    expect(find.text('비교'), findsNothing);
+    await expectLater(
+      find.byKey(const ValueKey('box-editor-dialog')),
+      matchesGoldenFile('goldens/scanner_box_editor_1440x900.png'),
+    );
+    final handle = find.bySemanticsLabel('오른쪽 아래 박스 크기 조절');
+    expect(handle, findsOneWidget);
+
+    await tester.tap(handle);
+    await tester.pump();
+    await tester.sendKeyEvent(LogicalKeyboardKey.arrowRight);
+    await tester.pump();
+    expect(
+      controller.selectedDetection!.finalBbox,
+      const BoundingBox(x: 100, y: 100, width: 100, height: 100),
+    );
+
+    await tester.tap(find.byKey(const ValueKey('apply-box-edit')));
+    await tester.pumpAndSettle();
+    expect(
+      controller.selectedDetection!.finalBbox,
+      const BoundingBox(x: 100, y: 100, width: 101, height: 100),
+    );
+
+    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+    await tester.sendKeyEvent(LogicalKeyboardKey.keyZ);
+    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    await tester.pump();
+    expect(
+      controller.selectedDetection!.finalBbox,
+      const BoundingBox(x: 100, y: 100, width: 100, height: 100),
+    );
+    semantics.dispose();
+    controller.dispose();
+  });
+
+  testWidgets('박스 추가는 편집창 적용 뒤 상품 검색으로 이어지고 취소는 결과를 바꾸지 않는다', (tester) async {
+    tester.view.physicalSize = const Size(1440, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final controller =
+        ScannerController(
+            _UnusedApi(),
+            _EmptyCameraGateway(),
+            _EmptyFileGateway(),
+            _MemoryLogRepository(),
+            testCatalog,
+          )
+          ..cameraInitializing = false
+          ..inputMode = InputMode.image
+          ..imageBytes = _testInputImage.bytes
+          ..imageFileName = _testInputImage.fileName
+          ..imageSize = const Size(400, 400)
+          ..processState = ProcessState.reviewing
+          ..response = _response
+          ..detections = testReviewDetections(_response)
+          ..selectedItemId = 'item_002';
+
+    await tester.pumpWidget(
+      ProductScannerApp(
+        controller: controller,
+        autoInitialize: false,
+        disposeController: false,
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final originalCount = controller.activeDetections.length;
+    await tester.tap(find.widgetWithText(OutlinedButton, '박스 추가'));
+    await tester.pumpAndSettle();
+    expect(find.text('상품의 한쪽 모서리에서 반대쪽 모서리까지 드래그하세요.'), findsOneWidget);
+    await tester.tap(find.widgetWithText(OutlinedButton, '취소'));
+    await tester.pumpAndSettle();
+    expect(controller.activeDetections.length, originalCount);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, '박스 추가'));
+    await tester.pumpAndSettle();
+    final canvas = find.byKey(const ValueKey('box-editor-canvas'));
+    final center = tester.getCenter(canvas);
+    await tester.dragFrom(
+      center - const Offset(100, 100),
+      const Offset(200, 180),
+    );
+    await tester.pump();
+    expect(find.byKey(const ValueKey('box-editor-draft')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('box-editor-draft-label')),
+      findsOneWidget,
+    );
+    final addedDraftDecoration =
+        tester
+                .widget<Container>(
+                  find.byKey(const ValueKey('box-editor-draft')),
+                )
+                .decoration!
+            as BoxDecoration;
+    expect(
+      addedDraftDecoration.color,
+      AppPalette.brand.withValues(alpha: AppOpacity.selectedStatusSurface),
+    );
+    expect(addedDraftDecoration.boxShadow, isNull);
+    await tester.tap(find.byKey(const ValueKey('apply-box-edit')));
+    await tester.pumpAndSettle();
+
+    expect(controller.activeDetections.length, originalCount + 1);
+    expect(controller.selectedDetection?.operatorAdded, isTrue);
+    expect(controller.searchItemId, controller.selectedItemId);
+    expect(find.textContaining('번 상품 검색'), findsOneWidget);
     controller.dispose();
   });
 
@@ -1626,7 +1906,10 @@ void main() {
     expect(find.text('에그 타르트'), findsWidgets);
     expect(find.text('머핀'), findsNothing);
 
-    final search = find.widgetWithText(TextField, '상품명, Scan ID 또는 사유 코드');
+    final search = find.widgetWithText(
+      TextField,
+      '상품명, Scan ID, Worker·작업자 오류 코드',
+    );
     await tester.enterText(search, '에그');
     await tester.pump();
     await tester.tap(find.text('스캔'));
@@ -1667,7 +1950,10 @@ void main() {
     await tester.tap(find.text('활동'));
     await tester.pumpAndSettle();
 
-    final search = find.widgetWithText(TextField, '상품명, Scan ID 또는 사유 코드');
+    final search = find.widgetWithText(
+      TextField,
+      '상품명, Scan ID, Worker·작업자 오류 코드',
+    );
     await tester.enterText(search, '에그');
     await tester.pumpAndSettle();
     expect(find.text('검색 결과'), findsOneWidget);
@@ -1790,17 +2076,31 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(
-      find.bySemanticsLabel(RegExp(r'머핀 외 2개.*카메라.*2개 수정 활동 기록')),
+      find.bySemanticsLabel(RegExp(r'머핀 외 2개.*카메라.*기존 기록 활동 기록')),
       findsOneWidget,
     );
     expect(find.bySemanticsLabel('입력원, 전체'), findsOneWidget);
     expect(find.bySemanticsLabel('기간, 전체'), findsOneWidget);
     expect(find.bySemanticsLabel('전체'), findsNothing);
 
-    final search = find.widgetWithText(TextField, '상품명, Scan ID 또는 사유 코드');
+    final search = find.widgetWithText(
+      TextField,
+      '상품명, Scan ID, Worker·작업자 오류 코드',
+    );
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pump();
     expect(tester.widget<TextField>(search).focusNode?.hasFocus, isTrue);
+
+    await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+    await tester.pumpAndSettle();
+    expect(
+      tester
+          .getSemantics(find.bySemanticsLabel('검수 기록 내보내기'))
+          .getSemanticsData()
+          .flagsCollection
+          .isFocused,
+      Tristate.isTrue,
+    );
 
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
     await tester.pumpAndSettle();
@@ -1863,7 +2163,7 @@ void main() {
       matchesGoldenFile('goldens/activity_filter_focus_1440x900.png'),
     );
 
-    expect(find.text('머핀'), findsWidgets);
+    expect(find.textContaining('머핀'), findsWidgets);
     expect(find.text('에그 타르트'), findsNothing);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.tab);
@@ -1948,7 +2248,10 @@ void main() {
 
     await tester.sendKeyEvent(LogicalKeyboardKey.slash);
     await tester.pump();
-    final search = find.widgetWithText(TextField, '상품명, Scan ID 또는 사유 코드');
+    final search = find.widgetWithText(
+      TextField,
+      '상품명, Scan ID, Worker·작업자 오류 코드',
+    );
     expect(tester.widget<TextField>(search).focusNode?.hasFocus, isTrue);
     await tester.enterText(search, '머핀');
     await tester.sendKeyEvent(LogicalKeyboardKey.escape);
@@ -1986,6 +2289,7 @@ void main() {
         disposeController: false,
       ),
     );
+    await tester.ensureVisible(find.text('다른 상품 검색'));
     await tester.tap(find.text('다른 상품 검색'));
     await tester.pumpAndSettle();
     final search = find.widgetWithText(TextField, '상품명 또는 class ID');
@@ -2092,8 +2396,8 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.text('2개 상품을 확정했어요'), findsOneWidget);
-    final completion = find.bySemanticsLabel('2개 상품을 확정했어요');
+    expect(find.text('결과를 저장했어요'), findsOneWidget);
+    final completion = find.bySemanticsLabel('결과를 저장했어요');
     expect(
       tester
           .getSemantics(completion)
@@ -2133,7 +2437,7 @@ void main() {
     await tester.tap(find.text('활동'));
     await tester.pumpAndSettle();
     await tester.pump(const Duration(seconds: 1));
-    expect(find.text('2개 상품을 확정했어요'), findsOneWidget);
+    expect(find.text('결과를 저장했어요'), findsOneWidget);
     await expectLater(
       find.byType(Scaffold).first,
       matchesGoldenFile('goldens/activity_completion_toast_1440x900.png'),
@@ -2141,7 +2445,7 @@ void main() {
 
     await tester.pump(const Duration(seconds: 2));
     await tester.pump();
-    expect(find.text('2개 상품을 확정했어요'), findsNothing);
+    expect(find.text('결과를 저장했어요'), findsNothing);
 
     await expectLater(
       find.byType(Scaffold).first,
@@ -2149,10 +2453,10 @@ void main() {
     );
 
     expect(find.text('활동 화면을 갱신하지 못했어요'), findsOneWidget);
-    expect(find.text('방금 확정한 기록은 저장됐어요. 잠시 후 새로고침해 주세요.'), findsOneWidget);
+    expect(find.text('방금 검수한 기록은 저장됐어요. 잠시 후 새로고침해 주세요.'), findsOneWidget);
     expect(find.text('활동 기록을 불러오지 못했어요'), findsNothing);
     final activityError = find.bySemanticsLabel(
-      '활동 화면을 갱신하지 못했어요. 방금 확정한 기록은 저장됐어요. 잠시 후 새로고침해 주세요.',
+      '활동 화면을 갱신하지 못했어요. 방금 검수한 기록은 저장됐어요. 잠시 후 새로고침해 주세요.',
     );
     expect(activityError, findsOneWidget);
     final activityErrorData = tester
@@ -2246,6 +2550,55 @@ final InputImage _testInputImage = InputImage(
   fileName: 'test.png',
 );
 
+const _activityOverlayPerformance = ScanPerformanceMetrics(
+  imageWidth: 100,
+  imageHeight: 100,
+  imageSizeBytes: 68,
+  cameraCaptureMs: 0,
+  fileReadMs: 1,
+  flutterImageDecodeMs: 1,
+  readinessMs: 0,
+  requestBuildMs: 0,
+  httpRoundTripMs: 52,
+  responseBodyReadMs: 0,
+  responseParseMs: 0,
+  resultMappingMs: 0,
+  resultFirstFrameMs: 1,
+  endToEndMs: 55,
+);
+
+const _activityOverlayItems = [
+  ScanLogItemSummary(
+    itemId: 'approved-box',
+    productName: '머핀',
+    confidence: .95,
+    userModified: false,
+    confirmationMethod: 'AUTO_APPROVED',
+    classId: 'bread_01',
+    className: 'Muffin',
+    finalBbox: BoundingBox(x: 8, y: 10, width: 24, height: 28),
+    initialStatus: ItemStatus.approved,
+  ),
+  ScanLogItemSummary(
+    itemId: 'unknown-box',
+    productName: 'Unknown',
+    confidence: .55,
+    userModified: false,
+    confirmationMethod: 'UNKNOWN',
+    finalBbox: BoundingBox(x: 39, y: 18, width: 22, height: 30),
+    initialStatus: ItemStatus.unknown,
+  ),
+  ScanLogItemSummary(
+    itemId: 'segment-recapture-box',
+    productName: 'Unknown',
+    confidence: .21,
+    userModified: false,
+    confirmationMethod: 'UNKNOWN',
+    finalBbox: BoundingBox(x: 69, y: 45, width: 23, height: 32),
+    initialStatus: ItemStatus.segmentRecapture,
+  ),
+];
+
 final _logSummary = ScanLogSummary(
   scanId: 'request_activity_1234',
   analyzedAt: DateTime.utc(2026, 8, 10, 1),
@@ -2274,6 +2627,52 @@ final _logSummary = ScanLogSummary(
       confidence: .78,
       userModified: true,
       confirmationMethod: 'SEARCH_SELECTED',
+    ),
+  ],
+);
+
+final _performanceLogSummary = ScanLogSummary(
+  scanId: 'request_performance_1234',
+  analyzedAt: DateTime.utc(2026, 8, 24, 1),
+  confirmedAt: DateTime.utc(2026, 8, 24, 1, 1),
+  inputMode: InputMode.camera,
+  processingTimeMs: 606.2,
+  modelVersions: const ModelVersions(detector: '0.1.1', classifier: '0.1.1'),
+  performance: const ScanPerformanceMetrics(
+    imageWidth: 4032,
+    imageHeight: 3024,
+    imageSizeBytes: 3145728,
+    provider: 'openvino',
+    cameraCaptureMs: 401.2,
+    fileReadMs: 35.4,
+    flutterImageDecodeMs: 280.6,
+    readinessMs: 4.1,
+    requestBuildMs: 0.7,
+    httpRoundTripMs: 705.8,
+    responseBodyReadMs: 1.2,
+    responseParseMs: 0.5,
+    resultMappingMs: 2.1,
+    resultFirstFrameMs: 67.1,
+    endToEndMs: 1498.7,
+    worker: WorkerStageTimings(
+      requestTotalMs: 606.2,
+      uploadReadMs: 2.0,
+      decodeMs: 31.0,
+      queueWaitMs: 0.1,
+      pipelineMs: 568.4,
+      detectorMs: 210.4,
+      classifierMs: 350.2,
+      decisionMs: 7.8,
+      serverOverheadMs: 4.7,
+    ),
+  ),
+  items: const [
+    ScanLogItemSummary(
+      itemId: 'item_001',
+      productName: '머핀',
+      confidence: .92,
+      userModified: false,
+      confirmationMethod: 'AUTO_APPROVED',
     ),
   ],
 );

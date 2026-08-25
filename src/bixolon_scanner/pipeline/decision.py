@@ -205,7 +205,7 @@ class DecisionPipeline:
             response = ScanResponse(
                 request_id=request_id,
                 status=Status.IMAGE_RECAPTURE,
-                reason_codes=reasons,
+                reason_codes=["IMAGE_RECAPTURE_REQUIRED"],
                 segmentations=[],
                 processing_time_ms=(time.perf_counter() - started) * 1000.0,
                 worker_version=self.worker_version,
@@ -216,7 +216,12 @@ class DecisionPipeline:
                 classifier_policy_version=None,
                 catalog_version=None,
             )
-            self._log(response, detector_ms=detector_ms, classifier_ms=0.0)
+            self._log(
+                response,
+                detector_ms=detector_ms,
+                classifier_ms=0.0,
+                diagnostic_reason_codes=reasons,
+            )
             return response
 
         ordered = sorted(
@@ -278,7 +283,7 @@ class DecisionPipeline:
                     segmentation_id=f"segmentation_{ordinal:03d}",
                     bbox=bbox,
                     status=ItemStatus.SEGMENT_RECAPTURE,
-                    reason_codes=["CLASSIFIER_QUALITY_CLASS"],
+                    reason_codes=["SEGMENT_RECAPTURE_REQUIRED"],
                     prediction=None,
                     top3=[],
                     confidence=top1_score,
@@ -288,7 +293,7 @@ class DecisionPipeline:
                     segmentation_id=f"segmentation_{ordinal:03d}",
                     bbox=bbox,
                     status=ItemStatus.SEGMENT_RECAPTURE,
-                    reason_codes=["DETECTOR_BORDER_CLIPPED"],
+                    reason_codes=["SEGMENT_RECAPTURE_REQUIRED"],
                     prediction=None,
                     top3=[],
                     confidence=top1_score,
@@ -298,7 +303,7 @@ class DecisionPipeline:
                     segmentation_id=f"segmentation_{ordinal:03d}",
                     bbox=bbox,
                     status=ItemStatus.SEGMENT_RECAPTURE,
-                    reason_codes=[segment_recapture_reasons[index]],
+                    reason_codes=["SEGMENT_RECAPTURE_REQUIRED"],
                     prediction=None,
                     top3=[],
                     confidence=0.0,
@@ -331,7 +336,7 @@ class DecisionPipeline:
                     segmentation_id=f"segmentation_{ordinal:03d}",
                     bbox=bbox,
                     status=ItemStatus.SEGMENT_RECAPTURE,
-                    reason_codes=["CLASSIFIER_TOP3_UNSAFE"],
+                    reason_codes=["SEGMENT_RECAPTURE_REQUIRED"],
                     prediction=None,
                     top3=[],
                     confidence=(
@@ -400,13 +405,20 @@ class DecisionPipeline:
                 close()
 
     @staticmethod
-    def _log(response: ScanResponse, *, detector_ms: float, classifier_ms: float) -> None:
+    def _log(
+        response: ScanResponse,
+        *,
+        detector_ms: float,
+        classifier_ms: float,
+        diagnostic_reason_codes: list[str] | None = None,
+    ) -> None:
         LOGGER.info(
             "scan_complete",
             extra={
                 "request_id": response.request_id,
                 "status": response.status.value,
                 "reason_codes": response.reason_codes,
+                "diagnostic_reason_codes": diagnostic_reason_codes or [],
                 "segmentation_count": len(response.segmentations),
                 "detector_ms": round(detector_ms, 3),
                 "classifier_ms": round(classifier_ms, 3),

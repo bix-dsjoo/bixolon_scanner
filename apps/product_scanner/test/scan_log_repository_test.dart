@@ -8,6 +8,38 @@ import 'package:product_scanner/models/scan_models.dart';
 import 'package:product_scanner/services/scan_log_repository.dart';
 
 void main() {
+  test('Activity 최종 상태는 상품 확정과 UNKNOWN, SEGMENT_RECAPTURE를 구분한다', () {
+    const approved = ScanLogItemSummary(
+      itemId: 'approved',
+      productName: '머핀',
+      confidence: .9,
+      userModified: true,
+      confirmationMethod: 'SEARCH_SELECTED',
+      classId: 'bread_01',
+      initialStatus: ItemStatus.unknown,
+    );
+    const unknown = ScanLogItemSummary(
+      itemId: 'unknown',
+      productName: 'Unknown',
+      confidence: .5,
+      userModified: false,
+      confirmationMethod: 'UNKNOWN',
+      initialStatus: ItemStatus.unknown,
+    );
+    const segmentRecapture = ScanLogItemSummary(
+      itemId: 'segment-recapture',
+      productName: 'Unknown',
+      confidence: .2,
+      userModified: false,
+      confirmationMethod: 'UNKNOWN',
+      initialStatus: ItemStatus.segmentRecapture,
+    );
+
+    expect(approved.resultStatus, ItemStatus.approved);
+    expect(unknown.resultStatus, ItemStatus.unknown);
+    expect(segmentRecapture.resultStatus, ItemStatus.segmentRecapture);
+  });
+
   test('원본 이미지와 최초/최종 판정을 분리한 JSON을 저장한다', () async {
     final support = await Directory.systemTemp.createTemp(
       'product-scanner-log-',
@@ -42,6 +74,14 @@ void main() {
           detector: '0.1.1',
           classifier: '0.1.1',
         ),
+        operatorReview: OperatorReview(
+          verdict: OperatorReviewVerdict.corrected,
+          reviewedAt: DateTime.utc(2026, 8, 10, 1, 1),
+          inferredIssueCodes: const {OperatorIssueCode.candidateMissing},
+          issueCodes: const {OperatorIssueCode.candidateMissing},
+          objects: [OperatorReviewObject.fromDetection(detection)],
+        ),
+        performance: _performance,
         detections: [detection],
       ),
     );
@@ -55,7 +95,7 @@ void main() {
     final savedDetection =
         (payload['detections'] as List).single as Map<String, dynamic>;
     expect(payload['input_mode'], 'IMAGE');
-    expect(payload['log_schema_version'], 3);
+    expect(payload['log_schema_version'], 5);
     expect(payload['worker_status'], 'UNKNOWN');
     expect(payload['reason_codes'], ['ITEM_BELOW_APPROVAL_THRESHOLD']);
     expect(payload['recorded_at'], payload['confirmed_at']);
@@ -63,6 +103,13 @@ void main() {
     expect(savedDetection['reason_codes'], ['BELOW_APPROVAL_THRESHOLD']);
     expect(savedDetection['final_product']['class_id'], 'bread_13');
     expect(savedDetection['confirmation_method'], 'TOP3_SELECTED');
+    expect(payload['performance']['end_to_end_ms'], 1498.7);
+    expect(payload['performance']['provider'], 'openvino');
+    expect(payload['performance']['worker_timings_ms']['detector_ms'], 210.4);
+    expect(payload['operator_review']['verdict'], 'CORRECTED');
+    expect(payload['operator_review']['issue_codes'], [
+      'OPERATOR_CANDIDATE_MISSING',
+    ]);
 
     final logs = await repository.list();
     expect(logs, hasLength(1));
@@ -75,6 +122,14 @@ void main() {
     expect(logs.single.items.single.reasonCodes, ['BELOW_APPROVAL_THRESHOLD']);
     expect(logs.single.originalImagePath, image.path);
     expect(logs.single.recordedAt, logs.single.confirmedAt);
+    expect(logs.single.performance?.endToEndMs, 1498.7);
+    expect(logs.single.performance?.apiTotalMs, closeTo(711.1, 0.001));
+    expect(logs.single.performance?.worker?.classifierMs, 350.2);
+    expect(logs.single.logSchemaVersion, 5);
+    expect(
+      logs.single.operatorReview?.verdict,
+      OperatorReviewVerdict.corrected,
+    );
   });
 
   test('RECAPTURE 이미지와 reason code를 확정 시각 없이 저장한다', () async {
@@ -133,7 +188,7 @@ void main() {
     );
   });
 
-  test('사람이 신고한 박스 미검출은 실제 모델 결과와 분리해 저장한다', () async {
+  test('박스 미검출 추가는 원본 모델 결과와 operator_review에 함께 저장한다', () async {
     final support = await Directory.systemTemp.createTemp(
       'product-scanner-missed-object-log-',
     );
@@ -144,7 +199,20 @@ void main() {
       applicationSupportDirectory: () async => support,
       captureSessionId: 'capture-session-03',
     );
-    final detection = ReviewDetection.fromScanItem(_unknownItem);
+    final detection = ReviewDetection.fromScanItem(_unknownItem)
+      ..finalProduct = _unknownItem.top3.first
+      ..confirmationMethod = ConfirmationMethod.top3Selected;
+    final added =
+        ReviewDetection.operatorAdded(
+            objectId: 'operator_1',
+            bbox: const BoundingBox(x: 10, y: 20, width: 30, height: 40),
+          )
+          ..finalProduct = const Product(
+            classId: 'bread_01',
+            className: 'Bagel',
+            displayName: '베이글',
+          )
+          ..confirmationMethod = ConfirmationMethod.searchSelected;
 
     await repository.save(
       ScanLogRecord(
@@ -157,18 +225,25 @@ void main() {
         processingTimeMs: 55.4,
         modelVersions: const ModelVersions(
           detector: '0.1.1',
-          classifier: '0.1.0',
+          classifier: '0.1.1',
         ),
-        detections: [detection],
+        detections: [detection, added],
         workerStatus: ScanStatus.unknown,
         reasonCodes: const ['ITEM_BELOW_APPROVAL_THRESHOLD'],
-        operatorFeedback: ScanOperatorFeedback.missedObject,
+        operatorReview: OperatorReview(
+          verdict: OperatorReviewVerdict.corrected,
+          reviewedAt: DateTime.utc(2026, 8, 11, 3, 1),
+          inferredIssueCodes: const {OperatorIssueCode.missedObject},
+          issueCodes: const {OperatorIssueCode.missedObject},
+          objects: [
+            OperatorReviewObject.fromDetection(detection),
+            OperatorReviewObject.fromDetection(added),
+          ],
+        ),
       ),
     );
 
-    final root = Directory(
-      p.join(support.path, 'ProductScanner', 'feedback_logs', 'missed_object'),
-    );
+    final root = Directory(p.join(support.path, 'ProductScanner', 'scan_logs'));
     final payload =
         jsonDecode(
               await File(
@@ -180,18 +255,23 @@ void main() {
     expect(payload['worker_status'], 'UNKNOWN');
     expect(payload['reason_codes'], ['ITEM_BELOW_APPROVAL_THRESHOLD']);
     expect(payload['detection_count'], 1);
-    expect(payload['operator_feedback'], {
-      'type': 'MISSED_OBJECT',
-      'expected_status': 'RECAPTURE',
-      'expected_reason': 'DETECTOR_MISSED_OBJECT',
-      'annotation_status': 'PENDING_BBOX_CLASS_REVIEW',
-      'minimum_missing_object_count': 1,
-    });
+    expect(payload['operator_review']['verdict'], 'CORRECTED');
+    expect(payload['operator_review']['inferred_issue_codes'], [
+      'OPERATOR_MISSED_OBJECT',
+    ]);
+    expect(payload['operator_review']['objects'], hasLength(2));
+    expect(
+      payload['operator_review']['objects'][1]['source_detection_id'],
+      isNull,
+    );
+    expect(payload['operator_review']['objects'][1]['disposition'], 'ADD');
     expect(
       await File(p.join(root.path, 'request_missed_1234.jpg')).readAsBytes(),
       [7, 8, 9],
     );
-    expect(await repository.list(), isEmpty);
+    final logs = await repository.list();
+    expect(logs.single.items, hasLength(2));
+    expect(logs.single.items.last.disposition, OperatorObjectDisposition.add);
   });
 
   test('v1 로그는 확정 시각과 안전한 이미지 이름으로 호환 로드한다', () async {
@@ -241,6 +321,7 @@ void main() {
     expect(legacy.workerStatus, ScanStatus.approved);
     expect(legacy.recordedAt, legacy.confirmedAt);
     expect(legacy.originalImagePath, image.path);
+    expect(legacy.isLegacy, isTrue);
     final unsafe = logs.singleWhere((log) => log.scanId == 'unsafe');
     expect(unsafe.originalImagePath, isNull);
   });
@@ -261,4 +342,33 @@ const _unknownItem = ScanItem(
     ),
   ],
   confidence: .7,
+);
+
+const _performance = ScanPerformanceMetrics(
+  imageWidth: 4032,
+  imageHeight: 3024,
+  imageSizeBytes: 3145728,
+  provider: 'openvino',
+  cameraCaptureMs: 401.2,
+  fileReadMs: 35.4,
+  flutterImageDecodeMs: 280.6,
+  readinessMs: 4.1,
+  requestBuildMs: 0.7,
+  httpRoundTripMs: 705.8,
+  responseBodyReadMs: 1.2,
+  responseParseMs: 0.5,
+  resultMappingMs: 2.1,
+  resultFirstFrameMs: 67.1,
+  endToEndMs: 1498.7,
+  worker: WorkerStageTimings(
+    requestTotalMs: 606.2,
+    uploadReadMs: 2.0,
+    decodeMs: 31.0,
+    queueWaitMs: 0.1,
+    pipelineMs: 568.4,
+    detectorMs: 210.4,
+    classifierMs: 350.2,
+    decisionMs: 7.8,
+    serverOverheadMs: 4.7,
+  ),
 );

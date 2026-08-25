@@ -43,7 +43,7 @@ def test_detector_recapture_skips_classifier(classifier_metadata, quality_metada
     )
     response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request01")
     assert response.status is Status.RECAPTURE
-    assert response.reason_codes == ["DETECTOR_NO_OBJECT"]
+    assert response.reason_codes == ["IMAGE_RECAPTURE_REQUIRED"]
     assert response.model_versions.classifier is None
     assert classifier.calls == 0
 
@@ -162,7 +162,7 @@ def test_unsafe_classifier_top3_becomes_segment_recapture(classifier_metadata, q
     response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "unsafe-top3")
 
     assert response.items[0].status is ItemStatus.SEGMENT_RECAPTURE
-    assert response.items[0].reason_codes == ["CLASSIFIER_TOP3_UNSAFE"]
+    assert response.items[0].reason_codes == ["SEGMENT_RECAPTURE_REQUIRED"]
     assert response.reason_codes == ["SEGMENT_RECAPTURE_REQUIRED"]
 
 
@@ -254,7 +254,7 @@ def test_unsafe_staged_classifier_top3_becomes_segment_recapture(
     response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "unsafe-staged")
 
     assert response.items[0].status is ItemStatus.SEGMENT_RECAPTURE
-    assert response.items[0].reason_codes == ["CLASSIFIER_TOP3_UNSAFE"]
+    assert response.items[0].reason_codes == ["SEGMENT_RECAPTURE_REQUIRED"]
 
 
 def test_per_class_approval_threshold_uses_predicted_class(classifier_metadata, quality_metadata):
@@ -339,7 +339,8 @@ def test_low_confidence_contained_detection_keeps_threshold_unknown_reason(
     assert response.items[1].status is ItemStatus.APPROVED
 
 
-def test_capacity_saturation_recaptures(classifier_metadata, quality_metadata):
+def test_capacity_saturation_recaptures(classifier_metadata, quality_metadata, caplog):
+    caplog.set_level("INFO", logger="bixolon_scanner.pipeline.decision")
     classifier = FakeClassifier([])
     result = DetectionResult([Detection(10, 10, 40, 40, 0.9)], capacity_saturated=True)
     pipeline = DecisionPipeline(
@@ -347,7 +348,8 @@ def test_capacity_saturation_recaptures(classifier_metadata, quality_metadata):
     )
     response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request04")
     assert response.status is Status.RECAPTURE
-    assert response.reason_codes == ["DETECTOR_CAPACITY_EXCEEDED"]
+    assert response.reason_codes == ["IMAGE_RECAPTURE_REQUIRED"]
+    assert caplog.records[-1].diagnostic_reason_codes == ["DETECTOR_CAPACITY_EXCEEDED"]
     assert classifier.calls == 0
 
 
@@ -361,7 +363,7 @@ def test_legacy_border_policy_recaptures_before_classifier(classifier_metadata, 
     response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request05")
 
     assert response.status is Status.RECAPTURE
-    assert response.reason_codes == ["DETECTOR_BORDER_CLIPPED"]
+    assert response.reason_codes == ["IMAGE_RECAPTURE_REQUIRED"]
     assert response.model_versions.classifier is None
     assert classifier.calls == 0
 
@@ -397,7 +399,7 @@ def test_uncertain_border_item_is_segment_recapture_after_classifier(
     assert response.reason_codes == ["SEGMENT_RECAPTURE_REQUIRED"]
     assert response.model_versions.classifier == "1.0.0"
     assert response.items[0].status is ItemStatus.SEGMENT_RECAPTURE
-    assert response.items[0].reason_codes == ["DETECTOR_BORDER_CLIPPED"]
+    assert response.items[0].reason_codes == ["SEGMENT_RECAPTURE_REQUIRED"]
     assert classifier.calls == 1
 
 
@@ -415,7 +417,7 @@ def test_classifier_quality_class_is_segment_recapture(classifier_metadata, qual
 
     assert response.status is Status.SEGMENTATION
     assert response.items[0].status is ItemStatus.SEGMENT_RECAPTURE
-    assert response.items[0].reason_codes == ["CLASSIFIER_QUALITY_CLASS"]
+    assert response.items[0].reason_codes == ["SEGMENT_RECAPTURE_REQUIRED"]
 
 
 def _count_metadata(confidence_threshold=0.9):
@@ -447,7 +449,7 @@ def test_count_mismatch_recaptures_before_classifier(classifier_metadata, qualit
     response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request08")
 
     assert response.status is Status.RECAPTURE
-    assert response.reason_codes == ["DETECTOR_COUNT_MISMATCH"]
+    assert response.reason_codes == ["IMAGE_RECAPTURE_REQUIRED"]
     assert response.model_versions.classifier is None
     assert classifier.calls == 0
 
@@ -470,7 +472,7 @@ def test_uncertain_count_recaptures_before_classifier(classifier_metadata, quali
     response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request09")
 
     assert response.status is Status.RECAPTURE
-    assert response.reason_codes == ["DETECTOR_COUNT_UNCERTAIN"]
+    assert response.reason_codes == ["IMAGE_RECAPTURE_REQUIRED"]
     assert classifier.calls == 0
 
 
@@ -557,7 +559,7 @@ def test_object_presence_verifier_recaptures_false_detection(classifier_metadata
     response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "presence-empty")
 
     assert response.status is Status.RECAPTURE
-    assert response.reason_codes == ["DETECTOR_COUNT_MISMATCH"]
+    assert response.reason_codes == ["IMAGE_RECAPTURE_REQUIRED"]
     assert classifier.calls == 0
 
 
@@ -573,5 +575,5 @@ def test_uncertain_detector_candidate_recaptures_before_classifier(
     response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "request11")
 
     assert response.status is Status.RECAPTURE
-    assert response.reason_codes == ["DETECTOR_UNCERTAIN_OBJECT"]
+    assert response.reason_codes == ["IMAGE_RECAPTURE_REQUIRED"]
     assert classifier.calls == 0
