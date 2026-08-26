@@ -1,0 +1,71 @@
+{
+  "schema_version": "2.0",
+  "evaluation": "scanner_2_0_packaged_worker_smoke",
+  "product_version": "0.1.4",
+  "app_build": 7,
+  "provider": "cuda",
+  "bundle_manifest_sha256": "92cb33518611147cdd8781655028265a31d86e63ce6c15eb01ec891446183890",
+  "worker_artifact_content_manifest_sha256": "d859839a018c552a1483b7eb0ffe0233ce076ea98bb96d3b254de526e0f9927b",
+  "worker_artifact_file_count": 139,
+  "executable_sha256": "f6fb6069740b276a21219286fcea142358c13cbd3b1b53891a76f7063261da25",
+  "cases": {
+    "ready": {
+      "http_status": 200,
+      "status": "ready",
+      "provider": "cuda",
+      "all_non_null_versions": "0.1.4"
+    },
+    "provided_overlap_image": {
+      "http_status": 200,
+      "status": "IMAGE_RECAPTURE",
+      "worker_version": "0.1.4",
+      "catalog_version": null
+    },
+    "confirmed_missing_072": {
+      "http_status": 200,
+      "status": "IMAGE_RECAPTURE",
+      "worker_version": "0.1.4",
+      "catalog_version": null
+    },
+    "confirmed_missing_078": {
+      "http_status": 200,
+      "status": "IMAGE_RECAPTURE",
+      "worker_version": "0.1.4",
+      "catalog_version": null
+    },
+    "confirmed_complete_054": {
+      "http_status": 200,
+      "status": "SEGMENTATION",
+      "worker_version": "0.1.4",
+      "catalog_version": "0.1.4"
+    },
+    "confirmed_complete_087": {
+      "http_status": 200,
+      "status": "SEGMENTATION",
+      "worker_version": "0.1.4",
+      "catalog_version": "0.1.4"
+    },
+    "corrupt_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": ["CORRUPT_IMAGE"]
+    },
+    "missing_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": ["MISSING_IMAGE_FIELD"]
+    },
+    "unsupported_image": {
+      "http_status": 415,
+      "status": "ERROR",
+      "reason_codes": ["UNSUPPORTED_IMAGE_FORMAT"]
+    }
+  },
+  "prohibited_runtime_module_path_count": 0,
+  "unlocked_bundled_distribution_count": 0,
+  "passes": true,
+  "privacy": {
+    "image_paths_recorded": false,
+    "image_bytes_recorded": false
+  }
+}

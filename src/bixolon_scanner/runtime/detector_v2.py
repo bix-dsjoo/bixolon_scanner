@@ -552,6 +552,9 @@ def build_detector_v2(
             package.metadata.detector,
             provider,
             cuda_dll_dir,
+            crowding_policy=package.metadata.detector_crowding,
+            enable_cuda_graph=provider == "cuda",
+            detector_class_count=package.metadata.detector_class_count,
             cpu_intra_op_threads=cpu_intra_op_threads,
             openvino_cache_dir=openvino_cache_dir,
         )

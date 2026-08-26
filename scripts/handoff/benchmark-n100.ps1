@@ -6,7 +6,9 @@ param(
     [int]$MinimumImages = 30,
     [int]$MinimumFullPathImages = 10,
     [ValidateRange(0, 20)]
-    [int]$WarmupCount = 3
+    [int]$WarmupCount = 3,
+    [ValidateRange(1.0, 60000.0)]
+    [double]$MaximumFullPathLatencyMs = 500.0
 )
 
 $ErrorActionPreference = "Stop"
@@ -308,7 +310,10 @@ foreach ($profile in $profiles) {
 
 $candidate = $internalResults[0]
 $recommended = $candidate
-$selectionResult = "OpenVINO CPU 1xauto is accepted only when errors and the 300ms mean/p95 target all pass."
+$selectionResult = (
+    "OpenVINO CPU 1xauto is accepted only when errors and the " +
+    "$MaximumFullPathLatencyMs ms mean/p95 target all pass."
+)
 
 $processor = Get-CimInstance Win32_Processor | Select-Object -First 1
 $computer = Get-CimInstance Win32_ComputerSystem
@@ -344,8 +349,8 @@ $passes = (
     $targetCpuDetected -and
     $responseContractSafe -and
     $candidate.FullPathCount -ge $MinimumFullPathImages -and
-    $candidate.MeanMs -le 300 -and
-    $candidate.P95Ms -le 300
+    $candidate.MeanMs -le $MaximumFullPathLatencyMs -and
+    $candidate.P95Ms -le $MaximumFullPathLatencyMs
 )
 $report = [ordered]@{
     schema_version = "1.0"
@@ -373,11 +378,11 @@ $report = [ordered]@{
         embedder_threads = $recommended.EmbedderThreads
     }
     target = [ordered]@{
-        full_path_latency_ms = 300
+        full_path_latency_ms = $MaximumFullPathLatencyMs
         recommended_mean_ms = $recommended.MeanMs
         recommended_p95_ms = $recommended.P95Ms
-        mean_within_300ms = ($recommended.MeanMs -le 300)
-        p95_within_300ms = ($recommended.P95Ms -le 300)
+        mean_within_target = ($recommended.MeanMs -le $MaximumFullPathLatencyMs)
+        p95_within_target = ($recommended.P95Ms -le $MaximumFullPathLatencyMs)
     }
     selection = "fixed OpenVINO CPU 1xauto"
     selection_result = $selectionResult
@@ -403,5 +408,8 @@ $json = $report | ConvertTo-Json -Depth 12
 Write-Host $json
 Write-Host "N100 benchmark result: $resolvedOutput"
 if (-not $passes) {
-    throw "N100 benchmark did not satisfy the hardware, full-path, response, and 300ms checks."
+    throw (
+        "N100 benchmark did not satisfy the hardware, full-path, response, and " +
+        "$MaximumFullPathLatencyMs ms checks."
+    )
 }

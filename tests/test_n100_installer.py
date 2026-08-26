@@ -37,6 +37,7 @@ def test_n100_installer_uses_cpu_detector_gpu_embedder_payload_and_profile() -> 
     assert "hardware.target_cpu_detected" in build_script
     assert "hardware.target_intel_gpu_detected" in build_script
     assert "parity.semantic_mismatch_count" in build_script
+    assert "operational_diagnostic_target_ms = 500" in build_script
     assert "BixolonScanner-N100-$Version-Worker" in build_script
     assert "worker-manifest.json" in build_script
     assert "$workerZipHashPath" in build_script
@@ -71,7 +72,7 @@ def test_n100_installer_documents_target_requirements_and_limits() -> None:
     assert "CPU, 1 worker x 4 threads" in guide
     assert "OpenVINOExecutionProvider Intel GPU" in guide
     assert "CPU Embedder로 명시적으로 fallback" in guide
-    assert "300ms 성능 기준은 개발 PC 기준" in guide
+    assert "평균과 p95 500ms 이하" in guide
     assert "지연시간 또는 SLA를 보장하지 않습니다" in guide
     assert "Authenticode 서명은 없습니다" in guide
 

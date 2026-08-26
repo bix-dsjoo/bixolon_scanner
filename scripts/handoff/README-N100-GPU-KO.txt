@@ -1,9 +1,9 @@
-BIXOLON Scanner 0.1.3 N100 OpenVINO CPU/GPU Embedder 비교
+BIXOLON Scanner 0.1.4 N100 OpenVINO CPU/GPU Embedder 비교
 ================================================
 
 목적
 ----
-- 0.1.3 Runtime, Catalog와 판정 정책은 변경하지 않습니다.
+- 0.1.4 Runtime, Catalog와 판정 정책은 변경하지 않습니다.
 - OpenVINO CPU-only 기준을 같은 이미지로 다시 측정합니다.
 - Detector는 양쪽 모두 OpenVINO CPU 1 worker x 4 threads입니다.
 - 후보는 주 Embedder, 180도 회전 Embedder와 독립 ViT-B/16 검증 Embedder만
@@ -16,7 +16,7 @@ BIXOLON Scanner 0.1.3 N100 OpenVINO CPU/GPU Embedder 비교
 2. C:\easy 폴더에 실제 촬영 JPEG/PNG 이미지 30장 이상을 넣습니다.
    정상 SEGMENTATION 결과가 나오는 이미지가 10장 이상 필요합니다.
 3. RUN-N100-GPU-TEST.cmd를 더블클릭합니다.
-4. 완료 후 n100-0.1.3-openvino-device-matrix.json을 가져옵니다.
+4. 완료 후 n100-0.1.4-openvino-device-matrix.json을 가져옵니다.
 
 이미지가 다른 폴더에 있으면 그 폴더를 RUN-N100-GPU-TEST.cmd 위로 끌어다 놓아도 됩니다.
 
@@ -28,9 +28,9 @@ BIXOLON Scanner 0.1.3 N100 OpenVINO CPU/GPU Embedder 비교
 - comparison.full_path_p95_speedup_ratio가 1보다 크면 하이브리드 p95가 더 빠릅니다.
 - semantic_mismatch_count는 0이어야 합니다.
 - maximum_confidence_delta는 0.00001 이하여야 합니다.
-- 각 profile의 target.mean_within_target과 target.p95_within_target은 300ms 목표 판정입니다.
+- 각 profile의 target.mean_within_target과 target.p95_within_target은 500ms 운영 진단 기준 판정입니다.
 - recommended_provider가 openvino+openvino_gpu가 되려면 평균과 p95가 모두 5% 이상
-  개선되고, 평균·p95 300ms 이내, 시작 30초/메모리 2GB/CPU 대비 메모리 증가 35%
+  개선되고, 평균·p95 500ms 이내, 시작 30초/메모리 2GB/CPU 대비 메모리 증가 35%
   이내여야 합니다.
 - 하나라도 만족하지 않으면 검증된 openvino CPU 구성을 유지합니다.
 

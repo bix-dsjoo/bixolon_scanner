@@ -37,6 +37,10 @@ class _PrimaryEmbedder:
     def prepare_detection_tensors(self, _image, detections):
         return np.zeros((len(detections), 3, 2, 2), dtype=np.float32)
 
+    def prepare_selected_detection_tensors(self, _image, _detections, detection_indices):
+        self.selected_indices = tuple(int(value) for value in detection_indices)
+        return np.zeros((len(detection_indices), 3, 2, 2), dtype=np.float32)
+
     def embed_prepared_tensors_raw(self, tensors):
         return np.zeros((len(tensors), 2), dtype=np.float32)
 
@@ -100,6 +104,7 @@ def test_rotation_disagreement_keeps_primary_only_with_two_head_corroboration() 
     result = classifier.classify(None, [Detection(0, 0, 1, 1, 0.9)])
 
     assert result.approval_blocked.tolist() == [False]
+    assert classifier.independent.embedder.selected_indices == (0,)
 
 
 def test_rotation_disagreement_without_independent_corroboration_blocks_approval() -> None:

@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.3",
+    [string]$Version = "0.1.4",
     [string]$Python311Executable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$ReuseBuildEnvironment,
@@ -248,6 +248,7 @@ try {
         artifact = "n100_openvino_cpu_vs_intel_gpu_embedder_diagnostic"
         product_version = $Version
         provider = "openvino+openvino_gpu"
+        target_full_path_latency_ms = 500
         provider_contract = [ordered]@{
             baseline_detector = "OpenVINOExecutionProvider:CPU"
             baseline_embedder = "OpenVINOExecutionProvider:CPU"

@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.3",
+    [string]$Version = "0.1.4",
     [string]$Python311Executable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$ReuseBuildEnvironment,
@@ -315,6 +315,24 @@ try {
         $null
     }
     else {
+        $latencyTargetMs = if ($null -ne $n100Diagnostic.target.full_path_latency_ms) {
+            [double]$n100Diagnostic.target.full_path_latency_ms
+        }
+        else {
+            300.0
+        }
+        $meanWithinTarget = if ($null -ne $n100Diagnostic.target.mean_within_target) {
+            [bool]$n100Diagnostic.target.mean_within_target
+        }
+        else {
+            [bool]$n100Diagnostic.target.mean_within_300ms
+        }
+        $p95WithinTarget = if ($null -ne $n100Diagnostic.target.p95_within_target) {
+            [bool]$n100Diagnostic.target.p95_within_target
+        }
+        else {
+            [bool]$n100Diagnostic.target.p95_within_300ms
+        }
         [ordered]@{
             reference_result_sha256 = (
                 Get-FileHash -Algorithm SHA256 -LiteralPath $n100DiagnosticPath
@@ -327,8 +345,9 @@ try {
             p99_ms = [double]$recommendedN100Profile.latency_ms.p99
             peak_working_set_bytes = [long]$recommendedN100Profile.peak_working_set_bytes
             response_contract_safe = [bool]$n100Diagnostic.response_contract_safe
-            mean_within_300ms = [bool]$n100Diagnostic.target.mean_within_300ms
-            p95_within_300ms = [bool]$n100Diagnostic.target.p95_within_300ms
+            latency_target_ms = $latencyTargetMs
+            mean_within_target = $meanWithinTarget
+            p95_within_target = $p95WithinTarget
             limitation = "Diagnostic measurement only; not an SLA or certification."
         }
     }

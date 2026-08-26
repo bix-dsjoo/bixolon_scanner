@@ -2,8 +2,11 @@ from types import SimpleNamespace
 
 import numpy as np
 import pytest
+from PIL import Image
 
 from bixolon_scanner import inference
+from bixolon_scanner.contracts.image import ORIGINAL_SIZE_INFO_KEY
+from bixolon_scanner.contracts.runtime_package_v2 import DetectorCrowdingPolicyMetadata
 from bixolon_scanner.errors import ProviderInitializationError
 from bixolon_scanner.package import (
     ClassifierView,
@@ -497,6 +500,173 @@ def test_detector_reports_separate_low_score_candidate():
     assert len(result.detections) == 1
     assert result.uncertain_candidate_count == 1
     assert result.uncertain_candidate_scores == pytest.approx((0.5,))
+
+
+def _rotation_recovery_adapter(counts: list[int]):
+    metadata = SimpleNamespace(
+        input_size=(32, 32),
+        mean=(0.0, 0.0, 0.0),
+        std=(1.0, 1.0, 1.0),
+        resize_reducing_gap=None,
+        logits_output="logits",
+        boxes_output="boxes",
+        input_name="pixel_values",
+        score_threshold=0.7,
+        uncertainty_score_threshold=None,
+        nms_iou_threshold=0.4,
+        nms_containment_threshold=0.8,
+        nms_class_aware_containment=False,
+        max_queries=300,
+    )
+
+    class Runner:
+        def __init__(self):
+            self.calls = 0
+            self.samples = 0
+            self.tensors = []
+
+        def run(self, output_names, input_name, tensor):
+            del output_names, input_name
+            self.calls += 1
+            self.tensors.append(np.asarray(tensor).copy())
+            original_centers = [
+                (0.15, 0.25),
+                (0.45, 0.25),
+                (0.75, 0.25),
+                (0.15, 0.75),
+                (0.45, 0.75),
+                (0.75, 0.75),
+            ]
+            batch_logits = []
+            batch_boxes = []
+            for _ in range(len(tensor)):
+                sample_index = self.samples
+                count = counts[sample_index]
+                self.samples += 1
+                if sample_index == 0:
+                    centers = original_centers
+                elif sample_index == 1:
+                    centers = [(y, 1.0 - x) for x, y in original_centers]
+                else:
+                    centers = [(1.0 - x, 1.0 - y) for x, y in original_centers]
+                logits = np.full((len(centers), 1), -3.0, dtype=np.float32)
+                logits[:count] = 3.0
+                batch_logits.append(logits)
+                batch_boxes.append([[x, y, 0.15, 0.15] for x, y in centers])
+            return [np.asarray(batch_logits), np.asarray(batch_boxes, dtype=np.float32)]
+
+    adapter = inference.OnnxDetector.__new__(inference.OnnxDetector)
+    adapter.metadata = metadata
+    adapter.crowding_policy = DetectorCrowdingPolicyMetadata(
+        minimum_image_aspect_ratio=1.0,
+        candidate_score_threshold=0.05,
+        large_proposal_score_threshold=0.99,
+        large_proposal_minimum_area_ratio=1.0,
+        proximity_maximum_normalized_center_distance=0.01,
+        query_cluster_iou_threshold=0.7,
+        query_duplicate_minimum_fraction=1.0,
+        rotation_recovery_degrees=[90, 180],
+        rotation_recovery_minimum_selected_count=5,
+        rotation_recovery_maximum_selected_count=5,
+        rotation_recovery_minimum_count_gain=1,
+        rotation_recovery_agreement_iou_threshold=0.5,
+    )
+    adapter.runner = Runner()
+    return adapter
+
+
+def test_detector_recaptures_when_rotation_recovers_an_additional_object():
+    adapter = _rotation_recovery_adapter([5, 6, 5])
+
+    result = adapter.detect(np.zeros((100, 120, 3), dtype=np.uint8))
+
+    assert len(result.detections) == 5
+    assert result.uncertain_candidate_count == 1
+    assert adapter.runner.calls == 2
+
+
+def test_detector_rotation_swaps_preserved_original_size_for_draft_image():
+    image = Image.new("RGB", (648, 486))
+    image.info[ORIGINAL_SIZE_INFO_KEY] = (2592, 1944)
+
+    rotated = inference.OnnxDetector._rotate_for_recovery(image, 90)
+
+    try:
+        assert rotated.size == (486, 648)
+        assert rotated.info[ORIGINAL_SIZE_INFO_KEY] == (1944, 2592)
+    finally:
+        rotated.close()
+        image.close()
+
+
+def test_detector_rotation_recovery_matches_boxes_from_draft_decoded_image():
+    adapter = _rotation_recovery_adapter([5, 6, 5])
+    image = Image.new("RGB", (648, 486))
+    image.info[ORIGINAL_SIZE_INFO_KEY] = (2592, 1944)
+
+    try:
+        result = adapter.detect(image)
+    finally:
+        image.close()
+
+    assert len(result.detections) == 5
+    assert result.uncertain_candidate_count == 1
+    assert adapter.runner.calls == 2
+
+
+def test_detector_ignores_rotations_that_do_not_improve_object_count():
+    adapter = _rotation_recovery_adapter([5, 5, 5])
+
+    result = adapter.detect(np.zeros((100, 120, 3), dtype=np.uint8))
+
+    assert len(result.detections) == 5
+    assert result.uncertain_candidate_count == 0
+    assert adapter.runner.calls == 3
+
+
+def test_detector_reuses_exact_base_tensor_for_180_degree_recovery():
+    adapter = _rotation_recovery_adapter([5, 5, 5])
+    image = np.arange(100 * 120 * 3, dtype=np.uint8).reshape(100, 120, 3)
+
+    adapter.detect(image)
+
+    np.testing.assert_array_equal(
+        adapter.runner.tensors[2],
+        adapter.runner.tensors[0][:, :, ::-1, ::-1],
+    )
+
+
+def test_detector_skips_rotation_recovery_above_configured_object_count():
+    adapter = _rotation_recovery_adapter([6])
+
+    result = adapter.detect(np.zeros((100, 120, 3), dtype=np.uint8))
+
+    assert len(result.detections) == 6
+    assert result.uncertain_candidate_count == 0
+    assert adapter.runner.calls == 1
+
+
+def test_detector_skips_rotation_recovery_below_selected_area_gate():
+    adapter = _rotation_recovery_adapter([5])
+    payload = adapter.crowding_policy.model_dump(mode="json")
+    payload["rotation_recovery_minimum_selected_area_fraction"] = 0.2
+    adapter.crowding_policy = DetectorCrowdingPolicyMetadata.model_validate(payload)
+
+    result = adapter.detect(np.zeros((100, 120, 3), dtype=np.uint8))
+
+    assert len(result.detections) == 5
+    assert result.uncertain_candidate_count == 0
+    assert adapter.runner.calls == 1
+
+
+def test_detector_skips_crowding_policy_outside_configured_image_aspect_ratio():
+    adapter = _rotation_recovery_adapter([5])
+
+    result = adapter.detect(np.zeros((120, 100, 3), dtype=np.uint8))
+
+    assert len(result.detections) == 5
+    assert result.uncertain_candidate_count == 0
+    assert adapter.runner.calls == 1
 
 
 def test_detector_filters_configured_extreme_aspect_ratio_candidates():

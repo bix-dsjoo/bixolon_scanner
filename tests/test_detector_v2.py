@@ -3,12 +3,154 @@ from types import SimpleNamespace
 import pytest
 from pydantic import ValidationError
 
-from bixolon_scanner.contracts.runtime_package_v2 import DetectorAmbiguityPolicyMetadata
+import bixolon_scanner.runtime.detector_v2 as detector_v2_runtime
+from bixolon_scanner.contracts.runtime_package_v2 import (
+    DetectorAmbiguityPolicyMetadata,
+    DetectorCrowdingPolicyMetadata,
+)
 from bixolon_scanner.pipeline.ports import Detection
 from bixolon_scanner.runtime.detector_v2 import (
     CrossScaleOnnxDetector,
     FixedEnsembleOnnxDetector,
 )
+from bixolon_scanner.runtime.onnx import detector_crowding_requires_recapture
+
+
+def _crowding_policy() -> DetectorCrowdingPolicyMetadata:
+    return DetectorCrowdingPolicyMetadata(
+        minimum_image_aspect_ratio=1.0,
+        candidate_score_threshold=0.05,
+        large_proposal_score_threshold=0.145,
+        large_proposal_minimum_area_ratio=0.21,
+        proximity_maximum_normalized_center_distance=0.48,
+        query_cluster_iou_threshold=0.7,
+        query_duplicate_minimum_fraction=0.93,
+        rotation_recovery_degrees=[90, 180],
+        rotation_recovery_minimum_selected_count=5,
+        rotation_recovery_maximum_selected_count=5,
+        rotation_recovery_minimum_selected_area_fraction=0.4,
+        rotation_recovery_minimum_normalized_center_distance=0.63,
+        rotation_recovery_minimum_count_gain=1,
+        rotation_recovery_agreement_iou_threshold=0.5,
+    )
+
+
+def _duplicates(box: tuple[float, float, float, float], count: int) -> list[Detection]:
+    return [Detection(*box, 0.2 - index * 0.001) for index in range(count)]
+
+
+def test_crowding_policy_recaptures_large_raw_proposal() -> None:
+    candidates = [Detection(0, 0, 46, 46, 0.2)]
+
+    assert detector_crowding_requires_recapture(
+        candidates,
+        image_width=100,
+        image_height=100,
+        nms_iou_threshold=0.4,
+        policy=_crowding_policy(),
+    )
+
+
+def test_crowding_policy_requires_proximity_and_query_duplication_together() -> None:
+    close_boxes = _duplicates((10, 10, 30, 30), 15) + _duplicates((19, 10, 39, 30), 15)
+    low_duplicate_boxes = [
+        Detection(10, 10, 30, 30, 0.2),
+        Detection(19, 10, 39, 30, 0.19),
+    ]
+    separated_boxes = _duplicates((10, 10, 30, 30), 15) + _duplicates((70, 70, 90, 90), 15)
+
+    assert detector_crowding_requires_recapture(
+        close_boxes,
+        image_width=100,
+        image_height=100,
+        nms_iou_threshold=0.4,
+        policy=_crowding_policy(),
+    )
+    assert not detector_crowding_requires_recapture(
+        low_duplicate_boxes,
+        image_width=100,
+        image_height=100,
+        nms_iou_threshold=0.4,
+        policy=_crowding_policy(),
+    )
+    assert not detector_crowding_requires_recapture(
+        separated_boxes,
+        image_width=100,
+        image_height=100,
+        nms_iou_threshold=0.4,
+        policy=_crowding_policy(),
+    )
+
+
+def test_crowding_policy_rejects_inverted_score_thresholds() -> None:
+    with pytest.raises(ValidationError):
+        DetectorCrowdingPolicyMetadata(
+            candidate_score_threshold=0.2,
+            large_proposal_score_threshold=0.1,
+            large_proposal_minimum_area_ratio=0.21,
+            proximity_maximum_normalized_center_distance=0.48,
+            query_cluster_iou_threshold=0.7,
+            query_duplicate_minimum_fraction=0.93,
+        )
+
+
+def test_crowding_policy_rejects_duplicate_recovery_rotations() -> None:
+    with pytest.raises(ValidationError):
+        DetectorCrowdingPolicyMetadata(
+            candidate_score_threshold=0.05,
+            large_proposal_score_threshold=0.145,
+            large_proposal_minimum_area_ratio=0.21,
+            proximity_maximum_normalized_center_distance=0.48,
+            query_cluster_iou_threshold=0.7,
+            query_duplicate_minimum_fraction=0.93,
+            rotation_recovery_degrees=[90, 90],
+        )
+
+
+def test_crowding_policy_rejects_inverted_recovery_count_range() -> None:
+    with pytest.raises(ValidationError):
+        DetectorCrowdingPolicyMetadata(
+            candidate_score_threshold=0.05,
+            large_proposal_score_threshold=0.145,
+            large_proposal_minimum_area_ratio=0.21,
+            proximity_maximum_normalized_center_distance=0.48,
+            query_cluster_iou_threshold=0.7,
+            query_duplicate_minimum_fraction=0.93,
+            rotation_recovery_minimum_selected_count=6,
+            rotation_recovery_maximum_selected_count=5,
+        )
+
+
+@pytest.mark.parametrize(("provider", "expected_cuda_graph"), (("cpu", False), ("cuda", True)))
+def test_single_detector_builder_passes_runtime_policy(
+    monkeypatch, tmp_path, provider: str, expected_cuda_graph: bool
+) -> None:
+    policy = _crowding_policy()
+    captured = {}
+
+    class FakeOnnxDetector:
+        def __init__(self, *args, crowding_policy=None, **kwargs) -> None:
+            captured["policy"] = crowding_policy
+            captured["enable_cuda_graph"] = kwargs["enable_cuda_graph"]
+            captured["detector_class_count"] = kwargs["detector_class_count"]
+
+    monkeypatch.setattr(detector_v2_runtime, "OnnxDetector", FakeOnnxDetector)
+    package = SimpleNamespace(
+        detector_path=tmp_path / "detector.onnx",
+        metadata=SimpleNamespace(
+            detector=SimpleNamespace(ensemble=None),
+            detector_class_count=1,
+            detector_refinement=None,
+            detector_crowding=policy,
+            count_verifier=None,
+        ),
+    )
+
+    detector_v2_runtime.build_detector_v2(package, provider)
+
+    assert captured["policy"] is policy
+    assert captured["enable_cuda_graph"] is expected_cuda_graph
+    assert captured["detector_class_count"] == 1
 
 
 def test_cross_scale_agreement_uses_complete_bipartite_matching() -> None:

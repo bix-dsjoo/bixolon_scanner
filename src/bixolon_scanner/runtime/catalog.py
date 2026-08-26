@@ -228,7 +228,25 @@ class OnnxEmbedder:
         self, image: np.ndarray | Image.Image, detections: list[Detection]
     ) -> np.ndarray:
         """Apply the runtime crop and neighbor-mask policy without inference."""
-        if not detections:
+        return self.prepare_selected_detection_tensors(
+            image,
+            detections,
+            np.arange(len(detections), dtype=np.int64),
+        )
+
+    def prepare_selected_detection_tensors(
+        self,
+        image: np.ndarray | Image.Image,
+        detections: list[Detection],
+        detection_indices: np.ndarray,
+    ) -> np.ndarray:
+        """Prepare selected ROIs while retaining every detection as mask context."""
+        indices = np.asarray(detection_indices, dtype=np.int64)
+        if indices.ndim != 1:
+            raise ValueError("selected detection indices must be one-dimensional")
+        if np.any(indices < 0) or np.any(indices >= len(detections)):
+            raise ValueError("selected detection index is outside the detection list")
+        if not len(indices):
             height, width = self.metadata.input_size
             return np.empty((0, 3, height, width), dtype=np.float32)
         if isinstance(image, Image.Image):
@@ -241,7 +259,8 @@ class OnnxEmbedder:
             original_width, original_height = source.size
             scale_x = scale_y = 1.0
         crops: list[np.ndarray] = []
-        for detection in detections:
+        for detection_index in indices:
+            detection = detections[int(detection_index)]
             box = classifier_crop_box(
                 detection,
                 original_width,
@@ -270,7 +289,7 @@ class OnnxEmbedder:
                 [
                     classifier_neighbor_ownership_mask(
                         detections,
-                        index,
+                        int(detection_index),
                         image_width=original_width,
                         image_height=original_height,
                         output_size=batch.shape[-1],
@@ -279,7 +298,7 @@ class OnnxEmbedder:
                         shared_scale=self.metadata.neighbor_shared_scale,
                         crop_mode=self.metadata.crop_mode,
                     )
-                    for index in range(len(detections))
+                    for detection_index in indices
                 ]
             )
             batch = apply_classifier_background_masks(batch, masks)
@@ -840,9 +859,11 @@ class ConsensusCatalogClassifier:
         )
         rotation_result = self.rotation.classify_embeddings(rotation_raw)
         selected_detections = [detections[int(index)] for index in candidate_indices]
-        independent_prepared = self.independent.embedder.prepare_detection_tensors(
-            image, detections
-        )[candidate_indices]
+        independent_prepared = self.independent.embedder.prepare_selected_detection_tensors(
+            image,
+            detections,
+            candidate_indices,
+        )
         independent_raw = self.independent.embedder.embed_prepared_tensors_raw(independent_prepared)
         independent_result = self.independent.classify_embeddings(
             independent_raw, selected_detections
@@ -889,9 +910,11 @@ class ConsensusCatalogClassifier:
         )
         rotation_result = self.rotation.classify_embeddings(rotation_raw, class_limit=class_limit)
         selected_detections = [detections[int(index)] for index in candidate_indices]
-        independent_prepared = self.independent.embedder.prepare_detection_tensors(
-            image, detections
-        )[candidate_indices]
+        independent_prepared = self.independent.embedder.prepare_selected_detection_tensors(
+            image,
+            detections,
+            candidate_indices,
+        )
         independent_raw = self.independent.embedder.embed_prepared_tensors_raw(independent_prepared)
         independent_result = self.independent.classify_embeddings(
             independent_raw,

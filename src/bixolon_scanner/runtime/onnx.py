@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Literal
 
@@ -7,12 +8,14 @@ import numpy as np
 from PIL import Image
 
 from ..contracts.errors import ModelExecutionError, ProviderInitializationError
+from ..contracts.image import ORIGINAL_SIZE_INFO_KEY
 from ..contracts.model_package import (
     ClassifierMetadata,
     CountVerifierMetadata,
     DetectorMetadata,
     ModelPackage,
 )
+from ..contracts.runtime_package_v2 import DetectorCrowdingPolicyMetadata
 from ..pipeline.ports import ClassificationResult, Detection, DetectionResult
 from .imaging import image_original_size
 from .onnx_session import ExecutionProvider, OrtRunner, select_provider
@@ -91,6 +94,87 @@ nms = _nms
 box_iou = _box_iou
 
 
+def _minimum_normalized_center_distance(detections: list[Detection]) -> float:
+    minimum_distance = math.inf
+    for index, left in enumerate(detections):
+        left_area = (left.x2 - left.x1) * (left.y2 - left.y1)
+        left_center_x = (left.x1 + left.x2) * 0.5
+        left_center_y = (left.y1 + left.y2) * 0.5
+        for right in detections[index + 1 :]:
+            right_area = (right.x2 - right.x1) * (right.y2 - right.y1)
+            right_center_x = (right.x1 + right.x2) * 0.5
+            right_center_y = (right.y1 + right.y2) * 0.5
+            distance = math.hypot(
+                left_center_x - right_center_x,
+                left_center_y - right_center_y,
+            )
+            scale = max(math.sqrt((left_area + right_area) * 0.5), 1e-9)
+            minimum_distance = min(minimum_distance, distance / scale)
+    return minimum_distance
+
+
+def _selected_area_fraction(
+    detections: list[Detection], *, image_width: int, image_height: int
+) -> float:
+    image_area = float(image_width * image_height)
+    return sum(
+        (detection.x2 - detection.x1) * (detection.y2 - detection.y1) / image_area
+        for detection in detections
+    )
+
+
+def detector_crowding_requires_recapture(
+    candidates: list[Detection],
+    *,
+    image_width: int,
+    image_height: int,
+    nms_iou_threshold: float,
+    policy: DetectorCrowdingPolicyMetadata,
+) -> bool:
+    """Detect detector-query geometry associated with severe object occlusion."""
+    if not candidates:
+        return False
+
+    large_proposals = _nms(
+        [
+            candidate
+            for candidate in candidates
+            if candidate.score >= policy.large_proposal_score_threshold
+        ],
+        nms_iou_threshold,
+    )
+    image_area = float(image_width * image_height)
+    maximum_area_ratio = max(
+        (
+            (candidate.x2 - candidate.x1) * (candidate.y2 - candidate.y1) / image_area
+            for candidate in large_proposals
+        ),
+        default=0.0,
+    )
+    if maximum_area_ratio >= policy.large_proposal_minimum_area_ratio:
+        return True
+
+    selected = _nms(candidates, nms_iou_threshold)
+    minimum_normalized_center_distance = _minimum_normalized_center_distance(selected)
+    if minimum_normalized_center_distance > policy.proximity_maximum_normalized_center_distance:
+        return False
+
+    anchors = _nms(candidates, policy.query_cluster_iou_threshold)
+    duplicate_count = sum(
+        max(
+            sum(
+                _box_iou(anchor, candidate) >= policy.query_cluster_iou_threshold
+                for candidate in candidates
+            )
+            - 1,
+            0,
+        )
+        for anchor in anchors
+    )
+    duplicate_fraction = duplicate_count / len(candidates)
+    return duplicate_fraction >= policy.query_duplicate_minimum_fraction
+
+
 def _prepare_rgb(
     image: np.ndarray | Image.Image,
     size: tuple[int, int],
@@ -105,13 +189,16 @@ def _prepare_rgb(
         Image.Resampling.BILINEAR,
         reducing_gap=reducing_gap,
     )
-    tensor = np.asarray(pil, dtype=np.float32)
+    tensor = np.ascontiguousarray(
+        np.transpose(np.asarray(pil, dtype=np.uint8), (2, 0, 1)),
+        dtype=np.float32,
+    )
     tensor /= np.float32(255.0)
     if any(value != 0.0 for value in mean):
-        tensor -= np.asarray(mean, dtype=np.float32)
+        tensor -= np.asarray(mean, dtype=np.float32)[:, None, None]
     if any(value != 1.0 for value in std):
-        tensor /= np.asarray(std, dtype=np.float32)
-    return np.ascontiguousarray(np.transpose(tensor, (2, 0, 1)))
+        tensor /= np.asarray(std, dtype=np.float32)[:, None, None]
+    return tensor
 
 
 prepare_rgb = _prepare_rgb
@@ -247,14 +334,30 @@ class OnnxDetector:
         provider: ExecutionProvider,
         cuda_dll_dir: Path | None = None,
         *,
+        crowding_policy: DetectorCrowdingPolicyMetadata | None = None,
+        enable_cuda_graph: bool = False,
+        detector_class_count: int | None = None,
         cpu_intra_op_threads: int = 0,
         openvino_cache_dir: Path | None = None,
     ):
+        if enable_cuda_graph and detector_class_count is None:
+            raise ValueError("CUDA graph detector requires the packaged class count")
         self.metadata = metadata
+        self.crowding_policy = crowding_policy
+        output_shapes = (
+            {
+                metadata.logits_output: (1, metadata.max_queries, detector_class_count),
+                metadata.boxes_output: (1, metadata.max_queries, 4),
+            }
+            if enable_cuda_graph
+            else None
+        )
         self.runner = OrtRunner(
             model_path,
             provider,
             cuda_dll_dir,
+            enable_cuda_graph=enable_cuda_graph,
+            cuda_graph_output_shapes=output_shapes,
             cpu_intra_op_threads=cpu_intra_op_threads,
             openvino_cache_dir=openvino_cache_dir,
         )
@@ -269,25 +372,16 @@ class OnnxDetector:
             dummy,
         )
 
-    def detect(self, image: np.ndarray | Image.Image) -> DetectionResult:
-        if isinstance(image, Image.Image):
-            original_width, original_height = image_original_size(image)
-        else:
-            original_height, original_width = image.shape[:2]
-        tensor = _prepare_rgb(
-            image,
-            self.metadata.input_size,
-            self.metadata.mean,
-            self.metadata.std,
-            reducing_gap=self.metadata.resize_reducing_gap,
-        )[None]
-        logits, boxes = self.runner.run(
-            [self.metadata.logits_output, self.metadata.boxes_output],
-            self.metadata.input_name,
-            tensor,
-        )
-        logits = np.asarray(logits)[0]
-        boxes = np.asarray(boxes)[0]
+    def _postprocess_detection_outputs(
+        self,
+        logits: np.ndarray,
+        boxes: np.ndarray,
+        *,
+        original_width: int,
+        original_height: int,
+    ) -> tuple[DetectionResult, list[Detection], int, int]:
+        logits = np.asarray(logits)
+        boxes = np.asarray(boxes)
         if logits.ndim == 1:
             scores = _sigmoid(logits)
         else:
@@ -353,11 +447,238 @@ class OnnxDetector:
                 if not overlaps or max(overlaps) < self.metadata.uncertainty_match_iou_threshold:
                     uncertain_candidate_count += 1
                     uncertain_candidate_scores.append(candidate.score)
+        crowding_policy = getattr(self, "crowding_policy", None)
+        crowding_candidates = (
+            convert(np.flatnonzero(scores >= crowding_policy.candidate_score_threshold))
+            if crowding_policy is not None
+            else []
+        )
+        return (
+            DetectionResult(
+                detections,
+                raw_saturated,
+                uncertain_candidate_count=uncertain_candidate_count,
+                uncertain_candidate_scores=tuple(sorted(uncertain_candidate_scores, reverse=True)),
+            ),
+            crowding_candidates,
+            original_width,
+            original_height,
+        )
+
+    def _prepare_detection_tensor(
+        self, image: np.ndarray | Image.Image
+    ) -> tuple[np.ndarray, int, int]:
+        if isinstance(image, Image.Image):
+            original_width, original_height = image_original_size(image)
+        else:
+            original_height, original_width = image.shape[:2]
+        tensor = _prepare_rgb(
+            image,
+            self.metadata.input_size,
+            self.metadata.mean,
+            self.metadata.std,
+            reducing_gap=self.metadata.resize_reducing_gap,
+        )
+        return tensor, original_width, original_height
+
+    def _detect_prepared_tensor(
+        self,
+        tensor: np.ndarray,
+        *,
+        original_width: int,
+        original_height: int,
+    ) -> tuple[DetectionResult, list[Detection], int, int]:
+        logits, boxes = self.runner.run(
+            [self.metadata.logits_output, self.metadata.boxes_output],
+            self.metadata.input_name,
+            tensor[None],
+        )
+        return self._postprocess_detection_outputs(
+            np.asarray(logits)[0],
+            np.asarray(boxes)[0],
+            original_width=original_width,
+            original_height=original_height,
+        )
+
+    def _detect_once(
+        self, image: np.ndarray | Image.Image
+    ) -> tuple[DetectionResult, list[Detection], int, int]:
+        tensor, original_width, original_height = self._prepare_detection_tensor(image)
+        return self._detect_prepared_tensor(
+            tensor,
+            original_width=original_width,
+            original_height=original_height,
+        )
+
+    @staticmethod
+    def _rotate_for_recovery(
+        image: np.ndarray | Image.Image, degrees: Literal[90, 180, 270]
+    ) -> np.ndarray | Image.Image:
+        if isinstance(image, Image.Image):
+            method = {
+                90: Image.Transpose.ROTATE_90,
+                180: Image.Transpose.ROTATE_180,
+                270: Image.Transpose.ROTATE_270,
+            }[degrees]
+            rotated = image.transpose(method)
+            original_width, original_height = image_original_size(image)
+            rotated.info[ORIGINAL_SIZE_INFO_KEY] = (
+                (original_height, original_width)
+                if degrees in {90, 270}
+                else (original_width, original_height)
+            )
+            return rotated
+        return np.ascontiguousarray(np.rot90(image, k=degrees // 90))
+
+    @staticmethod
+    def _restore_recovery_coordinates(
+        detections: list[Detection],
+        *,
+        degrees: Literal[90, 180, 270],
+        image_width: int,
+        image_height: int,
+    ) -> list[Detection]:
+        if degrees == 90:
+            return [
+                Detection(
+                    image_width - item.y2,
+                    item.x1,
+                    image_width - item.y1,
+                    item.x2,
+                    item.score,
+                    item.class_id,
+                )
+                for item in detections
+            ]
+        if degrees == 180:
+            return [
+                Detection(
+                    image_width - item.x2,
+                    image_height - item.y2,
+                    image_width - item.x1,
+                    image_height - item.y1,
+                    item.score,
+                    item.class_id,
+                )
+                for item in detections
+            ]
+        return [
+            Detection(
+                item.y1,
+                image_height - item.x2,
+                item.y2,
+                image_height - item.x1,
+                item.score,
+                item.class_id,
+            )
+            for item in detections
+        ]
+
+    @staticmethod
+    def _fully_matches_recovery(
+        primary: list[Detection], recovery: list[Detection], threshold: float
+    ) -> bool:
+        adjacency = [
+            [index for index, other in enumerate(recovery) if _box_iou(box, other) >= threshold]
+            for box in primary
+        ]
+        matched_primary = [-1] * len(recovery)
+
+        def augment(primary_index: int, seen: set[int]) -> bool:
+            for recovery_index in adjacency[primary_index]:
+                if recovery_index in seen:
+                    continue
+                seen.add(recovery_index)
+                previous = matched_primary[recovery_index]
+                if previous == -1 or augment(previous, seen):
+                    matched_primary[recovery_index] = primary_index
+                    return True
+            return False
+
+        return all(augment(index, set()) for index in range(len(primary)))
+
+    def detect(self, image: np.ndarray | Image.Image) -> DetectionResult:
+        base_tensor, original_width, original_height = self._prepare_detection_tensor(image)
+        result, crowding_candidates, _, _ = self._detect_prepared_tensor(
+            base_tensor,
+            original_width=original_width,
+            original_height=original_height,
+        )
+        crowding_policy = getattr(self, "crowding_policy", None)
+        if crowding_policy is None:
+            return result
+        if original_width / original_height < crowding_policy.minimum_image_aspect_ratio:
+            return result
+
+        uncertain_candidate_count = result.uncertain_candidate_count
+        if detector_crowding_requires_recapture(
+            crowding_candidates,
+            image_width=original_width,
+            image_height=original_height,
+            nms_iou_threshold=self.metadata.nms_iou_threshold,
+            policy=crowding_policy,
+        ):
+            uncertain_candidate_count += 1
+
+        if (
+            uncertain_candidate_count == 0
+            and len(result.detections) >= crowding_policy.rotation_recovery_minimum_selected_count
+            and (
+                crowding_policy.rotation_recovery_maximum_selected_count is None
+                or len(result.detections)
+                <= crowding_policy.rotation_recovery_maximum_selected_count
+            )
+            and _selected_area_fraction(
+                result.detections,
+                image_width=original_width,
+                image_height=original_height,
+            )
+            >= crowding_policy.rotation_recovery_minimum_selected_area_fraction
+            and _minimum_normalized_center_distance(result.detections)
+            >= crowding_policy.rotation_recovery_minimum_normalized_center_distance
+        ):
+            required_count = (
+                len(result.detections) + crowding_policy.rotation_recovery_minimum_count_gain
+            )
+
+            def recovers_additional_object(
+                degrees: Literal[90, 180, 270], recovered: DetectionResult
+            ) -> bool:
+                mapped_recovery = self._restore_recovery_coordinates(
+                    recovered.detections,
+                    degrees=degrees,
+                    image_width=original_width,
+                    image_height=original_height,
+                )
+                return len(mapped_recovery) >= required_count and self._fully_matches_recovery(
+                    result.detections,
+                    mapped_recovery,
+                    crowding_policy.rotation_recovery_agreement_iou_threshold,
+                )
+
+            for degrees in crowding_policy.rotation_recovery_degrees:
+                if degrees == 180:
+                    recovered, _, _, _ = self._detect_prepared_tensor(
+                        np.ascontiguousarray(base_tensor[:, ::-1, ::-1]),
+                        original_width=original_width,
+                        original_height=original_height,
+                    )
+                else:
+                    rotated = self._rotate_for_recovery(image, degrees)
+                    try:
+                        recovered, _, _, _ = self._detect_once(rotated)
+                    finally:
+                        if isinstance(rotated, Image.Image):
+                            rotated.close()
+                if recovers_additional_object(degrees, recovered):
+                    uncertain_candidate_count += 1
+                    break
+
         return DetectionResult(
-            detections,
-            raw_saturated,
+            result.detections,
+            result.capacity_saturated,
             uncertain_candidate_count=uncertain_candidate_count,
-            uncertain_candidate_scores=tuple(sorted(uncertain_candidate_scores, reverse=True)),
+            uncertain_candidate_scores=result.uncertain_candidate_scores,
         )
 
 

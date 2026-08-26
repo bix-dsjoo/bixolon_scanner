@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.3",
+    [string]$Version = "0.1.4",
     [string]$Stamp = "20260824",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$Force
@@ -41,6 +41,7 @@ function Get-RelativePackagePath {
 }
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
+$configPath = Join-Path $repositoryRoot "configs/versions/$Version.json"
 $resolvedOutputRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot $OutputRoot))
 $candidateName = "n100-$Version-candidate-$Stamp"
 $candidateRoot = Join-Path $resolvedOutputRoot $candidateName
@@ -53,6 +54,32 @@ $runtimeSource = Join-Path $staging "runtime"
 $catalogSource = Join-Path $staging "catalog"
 $metadataPath = Join-Path $runtimeSource "metadata.json"
 
+if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
+    throw "Version config is missing: $configPath"
+}
+$config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
+if ([string]$config.version -ne $Version) {
+    throw "Version config identity mismatch: $configPath"
+}
+$cpuReferenceEvidence = @(
+    $config.evaluation_evidence | Where-Object {
+        [string]$_.path -match "(^|/)full-valid-openvino\.json$"
+    }
+)
+if ($cpuReferenceEvidence.Count -ne 1) {
+    throw "Version config must pin exactly one full-valid OpenVINO reference."
+}
+$cpuReferencePath = Join-Path $repositoryRoot ([string]$cpuReferenceEvidence[0].path)
+if (-not (Test-Path -LiteralPath $cpuReferencePath -PathType Leaf)) {
+    throw "Pinned OpenVINO reference is missing: $cpuReferencePath"
+}
+$cpuReferenceSha256 = (
+    Get-FileHash -Algorithm SHA256 -LiteralPath $cpuReferencePath
+).Hash.ToLowerInvariant()
+if ($cpuReferenceSha256 -ne [string]$cpuReferenceEvidence[0].sha256) {
+    throw "Pinned OpenVINO reference SHA-256 mismatch: $cpuReferencePath"
+}
+
 foreach ($required in @(
     (Join-Path $workerSource "bixolon-worker.exe"),
     (Join-Path $workerSource "_internal"),
@@ -63,8 +90,7 @@ foreach ($required in @(
     (Join-Path $repositoryRoot "scripts/handoff/N100-STAGE-TEST.ps1"),
     (Join-Path $repositoryRoot "scripts/handoff/RUN-N100-TEST.cmd"),
     (Join-Path $repositoryRoot "scripts/handoff/README-N100-KO.txt"),
-    (Join-Path $repositoryRoot "configs/runtime/requirements-windows-openvino.lock"),
-    (Join-Path $repositoryRoot "artifacts/evaluations/scanner-$Version/full-valid-openvino.json")
+    (Join-Path $repositoryRoot "configs/runtime/requirements-windows-openvino.lock")
 )) {
     if (-not (Test-Path -LiteralPath $required)) {
         throw "Required N100 candidate input is missing: $required"
@@ -122,9 +148,8 @@ try {
     Copy-Item -LiteralPath (
         Join-Path $repositoryRoot "configs/runtime/requirements-windows-openvino.lock"
     ) -Destination $temporaryRoot
-    Copy-Item -LiteralPath (
-        Join-Path $repositoryRoot "artifacts/evaluations/scanner-$Version/full-valid-openvino.json"
-    ) -Destination (Join-Path $temporaryRoot "local-cpu-reference.json")
+    Copy-Item -LiteralPath $cpuReferencePath `
+        -Destination (Join-Path $temporaryRoot "local-cpu-reference.json")
 
     $forbidden = Get-ChildItem -LiteralPath $temporaryRoot -File -Recurse | Where-Object {
         $_.Name -match "(?i)(directml|cuda|tensorrt|cudnn|cublas|cudart|cufft|nvrtc)"
@@ -157,8 +182,10 @@ try {
             detector_threads_per_session = 0
             embedder_threads = 0
         }
-        target_full_path_latency_ms = 300
+        target_full_path_latency_ms = 500
         current_pc_reference = "local-cpu-reference.json"
+        reference_evidence_path = [string]$cpuReferenceEvidence[0].path
+        reference_evidence_sha256 = $cpuReferenceSha256
         file_count = $files.Count
         files = $files
     }

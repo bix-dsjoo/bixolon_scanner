@@ -9,7 +9,8 @@ import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from bixolon_scanner.runtime import detector_v2, onnx_session
+from bixolon_scanner.pipeline.ports import Detection
+from bixolon_scanner.runtime import catalog, detector_v2, onnx_session
 from bixolon_scanner.runtime.catalog import OnnxEmbedder
 from bixolon_scanner.runtime.detector_v2 import FixedEnsembleOnnxDetector
 from bixolon_scanner.worker.settings import WorkerSettings
@@ -459,6 +460,46 @@ def test_embedder_prepared_tensor_contract_runs_contiguous_float32() -> None:
     assert captured.dtype == np.float32
     assert captured.flags.c_contiguous
     assert result.shape == (2, 4)
+
+
+def test_embedder_prepares_only_selected_rois_with_full_neighbor_context(monkeypatch) -> None:
+    embedder = object.__new__(OnnxEmbedder)
+    embedder.metadata = SimpleNamespace(
+        input_size=(8, 8),
+        mean=(0.485, 0.456, 0.406),
+        std=(0.229, 0.224, 0.225),
+        crop_margin_ratio=0.0,
+        crop_mode="box_resize",
+        resize_reducing_gap=None,
+        neighbor_mask=True,
+        neighbor_distance_bias=-0.1,
+        neighbor_shared_scale=False,
+    )
+    image = np.arange(24 * 24 * 3, dtype=np.uint8).reshape(24, 24, 3)
+    detections = [
+        Detection(0, 0, 12, 12, 0.9),
+        Detection(6, 0, 18, 12, 0.8),
+        Detection(12, 12, 24, 24, 0.7),
+    ]
+    full = embedder.prepare_detection_tensors(image, detections)
+    prepare_calls = 0
+    original_prepare = catalog.prepare_rgb
+
+    def counting_prepare(*args, **kwargs):
+        nonlocal prepare_calls
+        prepare_calls += 1
+        return original_prepare(*args, **kwargs)
+
+    monkeypatch.setattr(catalog, "prepare_rgb", counting_prepare)
+
+    selected = embedder.prepare_selected_detection_tensors(
+        image,
+        detections,
+        np.asarray([2, 0], dtype=np.int64),
+    )
+
+    assert prepare_calls == 2
+    np.testing.assert_array_equal(selected, full[[2, 0]])
 
 
 def _ensemble_package(tmp_path: Path):

@@ -28,5 +28,5 @@ N100 기본 profile은 Detector를 OpenVINO CPU, 모든 Embedder를 Intel GPU에
 변경은 시작 오류입니다. checksum은 손상 탐지일 뿐 발행자 진위 인증은 제공하지 않습니다.
 
 평가 결과는 번들 입력으로 hash를 고정하지만 배포 gate나 별도 수명주기로 사용하지 않습니다.
-현재 데이터 범위와 한계는 [0.1.3 평가 보고서](../evaluation/scanner-0.1.3.md), API와 null 규칙은
+현재 데이터 범위와 한계는 [0.1.3 평가 보고서](../diagnostics/scanner-0.1.3-evaluation.md), API와 null 규칙은
 [Worker 연동 명세](../contracts/worker-integration-0.1.3.md)를 따릅니다.

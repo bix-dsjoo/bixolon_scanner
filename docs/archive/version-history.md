@@ -1,6 +1,6 @@
 # 버전 이력
 
-이 문서는 현재 단일 제품 버전 `0.1.3` 외의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
+이 문서는 현재 단일 제품 버전 `0.1.4` 외의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
 archive 인덱스입니다. 아래의 `production`, promotion, waiver, certification, release lock 표현은
 당시 기록의 용어이며 현재 빌드 수명주기나 활성 기본값이 아닙니다. Git 밖의 실험·평가 결과는
 보존하되 재생성 가능한 과거 전달물과 캐시는 정리할 수 있습니다.
@@ -16,7 +16,7 @@ archive 인덱스입니다. 아래의 `production`, promotion, waiver, certifica
 - [과거 학습 파이프라인](guides/training-pipeline-1.0.0.md)
 - [과거 release 설정](../../configs/archive/releases/bixolon_scanner_1.1.0.json)
 
-이 계열의 수치와 예외는 현재 `0.1.3`의 독립 성능 근거로 사용하지 않습니다.
+이 계열의 수치와 예외는 현재 `0.1.4`의 독립 성능 근거로 사용하지 않습니다.
 
 ## Scanner 2.0.0
 
@@ -109,12 +109,23 @@ N100이 아닙니다. N100에서는 이미 수행한 `1×4`, `2×2`, `2×1` 조�
 `n100-0.1.1-result.json`으로 판정합니다. 현장 JSON이 돌아오기 전에는 목표 달성을 확정하지 않고
 최종 Setup을 만들지 않습니다.
 
-## `0.1.4` 미채택 후보
+## `0.1.3` 기준선
 
-`0.1.4` 이름으로 만든 로컬 후보는 제품 버전으로 채택하지 않았습니다. Runtime graph, weight,
-Catalog와 판정 threshold가 `0.1.3`과 같았고 앱 준비·상호작용 변경은 활성 `0.1.3+6` 소스에
-통합했습니다. 후보 설정·계약·전달물은 활성 경로에서 제거했습니다.
+`0.1.3`은 one-class YOLO26 detector, `single_objects_3` DINOv3 ConvNeXt-Tiny soup와 독립
+ViT-B/16 verifier를 하나의 제품 버전으로 묶었습니다. 전체 유효 415장 개발 회귀와 packaged
+Worker/N100 진단은 [당시 평가 문서](diagnostics/scanner-0.1.3-evaluation.md)에 보존합니다.
+현재 `0.1.4`는 model binary와 Catalog payload를 유지하고 detector raw-query 기하 및 회전 입력
+객체 수·bbox 합의 후처리를 추가한 patch입니다. 겹침만으로 재촬영하지 않고 추가 객체가 안정적으로
+복구될 때 누락 가능성으로 처리합니다. 당시 기준 설정은
+[`configs/archive/versions/0.1.3.json`](../../configs/archive/versions/0.1.3.json)에 있습니다.
+
+## `0.1.4` 이름의 과거 미채택 앱 후보
+
+현재 detector crowding 제품과 무관하게 과거에 `0.1.4` 이름으로 만든 로컬 앱 후보가 있었으나,
+당시에는 제품 버전으로 채택하거나 배포하지 않았습니다. Runtime graph, weight, Catalog와 판정
+threshold가 `0.1.3`과 같았고 앱 준비·상호작용 변경은 당시 `0.1.3+6` 소스에 통합했습니다.
+후보 설정·계약·전달물은 활성 경로에서 제거했습니다.
 
 당시 단일 packaged Worker 관찰 JSON은 실험 결과 보존 원칙에 따라
 [`archive/diagnostics`](diagnostics/packaged-worker-0.1.4-smoke.json)에 남겼습니다. 이는 N100 실측,
-현재 `0.1.3` binary 증빙 또는 SLA가 아닙니다.
+현재 detector crowding `0.1.4` binary 증빙 또는 SLA가 아닙니다.

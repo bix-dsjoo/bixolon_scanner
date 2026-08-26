@@ -8,7 +8,7 @@ import pytest
 from bixolon_scanner.contracts.api import ItemStatus, ScanResponse, Status
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLES = ROOT / "docs" / "contracts" / "examples" / "0.1.3"
+EXAMPLES = ROOT / "docs" / "contracts" / "examples" / "0.1.4"
 
 
 @pytest.mark.parametrize(
@@ -29,9 +29,9 @@ def test_handoff_examples_follow_python_contract(
     response = ScanResponse.model_validate_json((EXAMPLES / name).read_text(encoding="utf-8"))
 
     assert response.status is status
-    assert response.worker_version == "0.1.3"
+    assert response.worker_version == "0.1.4"
     assert all(
-        value == "0.1.3"
+        value == "0.1.4"
         for value in (
             response.detector_version,
             response.classifier_version,
@@ -104,10 +104,11 @@ def test_packaged_cpu_handoff_scripts_target_n100_cpu() -> None:
     assert "segmentation_status_counts" in benchmark
     assert "response_contract_safe" in benchmark
     assert "cross_provider_parity_checked = $false" in benchmark
-    assert "candidate.P95Ms -le 300" in benchmark
+    assert "MaximumFullPathLatencyMs = 500.0" in benchmark
+    assert "candidate.P95Ms -le $MaximumFullPathLatencyMs" in benchmark
     assert "$targetCpuDetected" in benchmark
-    assert "mean_within_300ms" in benchmark
-    assert "p95_within_300ms" in benchmark
+    assert "mean_within_target" in benchmark
+    assert "p95_within_target" in benchmark
     assert "image_paths_recorded = $false" in benchmark
     assert '[string]$OutputPath = ""' in benchmark
     assert 'Join-Path $PSScriptRoot "n100-benchmark-result.json"' in benchmark
@@ -139,6 +140,10 @@ def test_n100_candidate_exposes_double_click_and_requested_powershell_entrypoint
 
     assert '"N100-STAGE-TEST.ps1"' in build_script
     assert '"scripts/handoff/README-N100-KO.txt"' in build_script
+    assert "config.evaluation_evidence" in build_script
+    assert "reference_evidence_sha256" in build_script
+    assert "target_full_path_latency_ms = 500" in build_script
+    assert "scanner-$Version/full-valid-openvino.json" not in build_script
     assert '-File ".\\N100-STAGE-TEST.ps1"' in readme
     assert "N100-STAGE-TEST.ps1" in command_script
-    assert "n100-0.1.3-result.json" in command_script
+    assert "n100-0.1.4-result.json" in command_script

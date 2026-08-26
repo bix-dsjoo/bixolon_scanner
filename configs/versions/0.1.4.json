@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.4",
+  "app_build": 7,
+  "source_date_epoch": 1787702400,
+  "source_candidate": "yolo26-objectness-single3-consensus-targeted-rotation",
+  "runtime": {
+    "path": "artifacts/packages/bread-scanner-0.1.4-targeted-rotation-v2-runtime",
+    "manifest_sha256": "15f62feb45e9e7bd4d52039badfc8921976d9322367f2a1626279edc9d290d30"
+  },
+  "catalog": {
+    "path": "artifacts/catalogs/bread-store-0.1.3-consensus",
+    "manifest_sha256": "4c35abb9d03798c7df34983b6e401c1af6595cf1a71834efa944c85021e245ab",
+    "store_id": "bread-dev"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/releases/bixolon-scanner-2.0.0+4/worker/cuda-runtime",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/evaluations/scanner-0.1.4/detector-crowding-policy-targeted-rotation-v2.json",
+      "sha256": "5ca7aa92a91b14c6b810d165f2a0d6b64fde2ba6639d14354deb27d089e0532c"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.4/runtime-targeted-rotation-v2-conversion.json",
+      "sha256": "e7a85bf1353c84d5f66b1763c9ce4c0f9acaab6b213760b2951d4bf2f4a06ffa"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.4/bread-project-4-100-targeted-rotation-v2.json",
+      "sha256": "8f1d4e6069bbfbd40b959704a9445198027ee31eadb8c8b486ea6a5ae10a638b"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.4/bread-project-4-100-targeted-rotation-v2-trace.jsonl",
+      "sha256": "cc2baefc8d1770d59557970fc1501a8d23c77cbce7b17dc465c74663d45745b7"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.3/full-valid-openvino.json",
+      "sha256": "d3ec056a414eac236642a1e33a3617849c2e59d3b4073eeefb9fa95401307438"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.3/full-valid-openvino-trace.jsonl",
+      "sha256": "4752894998e5059aca89ce16f22d7c49ab1c2a8ef9ff134d8eb6c281afd6d741"
+    },
+    {
+      "path": "artifacts/experiments/bread-0.1.3/classifier/source-comparison.json",
+      "sha256": "12de3fe0bf7e4497f519a4ae1522e0f06303c89f12722debfbfe52c495178e06"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}

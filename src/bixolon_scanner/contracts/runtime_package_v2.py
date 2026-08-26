@@ -259,6 +259,41 @@ class DetectorAmbiguityPolicyMetadata(BaseModel):
         return self
 
 
+class DetectorCrowdingPolicyMetadata(BaseModel):
+    """Label-free detector policy for merged or missing object recapture."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    minimum_image_aspect_ratio: float = Field(default=0.0, ge=0.0)
+    candidate_score_threshold: float = Field(ge=0.0, le=1.0)
+    large_proposal_score_threshold: float = Field(ge=0.0, le=1.0)
+    large_proposal_minimum_area_ratio: float = Field(gt=0.0, le=1.0)
+    proximity_maximum_normalized_center_distance: float = Field(gt=0.0)
+    query_cluster_iou_threshold: float = Field(gt=0.0, le=1.0)
+    query_duplicate_minimum_fraction: float = Field(ge=0.0, le=1.0)
+    rotation_recovery_degrees: list[Literal[90, 180, 270]] = Field(default_factory=list)
+    rotation_recovery_minimum_selected_count: int = Field(default=1, ge=1)
+    rotation_recovery_maximum_selected_count: int | None = Field(default=None, ge=1)
+    rotation_recovery_minimum_selected_area_fraction: float = Field(default=0.0, ge=0.0)
+    rotation_recovery_minimum_normalized_center_distance: float = Field(default=0.0, ge=0.0)
+    rotation_recovery_minimum_count_gain: int = Field(default=1, ge=1)
+    rotation_recovery_agreement_iou_threshold: float = Field(default=0.5, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_score_thresholds(self) -> "DetectorCrowdingPolicyMetadata":
+        if self.candidate_score_threshold > self.large_proposal_score_threshold:
+            raise ValueError("crowding candidate threshold cannot exceed large-proposal threshold")
+        if len(self.rotation_recovery_degrees) != len(set(self.rotation_recovery_degrees)):
+            raise ValueError("crowding rotation recovery degrees must be unique")
+        if (
+            self.rotation_recovery_maximum_selected_count is not None
+            and self.rotation_recovery_minimum_selected_count
+            > self.rotation_recovery_maximum_selected_count
+        ):
+            raise ValueError("crowding rotation recovery selected-count range is inverted")
+        return self
+
+
 class ClassifierVerificationMetadata(BaseModel):
     """Product-independent selective agreement policy for ambiguous classifications."""
 
@@ -294,6 +329,7 @@ class RuntimePackageV2Metadata(BaseModel):
     detector_ambiguity: DetectorAmbiguityPolicyMetadata = Field(
         default_factory=DetectorAmbiguityPolicyMetadata
     )
+    detector_crowding: DetectorCrowdingPolicyMetadata | None = None
     count_verifier: CountVerifierMetadata | None = None
     embedder: EmbedderMetadata
     metric_projection: MetricProjectionMetadata
@@ -318,6 +354,22 @@ class RuntimePackageV2Metadata(BaseModel):
         thresholds = self.classifier_policy.ridge_approval_thresholds
         if thresholds is not None and len(thresholds) != self.detector_class_count:
             raise ValueError("Ridge per-class approval thresholds must match detector classes")
+        return self
+
+    @model_validator(mode="after")
+    def validate_detector_crowding_thresholds(self) -> "RuntimePackageV2Metadata":
+        crowding = self.detector_crowding
+        if crowding is not None and (
+            self.detector.ensemble is not None or self.detector_refinement is not None
+        ):
+            raise ValueError("detector crowding currently requires a single-scale detector")
+        if (
+            crowding is not None
+            and crowding.large_proposal_score_threshold > self.detector.score_threshold
+        ):
+            raise ValueError(
+                "crowding large-proposal threshold cannot exceed detector score threshold"
+            )
         return self
 
     @model_validator(mode="after")

@@ -329,5 +329,5 @@ reason code가 아닙니다.
 클라이언트가 알지 못하는 새 reason code를 받더라도 응답 전체를 실패 처리하지 않아야 합니다.
 판정 분기는 reason code 문자열이 아니라 이미지 `status`와 빵별 `status`를 기준으로 구현해야 합니다.
 
-정식 응답 JSON Schema는 [scan-response.schema.json](../../schemas/scan-response.schema.json)을
+정식 응답 JSON Schema는 [scan-response.schema.json](../../../schemas/scan-response.schema.json)을
 참조하십시오.

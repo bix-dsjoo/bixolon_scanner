@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.3",
+    [string]$Version = "0.1.4",
     [string]$PythonExecutable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$InnoCompiler = "",
     [string]$VcRedistPath = "",
@@ -147,6 +147,10 @@ if ([string]::IsNullOrWhiteSpace($N100DeviceMatrixPath)) {
     ) "docs/diagnostics/n100-$Version-openvino-device-matrix.json"
 }
 $n100DiagnosticPath = [System.IO.Path]::GetFullPath($N100DeviceMatrixPath)
+$hasN100Diagnostic = Test-Path -LiteralPath $n100DiagnosticPath -PathType Leaf
+if (-not $hasN100Diagnostic) {
+    throw "Required N100 device matrix is missing: $n100DiagnosticPath"
+}
 $setupIconPath = Join-Path $repositoryRoot "apps/product_scanner/windows/runner/resources/app_icon.ico"
 $resolvedOutputRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot $OutputRoot))
 $versionOutput = Join-Path $resolvedOutputRoot $Version
@@ -168,7 +172,6 @@ foreach ($requiredPath in @(
     $workerLauncher,
     $workerCommand,
     $workerReadme,
-    $n100DiagnosticPath,
     $setupIconPath
 )) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
@@ -180,69 +183,82 @@ $config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
 if ([string]$config.version -ne $Version) {
     throw "Version config identity mismatch: $configPath"
 }
-$n100Diagnostic = Get-Content -Raw -LiteralPath $n100DiagnosticPath | ConvertFrom-Json
-$selectedN100Profile = $n100Diagnostic.profiles.openvino_cpu_detector_intel_gpu_embedder
-if (
-    [string]$n100Diagnostic.evaluation -ne (
-        "bixolon_worker_n100_openvino_cpu_vs_intel_gpu_embedder"
-    ) -or
-    -not [bool]$n100Diagnostic.completed -or
-    -not [bool]$n100Diagnostic.hardware.target_cpu_detected -or
-    -not [bool]$n100Diagnostic.hardware.target_intel_gpu_detected -or
-    -not [bool]$n100Diagnostic.execution_contract.same_worker_executable -or
-    -not [bool]$n100Diagnostic.execution_contract.same_runtime_catalog_and_policy -or
-    [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.detector -ne (
-        "OpenVINOExecutionProvider:CPU"
-    ) -or
-    [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.primary_embedder -ne (
-        "OpenVINOExecutionProvider:GPU"
-    ) -or
-    [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.rotation_180_embedder -ne (
-        "OpenVINOExecutionProvider:GPU"
-    ) -or
-    [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.independent_verifier_embedder -ne (
-        "OpenVINOExecutionProvider:GPU"
-    ) -or
-    [bool]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.silent_cpu_fallback_allowed -or
-    [bool]$n100Diagnostic.integrity.model_graph_or_weight_changed -or
-    [bool]$n100Diagnostic.integrity.decision_policy_changed -or
-    $null -eq $selectedN100Profile -or
-    -not [bool]$selectedN100Profile.completed -or
-    $null -ne $selectedN100Profile.failure_code -or
-    [string]$selectedN100Profile.detector_provider -ne "openvino" -or
-    [string]$selectedN100Profile.embedder_provider -ne "openvino_gpu" -or
-    [int]$selectedN100Profile.error_count -ne 0 -or
-    [int]$selectedN100Profile.full_path_count -lt (
-        [int]$n100Diagnostic.input.minimum_full_path_count
-    ) -or
-    -not [bool]$n100Diagnostic.comparison.provider_initialization_safe -or
-    -not [bool]$n100Diagnostic.comparison.hybrid_mean_improved -or
-    -not [bool]$n100Diagnostic.comparison.hybrid_p95_improved -or
-    [int]$n100Diagnostic.parity.semantic_mismatch_count -ne 0 -or
-    [int]$n100Diagnostic.parity.confidence_vector_mismatch_count -ne 0
-) {
-    throw (
-        "N100 device matrix must prove the requested CPU Detector + Intel GPU Embedder " +
-        "profile initialized, completed without errors, improved mean and p95, and kept " +
-        "semantic output parity."
-    )
-}
-$diagnosticVersion = [string]$n100Diagnostic.product_version
-$diagnosticConfigPath = Join-Path $repositoryRoot "configs/versions/$diagnosticVersion.json"
-if (-not (Test-Path -LiteralPath $diagnosticConfigPath -PathType Leaf)) {
-    throw "N100 reference version config is missing: $diagnosticConfigPath"
-}
-$diagnosticConfig = Get-Content -Raw -LiteralPath $diagnosticConfigPath | ConvertFrom-Json
-if (
-    [string]$diagnosticConfig.runtime.manifest_sha256 -ne
-        [string]$config.runtime.manifest_sha256 -or
-    [string]$diagnosticConfig.catalog.manifest_sha256 -ne
-        [string]$config.catalog.manifest_sha256
-) {
-    throw (
-        "A previous-version N100 reference is valid only when the immutable Runtime and " +
-        "Catalog source manifests are identical to the selected product version."
-    )
+$n100Diagnostic = $null
+$recommendedN100Profile = $null
+$diagnosticVersion = $null
+$diagnosticConfig = $null
+$recommendedDetectorWorkers = 1
+$recommendedDetectorThreads = 4
+$recommendedEmbedderThreads = 0
+if ($hasN100Diagnostic) {
+    $n100Diagnostic = Get-Content -Raw -LiteralPath $n100DiagnosticPath | ConvertFrom-Json
+    $selectedN100Profile = $n100Diagnostic.profiles.openvino_cpu_detector_intel_gpu_embedder
+    if (
+        [string]$n100Diagnostic.evaluation -ne (
+            "bixolon_worker_n100_openvino_cpu_vs_intel_gpu_embedder"
+        ) -or
+        -not [bool]$n100Diagnostic.completed -or
+        -not [bool]$n100Diagnostic.hardware.target_cpu_detected -or
+        -not [bool]$n100Diagnostic.hardware.target_intel_gpu_detected -or
+        -not [bool]$n100Diagnostic.execution_contract.same_worker_executable -or
+        -not [bool]$n100Diagnostic.execution_contract.same_runtime_catalog_and_policy -or
+        [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.detector -ne (
+            "OpenVINOExecutionProvider:CPU"
+        ) -or
+        [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.primary_embedder -ne (
+            "OpenVINOExecutionProvider:GPU"
+        ) -or
+        [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.rotation_180_embedder -ne (
+            "OpenVINOExecutionProvider:GPU"
+        ) -or
+        [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.independent_verifier_embedder -ne (
+            "OpenVINOExecutionProvider:GPU"
+        ) -or
+        [bool]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.silent_cpu_fallback_allowed -or
+        [bool]$n100Diagnostic.integrity.model_graph_or_weight_changed -or
+        [bool]$n100Diagnostic.integrity.decision_policy_changed -or
+        $null -eq $selectedN100Profile -or
+        -not [bool]$selectedN100Profile.completed -or
+        $null -ne $selectedN100Profile.failure_code -or
+        [string]$selectedN100Profile.detector_provider -ne "openvino" -or
+        [string]$selectedN100Profile.embedder_provider -ne "openvino_gpu" -or
+        [int]$selectedN100Profile.error_count -ne 0 -or
+        [int]$selectedN100Profile.full_path_count -lt (
+            [int]$n100Diagnostic.input.minimum_full_path_count
+        ) -or
+        -not [bool]$n100Diagnostic.comparison.provider_initialization_safe -or
+        -not [bool]$n100Diagnostic.comparison.hybrid_mean_improved -or
+        -not [bool]$n100Diagnostic.comparison.hybrid_p95_improved -or
+        [int]$n100Diagnostic.parity.semantic_mismatch_count -ne 0 -or
+        [int]$n100Diagnostic.parity.confidence_vector_mismatch_count -ne 0
+    ) {
+        throw (
+            "N100 device matrix must prove the requested CPU Detector + Intel GPU Embedder " +
+            "profile initialized, completed without errors, improved mean and p95, and kept " +
+            "semantic output parity."
+        )
+    }
+    $diagnosticVersion = [string]$n100Diagnostic.product_version
+    $diagnosticConfigPath = Join-Path $repositoryRoot "configs/versions/$diagnosticVersion.json"
+    if (-not (Test-Path -LiteralPath $diagnosticConfigPath -PathType Leaf)) {
+        throw "N100 reference version config is missing: $diagnosticConfigPath"
+    }
+    $diagnosticConfig = Get-Content -Raw -LiteralPath $diagnosticConfigPath | ConvertFrom-Json
+    if (
+        [string]$diagnosticConfig.runtime.manifest_sha256 -ne
+            [string]$config.runtime.manifest_sha256 -or
+        [string]$diagnosticConfig.catalog.manifest_sha256 -ne
+            [string]$config.catalog.manifest_sha256
+    ) {
+        throw (
+            "A previous-version N100 reference is valid only when the immutable Runtime and " +
+            "Catalog source manifests are identical to the selected product version."
+        )
+    }
+    $recommendedN100Profile = $selectedN100Profile
+    $recommendedDetectorWorkers = [int]$selectedN100Profile.detector_workers
+    $recommendedDetectorThreads = [int]$selectedN100Profile.detector_threads_per_session
+    $recommendedEmbedderThreads = [int]$selectedN100Profile.embedder_threads
 }
 $launcherSource = Get-Content -Raw -LiteralPath $installerLauncher
 if (
@@ -255,10 +271,6 @@ if (
 ) {
     throw "N100 launcher is missing the hybrid provider, fallback, or thread settings."
 }
-$recommendedN100Profile = $selectedN100Profile
-$recommendedDetectorWorkers = [int]$selectedN100Profile.detector_workers
-$recommendedDetectorThreads = [int]$selectedN100Profile.detector_threads_per_session
-$recommendedEmbedderThreads = [int]$selectedN100Profile.embedder_threads
 if (
     $recommendedDetectorWorkers -ne 1 -or
     $recommendedDetectorThreads -ne 4 -or
@@ -286,35 +298,37 @@ if (-not (Test-Path -LiteralPath $openVinoWorker -PathType Container)) {
     )
 }
 
-$runtimeMetadataPath = Join-Path $canonicalBundle "worker/model-package/metadata.json"
-$catalogChecksumsPath = Join-Path $canonicalBundle "worker/store-catalog/checksums.json"
-$integrityReferenceBundle = $canonicalBundle
-if ($diagnosticVersion -ne $Version) {
-    $diagnosticVersionRoot = [System.IO.Path]::GetFullPath(
-        (Join-Path $repositoryRoot (
-            [string]$diagnosticConfig.output_root + "/" + $diagnosticVersion
-        ))
-    )
-    $integrityReferenceBundle = Join-Path (
-        $diagnosticVersionRoot
-    ) "bixolon-scanner-$diagnosticVersion"
-    if (-not (Test-Path -LiteralPath $integrityReferenceBundle -PathType Container)) {
-        throw "N100 reference bundle is missing: $integrityReferenceBundle"
+if ($hasN100Diagnostic) {
+    $runtimeMetadataPath = Join-Path $canonicalBundle "worker/model-package/metadata.json"
+    $catalogChecksumsPath = Join-Path $canonicalBundle "worker/store-catalog/checksums.json"
+    $integrityReferenceBundle = $canonicalBundle
+    if ($diagnosticVersion -ne $Version) {
+        $diagnosticVersionRoot = [System.IO.Path]::GetFullPath(
+            (Join-Path $repositoryRoot (
+                [string]$diagnosticConfig.output_root + "/" + $diagnosticVersion
+            ))
+        )
+        $integrityReferenceBundle = Join-Path (
+            $diagnosticVersionRoot
+        ) "bixolon-scanner-$diagnosticVersion"
+        if (-not (Test-Path -LiteralPath $integrityReferenceBundle -PathType Container)) {
+            throw "N100 reference bundle is missing: $integrityReferenceBundle"
+        }
+        $runtimeMetadataPath = Join-Path (
+            $integrityReferenceBundle
+        ) "worker/model-package/metadata.json"
+        $catalogChecksumsPath = Join-Path (
+            $integrityReferenceBundle
+        ) "worker/store-catalog/checksums.json"
     }
-    $runtimeMetadataPath = Join-Path (
-        $integrityReferenceBundle
-    ) "worker/model-package/metadata.json"
-    $catalogChecksumsPath = Join-Path (
-        $integrityReferenceBundle
-    ) "worker/store-catalog/checksums.json"
-}
-if (
-    (Get-FileHash -Algorithm SHA256 -LiteralPath $runtimeMetadataPath).Hash.ToLowerInvariant() -ne
-        [string]$n100Diagnostic.integrity.runtime_metadata_sha256 -or
-    (Get-FileHash -Algorithm SHA256 -LiteralPath $catalogChecksumsPath).Hash.ToLowerInvariant() -ne
-        [string]$n100Diagnostic.integrity.catalog_checksums_sha256
-) {
-    throw "N100 device matrix does not describe the selected Runtime and Catalog payload."
+    if (
+        (Get-FileHash -Algorithm SHA256 -LiteralPath $runtimeMetadataPath).Hash.ToLowerInvariant() -ne
+            [string]$n100Diagnostic.integrity.runtime_metadata_sha256 -or
+        (Get-FileHash -Algorithm SHA256 -LiteralPath $catalogChecksumsPath).Hash.ToLowerInvariant() -ne
+            [string]$n100Diagnostic.integrity.catalog_checksums_sha256
+    ) {
+        throw "N100 device matrix does not describe the selected Runtime and Catalog payload."
+    }
 }
 
 $previousPythonPath = $env:PYTHONPATH
@@ -512,6 +526,7 @@ try {
                 $n100Diagnostic.comparison.full_path_p95_speedup_ratio
             )
             peak_working_set_bytes = [long]$recommendedN100Profile.peak_working_set_bytes
+            operational_diagnostic_target_ms = 500
             n100_latency_target_applied = $false
             latency_or_sla_claimed = $false
         }
