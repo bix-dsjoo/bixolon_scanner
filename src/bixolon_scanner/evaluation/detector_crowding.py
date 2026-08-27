@@ -208,7 +208,7 @@ def evaluate_detector_crowding(
 
 
 def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(description="Evaluate the 0.1.4 detector crowding policy")
+    parser = argparse.ArgumentParser(description="Evaluate the detector crowding policy")
     parser.add_argument("--runtime", type=Path, required=True)
     parser.add_argument("--operational-manifest", type=Path, required=True)
     parser.add_argument("--operational-review", type=Path, required=True)

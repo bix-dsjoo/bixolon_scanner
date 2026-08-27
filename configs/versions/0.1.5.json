@@ -1,0 +1,53 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.5",
+  "app_build": 8,
+  "source_date_epoch": 1787788800,
+  "source_candidate": "yolo26-objectness-single3-consensus-large-proposal-corroboration",
+  "runtime": {
+    "path": "artifacts/packages/bread-scanner-0.1.5-large-proposal-corroboration-runtime",
+    "manifest_sha256": "219057533c25a5165f0591493d959e3fa2b0bfb33d982068b214c04f9a53654e"
+  },
+  "catalog": {
+    "path": "artifacts/catalogs/bread-store-0.1.5-consensus",
+    "manifest_sha256": "085612ddd781a1879ae3bb2867c32c2174247ff8703e1641367d8c37226888b7",
+    "store_id": "bread-dev"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/runtime/cuda-13.0-cudnn-9.13.1-win-x64",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/evaluations/scanner-0.1.5/detector-crowding-large-proposal-corroboration.json",
+      "sha256": "accc3622ac2b033218ee45455e3f7f5093253b366cb7a715202cc10a15aa2707"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.5/runtime-large-proposal-corroboration-conversion.json",
+      "sha256": "34991db0b6cf8a67d87802c88fd607c23a1f1d46ab6458ad09255726fc2394e4"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.5/large-bread-20260827-cpu-http.json",
+      "sha256": "39dda86310c9ed59349f3b7a30b7f079c466d99bac692183bcb09273ea7590b0"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}

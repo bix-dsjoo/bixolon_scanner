@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "product_version": "0.1.5",
+  "app_build": 8,
+  "provider": "openvino",
+  "passes": true,
+  "cases": {
+    "ready": {
+      "http_status": 200,
+      "status": "ready",
+      "all_non_null_versions": "0.1.5"
+    },
+    "valid_large_bread_set": {
+      "image_count": 70,
+      "segmentation": 66,
+      "image_recapture": 4,
+      "error": 0,
+      "expected_status_mismatch_count": 0
+    },
+    "corrupt_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": [
+        "CORRUPT_IMAGE"
+      ]
+    },
+    "missing_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": [
+        "MISSING_IMAGE_FIELD"
+      ]
+    },
+    "unsupported_image": {
+      "http_status": 415,
+      "status": "ERROR",
+      "reason_codes": [
+        "UNSUPPORTED_IMAGE_FORMAT"
+      ]
+    }
+  },
+  "artifacts": {
+    "bundle_manifest_sha256": "fa711eaa9ab7576e23cdda2c31b1f48cc26d844842eb533e943748b6388a748b",
+    "product_scanner_exe_sha256": "28da4342e889440a6b2ee68bcc47457f382bb1020cb0e8936652cfd1da895b4d",
+    "openvino_worker_zip_sha256": "5653adec6f1fe110a8b90e741ae32821ffd3513936851f464fc7f30495460478",
+    "n100_cpu_gpu_test_zip_sha256": "0a2a17f3a8c2578f00f47de99ce6efa3b801a58a14be3b81dc6deb8c93606e92",
+    "packaged_worker_smoke_sha256": "6d48da23e831aeff875bebc80e6603b65f85a88c5189c30ea6bd47ca64165824",
+    "large_bread_http_sha256": "2409f62a54f2f1e5bc2b56df77124139e322492a3d2eb1060c28e1553af95df3",
+    "openvino_comparison_sha256": "a7493958b6b1b5ccc57f9d1540b00a6164a888e35206c84d619c83037049a1ce"
+  },
+  "privacy": {
+    "image_paths_recorded": false,
+    "image_bytes_recorded": false
+  },
+  "limitations": [
+    "The OpenVINO comparison was measured on the current PC, not an Intel N100.",
+    "The 70-image set has no object-level class ground truth."
+  ]
+}

@@ -36,6 +36,6 @@ classifier 전에 `IMAGE_RECAPTURE`가 됩니다. 회전 검사는 기본 검출
 계속합니다. 외부 API의 공개 사유는 기존과 같은 `IMAGE_RECAPTURE_REQUIRED`이므로 클라이언트 분기
 계약은 바뀌지 않습니다.
 
-정식 필드와 enum은 [API 계약](api.md), JSON Schema는
-[scan-response.schema.json](../../schemas/scan-response.schema.json), 상태별 payload는
+정식 필드와 enum은 [API 계약](../../contracts/api.md), JSON Schema는
+[scan-response.schema.json](../../../schemas/scan-response.schema.json), 상태별 payload는
 [0.1.4 예시](examples/0.1.4/)를 참조하십시오. 빵 식별에는 표시명 대신 `class_id`를 사용합니다.

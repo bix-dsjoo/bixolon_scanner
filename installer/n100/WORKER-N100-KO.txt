@@ -1,4 +1,4 @@
-BIXOLON Scanner 0.1.4 - N100 Hybrid Worker ZIP
+BIXOLON Scanner 0.1.5 - N100 Hybrid Worker ZIP
 ================================================
 
 실행 방법
@@ -27,8 +27,8 @@ BIXOLON Scanner 0.1.4 - N100 Hybrid Worker ZIP
 - n100-reference-result.json은 이 구성을 선택할 때 사용한 N100 측정 원문입니다.
 
 제한
-- 동일 모델·Catalog의 0.1.3 N100 참조 측정 100장에서 최종 상태, bbox, class와 Top-3는
-  CPU-only와 같았습니다. 동일한 0.1.3 모델·Catalog의 참조 진단입니다.
+- 이전 0.1.4+7 N100 참조 측정 100장에서 최종 상태, bbox, class와 Top-3는 CPU-only와
+  같았습니다. 새 0.1.5 정책의 N100 성능 증빙은 아니며 대상 장비에서 다시 측정해야 합니다.
 - confidence 최대 차이는 0.0085055232였으므로 bit-exact parity 결과가 아닙니다.
 - 이 결과는 장비 한 대의 진단이며 SLA 또는 인증이 아닙니다.
 - 배포 파일에는 Authenticode 서명이 없습니다.

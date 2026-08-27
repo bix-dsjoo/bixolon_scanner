@@ -54,7 +54,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester.widget<MaterialApp>(find.byType(MaterialApp)).title,
-      'BIXOLON Scanner v0.1.4',
+      'BIXOLON Scanner v0.1.5',
     );
 
     await tester.tap(find.widgetWithText(OutlinedButton, '다른 이미지 선택'));

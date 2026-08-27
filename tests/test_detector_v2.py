@@ -22,6 +22,11 @@ def _crowding_policy() -> DetectorCrowdingPolicyMetadata:
         candidate_score_threshold=0.05,
         large_proposal_score_threshold=0.145,
         large_proposal_minimum_area_ratio=0.21,
+        large_proposal_corroboration={
+            "query_containment_surplus_minimum": 1,
+            "selected_center_minimum": 2,
+            "selected_count_maximum": 5,
+        },
         proximity_maximum_normalized_center_distance=0.48,
         query_cluster_iou_threshold=0.7,
         query_duplicate_minimum_fraction=0.93,
@@ -39,11 +44,74 @@ def _duplicates(box: tuple[float, float, float, float], count: int) -> list[Dete
     return [Detection(*box, 0.2 - index * 0.001) for index in range(count)]
 
 
-def test_crowding_policy_recaptures_large_raw_proposal() -> None:
+def test_crowding_policy_allows_large_single_object_without_corroboration() -> None:
     candidates = [Detection(0, 0, 46, 46, 0.2)]
 
-    assert detector_crowding_requires_recapture(
+    assert not detector_crowding_requires_recapture(
         candidates,
+        selected_detections=candidates,
+        image_width=100,
+        image_height=100,
+        nms_iou_threshold=0.4,
+        policy=_crowding_policy(),
+    )
+
+
+def test_legacy_crowding_policy_keeps_unconditional_large_proposal_gate() -> None:
+    payload = _crowding_policy().model_dump(mode="json")
+    payload["large_proposal_corroboration"] = None
+
+    assert detector_crowding_requires_recapture(
+        [Detection(0, 0, 46, 46, 0.2)],
+        selected_detections=[Detection(0, 0, 46, 46, 0.2)],
+        image_width=100,
+        image_height=100,
+        nms_iou_threshold=0.4,
+        policy=DetectorCrowdingPolicyMetadata.model_validate(payload),
+    )
+
+
+def test_crowding_policy_recaptures_large_proposal_with_contained_query_surplus() -> None:
+    large = Detection(0, 0, 60, 60, 0.2)
+    contained = Detection(5, 5, 20, 20, 0.19)
+
+    assert detector_crowding_requires_recapture(
+        [large, contained],
+        selected_detections=[large],
+        image_width=100,
+        image_height=100,
+        nms_iou_threshold=0.4,
+        policy=_crowding_policy(),
+    )
+
+
+def test_crowding_policy_recaptures_large_proposal_covering_sparse_selected_centers() -> None:
+    large = Detection(0, 0, 60, 60, 0.2)
+    selected = [
+        Detection(0, 0, 20, 20, 0.9),
+        Detection(40, 40, 70, 70, 0.8),
+    ]
+
+    assert detector_crowding_requires_recapture(
+        [large],
+        selected_detections=selected,
+        image_width=100,
+        image_height=100,
+        nms_iou_threshold=0.4,
+        policy=_crowding_policy(),
+    )
+
+
+def test_crowding_policy_allows_large_proposal_in_dense_selected_layout() -> None:
+    large = Detection(0, 0, 60, 60, 0.2)
+    selected = [
+        Detection(index * 10, index * 10, index * 10 + 20, index * 10 + 20, 0.9)
+        for index in range(6)
+    ]
+
+    assert not detector_crowding_requires_recapture(
+        [large],
+        selected_detections=selected,
         image_width=100,
         image_height=100,
         nms_iou_threshold=0.4,
@@ -61,6 +129,7 @@ def test_crowding_policy_requires_proximity_and_query_duplication_together() -> 
 
     assert detector_crowding_requires_recapture(
         close_boxes,
+        selected_detections=[],
         image_width=100,
         image_height=100,
         nms_iou_threshold=0.4,
@@ -68,6 +137,7 @@ def test_crowding_policy_requires_proximity_and_query_duplication_together() -> 
     )
     assert not detector_crowding_requires_recapture(
         low_duplicate_boxes,
+        selected_detections=[],
         image_width=100,
         image_height=100,
         nms_iou_threshold=0.4,
@@ -75,6 +145,7 @@ def test_crowding_policy_requires_proximity_and_query_duplication_together() -> 
     )
     assert not detector_crowding_requires_recapture(
         separated_boxes,
+        selected_detections=[],
         image_width=100,
         image_height=100,
         nms_iou_threshold=0.4,

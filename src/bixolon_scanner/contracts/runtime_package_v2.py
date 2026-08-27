@@ -259,6 +259,16 @@ class DetectorAmbiguityPolicyMetadata(BaseModel):
         return self
 
 
+class LargeProposalCorroborationMetadata(BaseModel):
+    """Evidence required before a large detector proposal is treated as crowding."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    query_containment_surplus_minimum: int = Field(ge=1)
+    selected_center_minimum: int = Field(ge=2)
+    selected_count_maximum: int = Field(ge=1)
+
+
 class DetectorCrowdingPolicyMetadata(BaseModel):
     """Label-free detector policy for merged or missing object recapture."""
 
@@ -268,6 +278,7 @@ class DetectorCrowdingPolicyMetadata(BaseModel):
     candidate_score_threshold: float = Field(ge=0.0, le=1.0)
     large_proposal_score_threshold: float = Field(ge=0.0, le=1.0)
     large_proposal_minimum_area_ratio: float = Field(gt=0.0, le=1.0)
+    large_proposal_corroboration: LargeProposalCorroborationMetadata | None = None
     proximity_maximum_normalized_center_distance: float = Field(gt=0.0)
     query_cluster_iou_threshold: float = Field(gt=0.0, le=1.0)
     query_duplicate_minimum_fraction: float = Field(ge=0.0, le=1.0)

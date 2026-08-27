@@ -89,6 +89,16 @@ def _box_iou(left: Detection, right: Detection) -> float:
     return intersection / union if union > 0.0 else 0.0
 
 
+def _box_containment(outer: Detection, inner: Detection) -> float:
+    ix1 = max(outer.x1, inner.x1)
+    iy1 = max(outer.y1, inner.y1)
+    ix2 = min(outer.x2, inner.x2)
+    iy2 = min(outer.y2, inner.y2)
+    intersection = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
+    inner_area = max(0.0, inner.x2 - inner.x1) * max(0.0, inner.y2 - inner.y1)
+    return intersection / inner_area if inner_area > 0.0 else 0.0
+
+
 sigmoid = _sigmoid
 nms = _nms
 box_iou = _box_iou
@@ -126,6 +136,7 @@ def _selected_area_fraction(
 def detector_crowding_requires_recapture(
     candidates: list[Detection],
     *,
+    selected_detections: list[Detection],
     image_width: int,
     image_height: int,
     nms_iou_threshold: float,
@@ -144,15 +155,43 @@ def detector_crowding_requires_recapture(
         nms_iou_threshold,
     )
     image_area = float(image_width * image_height)
-    maximum_area_ratio = max(
-        (
-            (candidate.x2 - candidate.x1) * (candidate.y2 - candidate.y1) / image_area
-            for candidate in large_proposals
-        ),
-        default=0.0,
+    largest_proposal = max(
+        large_proposals,
+        key=lambda candidate: (candidate.x2 - candidate.x1) * (candidate.y2 - candidate.y1),
+        default=None,
     )
-    if maximum_area_ratio >= policy.large_proposal_minimum_area_ratio:
-        return True
+    if largest_proposal is not None:
+        maximum_area_ratio = (
+            (largest_proposal.x2 - largest_proposal.x1)
+            * (largest_proposal.y2 - largest_proposal.y1)
+            / image_area
+        )
+        if maximum_area_ratio >= policy.large_proposal_minimum_area_ratio:
+            corroboration = policy.large_proposal_corroboration
+            if corroboration is None:
+                return True
+            contained_query_count = sum(
+                _box_containment(largest_proposal, candidate) >= policy.query_cluster_iou_threshold
+                for candidate in candidates
+            )
+            clustered_query_count = sum(
+                _box_iou(largest_proposal, candidate) >= policy.query_cluster_iou_threshold
+                for candidate in candidates
+            )
+            selected_center_count = sum(
+                largest_proposal.x1 <= (detection.x1 + detection.x2) * 0.5 <= largest_proposal.x2
+                and largest_proposal.y1
+                <= (detection.y1 + detection.y2) * 0.5
+                <= largest_proposal.y2
+                for detection in selected_detections
+            )
+            if (
+                contained_query_count - clustered_query_count
+                >= corroboration.query_containment_surplus_minimum
+                or len(selected_detections) <= corroboration.selected_count_maximum
+                and selected_center_count >= corroboration.selected_center_minimum
+            ):
+                return True
 
     selected = _nms(candidates, nms_iou_threshold)
     minimum_normalized_center_distance = _minimum_normalized_center_distance(selected)
@@ -613,6 +652,7 @@ class OnnxDetector:
         uncertain_candidate_count = result.uncertain_candidate_count
         if detector_crowding_requires_recapture(
             crowding_candidates,
+            selected_detections=result.detections,
             image_width=original_width,
             image_height=original_height,
             nms_iou_threshold=self.metadata.nms_iou_threshold,

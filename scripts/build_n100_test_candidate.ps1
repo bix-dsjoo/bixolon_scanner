@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.4",
+    [string]$Version = "0.1.5",
     [string]$Stamp = "20260824",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$Force

@@ -96,7 +96,7 @@ def add_detector_crowding_policy(
         filename: sha256_file(output_dir / filename) for filename in loaded.metadata.checksums
     }
     if output_payload_hashes != source_payload_hashes:
-        raise ValueError("0.1.4 runtime conversion modified immutable payload files")
+        raise ValueError("runtime conversion modified immutable payload files")
     manifest = directory_content_manifest(output_dir)
     return {
         "schema_version": "1.0",

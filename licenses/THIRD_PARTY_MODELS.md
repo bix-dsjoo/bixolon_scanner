@@ -1,6 +1,6 @@
 # Third-party model notices
 
-이 파일은 BIXOLON Scanner `0.1.4` Runtime에 포함되는 모델 계열의 출처와 재배포 고지를 기록한다.
+이 파일은 BIXOLON Scanner `0.1.5` Runtime에 포함되는 모델 계열의 출처와 재배포 고지를 기록한다.
 
 ## YOLO26
 
