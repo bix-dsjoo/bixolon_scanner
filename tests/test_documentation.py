@@ -48,19 +48,21 @@ def test_documented_versions_match_single_version_source() -> None:
     )
     root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
     current_status = (ROOT / "docs" / "status" / "current.md").read_text(encoding="utf-8")
-    version_config = (ROOT / "configs" / "versions" / "0.1.5.json").read_text(encoding="utf-8")
+    version_config = (ROOT / "configs" / "versions" / "0.1.6.json").read_text(encoding="utf-8")
 
     assert f'__version__ = "{python_version}"' in package_init
-    assert python_version == "0.1.5"
-    assert '"version": "0.1.5"' in version_config
-    assert '"app_build": 8' in version_config
-    assert "version: 0.1.5+8" in flutter_pubspec
-    assert "`0.1.5+8`" in root_readme
-    assert "`0.1.5`" in current_status
-    assert "`yolo26-objectness-single3-consensus-large-proposal-corroboration`" in current_status
+    assert python_version == "0.1.6"
+    assert '"version": "0.1.6"' in version_config
+    assert '"app_build": 9' in version_config
+    assert "version: 0.1.6+9" in flutter_pubspec
+    assert "`0.1.6+9`" in root_readme
+    assert "`0.1.6`" in current_status
+    assert "BIXOLON Bakery AI Scanner" in root_readme
+    assert "BIXOLON Bakery AI Scanner" in current_status
+    assert "`yolo26-objectness-single3-consensus-presence-verifier`" in current_status
 
 
-def test_only_015_is_exposed_as_an_active_product_contract() -> None:
+def test_only_016_is_exposed_as_an_active_product_contract() -> None:
     version_files = {path.name for path in (ROOT / "configs" / "versions").glob("*.json")}
     example_versions = {
         path.name
@@ -71,9 +73,9 @@ def test_only_015_is_exposed_as_an_active_product_contract() -> None:
         path.name for path in (ROOT / "docs" / "contracts").glob("worker-integration-*.md")
     }
 
-    assert version_files == {"0.1.5.json"}
-    assert example_versions == {"0.1.5"}
-    assert integration_specs == {"worker-integration-0.1.5.md"}
+    assert version_files == {"0.1.6.json"}
+    assert example_versions == {"0.1.6"}
+    assert integration_specs == {"worker-integration-0.1.6.md"}
 
     active_surfaces = [
         ROOT / "README.md",
@@ -84,7 +86,7 @@ def test_only_015_is_exposed_as_an_active_product_contract() -> None:
         ROOT / "apps" / "product_scanner" / "README.md",
     ]
     for path in active_surfaces:
-        assert "0.1.5" in path.read_text(encoding="utf-8"), path
+        assert "0.1.6" in path.read_text(encoding="utf-8"), path
 
 
 def test_013_build6_packaged_worker_smoke_is_preserved() -> None:
@@ -118,22 +120,60 @@ def test_014_build7_packaged_worker_smoke_passes() -> None:
     assert re.fullmatch(r"[0-9a-f]{64}", evidence["bundle_manifest_sha256"])
 
 
-def test_015_build8_packaged_worker_smoke_passes() -> None:
+def test_016_build9_packaged_worker_smoke_passes() -> None:
     evidence = json.loads(
-        (ROOT / "docs" / "diagnostics" / "packaged-worker-0.1.5-build8-smoke.json").read_text(
+        (ROOT / "docs" / "diagnostics" / "packaged-worker-0.1.6-build9-smoke.json").read_text(
+            encoding="utf-8"
+        )
+    )
+
+    assert evidence["product_version"] == "0.1.6"
+    assert evidence["app_build"] == 9
+    assert evidence["passes"] is True
+    assert evidence["cases"]["ready"]["all_non_null_versions"] == "0.1.6"
+    assert evidence["cases"]["operational_20260827"]["expected_status_mismatch_count"] == 0
+    assert evidence["cases"]["operational_20260827"]["false_positive_count"] == 0
+    assert evidence["cases"]["operational_20260827"]["false_negative_count"] == 0
+    assert evidence["cases"]["existing_415_regression"]["semantic_diff_count"] == 0
+    assert evidence["cases"]["corrupt_image"]["status"] == "ERROR"
+    assert evidence["cases"]["missing_image"]["status"] == "ERROR"
+    assert evidence["cases"]["unsupported_image"]["status"] == "ERROR"
+    assert all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in evidence["artifacts"].values())
+
+
+def test_016_source_candidate_n100_measurement_is_pinned_with_limits() -> None:
+    evidence = json.loads(
+        (ROOT / "docs" / "diagnostics" / "n100-0.1.5-measurement-package.json").read_text(
             encoding="utf-8"
         )
     )
 
     assert evidence["product_version"] == "0.1.5"
-    assert evidence["app_build"] == 8
-    assert evidence["passes"] is True
-    assert evidence["cases"]["ready"]["all_non_null_versions"] == "0.1.5"
-    assert evidence["cases"]["valid_large_bread_set"]["expected_status_mismatch_count"] == 0
-    assert evidence["cases"]["corrupt_image"]["status"] == "ERROR"
-    assert evidence["cases"]["missing_image"]["status"] == "ERROR"
-    assert evidence["cases"]["unsupported_image"]["status"] == "ERROR"
-    assert all(re.fullmatch(r"[0-9a-f]{64}", digest) for digest in evidence["artifacts"].values())
+    received = evidence["received_n100_measurement"]
+    assert re.fullmatch(r"[0-9a-f]{64}", received["sha256"])
+    assert received["sample_count"] == 100
+    assert received["semantic_mismatch_count"] == 0
+    assert received["hybrid_full_path_ms"]["mean"] < received["cpu_only_full_path_ms"]["mean"]
+    candidate = evidence["optimization_candidate"]
+    assert candidate["zip"]["size_bytes"] > 0
+    assert re.fullmatch(r"[0-9a-f]{64}", candidate["zip"]["sha256"])
+    assert candidate["package_manifest"]["checksum_mismatch_count"] == 0
+    assert candidate["execution_contract"]["object_presence_verifier"].endswith(":GPU")
+    assert candidate["execution_contract"]["object_presence_execution"] == (
+        "parallel_with_detector"
+    )
+    assert candidate["n100_measurement_received"] is True
+    measurement = candidate["n100_measurement"]
+    assert measurement["sha256"] == (
+        "eb421557aa794e56726decd9eb53f9117860a91612e31309f3b617782de7e6aa"
+    )
+    assert measurement["semantic_mismatch_count"] == 0
+    assert measurement["passes"] is False
+    assert measurement["client_full_path_ms"]["hybrid_p95"] > 500
+    assert (
+        evidence["local_validation"]["packaged_cpu_fallback_regression"]["maximum_confidence_delta"]
+        == 0.0
+    )
 
 
 def test_windows_bundle_uses_single_version_root() -> None:
@@ -145,7 +185,7 @@ def test_windows_bundle_uses_single_version_root() -> None:
     normalized_cmake = cmake.replace("\\", "/")
 
     assert "SCANNER_VERSION_ROOT" in cmake
-    assert "artifacts/versions/0.1.5" in normalized_cmake
+    assert "artifacts/versions/0.1.6" in normalized_cmake
     assert "staging/runtime" in normalized_cmake
     assert "staging/catalog" in normalized_cmake
     assert "staging/cuda-runtime" in normalized_cmake
@@ -155,7 +195,7 @@ def test_windows_bundle_uses_single_version_root() -> None:
     assert 'DESTINATION "${CMAKE_INSTALL_PREFIX}/worker"' in cmake
     assert 'DESTINATION "${CMAKE_INSTALL_PREFIX}/worker/store-catalog"' in cmake
     assert "configs/versions/$Version.json" in build_script.replace("\\", "/")
-    assert "bixolon-scanner-$Version" in build_script
+    assert "bixolon-bakery-ai-scanner-$Version" in build_script
     assert "[switch]$Force" in build_script
     assert "Use -Force to replace it safely" in build_script
     assert "[System.IO.Directory]::Move($targetBundle, $previousBundle)" in build_script

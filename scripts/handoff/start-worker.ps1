@@ -29,7 +29,7 @@ foreach ($requiredPath in @(
 $metadata = Get-Content -Raw -LiteralPath $metadataPath | ConvertFrom-Json
 $cacheRoot = Join-Path (
     [Environment]::GetFolderPath("LocalApplicationData")
-) "BIXOLON Scanner/openvino-cache/$($metadata.worker_version)"
+) "BIXOLON Bakery AI Scanner/openvino-cache/$($metadata.worker_version)"
 
 $env:BIXOLON_PACKAGE_DIR = $modelPackage
 $env:BIXOLON_CATALOG_DIR = $storeCatalog

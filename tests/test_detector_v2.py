@@ -224,6 +224,41 @@ def test_single_detector_builder_passes_runtime_policy(
     assert captured["detector_class_count"] == 1
 
 
+def test_replace_count_verifier_warms_before_swapping(monkeypatch, tmp_path) -> None:
+    events: list[str] = []
+
+    class FakeVerifier:
+        def __init__(self, *args, **kwargs) -> None:
+            del args, kwargs
+
+        def warmup(self) -> None:
+            events.append("warmup")
+
+        def close(self) -> None:
+            events.append("close")
+
+    class Detector:
+        def replace_verifier(self, verifier, *, parallel_verification) -> None:
+            assert isinstance(verifier, FakeVerifier)
+            assert parallel_verification is True
+            events.append("replace")
+
+    package = SimpleNamespace(
+        count_verifier_path=tmp_path / "count-verifier.onnx",
+        metadata=SimpleNamespace(count_verifier=SimpleNamespace()),
+    )
+    monkeypatch.setattr(detector_v2_runtime, "OnnxCountVerifier", FakeVerifier)
+
+    detector_v2_runtime.replace_count_verifier_v2(
+        Detector(),
+        package,
+        "openvino_gpu",
+        parallel_verification=True,
+    )
+
+    assert events == ["warmup", "replace"]
+
+
 def test_cross_scale_agreement_uses_complete_bipartite_matching() -> None:
     primary = [
         Detection(0, 0, 10, 10, 1.0),

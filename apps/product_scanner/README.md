@@ -1,4 +1,4 @@
-# BIXOLON Scanner Flutter 앱
+# BIXOLON Bakery AI Scanner Flutter 앱
 
 Windows 작업자가 카메라 또는 JPEG/PNG 이미지에서 검출된 빵을 빠르게 확인하고 확정하는 앱입니다. `스캔` 작업대와 검색 가능한 `활동` 로그 화면을 제공하며 기존 Python Worker의 `POST /v1/scan` 계약을 그대로 사용합니다.
 
@@ -25,7 +25,7 @@ lib/
 
 ## 실행
 
-기본 Worker 주소는 `http://127.0.0.1:8000`입니다. Windows 앱을 실행하면 Worker도 숨김 자식 프로세스로 자동 실행됩니다. 앱은 카메라 초기화와 동시에 readiness를 확인해 첫 촬영 전에 모델 warm-up을 끝냅니다. 앱이 직접 시작한 Worker는 앱 종료 시 함께 종료됩니다. 이미 같은 주소에 Worker가 실행 중이면 `/health/ready`의 모든 non-null 구성요소 버전이 앱 계약 `0.1.5`와 일치할 때만 사용하고, 다른 버전 Worker에는 스캔을 전송하지 않습니다.
+기본 Worker 주소는 `http://127.0.0.1:8000`입니다. Windows 앱을 실행하면 Worker도 숨김 자식 프로세스로 자동 실행됩니다. 앱은 카메라 초기화와 동시에 readiness를 확인해 첫 촬영 전에 모델 warm-up을 끝냅니다. 앱이 직접 시작한 Worker는 앱 종료 시 함께 종료됩니다. 이미 같은 주소에 Worker가 실행 중이면 `/health/ready`의 모든 non-null 구성요소 버전이 앱 계약 `0.1.6`와 일치할 때만 사용하고, 다른 버전 Worker에는 스캔을 전송하지 않습니다.
 
 ```powershell
 cd apps\product_scanner
@@ -54,12 +54,12 @@ flutter run -d windows --dart-define=SCANNER_API_BASE_URL=http://192.168.0.20:80
 flutter analyze
 flutter test
 cd ..\..
-.\scripts\build_app.ps1 -Version 0.1.5
+.\scripts\build_app.ps1 -Version 0.1.6
 ```
 
-단일 명령은 `configs\versions\0.1.5.json`의 고정 해시를 확인하고 Runtime/Catalog metadata를
-`0.1.5`로 변환한 뒤 Worker, CUDA 13·cuDNN 9 DLL과 Flutter `0.1.5+8`을 자체 포함 Windows
-번들로 만듭니다. 결과는 `artifacts\versions\0.1.5\bixolon-scanner-0.1.5`입니다. 설치 PC의
+단일 명령은 `configs\versions\0.1.6.json`의 고정 해시를 확인하고 Runtime/Catalog metadata를
+`0.1.6`로 변환한 뒤 Worker, CUDA 13·cuDNN 9 DLL과 Flutter `0.1.6+9`을 자체 포함 Windows
+번들로 만듭니다. 결과는 `artifacts\versions\0.1.6\bixolon-bakery-ai-scanner-0.1.6`입니다. 설치 PC의
 Python, 전역 Worker, signing key 또는 관련 환경 변수에 의존하지 않습니다.
 
 번들은 `worker\bixolon-worker.exe`, `worker\model-package`, `worker\store-catalog`,
@@ -67,15 +67,14 @@ Python, 전역 Worker, signing key 또는 관련 환경 변수에 의존하지 �
 Catalog는 무키 `CHECKSUM-SHA256`이며 `signature.json`을 넣지 않습니다. CUDA DLL이 불완전하거나
 Runtime/Catalog checksum이 일치하지 않으면 readiness를 열지 않고 CPU로 조용히 전환하지 않습니다.
 
-NVIDIA GPU가 없는 Intel N100 PC에는 `scripts\build_n100_installer.ps1`로 만든 Hybrid Setup
-EXE를 사용합니다. 이 설치 이미지는 Detector를 OpenVINO CPU에, 모든 Embedder를 Intel GPU에
-배치하고 GPU 초기화 실패 시 경고 로그 후 CPU Embedder로 fallback합니다. CUDA 파일은 포함하지
-않으며 대상 PC에는 Python·Flutter·CUDA가 필요 없습니다. 측정값은 성능 보장이나 SLA가 아닙니다.
-자세한 생성·검증 방법은 저장소 루트 README의
-`Intel N100 PC용 Windows 인스톨러` 절을 따릅니다.
+일반 Windows 배포는 `scripts\build_windows_installer.ps1`로 Setup EXE와 Worker ZIP을 만듭니다.
+이 구성은 Detector를 OpenVINO CPU에, verifier와 모든 Embedder를 Intel GPU에 배치하고 GPU 초기화
+실패 시 경고 로그 후 CPU로 fallback합니다. CUDA 파일은 포함하지 않으며 대상 PC에는 Python·
+Flutter·CUDA가 필요 없습니다. N100은 제품명이 아니라 이 provider 구성을 확인한 기준 장비명이며
+측정값은 성능 보장이나 SLA가 아닙니다. 자세한 생성·검증 방법은 저장소 루트 README를 따릅니다.
 
-앱 `0.1.5+8`은 `/health/ready`에서 Worker·Detector·Embedder·Detector policy·Classifier
-policy·Catalog의 non-null 버전이 모두 `0.1.5`인지 확인합니다. 대표 상태는 `test/goldens`로도
+앱 `0.1.6+9`은 `/health/ready`에서 Worker·Detector·Embedder·Detector policy·Classifier
+policy·Catalog의 non-null 버전이 모두 `0.1.6`인지 확인합니다. 대표 상태는 `test/goldens`로도
 회귀 검증하며 골든은 시각 비평 후 의도한 변경에서만 갱신합니다. 모델 바이너리는 Git에 커밋하지
 않습니다.
 

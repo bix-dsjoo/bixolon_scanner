@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.5",
+    [string]$Version = "0.1.6",
     [string]$Stamp = "20260824",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$Force
@@ -63,11 +63,11 @@ if ([string]$config.version -ne $Version) {
 }
 $cpuReferenceEvidence = @(
     $config.evaluation_evidence | Where-Object {
-        [string]$_.path -match "(^|/)full-valid-openvino\.json$"
+        [string]$_.path -match "(^|/)detector415-presence-packaged-openvino\.json$"
     }
 )
 if ($cpuReferenceEvidence.Count -ne 1) {
-    throw "Version config must pin exactly one full-valid OpenVINO reference."
+    throw "Version config must pin exactly one current 415-image OpenVINO reference."
 }
 $cpuReferencePath = Join-Path $repositoryRoot ([string]$cpuReferenceEvidence[0].path)
 if (-not (Test-Path -LiteralPath $cpuReferencePath -PathType Leaf)) {
@@ -105,13 +105,28 @@ if (
     $null -ne $metadata.detector.ensemble -or
     [string]$metadata.detector.filename -ne "detector.onnx" -or
     [double]$metadata.detector.score_threshold -ne 0.65 -or
-    $null -ne $metadata.count_verifier -or
+    $null -eq $metadata.count_verifier -or
+    [string]$metadata.count_verifier.filename -ne "count-verifier.onnx" -or
+    [string]$metadata.count_verifier.comparison_mode -ne "object_presence" -or
+    [double]$metadata.count_verifier.confidence_threshold -ne 0.54 -or
     [string]$metadata.embedder.embedder_id -ne "dinov3-convnext-tiny" -or
     $null -eq $metadata.classifier_verification -or
     [double]$metadata.classifier_verification.ambiguity_maximum_approval_score -ne 0.5 -or
     [int]$metadata.classifier_verification.independent_embedder.fixed_batch_size -ne 1
 ) {
     throw "The N100 candidate does not match the selected consensus Runtime."
+}
+$countVerifierPath = Join-Path $runtimeSource ([string]$metadata.count_verifier.filename)
+$countVerifierChecksumProperty = $metadata.checksums.PSObject.Properties[
+    [string]$metadata.count_verifier.filename
+]
+if (
+    -not (Test-Path -LiteralPath $countVerifierPath -PathType Leaf) -or
+    $null -eq $countVerifierChecksumProperty -or
+    (Get-FileHash -Algorithm SHA256 -LiteralPath $countVerifierPath).Hash.ToLowerInvariant() -ne
+        [string]$countVerifierChecksumProperty.Value
+) {
+    throw "The N100 candidate object-presence verifier checksum is invalid."
 }
 
 [System.IO.Directory]::CreateDirectory($resolvedOutputRoot) | Out-Null
@@ -174,6 +189,13 @@ try {
         product_version = $Version
         provider = "OpenVINOExecutionProvider:CPU"
         detector_filename = [string]$metadata.detector.filename
+        object_presence_verifier = [ordered]@{
+            filename = [string]$metadata.count_verifier.filename
+            comparison_mode = [string]$metadata.count_verifier.comparison_mode
+            confidence_threshold = [double]$metadata.count_verifier.confidence_threshold
+            provider = "OpenVINOExecutionProvider:CPU"
+            sha256 = [string]$countVerifierChecksumProperty.Value
+        }
         classifier_verifier_filename = [string]$metadata.classifier_verification.independent_embedder.filename
         embedder_id = [string]$metadata.embedder.embedder_id
         default_profile = [ordered]@{

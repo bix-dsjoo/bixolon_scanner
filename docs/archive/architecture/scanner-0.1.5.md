@@ -27,5 +27,5 @@ gate가 작동합니다. 기존 raw-query 근접·중복과 선택적 90°·180�
 binary payload를 변경하지 않은 채 실행 구성요소 version만 `0.1.5`로 맞춥니다. 최종 번들은
 `version.json`, `provenance.json`, 전체 `bundle-manifest.json`과 필수 license를 포함합니다.
 
-데이터 범위와 한계는 [0.1.5 평가 보고서](../evaluation/scanner-0.1.5.md), API와 null 규칙은
+데이터 범위와 한계는 [0.1.5 평가 보고서](../diagnostics/scanner-0.1.5-evaluation.md), API와 null 규칙은
 [Worker 연동 명세](../contracts/worker-integration-0.1.5.md)를 따릅니다.

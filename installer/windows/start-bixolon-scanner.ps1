@@ -5,13 +5,13 @@ $gpuPlugin = Join-Path $PSScriptRoot "worker/_internal/openvino_intel_gpu_plugin
 $metadataPath = Join-Path $PSScriptRoot "worker/model-package/metadata.json"
 foreach ($requiredPath in @($productExecutable, $gpuPlugin, $metadataPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
-        throw "BIXOLON Scanner hybrid runtime file is missing: $requiredPath"
+        throw "BIXOLON Bakery AI Scanner hybrid runtime file is missing: $requiredPath"
     }
 }
 $metadata = Get-Content -Raw -LiteralPath $metadataPath | ConvertFrom-Json
 $cacheRoot = Join-Path (
     [Environment]::GetFolderPath("LocalApplicationData")
-) "BIXOLON Scanner/openvino-cache/$($metadata.worker_version)"
+) "BIXOLON Bakery AI Scanner/openvino-cache/$($metadata.worker_version)"
 
 $env:BIXOLON_PROVIDER = "openvino"
 $env:BIXOLON_EMBEDDER_PROVIDER = "openvino_gpu"

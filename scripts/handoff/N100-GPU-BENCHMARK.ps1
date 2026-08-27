@@ -17,14 +17,14 @@ param(
     [double]$MaximumMemoryIncreaseRatio = 1.35,
     [ValidateRange(1.0, 60000.0)]
     [double]$MaximumFullPathLatencyMs = 500.0,
-    [string]$ExpectedVersion = "0.1.5"
+    [string]$ExpectedVersion = "0.1.6"
 )
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Net.Http
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $PSScriptRoot "n100-0.1.5-openvino-device-matrix.json"
+    $OutputPath = Join-Path $PSScriptRoot "n100-0.1.6-openvino-device-matrix.json"
 }
 
 function Get-Percentile {
@@ -448,6 +448,28 @@ $runtimeMetadata = Get-Content -Raw -LiteralPath $runtimeMetadataPath | ConvertF
 if ([string]$runtimeMetadata.worker_version -ne $ExpectedVersion) {
     throw "Expected Runtime $ExpectedVersion but found $($runtimeMetadata.worker_version)."
 }
+if (
+    $null -eq $runtimeMetadata.count_verifier -or
+    [string]$runtimeMetadata.count_verifier.filename -ne "count-verifier.onnx" -or
+    [string]$runtimeMetadata.count_verifier.comparison_mode -ne "object_presence" -or
+    [double]$runtimeMetadata.count_verifier.confidence_threshold -ne 0.54
+) {
+    throw "N100 GPU benchmark requires the final object-presence Runtime."
+}
+$countVerifierPath = Join-Path (
+    Join-Path $workerRoot "model-package"
+) ([string]$runtimeMetadata.count_verifier.filename)
+$countVerifierChecksumProperty = $runtimeMetadata.checksums.PSObject.Properties[
+    [string]$runtimeMetadata.count_verifier.filename
+]
+if (
+    -not (Test-Path -LiteralPath $countVerifierPath -PathType Leaf) -or
+    $null -eq $countVerifierChecksumProperty -or
+    (Get-FileHash -Algorithm SHA256 -LiteralPath $countVerifierPath).Hash.ToLowerInvariant() -ne
+        [string]$countVerifierChecksumProperty.Value
+) {
+    throw "N100 GPU benchmark object-presence verifier checksum is invalid."
+}
 $images = @(
     Get-ChildItem -LiteralPath $resolvedImageDirectory -File |
         Where-Object { $_.Extension.ToLowerInvariant() -in @(".jpg", ".jpeg", ".png") } |
@@ -456,6 +478,11 @@ $images = @(
 if ($images.Count -lt $MinimumImages) {
     throw "N100 GPU benchmark requires at least $MinimumImages JPEG/PNG images."
 }
+$imageSha256 = @(
+    foreach ($image in $images) {
+        (Get-FileHash -Algorithm SHA256 -LiteralPath $image.FullName).Hash.ToLowerInvariant()
+    }
+)
 
 $profiles = @(
     [pscustomobject]@{
@@ -654,6 +681,7 @@ $report = [ordered]@{
     }
     input = [ordered]@{
         sample_count = $images.Count
+        image_sha256 = $imageSha256
         minimum_image_count = $MinimumImages
         minimum_full_path_count = $MinimumFullPathImages
         warmup_image_count = $WarmupImageCount
@@ -673,12 +701,15 @@ $report = [ordered]@{
         same_runtime_catalog_and_policy = $true
         cpu_only = [ordered]@{
             detector = "OpenVINOExecutionProvider:CPU"
+            object_presence_verifier = "OpenVINOExecutionProvider:CPU"
             primary_embedder = "OpenVINOExecutionProvider:CPU"
             rotation_180_embedder = "OpenVINOExecutionProvider:CPU"
             independent_verifier_embedder = "OpenVINOExecutionProvider:CPU"
         }
         cpu_detector_gpu_embedder = [ordered]@{
             detector = "OpenVINOExecutionProvider:CPU"
+            object_presence_verifier = "OpenVINOExecutionProvider:GPU"
+            object_presence_execution = "parallel_with_detector"
             primary_embedder = "OpenVINOExecutionProvider:GPU"
             rotation_180_embedder = "OpenVINOExecutionProvider:GPU"
             independent_verifier_embedder = "OpenVINOExecutionProvider:GPU"
@@ -687,6 +718,8 @@ $report = [ordered]@{
     }
     integrity = [ordered]@{
         runtime_metadata_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $runtimeMetadataPath).Hash.ToLowerInvariant()
+        object_presence_verifier_sha256 = [string]$countVerifierChecksumProperty.Value
+        object_presence_confidence_threshold = [double]$runtimeMetadata.count_verifier.confidence_threshold
         catalog_checksums_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $catalogChecksumsPath).Hash.ToLowerInvariant()
         model_graph_or_weight_changed = $false
         decision_policy_changed = $false
@@ -725,6 +758,7 @@ $report = [ordered]@{
     privacy = [ordered]@{
         image_paths_recorded = $false
         image_bytes_recorded = $false
+        image_sha256_recorded = $true
     }
     limitation = "Diagnostic measurement only; not an SLA, certification, or deployment approval."
 }

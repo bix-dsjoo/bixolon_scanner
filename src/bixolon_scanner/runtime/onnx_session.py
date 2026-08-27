@@ -186,6 +186,18 @@ class OrtRunner:
         except Exception as exc:
             raise ModelExecutionError from exc
 
+    def close(self) -> None:
+        """Release provider resources before replacing a live runtime adapter."""
+
+        self._graph_binding = None
+        self._graph_input_values.clear()
+        self._graph_output_values.clear()
+        self.session = None
+        self._cuda_dlls.clear()
+        if self._dll_directory is not None:
+            self._dll_directory.close()
+            self._dll_directory = None
+
     def _run_cuda_graph(
         self, output_names: list[str], inputs: dict[str, np.ndarray]
     ) -> list[np.ndarray]:

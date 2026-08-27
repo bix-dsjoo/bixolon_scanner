@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.5",
+    [string]$Version = "0.1.6",
     [string]$FlutterExecutable = "C:/Users/OMEN/development/flutter/bin/flutter.bat",
     [string]$PythonExecutable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [switch]$Force
@@ -22,7 +22,7 @@ $versionRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $repositoryRoot ([string]$config.output_root + "/" + $Version)))
 $workerOutput = "artifacts/versions/$Version/worker-build"
 $sourceDirectory = Join-Path $repositoryRoot "src"
-$targetBundle = Join-Path $versionRoot "bixolon-scanner-$Version"
+$targetBundle = Join-Path $versionRoot "bixolon-bakery-ai-scanner-$Version"
 $previousBundle = $null
 if (Test-Path -LiteralPath $targetBundle) {
     if (-not $Force) {

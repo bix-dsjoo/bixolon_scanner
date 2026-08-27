@@ -1,44 +1,24 @@
-# 저장소와 로컬 산출물 관리
+# 로컬 산출물 보존과 정리 기준
 
-## Git에 보존하는 것
+## 보존
 
-- `src/bixolon_scanner`: Python canonical 구현
-- `apps/product_scanner`: Flutter canonical 구현과 골든 테스트
-- `configs/versions/0.1.5.json`: 유일한 활성 제품 설정
-- `configs/experiments`: 재현 가능한 실험 설정
-- `configs/archive`, `docs/archive`: 과거 설정·계약·판단 원문
-- `docs/evaluation`, `docs/diagnostics`: 작은 JSON/Markdown 평가 증빙과 한계
-- `tests`: 운영 계약과 과거 호환 reader 회귀
+- `configs/versions/0.1.6.json`: 유일한 활성 제품 설정
+- `configs/archive/versions/0.1.5.json`: 이전 운영 설정 원문
+- `artifacts/packages/bread-scanner-0.1.5-presence-consensus-runtime`: 0.1.6 source Runtime
+- `artifacts/catalogs/bread-store-0.1.5-consensus`: 0.1.6 source Catalog
+- `artifacts/versions/0.1.6`, `artifacts/installers/0.1.6`: 재생성 가능한 정식 배포 산출물
+- `artifacts/evaluations/scanner-0.1.5`: 0.1.6에 고정된 모델·정책 회귀 원본
+- `docs/diagnostics/n100-0.1.5-openvino-device-matrix.json`: 동일 source 후보의 N100 실측 원본
 
-## Git 밖에 보존하는 것
+source artifact 경로의 `0.1.5`는 제품 표시 버전이 아니라 변경하지 않은 입력 payload provenance입니다.
+배포 번들의 Runtime·Catalog metadata와 공개 API 버전은 모두 `0.1.6`으로 다시 작성됩니다.
 
-- `datasets`: 원본 데이터와 촬영 provenance
-- `artifacts/experiments`, `runs`: checkpoint, ONNX, 예측, trace와 실험 보고서
-- `artifacts/evaluations`, `artifacts/reports`: 평가 결과와 오류 분석
-- `artifacts/packages/bread-scanner-0.1.5-large-proposal-corroboration-runtime`: 활성 Runtime 원본
-- `artifacts/catalogs/bread-store-0.1.5-consensus`: 활성 Catalog 원본
-- `artifacts/versions/0.1.5`, `artifacts/installers/0.1.5`, `artifacts/handoff/0.1.5`: 재생성 가능한
-  운영 전달물
+## 정리 가능
 
-대형 binary는 Git에 커밋하지 않습니다. 버전 설정과 평가 문서에는 원본 경로, SHA-256, 데이터
-범위와 독립 test set 여부를 기록합니다. 실험 결과를 정리할 때는 보고서·trace·provenance와 그
-결과가 참조하는 checkpoint/ONNX를 함께 보존합니다.
+빌드 환경, staging, PyInstaller·Flutter 중간 산출물과 실험 handoff ZIP은 위 source manifest,
+평가 증빙, 최종 Setup/Worker ZIP의 SHA-256을 확인한 뒤 재생성 가능한 범위에서 정리할 수 있습니다.
+대형 모델·데이터·빌드 산출물은 Git에 커밋하지 않습니다.
 
-## 삭제해도 되는 생성물
-
-`build`, `tmp`, `.pytest_cache`, `.ruff_cache`, `.codex_tmp`, Flutter `build`와 `.dart_tool`,
-`artifacts/cache`, `artifacts/tmp`, `artifacts/build-envs`는 다시 만들 수 있는 캐시·중간물입니다.
-다른 제품 버전의 `artifacts/versions`, `installers`, `handoff`와 중복 압축 해제 디렉터리도 현재
-`0.1.5` 운영에는 사용하지 않습니다.
-
-정리 전에는 `configs/versions/0.1.5.json`이 가리키는 Runtime, Catalog, CUDA와 평가 증빙이 실제로
-존재하고 고정 SHA-256과 일치하는지 확인합니다. `artifacts/experiments`, `artifacts/evaluations`,
-`artifacts/reports`, `datasets`, `runs`는 일반 캐시 정리 대상으로 취급하지 않습니다.
-
-## 버전 변경 순서
-
-1. 배포할 실행 내용이 바뀔 때만 새 patch 버전과 Flutter build 번호를 정합니다.
-2. 새 `configs/versions/<version>.json`에 원본과 평가 증빙 hash를 고정합니다.
-3. Python, Flutter, 문서, 예시와 테스트의 공개 버전을 같은 변경에서 맞춥니다.
-4. 전체 테스트 뒤 Windows 번들을 실제 생성하고 `bixolon bundle verify`로 검증합니다.
-5. 이전 활성 설정과 계약은 `archive`로 이동하고 실험 결과는 삭제하지 않습니다.
+정리 전에는 `configs/versions/0.1.6.json`이 가리키는 Runtime, Catalog, CUDA와 평가 증빙이 실제로
+존재하고 고정 해시와 일치하는지 확인합니다. N100은 제품명이 아니라 하드웨어 진단 provenance로만
+유지합니다.

@@ -126,6 +126,9 @@ class OnnxEmbedder:
                 np.zeros((inference_batch_size, 3, height, width), dtype=np.float32),
             )
 
+    def close(self) -> None:
+        self.runner.close()
+
     @property
     def _horizontal_flip_tta(self) -> bool:
         return bool(getattr(self.metadata, "horizontal_flip_tta", False))
@@ -393,6 +396,9 @@ class OnnxCatalogClassifier:
                 )
             ),
         )
+
+    def close(self) -> None:
+        self.embedder.close()
 
     def _ridge_approval_threshold(self) -> float:
         if self.policy.ridge_approval_metric == "top2_pair_probability":
@@ -722,6 +728,15 @@ class ConsensusCatalogClassifier:
 
     def warmup(self) -> None:
         self.independent.embedder.warmup()
+
+    def close(self) -> None:
+        closed: set[int] = set()
+        for classifier in (self.primary, self.rotation, self.independent):
+            embedder = classifier.embedder
+            if id(embedder) in closed:
+                continue
+            closed.add(id(embedder))
+            embedder.close()
 
     @staticmethod
     def _top1(result: ClassificationResult) -> np.ndarray:

@@ -1,0 +1,131 @@
+{
+  "schema_version": "1.2",
+  "product_version": "0.1.5",
+  "app_build": 8,
+  "artifact": "n100_openvino_presence_parallel_optimization",
+  "received_n100_measurement": {
+    "sha256": "14279394f39dfdedfbc866fbf29469c84a3fc1602621c464f999bb7226f61e36",
+    "sample_count": 100,
+    "hardware": {
+      "cpu": "Intel(R) N100",
+      "logical_processors": 4,
+      "physical_memory_bytes": 4006068224,
+      "gpu": "Intel(R) UHD Graphics",
+      "gpu_driver": "32.0.101.6299"
+    },
+    "execution_contract": {
+      "detector": "OpenVINOExecutionProvider:CPU",
+      "object_presence_verifier": "OpenVINOExecutionProvider:CPU",
+      "hybrid_embedders": "OpenVINOExecutionProvider:GPU"
+    },
+    "cpu_only_full_path_ms": {
+      "mean": 639.865,
+      "p95": 998.806
+    },
+    "hybrid_full_path_ms": {
+      "mean": 506.973,
+      "p95": 790.453
+    },
+    "hybrid_peak_working_set_bytes": 2186973184,
+    "semantic_mismatch_count": 0,
+    "maximum_cpu_gpu_confidence_delta": 0.008505523204803467,
+    "passes": false,
+    "failure_reasons": [
+      "Neither profile met the 500 ms mean and p95 diagnostic target.",
+      "The hybrid peak working set exceeded 2 GiB.",
+      "CPU and GPU confidence values exceeded the diagnostic tolerance despite identical semantics."
+    ]
+  },
+  "comparison_reference": {
+    "product_version": "0.1.4",
+    "hybrid_full_path_ms": {
+      "mean": 438.422,
+      "p95": 727.238
+    }
+  },
+  "optimization_candidate": {
+    "zip": {
+      "path": "artifacts/experiments/n100-presence-parallel-handoff/n100-0.1.5-openvino-cpu-gpu-test.zip",
+      "size_bytes": 590756530,
+      "sha256": "97235436c7afd4c2882522e48d9bd998efbad50c0ad1ca2a0ab074657aa7f7de"
+    },
+    "package_manifest": {
+      "file_count": 121,
+      "sha256": "f1c17539c612fbd4fc8821a4369af18622ccce675e833f9de0e59d4255fa1821",
+      "checksum_mismatch_count": 0
+    },
+    "candidate_manifest_sha256": "0cd3ada4f63f85668f3cf74116aef78f774081283bbeaea560b27ec1d53154b2",
+    "source_artifacts": {
+      "runtime_manifest_sha256": "4030730b71213bf30f65e370d585560df7d43b60fbe7346adbef3f582ed7f316",
+      "catalog_manifest_sha256": "085612ddd781a1879ae3bb2867c32c2174247ff8703e1641367d8c37226888b7"
+    },
+    "execution_contract": {
+      "detector": "OpenVINOExecutionProvider:CPU",
+      "object_presence_verifier": "OpenVINOExecutionProvider:GPU",
+      "object_presence_execution": "parallel_with_detector",
+      "embedders": "OpenVINOExecutionProvider:GPU",
+      "cpu_fallback": {
+        "object_presence_verifier": "OpenVINOExecutionProvider:CPU",
+        "embedders": "OpenVINOExecutionProvider:CPU"
+      }
+    },
+    "model_graph_or_weight_changed": false,
+    "decision_policy_changed": false,
+    "n100_measurement_received": true,
+    "n100_measurement": {
+      "path": "docs/diagnostics/n100-0.1.5-openvino-device-matrix.json",
+      "sha256": "eb421557aa794e56726decd9eb53f9117860a91612e31309f3b617782de7e6aa",
+      "sample_count": 100,
+      "client_full_path_ms": {
+        "cpu_only_mean": 640.577,
+        "cpu_only_p95": 1006.693,
+        "hybrid_mean": 443.871,
+        "hybrid_p95": 732.288
+      },
+      "worker_full_path_ms": {
+        "cpu_only_mean": 637.597,
+        "cpu_only_p95": 1003.835,
+        "hybrid_mean": 440.767,
+        "hybrid_p95": 729.284
+      },
+      "mean_speedup_ratio": 1.443,
+      "p95_speedup_ratio": 1.375,
+      "semantic_mismatch_count": 0,
+      "confidence_vector_mismatch_count": 0,
+      "maximum_confidence_delta": 0.008505523204803467,
+      "peak_working_set_bytes": 2067189760,
+      "passes": false,
+      "failure_reasons": [
+        "The hybrid p95 remained above the 500 ms diagnostic target.",
+        "CPU and GPU confidence values exceeded the strict diagnostic tolerance despite identical semantic outputs."
+      ]
+    }
+  },
+  "local_validation": {
+    "presence_threshold_decision_match_count": 484,
+    "presence_threshold_decision_mismatch_count": 0,
+    "maximum_cpu_gpu_presence_confidence_delta": 0.000008799986,
+    "first_100_detector_presence_stage_ms": {
+      "sequential_cpu_mean": 158.853,
+      "parallel_cpu_detector_gpu_presence_mean": 107.762,
+      "mean_speedup_ratio": 1.474
+    },
+    "packaged_cpu_fallback_regression": {
+      "image_count": 484,
+      "semantic_diff_count": 0,
+      "confidence_diff_count": 0,
+      "maximum_confidence_delta": 0.0
+    }
+  },
+  "privacy": {
+    "image_paths_recorded": false,
+    "image_bytes_recorded": false,
+    "image_sha256_recorded_by_device_matrix": true
+  },
+  "limitations": [
+    "The optimization candidate was measured on one Intel N100 and is not an SLA or independent certification.",
+    "The N100 measurement kept semantic outputs but did not keep confidence values within the strict diagnostic tolerance.",
+    "The N100 hybrid p95 remained above the 500 ms diagnostic target.",
+    "Latency targets are diagnostics, not an SLA or deployment gate."
+  ]
+}

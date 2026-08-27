@@ -1,4 +1,4 @@
-BIXOLON Scanner 0.1.5 - N100 Hybrid Worker ZIP
+BIXOLON Bakery AI Scanner 0.1.6 - Windows OpenVINO Worker ZIP
 ================================================
 
 실행 방법
@@ -9,26 +9,30 @@ BIXOLON Scanner 0.1.5 - N100 Hybrid Worker ZIP
 
 실행 구성
 - Detector: OpenVINOExecutionProvider CPU
+- object_presence verifier: Detector와 병렬로 OpenVINOExecutionProvider Intel GPU
 - 주 Embedder, 180도 Embedder, 독립 Verifier: OpenVINOExecutionProvider Intel GPU
-- Intel GPU graph 전체를 초기화할 수 없으면 경고 로그를 남기고 CPU Embedder로 재시작합니다.
+- Intel GPU graph 전체를 초기화할 수 없으면 경고 로그를 남기고 object_presence와 Embedder를
+  CPU로 재시작합니다.
 - fallback 후 /health/ready의 provider는 openvino로 표시됩니다.
 - Python, Flutter, CUDA는 별도로 설치하지 않습니다.
 - 사용자별 version 디렉터리의 OpenVINO 컴파일 캐시를 사용합니다.
 
 필수 조건
 - Windows 10 1809 이상, x64
-- Intel Processor N100과 활성화된 Intel UHD Graphics
-- Intel Graphics Driver 32.0.101.6299 이상 권장
+- Intel GPU 가속 사용 시 활성화된 Intel UHD Graphics
+- Intel Graphics Driver 32.0.101.6299 이상 권장; GPU가 없거나 초기화에 실패하면 CPU fallback
 - Microsoft Visual C++ 2015-2022 x64 Runtime
 
 무결성
 - ZIP 옆의 .sha256 파일로 ZIP을 검증할 수 있습니다.
 - worker-manifest.json에는 ZIP 내부 파일별 SHA-256이 기록됩니다.
-- n100-reference-result.json은 이 구성을 선택할 때 사용한 N100 측정 원문입니다.
+- hardware-reference-result.json은 이 구성을 선택할 때 사용한 N100 측정 원문입니다.
+- deployment-provenance.json은 선택한 Runtime·Catalog와 측정 원문의 SHA-256을 기록합니다.
 
 제한
-- 이전 0.1.4+7 N100 참조 측정 100장에서 최종 상태, bbox, class와 Top-3는 CPU-only와
-  같았습니다. 새 0.1.5 정책의 N100 성능 증빙은 아니며 대상 장비에서 다시 측정해야 합니다.
+- 동일 모델·정책 후보의 N100 100장 측정에서 semantic mismatch와 오류는 0건이었고 CPU 대비
+  평균/p95 속도는 1.443/1.375배였습니다.
 - confidence 최대 차이는 0.0085055232였으므로 bit-exact parity 결과가 아닙니다.
+- GPU 구성 p95 732.288ms는 500ms 진단 기준을 넘었습니다.
 - 이 결과는 장비 한 대의 진단이며 SLA 또는 인증이 아닙니다.
 - 배포 파일에는 Authenticode 서명이 없습니다.

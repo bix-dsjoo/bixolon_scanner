@@ -1,9 +1,9 @@
 param(
-    [string]$Version = "0.1.5",
+    [string]$Version = "0.1.6",
     [string]$PythonExecutable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$InnoCompiler = "",
     [string]$VcRedistPath = "",
-    [string]$N100DeviceMatrixPath = "",
+    [string]$DeviceMatrixPath = "",
     [string]$OutputRoot = "artifacts/installers",
     [switch]$Force
 )
@@ -135,30 +135,30 @@ $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $sourceDirectory = Join-Path $repositoryRoot "src"
 $configPath = Join-Path $repositoryRoot "configs/versions/$Version.json"
 $openVinoLockPath = Join-Path $repositoryRoot "configs/runtime/requirements-windows-openvino.lock"
-$installerScript = Join-Path $repositoryRoot "installer/n100/BixolonScanner-N100.iss"
-$installerReadme = Join-Path $repositoryRoot "installer/n100/INSTALL-N100-KO.txt"
-$installerLauncher = Join-Path $repositoryRoot "installer/n100/start-bixolon-scanner.ps1"
-$workerLauncher = Join-Path $repositoryRoot "installer/n100/start-bixolon-worker.ps1"
-$workerCommand = Join-Path $repositoryRoot "installer/n100/RUN-BIXOLON-WORKER.cmd"
-$workerReadme = Join-Path $repositoryRoot "installer/n100/WORKER-N100-KO.txt"
-if ([string]::IsNullOrWhiteSpace($N100DeviceMatrixPath)) {
-    $N100DeviceMatrixPath = Join-Path (
+$installerScript = Join-Path $repositoryRoot "installer/windows/BixolonBakeryAIScanner.iss"
+$installerReadme = Join-Path $repositoryRoot "installer/windows/INSTALL-KO.txt"
+$installerLauncher = Join-Path $repositoryRoot "installer/windows/start-bixolon-scanner.ps1"
+$workerLauncher = Join-Path $repositoryRoot "installer/windows/start-bixolon-worker.ps1"
+$workerCommand = Join-Path $repositoryRoot "installer/windows/RUN-BIXOLON-WORKER.cmd"
+$workerReadme = Join-Path $repositoryRoot "installer/windows/WORKER-KO.txt"
+if ([string]::IsNullOrWhiteSpace($DeviceMatrixPath)) {
+    $DeviceMatrixPath = Join-Path (
         $repositoryRoot
-    ) "docs/diagnostics/n100-$Version-openvino-device-matrix.json"
+    ) "docs/diagnostics/n100-0.1.5-openvino-device-matrix.json"
 }
-$n100DiagnosticPath = [System.IO.Path]::GetFullPath($N100DeviceMatrixPath)
+$n100DiagnosticPath = [System.IO.Path]::GetFullPath($DeviceMatrixPath)
 $hasN100Diagnostic = Test-Path -LiteralPath $n100DiagnosticPath -PathType Leaf
 if (-not $hasN100Diagnostic) {
-    throw "Required N100 device matrix is missing: $n100DiagnosticPath"
+    throw "Required hardware device matrix is missing: $n100DiagnosticPath"
 }
 $setupIconPath = Join-Path $repositoryRoot "apps/product_scanner/windows/runner/resources/app_icon.ico"
 $resolvedOutputRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot $OutputRoot))
 $versionOutput = Join-Path $resolvedOutputRoot $Version
-$payloadRoot = Join-Path $versionOutput "n100-payload"
-$setupPath = Join-Path $versionOutput "BixolonScanner-N100-$Version-Setup.exe"
+$payloadRoot = Join-Path $versionOutput "windows-payload"
+$setupPath = Join-Path $versionOutput "BixolonBakeryAIScanner-$Version-Setup.exe"
 $setupHashPath = "$setupPath.sha256"
 $installerManifestPath = Join-Path $versionOutput "installer-manifest.json"
-$workerPackageName = "BixolonScanner-N100-$Version-Worker"
+$workerPackageName = "BixolonBakeryAIScanner-$Version-Worker"
 $workerPackageRoot = Join-Path $versionOutput $workerPackageName
 $workerZipPath = Join-Path $versionOutput "$workerPackageName.zip"
 $workerZipHashPath = "$workerZipPath.sha256"
@@ -183,10 +183,20 @@ $config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
 if ([string]$config.version -ne $Version) {
     throw "Version config identity mismatch: $configPath"
 }
+$deviceMatrixSha256 = (
+    Get-FileHash -Algorithm SHA256 -LiteralPath $n100DiagnosticPath
+).Hash.ToLowerInvariant()
+$pinnedDeviceMatrix = @(
+    $config.evaluation_evidence | Where-Object {
+        [string]$_.sha256 -eq $deviceMatrixSha256
+    }
+)
+if ($pinnedDeviceMatrix.Count -ne 1) {
+    throw "Hardware device matrix SHA-256 is not pinned by the selected version config."
+}
 $n100Diagnostic = $null
 $recommendedN100Profile = $null
 $diagnosticVersion = $null
-$diagnosticConfig = $null
 $recommendedDetectorWorkers = 1
 $recommendedDetectorThreads = 4
 $recommendedEmbedderThreads = 0
@@ -204,6 +214,12 @@ if ($hasN100Diagnostic) {
         -not [bool]$n100Diagnostic.execution_contract.same_runtime_catalog_and_policy -or
         [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.detector -ne (
             "OpenVINOExecutionProvider:CPU"
+        ) -or
+        [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.object_presence_verifier -ne (
+            "OpenVINOExecutionProvider:GPU"
+        ) -or
+        [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.object_presence_execution -ne (
+            "parallel_with_detector"
         ) -or
         [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.primary_embedder -ne (
             "OpenVINOExecutionProvider:GPU"
@@ -233,28 +249,12 @@ if ($hasN100Diagnostic) {
         [int]$n100Diagnostic.parity.confidence_vector_mismatch_count -ne 0
     ) {
         throw (
-            "N100 device matrix must prove the requested CPU Detector + Intel GPU Embedder " +
+            "Hardware device matrix must prove the requested CPU Detector + Intel GPU Embedder " +
             "profile initialized, completed without errors, improved mean and p95, and kept " +
             "semantic output parity."
         )
     }
     $diagnosticVersion = [string]$n100Diagnostic.product_version
-    $diagnosticConfigPath = Join-Path $repositoryRoot "configs/versions/$diagnosticVersion.json"
-    if (-not (Test-Path -LiteralPath $diagnosticConfigPath -PathType Leaf)) {
-        throw "N100 reference version config is missing: $diagnosticConfigPath"
-    }
-    $diagnosticConfig = Get-Content -Raw -LiteralPath $diagnosticConfigPath | ConvertFrom-Json
-    if (
-        [string]$diagnosticConfig.runtime.manifest_sha256 -ne
-            [string]$config.runtime.manifest_sha256 -or
-        [string]$diagnosticConfig.catalog.manifest_sha256 -ne
-            [string]$config.catalog.manifest_sha256
-    ) {
-        throw (
-            "A previous-version N100 reference is valid only when the immutable Runtime and " +
-            "Catalog source manifests are identical to the selected product version."
-        )
-    }
     $recommendedN100Profile = $selectedN100Profile
     $recommendedDetectorWorkers = [int]$selectedN100Profile.detector_workers
     $recommendedDetectorThreads = [int]$selectedN100Profile.detector_threads_per_session
@@ -269,20 +269,20 @@ if (
     $launcherSource -notmatch 'BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS = "\d+"' -or
     $launcherSource -notmatch 'BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS = "\d+"'
 ) {
-    throw "N100 launcher is missing the hybrid provider, fallback, or thread settings."
+    throw "Windows launcher is missing the hybrid provider, fallback, or thread settings."
 }
 if (
     $recommendedDetectorWorkers -ne 1 -or
     $recommendedDetectorThreads -ne 4 -or
     $recommendedEmbedderThreads -ne 0
 ) {
-    throw "N100 hybrid profile must use Detector 1x4 and GPU Embedder thread auto-selection."
+    throw "Hybrid profile must use Detector 1x4 and GPU Embedder thread auto-selection."
 }
 $appBuild = [int]$config.app_build
 $versionRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $repositoryRoot ([string]$config.output_root + "/" + $Version))
 )
-$canonicalBundle = Join-Path $versionRoot "bixolon-scanner-$Version"
+$canonicalBundle = Join-Path $versionRoot "bixolon-bakery-ai-scanner-$Version"
 $openVinoWorker = Join-Path $versionRoot "openvino-gpu-worker-build/bixolon-worker"
 
 if (-not (Test-Path -LiteralPath $canonicalBundle -PathType Container)) {
@@ -299,35 +299,19 @@ if (-not (Test-Path -LiteralPath $openVinoWorker -PathType Container)) {
 }
 
 if ($hasN100Diagnostic) {
-    $runtimeMetadataPath = Join-Path $canonicalBundle "worker/model-package/metadata.json"
-    $catalogChecksumsPath = Join-Path $canonicalBundle "worker/store-catalog/checksums.json"
-    $integrityReferenceBundle = $canonicalBundle
-    if ($diagnosticVersion -ne $Version) {
-        $diagnosticVersionRoot = [System.IO.Path]::GetFullPath(
-            (Join-Path $repositoryRoot (
-                [string]$diagnosticConfig.output_root + "/" + $diagnosticVersion
-            ))
-        )
-        $integrityReferenceBundle = Join-Path (
-            $diagnosticVersionRoot
-        ) "bixolon-scanner-$diagnosticVersion"
-        if (-not (Test-Path -LiteralPath $integrityReferenceBundle -PathType Container)) {
-            throw "N100 reference bundle is missing: $integrityReferenceBundle"
-        }
-        $runtimeMetadataPath = Join-Path (
-            $integrityReferenceBundle
-        ) "worker/model-package/metadata.json"
-        $catalogChecksumsPath = Join-Path (
-            $integrityReferenceBundle
-        ) "worker/store-catalog/checksums.json"
-    }
+    $runtimeMetadataPath = Join-Path (
+        Join-Path $repositoryRoot ([string]$config.runtime.path)
+    ) "metadata.json"
+    $catalogChecksumsPath = Join-Path (
+        Join-Path $repositoryRoot ([string]$config.catalog.path)
+    ) "checksums.json"
     if (
         (Get-FileHash -Algorithm SHA256 -LiteralPath $runtimeMetadataPath).Hash.ToLowerInvariant() -ne
             [string]$n100Diagnostic.integrity.runtime_metadata_sha256 -or
         (Get-FileHash -Algorithm SHA256 -LiteralPath $catalogChecksumsPath).Hash.ToLowerInvariant() -ne
             [string]$n100Diagnostic.integrity.catalog_checksums_sha256
     ) {
-        throw "N100 device matrix does not describe the selected Runtime and Catalog payload."
+        throw "Hardware device matrix does not describe the selected Runtime and Catalog source payload."
     }
 }
 
@@ -419,7 +403,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $canonicalBundle "worker/store-catalog") `
         -Destination (Join-Path $workerTarget "store-catalog") -Recurse
     Copy-Item -LiteralPath $installerReadme `
-        -Destination (Join-Path $temporaryPayload "INSTALL-N100-KO.txt")
+        -Destination (Join-Path $temporaryPayload "INSTALL-KO.txt")
     $renderedLauncher = [regex]::Replace(
         $launcherSource,
         'BIXOLON_CPU_DETECTOR_WORKERS = "\d+"',
@@ -441,7 +425,7 @@ try {
         [System.Text.UTF8Encoding]::new($false)
     )
     Copy-Item -LiteralPath $n100DiagnosticPath `
-        -Destination (Join-Path $temporaryPayload "n100-reference-result.json")
+        -Destination (Join-Path $temporaryPayload "hardware-reference-result.json")
 
     Assert-DirectoryCopyMatches `
         -Source (Join-Path $canonicalBundle "worker/model-package") `
@@ -467,6 +451,8 @@ try {
             platform = "windows-x64"
             processor_profile = "Intel Processor N100"
             detector_provider = "OpenVINOExecutionProvider:CPU"
+            object_presence_verifier_provider = "OpenVINOExecutionProvider:GPU"
+            object_presence_execution = "parallel_with_detector"
             embedder_provider = "OpenVINOExecutionProvider:GPU"
             embedder_fallback_provider = "OpenVINOExecutionProvider:CPU"
             python_required_on_target = $false
@@ -491,8 +477,8 @@ try {
                 Get-FileHash -Algorithm SHA256 -LiteralPath $VcRedistPath
             ).Hash.ToLowerInvariant()
             n100_device_matrix_sha256 = (
-                Get-FileHash -Algorithm SHA256 -LiteralPath $n100DiagnosticPath
-            ).Hash.ToLowerInvariant()
+                $deviceMatrixSha256
+            )
         }
         transformation = [ordered]@{
             model_graph_or_weight_changed = $false
@@ -536,7 +522,7 @@ try {
         }
     }
     Write-JsonFile `
-        -Path (Join-Path $temporaryPayload "n100-provenance.json") `
+        -Path (Join-Path $temporaryPayload "deployment-provenance.json") `
         -Value $n100Provenance
 
     $payloadRecords = Get-DirectoryRecords -Root $temporaryPayload
@@ -544,7 +530,7 @@ try {
         schema_version = "1.0"
         version = $Version
         app_build = $appBuild
-        target = "windows-x64-n100-openvino-cpu-detector-gpu-embedder"
+        target = "windows-x64-openvino-cpu-detector-gpu-embedder"
         file_count = $payloadRecords.Count
         files = $payloadRecords
     }
@@ -558,7 +544,7 @@ try {
     }
     if ($gpuPayloadFiles) {
         $paths = ($gpuPayloadFiles | ForEach-Object { $_.FullName }) -join ", "
-        throw "N100 installer payload contains a forbidden provider or CUDA runtime: $paths"
+        throw "Windows installer payload contains a forbidden provider or CUDA runtime: $paths"
     }
 
     [System.IO.Directory]::Move($temporaryPayload, $payloadRoot)
@@ -590,9 +576,9 @@ try {
         -Destination (Join-Path $temporaryWorkerPackage "vc_redist.x64.exe")
     Copy-Item -LiteralPath (Join-Path $payloadRoot "version.json") `
         -Destination $temporaryWorkerPackage
-    Copy-Item -LiteralPath (Join-Path $payloadRoot "n100-provenance.json") `
+    Copy-Item -LiteralPath (Join-Path $payloadRoot "deployment-provenance.json") `
         -Destination $temporaryWorkerPackage
-    Copy-Item -LiteralPath (Join-Path $payloadRoot "n100-reference-result.json") `
+    Copy-Item -LiteralPath (Join-Path $payloadRoot "hardware-reference-result.json") `
         -Destination $temporaryWorkerPackage
     Copy-Item -LiteralPath (Join-Path $repositoryRoot "schemas/scan-response.schema.json") `
         -Destination $temporaryWorkerPackage
@@ -604,10 +590,13 @@ try {
     $workerManifest = [ordered]@{
         schema_version = "1.0"
         product_version = $Version
-        target = "windows-x64-n100-openvino-cpu-detector-gpu-embedder"
+        target = "windows-x64-openvino-cpu-detector-gpu-embedder"
         default_provider = [ordered]@{
             detector = "OpenVINOExecutionProvider:CPU"
+            object_presence_verifier = "OpenVINOExecutionProvider:GPU"
+            object_presence_execution = "parallel_with_detector"
             embedder = "OpenVINOExecutionProvider:GPU"
+            object_presence_fallback = "OpenVINOExecutionProvider:CPU"
             embedder_fallback = "OpenVINOExecutionProvider:CPU"
         }
         file_count = $workerRecords.Count
@@ -662,7 +651,7 @@ $setupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setupPath).Hash.ToLow
 $installerManifest = [ordered]@{
     schema_version = "1.0"
     version = $Version
-    target = "windows-x64-n100-openvino-cpu-detector-gpu-embedder"
+    target = "windows-x64-openvino-cpu-detector-gpu-embedder"
     setup = [ordered]@{
         filename = $setupFile.Name
         size_bytes = $setupFile.Length
@@ -684,9 +673,9 @@ $installerManifest = [ordered]@{
 }
 Write-JsonFile -Path $installerManifestPath -Value $installerManifest
 
-Write-Host "N100 installer: $setupPath"
+Write-Host "Windows installer: $setupPath"
 Write-Host "Installer SHA-256: $setupHash"
 Write-Host "SHA-256 file: $setupHashPath"
 Write-Host "Installer manifest: $installerManifestPath"
-Write-Host "N100 hybrid Worker ZIP: $workerZipPath"
+Write-Host "Windows OpenVINO Worker ZIP: $workerZipPath"
 Write-Host "Worker ZIP SHA-256: $workerZipHash"

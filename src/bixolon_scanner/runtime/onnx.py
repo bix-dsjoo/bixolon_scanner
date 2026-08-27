@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from typing import Literal
 
@@ -1078,6 +1079,9 @@ class OnnxCountVerifier:
         dummy = np.zeros((1, 3, height, width), dtype=np.float32)
         self.runner.run([self.metadata.logits_output], self.metadata.input_name, dummy)
 
+    def close(self) -> None:
+        self.runner.close()
+
     def verify(self, image: np.ndarray | Image.Image) -> tuple[int, float]:
         tensor = _prepare_rgb(
             image,
@@ -1099,10 +1103,21 @@ class OnnxCountVerifier:
 
 
 class CountVerifiedDetector:
-    def __init__(self, detector: OnnxDetector, verifier: OnnxCountVerifier):
+    def __init__(
+        self,
+        detector: OnnxDetector,
+        verifier: OnnxCountVerifier,
+        *,
+        parallel_verification: bool = False,
+    ):
         self.detector = detector
         self.verifier = verifier
         self.version = detector.version
+        self._verification_executor = (
+            ThreadPoolExecutor(max_workers=1, thread_name_prefix="bixolon-presence")
+            if parallel_verification
+            else None
+        )
 
     def warmup(self) -> None:
         warmup = getattr(self.detector, "warmup", None)
@@ -1111,13 +1126,69 @@ class CountVerifiedDetector:
         self.verifier.warmup()
 
     def close(self) -> None:
+        self._shutdown_verification_executor()
+        close = getattr(self.verifier, "close", None)
+        if callable(close):
+            close()
         close = getattr(self.detector, "close", None)
         if callable(close):
             close()
 
+    def replace_verifier(
+        self,
+        verifier: OnnxCountVerifier,
+        *,
+        parallel_verification: bool,
+    ) -> None:
+        self._shutdown_verification_executor()
+        previous = self.verifier
+        self.verifier = verifier
+        self._verification_executor = (
+            ThreadPoolExecutor(max_workers=1, thread_name_prefix="bixolon-presence")
+            if parallel_verification
+            else None
+        )
+        close = getattr(previous, "close", None)
+        if callable(close):
+            close()
+
+    def _shutdown_verification_executor(self) -> None:
+        if self._verification_executor is not None:
+            self._verification_executor.shutdown(wait=True, cancel_futures=True)
+            self._verification_executor = None
+
     def detect(self, image: np.ndarray | Image.Image) -> DetectionResult:
-        result = self.detector.detect(image)
-        verified_count, confidence = self.verifier.verify(image)
+        verification: Future[tuple[int, float]] | None = None
+        if self._verification_executor is not None:
+            verification = self._verification_executor.submit(self.verifier.verify, image)
+        try:
+            result = self.detector.detect(image)
+        except Exception:
+            if verification is not None:
+                try:
+                    verification.result()
+                except Exception:
+                    pass
+            raise
+        if result.capacity_saturated or result.uncertain_candidate_count or not result.detections:
+            if verification is not None:
+                try:
+                    verification.result()
+                except Exception:
+                    # The speculative result is not part of an existing hard-recapture
+                    # decision. A normal detection still propagates verifier failures.
+                    pass
+            comparison_mode = self.verifier.metadata.comparison_mode
+            verified_count = (
+                int(bool(result.detections))
+                if comparison_mode == "object_presence"
+                else len(result.detections)
+            )
+            confidence = 1.0
+        elif verification is not None:
+            verified_count, confidence = verification.result()
+        else:
+            verified_count, confidence = self.verifier.verify(image)
         return DetectionResult(
             detections=result.detections,
             capacity_saturated=result.capacity_saturated,
@@ -1125,6 +1196,7 @@ class CountVerifiedDetector:
             count_confidence=confidence,
             uncertain_candidate_count=result.uncertain_candidate_count,
             uncertain_candidate_scores=result.uncertain_candidate_scores,
+            refinement_executed=result.refinement_executed,
         )
 
 

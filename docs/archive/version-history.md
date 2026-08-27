@@ -123,12 +123,27 @@ Worker/N100 진단은 [당시 평가 문서](diagnostics/scanner-0.1.3-evaluatio
 
 채택된 `0.1.4+7`은 raw query의 큰 proposal·근접·중복 조건과 선택적 회전 복구를 추가했습니다.
 큰 proposal의 크기만으로 재촬영하던 분기가 2026-08-27 큰 빵 표본을 오거부해 `0.1.5+8`에서
-보강 증거를 요구하도록 수정했습니다.
+보강 증거를 요구하도록 수정했습니다. 같은 날짜 주석 자료의 빈 장면 오검출은 기존 415장으로
+학습된 전체 프레임 `object_presence` verifier를 추가해 차단했습니다. 기존 415장 packaged 응답은
+`0.1.4+7`과 완전히 동일하지만 verifier 학습 자료와 겹치므로 독립 성능 근거로 사용하지 않습니다.
 
 - [0.1.4 번들 구조](architecture/scanner-0.1.4.md)
 - [0.1.4 Worker 연동 계약](contracts/worker-integration-0.1.4.md)
 - [0.1.4 개발 평가](diagnostics/scanner-0.1.4-evaluation.md)
 - [0.1.4 기준 설정](../../configs/archive/versions/0.1.4.json)
+
+## `0.1.5+8` 운영 기준선
+
+운영에 배포된 `0.1.5+8`은 큰 detector proposal의 크기만으로 재촬영하지 않고 raw-query surplus
+또는 복수 detection 중심점의 보강 증거를 요구했습니다. 이후 같은 제품 버전 이름으로 진행하던
+`object_presence` verifier와 병렬 Intel GPU 후보는 운영 배포물에 덮어쓰지 않았으며, 최종적으로
+제품·Worker·Runtime 배포 내용이 바뀌므로 `0.1.6+9`로 승격했습니다.
+
+- [0.1.5 번들 구조](architecture/scanner-0.1.5.md)
+- [0.1.5 Worker 연동 계약](contracts/worker-integration-0.1.5.md)
+- [0.1.5 개발 평가](diagnostics/scanner-0.1.5-evaluation.md)
+- [0.1.5 packaged smoke](diagnostics/packaged-worker-0.1.5-build8-smoke.json)
+- [0.1.5 운영 설정](../../configs/archive/versions/0.1.5.json)
 
 ## `0.1.4` 이름의 더 이른 미채택 앱 후보
 

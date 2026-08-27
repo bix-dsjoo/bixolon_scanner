@@ -14,11 +14,12 @@
     }
   ],
   "processing_time_ms": 81.405,
-  "worker_version": "0.1.5",
-  "detector_version": "0.1.5",
-  "classifier_version": "0.1.5",
-  "embedder_version": "0.1.5",
-  "detector_policy_version": "0.1.5",
-  "classifier_policy_version": "0.1.5",
-  "catalog_version": "0.1.5"
+  "worker_version": "0.1.6",
+  "detector_version": "0.1.6",
+  "classifier_version": "0.1.6",
+  "embedder_version": "0.1.6",
+  "detector_policy_version": "0.1.6",
+  "classifier_policy_version": "0.1.6",
+  "catalog_version": "0.1.6"
 }
+

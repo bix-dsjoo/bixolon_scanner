@@ -145,6 +145,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     segmentation_status_counts: dict[str, int] = {}
     error_count = 0
     response_contract_error_count = 0
+    trace_rows: list[dict[str, Any]] = []
     try:
         deadline = time.monotonic() + args.startup_timeout_seconds
         while time.monotonic() < deadline:
@@ -194,6 +195,15 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
                 content_type=content_type,
                 timeout=args.request_timeout_seconds,
             )
+            trace_rows.append(
+                {
+                    "image_id": record.get("image_id"),
+                    "image_sha256": record["image_sha256"],
+                    "http_status": http_status,
+                    "client_elapsed_ms": elapsed_ms,
+                    "response": response,
+                }
+            )
             status = str(response.get("status"))
             status_counts[status] = status_counts.get(status, 0) + 1
             if (
@@ -232,6 +242,18 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         and http_summary["mean_ms"] <= args.maximum_mean_ms
         and http_summary["p95_ms"] <= args.maximum_p95_ms
     )
+    trace_evidence = None
+    if args.trace_output is not None:
+        args.trace_output.parent.mkdir(parents=True, exist_ok=True)
+        args.trace_output.write_text(
+            "".join(json.dumps(row, ensure_ascii=False) + "\n" for row in trace_rows),
+            encoding="utf-8",
+        )
+        trace_evidence = {
+            "path": args.trace_output.resolve().as_posix(),
+            "sha256": sha256_file(args.trace_output),
+            "row_count": len(trace_rows),
+        }
     report = {
         "schema_version": "1.0",
         "evaluation": "scanner_0_1_3_packaged_worker_full_valid_http",
@@ -266,6 +288,7 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             "expected_full_path_count": args.expected_full_path_count,
         },
         "passes": passes,
+        "trace": trace_evidence,
         "privacy": {"image_paths_recorded": False, "image_bytes_recorded": False},
     }
     args.output.parent.mkdir(parents=True, exist_ok=True)
@@ -287,9 +310,10 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument("--manifest", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--trace-output", type=Path)
     parser.add_argument("--store-id", required=True)
     parser.add_argument("--provider", choices=("cpu", "openvino"), default="openvino")
-    parser.add_argument("--expected-version", default="0.1.5")
+    parser.add_argument("--expected-version", default="0.1.6")
     parser.add_argument("--expected-image-count", type=int, default=415)
     parser.add_argument("--expected-full-path-count", type=int, default=411)
     parser.add_argument("--warmup-count", type=int, default=10)

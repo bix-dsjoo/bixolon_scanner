@@ -1,0 +1,348 @@
+{
+    "schema_version":  "1.1",
+    "evaluation":  "bixolon_worker_n100_openvino_cpu_vs_intel_gpu_embedder",
+    "product_version":  "0.1.5",
+    "completed":  true,
+    "passes":  false,
+    "hardware":  {
+                     "cpu_name":  "Intel(R) N100",
+                     "cores":  4,
+                     "logical_processors":  4,
+                     "total_physical_memory_bytes":  4006068224,
+                     "target_cpu_detected":  true,
+                     "target_intel_gpu_detected":  true,
+                     "video_controllers":  [
+                                               {
+                                                   "name":  "Intel(R) UHD Graphics",
+                                                   "adapter_ram_bytes":  2003034112,
+                                                   "driver_version":  "32.0.101.6299"
+                                               }
+                                           ],
+                     "openvino_gpu_device":  "GPU"
+                 },
+    "input":  {
+                  "sample_count":  100,
+                  "image_sha256":  [
+                                       "dc3bf71b61f6f11134403f73a2939333e51edcb4bc7715db0405d16fa5d2bc4a",
+                                       "87dd8921fdad43a1f6b9d6d603dc659a089177aa339143638196d81bd14ab70e",
+                                       "29ac2b101744dc3ed89f4585b171dece26a20182ceab71f8e6dd28d83ca8779f",
+                                       "df582c9f7e247f270c7d3e3ed728c7606d8633c6c76a86254a347026af3718e9",
+                                       "a1e4598085f941242166babf101311ee37c01a7074f67066c622a93d2ae0fa8e",
+                                       "367eee1011aed1e88be2acdc074a72afd07fef6eaa7f47c8626b5c5beece19ea",
+                                       "3c5890111b88d1c4e6341cbab02d0b61b227e57d0ec10b93acde7ee9f2cacaf9",
+                                       "d98f82a52b5b27554b8f9e194951cc7cf6ced1e4b39096141b546afde087f1cd",
+                                       "2208285033b9c90a88301aeab3b41495656f270c3a267f48911c5e1cae8fce61",
+                                       "30047d700d67a81ed5a73fd0eb7cab0049de5ad02a71e2a8271576753ab85004",
+                                       "0c436ae18dfcd6c276ca5bd37622a8a38acebf387a70fa724c4ca0f858fdfe9b",
+                                       "e5ae2d9c52b16e329e0307f665989e79a2823729b001679b9ff51effe368fdda",
+                                       "0dad64cc1b16da3ffa7c07cb6764d8d92ee28bbbbf15e06f7d6ba01a98054a32",
+                                       "4bcb3b61d076e78dd7cf5e25ac5be192002e62a8b56a02d1e190c5a08ece60ab",
+                                       "9a2848d99983f9986a7329cf515df112da6419a876be85f2120d79a9c9ee0d67",
+                                       "76a5c9118efaddea22d8a49081beb720666a84fed38dce68488859614bc56e86",
+                                       "4117ce61bbf4420e6b522b15bbb6a2cbc0c179e7c7512f19901afbed8cc80190",
+                                       "d4eab47a53bef733f88732eaf93404b5927eef6039e53ae7e8c502d67fd3a1f9",
+                                       "bf4c6ac2437f6e419003c6cf91c22ee69f5715667a8967a7818afa3793897c23",
+                                       "d070754399f333dd6819be98755006d0eae9cb075b517608f5402d5ed3943e10",
+                                       "23da55fcae745c657543992d8d477909ff7aa62bdf60140f7c002074d003ef4f",
+                                       "c7cfac16cdcc6705255f09c52a646ec1ca28530c584ca28394dbc9ebbfbb3e72",
+                                       "74ff40670125cca1772baa19cb53718b7c8d0b9564dfa6cfe9e6f07087cb4501",
+                                       "db28538f5587b5bbf7161cda4763c39add5023e7fdaeb2d0b9bbcd4348171e48",
+                                       "ddf960305658b98e7cba254342400fb523566191058ba36cc76afbb9e99f8970",
+                                       "48864432de719a5a2a0770a8400012f2974e05c6537ae22341cbf351ec7bb4f8",
+                                       "cf46d6bc15c98429c9aa89f38163e98e5f1f79a29339b064096cd4ebb42aaf9c",
+                                       "eeaeaefb9509d30d9682bfed2e09c93f341c33f1398ddb001a76195f9e34565a",
+                                       "df8f09e0855332e3f0597a3f683c273d72d727cda0ffcdc31bd2aeac484c871f",
+                                       "f6bbdca37a875e4b821da0f682730a31c1afc80b61a53ad6a2dc5607f51e61bf",
+                                       "35a43c50454dd5aa35f79192753514654cd9d30ba791fb8a66fb544f6363057c",
+                                       "1dc1dd06983a5959f0a181c07123e92c0a44e6b3daa52005325049628ee6cb26",
+                                       "56eafd2d9606274f766870ce76078fa7a01aa64ac8b062c75848afcf5dec8bbc",
+                                       "e4ad48b8b00c7b1b99314f5ede102c4ec17abebd25cbeee542a9438e359c3f8c",
+                                       "b0c6ab90a6ea1f5ae37e31ff0a8f2f02bbc4b0c90ba9248dfd32d31022140bfb",
+                                       "248ae34cf20bc1e99f3a5d366372421cadd213ce30fc0e269c1780cd37325a66",
+                                       "e8da0c9e1b78665e0eb0eef203cab0a96d189b018bc7f6c8f219e492baae3ee9",
+                                       "d8a0087a0ebb0201dfcea0825c2d455c9ef106f81887c97d729837c12eed5924",
+                                       "1e815c5051958171682881b402f39b5b4d5d587c03ddb3502889d2259f3be52f",
+                                       "8ffe81e4398d712accfb39030544beddf9c72cd7019a3e27a7ea9b73291a8683",
+                                       "88a63f8c8f4d0893a7bd706c10e5a081b0aa467c44f50af46ef87286efe44fd5",
+                                       "021f6865c3dda8ead7bff77c16505d0b5bca690cd9a2eb16a5d45b4f0650d3fb",
+                                       "758f46ada378bcbeba4e68a9a2047941e72e2d47057d20da4f1ea1a78693e087",
+                                       "fa9dbbddd7882061b7ce2f755ae81bb6577c8ea42a167c538634ccf8d6b086c4",
+                                       "d5e79f209b73451adf645845a0bdcba715d86b9b4548521ff7a9aa4ba85e2b0e",
+                                       "d9ab5960936d5b8209c3a8c42c2eb22c5bc4587a2f1ca02e53c527fced01b734",
+                                       "dc9aa3822de281c27e263fa54c61f0dc4e5de8bc19e0e07ca1ee20af2463bf80",
+                                       "9c6f34069a20166fc86ce9cbaf48cedda5ae06d65d24a276f2d4cc69917a9a7a",
+                                       "1763348319bb0968951e7ea2217606513358c6801bf5fd905cbf0ed7fe4e3d7f",
+                                       "d7b39223899e9955eb94e188e6e7053c6920befa62cef86c34b9a7acc03df53e",
+                                       "c3a4deadbc214f2f594ea047c3739bfcd22a4f9c43067a4db1a5eeb2b7de5b71",
+                                       "34929a9ecaba895bb0c62e25955042d950fe3099793474624d9b5073057c72f8",
+                                       "9443cfab7c6486aee11d6cdf7b58cb592b051b1651e27dd2ba2cfe2ad4d78311",
+                                       "cf14dbb0d2ec036a4d6cfc104cf46ae18aa4326ca4f23fab113b9aee3469c259",
+                                       "01d5173567445a7198a83bb9d5f1ddb2794c3445696254f3d38d6def3e19ecc3",
+                                       "58f07d7ec362dce337ee259c41fc4a9d36fb9670387292ebd8f516ae3ba40c9c",
+                                       "d4957068af6c935c3a9e7cbf25b0e4f9a350dcb1551c0176067fd21f37fa2cfa",
+                                       "633a63af93a3bc056f46854d2af366ff7212bcdcd926581a982f16bc23d0372e",
+                                       "17623798ac7aed271236ba67952fb266579d34c264863676f5ec5c7f1f7f67f9",
+                                       "ce2bcfd50ccca29aa0b8d23e32a83dab0b54c57aa854e70ed1684289aa94c723",
+                                       "25a16d6eb092e62b6bb048014569b5e8de72a7a026fb60f9430c41ced7f72bb8",
+                                       "412e6f2e7198c08e969cdc7233979806058d0d7ad55c06049139521ae83c4cd1",
+                                       "fc29694d5f39a22825f375de25c569080a25e96adf9b79141e25890ff9e006bb",
+                                       "300d183bf6da562371497accb6993ec45481bb715f6f255920c6cd65d1eacc7e",
+                                       "c7dcd1814d940b20bf1708e3f72894a4f4aa2b5f8fe9cf75e750a9ed05c03dbb",
+                                       "333f600d1001e7fd42de5313e08fd9c2804bcffbd8edde0990bc669cebe6d011",
+                                       "c9c7f8a6a094b95a0a3ac2da7af4c553a795e0ea6aa578b675c9061cc29ee78f",
+                                       "d6d54551d2514e62c76f0bf7242eb4b390a165f98a74c8dd03e50234ffddee6d",
+                                       "d15a212b26a5df5acbb86167fd0ec73500f92cd7ddaa673b468418d3750f7968",
+                                       "864f9575f1ac2150b95d449c86b90a105ef87ccb7ba4345e54eef78ef9f46b44",
+                                       "cc67058f799f3d5feb020d43044f25ba18c86af18824025a9077c0d2834f2456",
+                                       "a668c31ed8e59c8018606a82e83bbf4cd0e74fdd1e59e2704514bad34e5e8545",
+                                       "9eae0744feba484729b0654bf2e8cfd24f0599b0bf74280326ffdfbc5a14924f",
+                                       "03de3e8ac73a5ee359e08fe676086e05a72bff9b3edeb19532fa2ac7de01e13a",
+                                       "d6d5523050503ef10f6202206a0487523ec40f40534b5a1357ab9b6d301a8f0f",
+                                       "57b5d3cf71116fafe5ddc81aa15ab61ed702e47808c1b4330720924187e80b1b",
+                                       "39467db1dea87337249539b4ce244beec75a951b1badfeafe98c961b0393cfd4",
+                                       "a64d4c1b088129aefc3c315486212775dcfb87ea0be697fe591aac39d5e3fbc4",
+                                       "2dd6ef47396b87ad22f336d36c3831518457547cefae72117ccbed5c0ad1434e",
+                                       "c2a1dfb348b126fc46d19fb013982973f0beeb1ce457613fceccd65a7cbe81f3",
+                                       "a34b1b9bce673f670cd4850954bbc0608ce5784b444f43014434748d83c4d068",
+                                       "11c37831bb9e9bff58ac0ec1dcaef47573f7cc797a733d7da84c69374787084b",
+                                       "7b89d142028274573006114afbecba75ec3fa73ebbfe17d44920e40e1523dcdf",
+                                       "0fad36a3c5ee14f91e91fbefcd84b178e0f742d6bcea0d64cb69618d99af5649",
+                                       "0ebbd5b253c425aede7eca41f9358b38b1a4c88248a7b60f1ce5c73fcd62d6d5",
+                                       "3819bc2f76c030904ef6d9d28426aea686ab8a63479a9c91dc27ec301bb49f43",
+                                       "c6f7987acd8dd6eec0c4857fa4ec173024e05b481e1f7d5a9fc6fe321a2a277f",
+                                       "bbef7d67f6177b119561965512737a80aebf544f08443dd5875d44d186173f6b",
+                                       "d017fa41a3c4cb85f4a6913be69d44273483c768570abdfcc6426b4f64653d38",
+                                       "25579c0a3701e8637b92d05fdb1ad6dad97675166613fc296dc52ae0c443707a",
+                                       "1141559060afd3289f5a0f4788479bd49c4d322c3aef9fc0b512da3086335616",
+                                       "e060a3a754708417bbfe611d02aa194d45efaeb5c68206b1080ae5ca05c6b65e",
+                                       "2e105a39d90acc562f4644ac4a039eaadcb8dc3113476da77bf8b5854a6a0697",
+                                       "a8639fa2078a72747d2cb5678c4dcae55e74ad00d1de9154bf2276c734b97911",
+                                       "2c6205c759efdc3a4bd1ea5b7df95f3b1116b639ce4c3515c07f71fd9ca16eb5",
+                                       "401b0c577eeba770f48a46788dd5cd21242091dcfec430720593edee12a79c63",
+                                       "9e52f191ff6e3c608e12410f2e643cb1a75f52bd126634c8b836e56bb296027f",
+                                       "79519fa576bf19de82cd5a61cf709ba6157e7d86e95ee0f29d481d0e81a32f02",
+                                       "6985f14a0b99729ab5d66b05551de011157c4cbafd7532176c0b2e503138ac7b",
+                                       "cbe8f57f9a5ecfaacbb365c84dc54c284fce2da3fda555c0e98e0bf7b9b9fe53"
+                                   ],
+                  "minimum_image_count":  30,
+                  "minimum_full_path_count":  10,
+                  "warmup_image_count":  3
+              },
+    "selection_policy":  {
+                             "minimum_mean_speedup_ratio":  1.05,
+                             "minimum_p95_speedup_ratio":  1.05,
+                             "maximum_startup_ms":  30000,
+                             "maximum_peak_working_set_bytes":  2147483648,
+                             "maximum_memory_increase_ratio":  1.35,
+                             "maximum_full_path_mean_ms":  500,
+                             "maximum_full_path_p95_ms":  500,
+                             "require_semantic_and_confidence_parity":  true
+                         },
+    "execution_contract":  {
+                               "same_worker_executable":  true,
+                               "same_runtime_catalog_and_policy":  true,
+                               "cpu_only":  {
+                                                "detector":  "OpenVINOExecutionProvider:CPU",
+                                                "object_presence_verifier":  "OpenVINOExecutionProvider:CPU",
+                                                "primary_embedder":  "OpenVINOExecutionProvider:CPU",
+                                                "rotation_180_embedder":  "OpenVINOExecutionProvider:CPU",
+                                                "independent_verifier_embedder":  "OpenVINOExecutionProvider:CPU"
+                                            },
+                               "cpu_detector_gpu_embedder":  {
+                                                                 "detector":  "OpenVINOExecutionProvider:CPU",
+                                                                 "object_presence_verifier":  "OpenVINOExecutionProvider:GPU",
+                                                                 "object_presence_execution":  "parallel_with_detector",
+                                                                 "primary_embedder":  "OpenVINOExecutionProvider:GPU",
+                                                                 "rotation_180_embedder":  "OpenVINOExecutionProvider:GPU",
+                                                                 "independent_verifier_embedder":  "OpenVINOExecutionProvider:GPU",
+                                                                 "silent_cpu_fallback_allowed":  false
+                                                             }
+                           },
+    "integrity":  {
+                      "runtime_metadata_sha256":  "c414296264c43c26ef859c8bbfdb0e414a739ac8792c0887142d4b18509c0a22",
+                      "object_presence_verifier_sha256":  "7c1ab897a57d89ee1296ab692641d52fd757d973b601520891411105258f1890",
+                      "object_presence_confidence_threshold":  0.54,
+                      "catalog_checksums_sha256":  "e39655c69480df63681aad559850101d8f04302821cc3db0b1e1154e67e6b5c9",
+                      "model_graph_or_weight_changed":  false,
+                      "decision_policy_changed":  false
+                  },
+    "profiles":  {
+                     "openvino_cpu_only":  {
+                                               "name":  "openvino-cpu-only",
+                                               "completed":  true,
+                                               "failure_code":  null,
+                                               "detector_provider":  "openvino",
+                                               "embedder_provider":  "same",
+                                               "detector_workers":  1,
+                                               "detector_threads_per_session":  4,
+                                               "embedder_threads":  4,
+                                               "startup_ms":  12968.286,
+                                               "client_total_ms":  {
+                                                                       "all_requests":  {
+                                                                                            "sample_count":  100,
+                                                                                            "mean":  640.577,
+                                                                                            "p50":  604.141,
+                                                                                            "p95":  1006.693,
+                                                                                            "p99":  1131.606
+                                                                                        },
+                                                                       "full_path":  {
+                                                                                         "sample_count":  100,
+                                                                                         "mean":  640.577,
+                                                                                         "p50":  604.141,
+                                                                                         "p95":  1006.693,
+                                                                                         "p99":  1131.606
+                                                                                     }
+                                                                   },
+                                               "worker_processing_ms":  {
+                                                                            "all_requests":  {
+                                                                                                 "sample_count":  100,
+                                                                                                 "mean":  637.597,
+                                                                                                 "p50":  601.314,
+                                                                                                 "p95":  1003.835,
+                                                                                                 "p99":  1128.15
+                                                                                             },
+                                                                            "full_path":  {
+                                                                                              "sample_count":  100,
+                                                                                              "mean":  637.597,
+                                                                                              "p50":  601.314,
+                                                                                              "p95":  1003.835,
+                                                                                              "p99":  1128.15
+                                                                                          }
+                                                                        },
+                                               "stage_latency_ms":  {
+                                                                        "detector":  {
+                                                                                         "sample_count":  100,
+                                                                                         "mean":  143.583,
+                                                                                         "p50":  141.99,
+                                                                                         "p95":  150.732,
+                                                                                         "p99":  169.818
+                                                                                     },
+                                                                        "classifier":  {
+                                                                                           "sample_count":  100,
+                                                                                           "mean":  421.829,
+                                                                                           "p50":  382.03,
+                                                                                           "p95":  791.878,
+                                                                                           "p99":  894.783
+                                                                                       }
+                                                                    },
+                                               "peak_working_set_bytes":  1533972480,
+                                               "status_counts":  {
+                                                                     "SEGMENTATION":  100,
+                                                                     "IMAGE_RECAPTURE":  0,
+                                                                     "ERROR":  0
+                                                                 },
+                                               "full_path_count":  100,
+                                               "error_count":  0,
+                                               "target":  {
+                                                              "maximum_full_path_latency_ms":  500,
+                                                              "mean_within_target":  false,
+                                                              "p95_within_target":  false
+                                                          }
+                                           },
+                     "openvino_cpu_detector_intel_gpu_embedder":  {
+                                                                      "name":  "openvino-cpu-detector-intel-gpu-embedder",
+                                                                      "completed":  true,
+                                                                      "failure_code":  null,
+                                                                      "detector_provider":  "openvino",
+                                                                      "embedder_provider":  "openvino_gpu",
+                                                                      "detector_workers":  1,
+                                                                      "detector_threads_per_session":  4,
+                                                                      "embedder_threads":  0,
+                                                                      "startup_ms":  22800.799,
+                                                                      "client_total_ms":  {
+                                                                                              "all_requests":  {
+                                                                                                                   "sample_count":  100,
+                                                                                                                   "mean":  443.871,
+                                                                                                                   "p50":  424.438,
+                                                                                                                   "p95":  732.288,
+                                                                                                                   "p99":  831.5
+                                                                                                               },
+                                                                                              "full_path":  {
+                                                                                                                "sample_count":  100,
+                                                                                                                "mean":  443.871,
+                                                                                                                "p50":  424.438,
+                                                                                                                "p95":  732.288,
+                                                                                                                "p99":  831.5
+                                                                                                            }
+                                                                                          },
+                                                                      "worker_processing_ms":  {
+                                                                                                   "all_requests":  {
+                                                                                                                        "sample_count":  100,
+                                                                                                                        "mean":  440.767,
+                                                                                                                        "p50":  420.941,
+                                                                                                                        "p95":  729.284,
+                                                                                                                        "p99":  828.034
+                                                                                                                    },
+                                                                                                   "full_path":  {
+                                                                                                                     "sample_count":  100,
+                                                                                                                     "mean":  440.767,
+                                                                                                                     "p50":  420.941,
+                                                                                                                     "p95":  729.284,
+                                                                                                                     "p99":  828.034
+                                                                                                                 }
+                                                                                               },
+                                                                      "stage_latency_ms":  {
+                                                                                               "detector":  {
+                                                                                                                "sample_count":  100,
+                                                                                                                "mean":  82.001,
+                                                                                                                "p50":  80.416,
+                                                                                                                "p95":  89.722,
+                                                                                                                "p99":  99.378
+                                                                                                            },
+                                                                                               "classifier":  {
+                                                                                                                  "sample_count":  100,
+                                                                                                                  "mean":  290.223,
+                                                                                                                  "p50":  264.856,
+                                                                                                                  "p95":  587.257,
+                                                                                                                  "p99":  667.268
+                                                                                                              }
+                                                                                           },
+                                                                      "peak_working_set_bytes":  2067189760,
+                                                                      "status_counts":  {
+                                                                                            "SEGMENTATION":  100,
+                                                                                            "IMAGE_RECAPTURE":  0,
+                                                                                            "ERROR":  0
+                                                                                        },
+                                                                      "full_path_count":  100,
+                                                                      "error_count":  0,
+                                                                      "target":  {
+                                                                                     "maximum_full_path_latency_ms":  500,
+                                                                                     "mean_within_target":  true,
+                                                                                     "p95_within_target":  false
+                                                                                 }
+                                                                  }
+                 },
+    "parity":  {
+                   "evaluated":  true,
+                   "safe":  false,
+                   "semantic_mismatch_count":  0,
+                   "semantic_mismatch_indexes":  [
+
+                                                 ],
+                   "confidence_vector_mismatch_count":  0,
+                   "confidence_vector_mismatch_indexes":  [
+
+                                                          ],
+                   "maximum_confidence_delta":  0.0085055232048034668,
+                   "confidence_tolerance":  1E-05
+               },
+    "comparison":  {
+                       "provider_initialization_safe":  true,
+                       "hybrid_mean_improved":  true,
+                       "hybrid_p95_improved":  true,
+                       "hybrid_meets_minimum_speedup":  true,
+                       "hybrid_resource_safe":  true,
+                       "cpu_only_target_met":  false,
+                       "gpu_embedder_target_met":  false,
+                       "target_met_by_any_profile":  false,
+                       "full_path_mean_speedup_ratio":  1.443,
+                       "full_path_p95_speedup_ratio":  1.375,
+                       "recommended_provider":  "openvino"
+                   },
+    "privacy":  {
+                    "image_paths_recorded":  false,
+                    "image_bytes_recorded":  false,
+                    "image_sha256_recorded":  true
+                },
+    "limitation":  "Diagnostic measurement only; not an SLA, certification, or deployment approval."
+}

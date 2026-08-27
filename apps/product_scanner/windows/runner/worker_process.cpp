@@ -122,7 +122,7 @@ bool WorkerProcess::Start() {
   const auto worker_executable = FindWorkerExecutable(executable_directory);
   if (worker_executable.empty()) {
     ::OutputDebugStringW(
-        L"BIXOLON Scanner: bixolon-worker.exe was not found.\n");
+        L"BIXOLON Bakery AI Scanner: bixolon-worker.exe was not found.\n");
     return false;
   }
 
@@ -137,7 +137,7 @@ bool WorkerProcess::Start() {
   if (!existing_package &&
       !std::filesystem::is_regular_file(bundled_package / L"metadata.json")) {
     ::OutputDebugStringW(
-        L"BIXOLON Scanner: bundled Worker model package was not found.\n");
+        L"BIXOLON Bakery AI Scanner: bundled Worker model package was not found.\n");
     return false;
   }
 
@@ -229,7 +229,7 @@ bool WorkerProcess::Start() {
     ::CloseHandle(job_);
     job_ = nullptr;
     ::OutputDebugStringW(
-        L"BIXOLON Scanner: failed to start bixolon-worker.exe.\n");
+        L"BIXOLON Bakery AI Scanner: failed to start bixolon-worker.exe.\n");
     return false;
   }
 
@@ -240,7 +240,7 @@ bool WorkerProcess::Start() {
     ::CloseHandle(job_);
     job_ = nullptr;
     ::OutputDebugStringW(
-        L"BIXOLON Scanner: failed to supervise bixolon-worker.exe.\n");
+        L"BIXOLON Bakery AI Scanner: failed to supervise bixolon-worker.exe.\n");
     return false;
   }
 

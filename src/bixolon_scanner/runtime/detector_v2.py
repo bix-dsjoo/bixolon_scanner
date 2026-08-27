@@ -536,6 +536,8 @@ def build_detector_v2(
     cpu_detector_workers: int = 1,
     cpu_intra_op_threads: int = 0,
     openvino_cache_dir: Path | None = None,
+    count_verifier_provider: ExecutionProvider | None = None,
+    parallel_count_verifier: bool = False,
 ) -> OnnxDetector | CrossScaleOnnxDetector | FixedEnsembleOnnxDetector | CountVerifiedDetector:
     if package.metadata.detector.ensemble is not None:
         detector = FixedEnsembleOnnxDetector(
@@ -570,6 +572,41 @@ def build_detector_v2(
         return detector
     if package.count_verifier_path is None:
         raise ValueError("count verifier metadata requires a packaged model")
+    try:
+        verifier = OnnxCountVerifier(
+            package.count_verifier_path,
+            package.metadata.count_verifier,
+            count_verifier_provider or provider,
+            cuda_dll_dir,
+            cpu_intra_op_threads=cpu_intra_op_threads,
+            openvino_cache_dir=openvino_cache_dir,
+        )
+    except Exception:
+        close = getattr(detector, "close", None)
+        if callable(close):
+            close()
+        raise
+    return CountVerifiedDetector(
+        detector,
+        verifier,
+        parallel_verification=parallel_count_verifier,
+    )
+
+
+def replace_count_verifier_v2(
+    detector: CountVerifiedDetector,
+    package: RuntimePackageV2,
+    provider: ExecutionProvider,
+    cuda_dll_dir: Path | None = None,
+    *,
+    cpu_intra_op_threads: int = 0,
+    openvino_cache_dir: Path | None = None,
+    parallel_verification: bool = False,
+) -> None:
+    """Warm a replacement verifier before swapping it into a live detector."""
+
+    if package.metadata.count_verifier is None or package.count_verifier_path is None:
+        raise ValueError("count verifier metadata requires a packaged model")
     verifier = OnnxCountVerifier(
         package.count_verifier_path,
         package.metadata.count_verifier,
@@ -578,4 +615,12 @@ def build_detector_v2(
         cpu_intra_op_threads=cpu_intra_op_threads,
         openvino_cache_dir=openvino_cache_dir,
     )
-    return CountVerifiedDetector(detector, verifier)
+    try:
+        verifier.warmup()
+    except Exception:
+        verifier.close()
+        raise
+    detector.replace_verifier(
+        verifier,
+        parallel_verification=parallel_verification,
+    )

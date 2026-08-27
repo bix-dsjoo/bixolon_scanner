@@ -301,7 +301,7 @@ def test_version_bundle_verifies_the_complete_windows_bundle(tmp_path: Path) -> 
     prepare_version_bundle(config, repository_root=tmp_path)
     version_root = tmp_path / "artifacts" / "versions" / "0.0.1"
     staging = version_root / "staging"
-    bundle = version_root / "bixolon-scanner-0.0.1"
+    bundle = version_root / "bixolon-bakery-ai-scanner-0.0.1"
     worker = bundle / "worker"
     shutil.copytree(staging / "runtime", worker / "model-package")
     shutil.copytree(staging / "catalog", worker / "store-catalog")

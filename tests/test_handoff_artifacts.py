@@ -8,7 +8,7 @@ import pytest
 from bixolon_scanner.contracts.api import ItemStatus, ScanResponse, Status
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLES = ROOT / "docs" / "contracts" / "examples" / "0.1.5"
+EXAMPLES = ROOT / "docs" / "contracts" / "examples" / "0.1.6"
 
 
 @pytest.mark.parametrize(
@@ -29,9 +29,9 @@ def test_handoff_examples_follow_python_contract(
     response = ScanResponse.model_validate_json((EXAMPLES / name).read_text(encoding="utf-8"))
 
     assert response.status is status
-    assert response.worker_version == "0.1.5"
+    assert response.worker_version == "0.1.6"
     assert all(
-        value == "0.1.5"
+        value == "0.1.6"
         for value in (
             response.detector_version,
             response.classifier_version,
@@ -142,8 +142,15 @@ def test_n100_candidate_exposes_double_click_and_requested_powershell_entrypoint
     assert '"scripts/handoff/README-N100-KO.txt"' in build_script
     assert "config.evaluation_evidence" in build_script
     assert "reference_evidence_sha256" in build_script
+    assert "detector415-presence-packaged-openvino" in build_script
+    assert 'comparison_mode -ne "object_presence"' in build_script
+    assert "confidence_threshold -ne 0.54" in build_script
+    assert 'provider = "OpenVINOExecutionProvider:CPU"' in build_script
     assert "target_full_path_latency_ms = 500" in build_script
     assert "scanner-$Version/full-valid-openvino.json" not in build_script
     assert '-File ".\\N100-STAGE-TEST.ps1"' in readme
     assert "N100-STAGE-TEST.ps1" in command_script
-    assert "n100-0.1.5-result.json" in command_script
+    assert "n100-0.1.6-result.json" in command_script
+    assert "image_sha256_recorded = $true" in (
+        ROOT / "scripts" / "handoff" / "benchmark-n100.ps1"
+    ).read_text(encoding="utf-8")

@@ -28,7 +28,7 @@ from ..contracts.errors import (
 from ..contracts.model_package import load_model_package
 from ..pipeline import DecisionPipeline
 from ..runtime.catalog import build_catalog_classifier
-from ..runtime.detector_v2 import build_detector_v2
+from ..runtime.detector_v2 import build_detector_v2, replace_count_verifier_v2
 from ..runtime.imaging import decode_image
 from ..runtime.onnx import build_onnx_adapters, select_provider
 from .settings import WorkerSettings
@@ -103,6 +103,7 @@ def create_app(
                         if worker_settings.embedder_provider == "same"
                         else select_provider(worker_settings.embedder_provider)
                     )
+
                     detector = build_detector_v2(
                         runtime_package,
                         provider,
@@ -123,14 +124,39 @@ def create_app(
                             cpu_intra_op_threads=(worker_settings.cpu_embedder_intra_op_threads),
                             openvino_cache_dir=worker_settings.openvino_cache_dir,
                         )
-                        selected_embedder.warmup()
-                        classifier_warmup = getattr(selected_classifier, "warmup", None)
-                        if callable(classifier_warmup):
-                            classifier_warmup()
+                        try:
+                            selected_embedder.warmup()
+                            classifier_warmup = getattr(selected_classifier, "warmup", None)
+                            if callable(classifier_warmup):
+                                classifier_warmup()
+                        except Exception:
+                            close = getattr(selected_classifier, "close", None)
+                            if callable(close):
+                                close()
+                            else:
+                                close = getattr(selected_embedder, "close", None)
+                                if callable(close):
+                                    close()
+                            raise
                         return selected_classifier, selected_embedder
 
                     try:
                         classifier, embedder = build_and_warm_classifier(embedder_provider)
+                        if (
+                            embedder_provider == "openvino_gpu"
+                            and runtime_package.metadata.count_verifier is not None
+                        ):
+                            replace_count_verifier_v2(
+                                detector,
+                                runtime_package,
+                                embedder_provider,
+                                worker_settings.cuda_dll_dir,
+                                cpu_intra_op_threads=(
+                                    worker_settings.cpu_detector_intra_op_threads
+                                ),
+                                openvino_cache_dir=worker_settings.openvino_cache_dir,
+                                parallel_verification=True,
+                            )
                     except (ProviderInitializationError, ModelExecutionError) as exc:
                         fallback_enabled = (
                             worker_settings.embedder_fallback_provider == "same"

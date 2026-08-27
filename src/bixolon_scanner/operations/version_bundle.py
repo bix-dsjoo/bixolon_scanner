@@ -448,7 +448,7 @@ def verify_prepared_version(
         "staging_path": staging.as_posix(),
         "passed": True,
     }
-    bundle = staging.parent / f"bixolon-scanner-{config.version}"
+    bundle = staging.parent / f"bixolon-bakery-ai-scanner-{config.version}"
     if bundle.exists():
         result.update(_verify_final_bundle(config, staging=staging, bundle=bundle))
     return result

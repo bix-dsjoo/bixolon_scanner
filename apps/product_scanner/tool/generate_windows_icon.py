@@ -1,4 +1,4 @@
-"""Generate the Windows app icon from the BIXOLON Scanner brand mark.
+"""Generate the Windows app icon from the BIXOLON Bakery AI Scanner brand mark.
 
 The icon intentionally uses the product's orange focus symbol rather than
 reproducing the official BIXOLON wordmark. It only relies on Python's standard

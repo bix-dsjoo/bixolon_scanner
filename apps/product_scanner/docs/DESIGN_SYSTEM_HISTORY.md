@@ -303,3 +303,4 @@
 | 108 | `RECAPTURE`는 최종 확정 흐름이 없어 운영 장면을 Activity에 남길 방법이 없고 저장 행동이 Primary와 경쟁할 수 있음 | Primary `촬영 화면으로 돌아가기`·`다른 이미지 선택`은 유지하고 Outlined `재촬영 기록 저장`을 보조 행동으로 배치. `저장 중 → 기록 저장됨`, 오류 시 `다시 저장`으로 전환하며 성공 뒤 현재 판정과 이미지를 유지 |
 | 108 | 상품 결과의 판정 수만으로는 현장 추론 지연을 확인할 수 없고 클라이언트 왕복시간과 Worker 처리시간이 혼동될 수 있음 | 결과 헤더에 `n/n개 확인 · 분석 72.1 ms`, `RECAPTURE`에 `분석 72.1 ms`를 표시. 값은 Worker의 `processing_time_ms`이며 디코딩·전처리·추론·후처리를 포함하고 응답 없는 `ERROR`에는 생성하지 않음 |
 | 108 | Scan 안내와 Activity가 reason code를 따로 번역하면 동일 판정이 서로 다른 원인으로 보일 수 있음 | 공통 reason-code 표현기를 사용해 우선순위·한국어 제목·입력원별 교정 문구를 공유하고, Activity 진단에는 원본 reason code를 별도로 보존 |
+| 109 | 장비 기준명 `N100`과 이전 앱 이름이 설치 파일·Windows metadata에서 제품명처럼 노출 | 사용자 노출 제품명을 `BIXOLON Bakery AI Scanner`로 통일하고 N100은 하드웨어 진단 provenance로만 제한 |

@@ -16,6 +16,8 @@ def optimize_fixed_onnx(
     """Constant-fold a fixed-shape ONNX graph without hardware-specific rewrites."""
     if not source_path.is_file():
         raise FileNotFoundError(source_path)
+    if output_path.exists():
+        raise FileExistsError(output_path)
     report = json.loads(source_report_path.read_text(encoding="utf-8"))
     if report.get("onnx_sha256") != sha256_file(source_path):
         raise ValueError("source ONNX and export report checksums differ")
@@ -39,6 +41,14 @@ def optimize_fixed_onnx(
     optimized = dict(report)
     optimized.update(
         {
+            "operation": "optimize_fixed_batch_onnx",
+            "origin_onnx_sha256": report.get(
+                "origin_onnx_sha256", report.get("source_onnx_sha256")
+            ),
+            "source_onnx": source_path.resolve().as_posix(),
+            "source_report": source_report_path.resolve().as_posix(),
+            "source_report_sha256": sha256_file(source_report_path),
+            "output_onnx": output_path.resolve().as_posix(),
             "onnx_sha256": sha256_file(output_path),
             "source_onnx_sha256": sha256_file(source_path),
             "optimization": "ORT_ENABLE_EXTENDED",
@@ -46,6 +56,7 @@ def optimize_fixed_onnx(
             "onnxruntime_version": ort.__version__,
             "optimization_platform": platform.platform(),
             "hardware_specific_optimization": False,
+            "weights_modified": False,
         }
     )
     return optimized

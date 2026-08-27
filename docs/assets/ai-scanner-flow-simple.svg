@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="900" viewBox="0 0 1920 900" role="img" aria-labelledby="flow-title flow-desc">
+  <title id="flow-title">AI 빵 스캐너 구축 및 신규 빵 추가 흐름</title>
+  <desc id="flow-desc">학습용 PC에서 초기 학습 후 POS/KIOSK에 배포하고, 신규 빵 사진 10장을 POS/KIOSK에서 촬영하여 학습용 PC에 업로드한 뒤 추가 학습과 재배포를 수행하는 순서도</desc>
+
+  <defs>
+    <marker id="arrow-blue" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#2563EB"/>
+    </marker>
+    <marker id="arrow-green" markerWidth="12" markerHeight="12" refX="10" refY="6" orient="auto" markerUnits="strokeWidth">
+      <path d="M 0 0 L 12 6 L 0 12 z" fill="#16A34A"/>
+    </marker>
+    <style>
+      .lane { fill: #FFFFFF; stroke: #CBD5E1; stroke-width: 2; }
+      .lane-label { fill: #FFFFFF; stroke: #334155; stroke-width: 2.5; }
+      .lane-text { fill: #0F172A; font: 700 30px 'Pretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; text-anchor: middle; dominant-baseline: middle; }
+      .box-blue { fill: #FFFFFF; stroke: #2563EB; stroke-width: 3; }
+      .box-green { fill: #FFFFFF; stroke: #16A34A; stroke-width: 3; }
+      .main { fill: #0F172A; font: 700 27px 'Pretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; text-anchor: middle; dominant-baseline: middle; }
+      .sub { fill: #475569; font: 500 21px 'Pretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; text-anchor: middle; dominant-baseline: middle; }
+      .blue-arrow { fill: none; stroke: #2563EB; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow-blue); }
+      .green-arrow { fill: none; stroke: #16A34A; stroke-width: 5; stroke-linecap: round; stroke-linejoin: round; marker-end: url(#arrow-green); }
+    </style>
+  </defs>
+
+  <rect width="1920" height="900" fill="#FFFFFF"/>
+
+  <!-- Responsibility areas -->
+  <rect class="lane" x="30" y="65" width="1860" height="320" rx="20"/>
+  <rect class="lane-label" x="60" y="35" width="240" height="62" rx="12"/>
+  <text class="lane-text" x="180" y="66">학습용 PC</text>
+
+  <rect class="lane" x="30" y="475" width="1860" height="320" rx="20"/>
+  <rect class="lane-label" x="60" y="445" width="270" height="62" rx="12"/>
+  <text class="lane-text" x="195" y="476">POS/KIOSK</text>
+
+  <!-- Initial setup on training PC -->
+  <rect class="box-blue" x="70" y="165" width="270" height="110" rx="14"/>
+  <text class="main" x="205" y="205">초기 이미지 준비</text>
+  <text class="sub" x="205" y="246">단품 200장 · 다중 300장</text>
+
+  <path class="blue-arrow" d="M 340 220 H 395"/>
+
+  <rect class="box-blue" x="410" y="165" width="240" height="110" rx="14"/>
+  <text class="main" x="530" y="220">최초 학습 · 검증</text>
+
+  <path class="blue-arrow" d="M 650 220 H 705"/>
+
+  <rect class="box-blue" x="720" y="165" width="260" height="110" rx="14"/>
+  <text class="main" x="850" y="220">배포 패키지 생성</text>
+
+  <!-- First deployment to POS/KIOSK -->
+  <path class="blue-arrow" d="M 850 275 V 570"/>
+
+  <rect class="box-blue" x="720" y="570" width="260" height="110" rx="14"/>
+  <text class="main" x="850" y="625">POS/KIOSK 사용</text>
+
+  <!-- New bread flow begins at POS/KIOSK -->
+  <path class="green-arrow" d="M 980 625 H 1035"/>
+
+  <rect class="box-green" x="1050" y="570" width="250" height="110" rx="14"/>
+  <text class="main" x="1175" y="625">신규 빵 10장 촬영</text>
+
+  <path class="green-arrow" d="M 1300 625 H 1355"/>
+
+  <rect class="box-green" x="1370" y="570" width="250" height="110" rx="14"/>
+  <text class="main" x="1495" y="625">학습용 PC로 업로드</text>
+
+  <!-- Upload to training PC -->
+  <path class="green-arrow" d="M 1495 570 V 310 H 1435 V 275"/>
+
+  <rect class="box-green" x="1310" y="165" width="250" height="110" rx="14"/>
+  <text class="main" x="1435" y="220">추가 학습 · 검증</text>
+
+  <path class="green-arrow" d="M 1560 220 H 1615"/>
+
+  <rect class="box-green" x="1630" y="165" width="230" height="110" rx="14"/>
+  <text class="main" x="1745" y="220">새 패키지 생성</text>
+
+  <!-- Redeployment to POS/KIOSK -->
+  <path class="green-arrow" d="M 1745 275 V 570"/>
+
+  <rect class="box-green" x="1630" y="570" width="230" height="110" rx="14"/>
+  <text class="main" x="1745" y="625">재배포 · 사용</text>
+</svg>

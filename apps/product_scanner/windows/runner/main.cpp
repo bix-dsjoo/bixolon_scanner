@@ -42,7 +42,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   Win32Window::Size size(kInitialWindowWidth, kInitialWindowHeight);
   const std::string product_version = BIXOLON_PRODUCT_VERSION;
   const std::wstring window_title =
-      L"BIXOLON Scanner v" +
+      L"BIXOLON Bakery AI Scanner v" +
       std::wstring(product_version.begin(), product_version.end());
   window.SetMinimumSize(
       Win32Window::Size(kMinimumWindowWidth, kMinimumWindowHeight));

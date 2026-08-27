@@ -1,6 +1,6 @@
-# BIXOLON Scanner 디자인 시스템
+# BIXOLON Bakery AI Scanner 디자인 시스템
 
-이 문서는 BIXOLON Scanner `0.1.5`에서 Windows 현장 작업자가 모델 결과를 반복 검수하고 기록하기 위한 UI 계약입니다. 구현의 기준 소스는 `lib/core/design_system`이며 화면별 임의 색상이나 크기를 추가하지 않습니다.
+이 문서는 BIXOLON Bakery AI Scanner `0.1.6`에서 Windows 현장 작업자가 모델 결과를 반복 검수하고 기록하기 위한 UI 계약입니다. 구현의 기준 소스는 `lib/core/design_system`이며 화면별 임의 색상이나 크기를 추가하지 않습니다.
 
 ## 디자인 방향
 
@@ -40,7 +40,7 @@
 
 카메라 `RECAPTURE`는 `촬영 이미지 → 촬영 화면으로 돌아가기 → 라이브 카메라 → 촬영하기 → 촬영 중 → 분석 중` 순서를 지킵니다. `촬영 화면으로 돌아가기`는 세션과 이전 판정만 비우며 촬영 API를 호출하지 않습니다. 실제 `촬영하기`를 실행한 뒤에는 `capturing`을 busy 상태로 사용해 중복 촬영·이미지 선택·세션 초기화를 막습니다.
 
-## 0.1.5 예측 수정·저장 계약
+## 0.1.6 예측 수정·저장 계약
 
 - 화면은 `왼쪽 이미지 검수대 + 오른쪽 객체/판정 패널 + 하단 고정 Action bar`로 구성합니다. 마우스·키보드·터치는 같은 결과를 내야 합니다.
 - `APPROVED`, `UNKNOWN`, `IMAGE_RECAPTURE`는 자동으로 Activity에 기록하지 않습니다. 상태와 관계없이 같은 위치의 단일 Primary `결과 저장`을 눌러야 저장합니다. `ERROR`는 저장 기록과 분리합니다.
@@ -120,7 +120,7 @@ Pretendard Variable을 기본으로 사용하고 미지원 환경에서는 `Sego
 
 ## 공통 컴포넌트
 
-- **Brand mark:** 화면 헤더는 제공된 BIXOLON 공식 SVG 워드마크만 `105×30px`로 표시하고 임시 포커스 아이콘·인접 제품명을 반복하지 않습니다. Windows 제목은 `BIXOLON Scanner`를 유지하고 실행 파일 아이콘은 `tool/generate_windows_icon.py`로 관리합니다.
+- **Brand mark:** 화면 헤더는 제공된 BIXOLON 공식 SVG 워드마크만 `105×30px`로 표시하고 임시 포커스 아이콘·인접 제품명을 반복하지 않습니다. Windows 제목은 `BIXOLON Bakery AI Scanner`를 유지하고 실행 파일 아이콘은 `tool/generate_windows_icon.py`로 관리합니다.
 - **Navigation item:** `스캔·활동`은 기존 BIXOLON 작업대의 돌출 탭을 유지합니다. 헤더 전체 Orange 하단선 위에서 선택 탭만 Surface 면과 위·좌·우 3px Orange 외곽을 사용하고 아래쪽은 열린 형태로 연결합니다. 포커스는 선택 여부와 무관한 Deep Orange 외곽으로 구분합니다.
 - **Status badge:** 아이콘과 경계에는 상태색, 문구에는 Ink를 사용합니다. 장식이나 카테고리 분류에는 사용하지 않습니다.
 - **Status priority:** 카메라 미연결은 스캔 화면에서 카메라 촬영을 막을 때만 Attention으로 표시합니다. 이미지 검수 중에는 `이미지 입력 · 카메라 미연결`, Activity에서는 `카메라 미연결`의 중립 배지로 낮추어 현재 작업과 경고가 경쟁하지 않게 합니다.
@@ -172,7 +172,7 @@ Pretendard Variable을 기본으로 사용하고 미지원 환경에서는 `Sego
 - 사용자가 누른 행동과 확인 대화상자의 질문·확정 버튼은 같은 대상과 동사를 사용합니다. `AppActionCopy`의 `촬영하기`, `다시 촬영`, `분석하기`, `분석 중`, `다시 분석`, `다시 연결`, `연결 확인 중`, `새로고침`, `모두 초기화`, `저장 중`, `다시 저장`을 화면별로 변형하지 않습니다.
 - 이미지 입력은 `다른 이미지 선택 → 다른 이미지를 선택할까요? → 다른 이미지 선택`, 카메라 입력은 `다시 촬영 → 다시 촬영할까요? → 다시 촬영`의 흐름을 유지합니다.
 - 사용자 화면에서는 구현 용어인 `Worker` 대신 `분석 서버`를 사용합니다. `Scan ID`, 모델명, reason code, 상태 enum처럼 식별에 필요한 기술 용어만 영어로 유지합니다.
-- 앱과 Windows 창의 제품명은 `BIXOLON Scanner`로 유지하되 화면 헤더는 BIXOLON 워드마크만 표시합니다.
+- 앱과 Windows 창의 제품명은 `BIXOLON Bakery AI Scanner`로 유지하되 화면 헤더는 BIXOLON 워드마크만 표시합니다.
 - 질문은 결과를 먼저 알 수 있는 짧은 능동형 문장으로 쓰고, 되돌릴 수 없는 영향은 본문 한 문장으로 분리합니다.
 
 ## 화면 계약

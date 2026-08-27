@@ -267,12 +267,29 @@ if (
     $null -ne $metadata.detector.ensemble -or
     [string]$metadata.detector.filename -ne "detector.onnx" -or
     [double]$metadata.detector.score_threshold -ne 0.65 -or
-    $null -ne $metadata.count_verifier -or
+    $null -eq $metadata.count_verifier -or
+    [string]$metadata.count_verifier.filename -ne "count-verifier.onnx" -or
+    [string]$metadata.count_verifier.comparison_mode -ne "object_presence" -or
+    [double]$metadata.count_verifier.confidence_threshold -ne 0.54 -or
     $null -eq $metadata.classifier_verification -or
     [double]$metadata.classifier_verification.ambiguity_maximum_approval_score -ne 0.5 -or
     [int]$metadata.classifier_verification.independent_embedder.fixed_batch_size -ne 1
 ) {
     throw "N100 benchmark Runtime does not match the selected consensus policy."
+}
+$countVerifierPath = Join-Path (
+    Join-Path $workerRoot "model-package"
+) ([string]$metadata.count_verifier.filename)
+$countVerifierChecksumProperty = $metadata.checksums.PSObject.Properties[
+    [string]$metadata.count_verifier.filename
+]
+if (
+    -not (Test-Path -LiteralPath $countVerifierPath -PathType Leaf) -or
+    $null -eq $countVerifierChecksumProperty -or
+    (Get-FileHash -Algorithm SHA256 -LiteralPath $countVerifierPath).Hash.ToLowerInvariant() -ne
+        [string]$countVerifierChecksumProperty.Value
+) {
+    throw "N100 benchmark object-presence verifier checksum is invalid."
 }
 if (-not (Test-Path -LiteralPath $resolvedImageDirectory -PathType Container)) {
     throw "Benchmark image directory is missing: $resolvedImageDirectory"
@@ -285,6 +302,11 @@ $images = @(
 if ($images.Count -lt $MinimumImages) {
     throw "N100 benchmark requires at least $MinimumImages JPEG/PNG images."
 }
+$imageSha256 = @(
+    foreach ($image in $images) {
+        (Get-FileHash -Algorithm SHA256 -LiteralPath $image.FullName).Hash.ToLowerInvariant()
+    }
+)
 
 $profiles = [System.Collections.Generic.List[object]]::new()
 $profiles.Add(
@@ -357,6 +379,12 @@ $report = [ordered]@{
     evaluation = "bixolon_worker_n100_openvino_1xauto"
     product_version = $script:ExpectedVersion
     provider = "openvino"
+    object_presence_verifier = [ordered]@{
+        comparison_mode = [string]$metadata.count_verifier.comparison_mode
+        confidence_threshold = [double]$metadata.count_verifier.confidence_threshold
+        provider = "OpenVINOExecutionProvider:CPU"
+        sha256 = [string]$countVerifierChecksumProperty.Value
+    }
     hardware = [ordered]@{
         cpu_name = $processor.Name
         cores = $processor.NumberOfCores
@@ -365,6 +393,7 @@ $report = [ordered]@{
         target_cpu_detected = $targetCpuDetected
     }
     sample_count = $images.Count
+    image_sha256 = $imageSha256
     warmup_count = $WarmupCount
     minimum_full_path_count = $MinimumFullPathImages
     response_contract_safe = $responseContractSafe
@@ -390,6 +419,7 @@ $report = [ordered]@{
     privacy = [ordered]@{
         image_paths_recorded = $false
         image_bytes_recorded = $false
+        image_sha256_recorded = $true
     }
     limitation = "Diagnostic measurement only; not an SLA or certification."
 }

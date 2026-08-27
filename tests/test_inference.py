@@ -1,3 +1,4 @@
+import threading
 from types import SimpleNamespace
 
 import numpy as np
@@ -7,14 +8,14 @@ from PIL import Image
 from bixolon_scanner import inference
 from bixolon_scanner.contracts.image import ORIGINAL_SIZE_INFO_KEY
 from bixolon_scanner.contracts.runtime_package_v2 import DetectorCrowdingPolicyMetadata
-from bixolon_scanner.errors import ProviderInitializationError
+from bixolon_scanner.errors import ModelExecutionError, ProviderInitializationError
 from bixolon_scanner.package import (
     ClassifierView,
     NeighborMaskClassifierMetadata,
     NeighborMaskClassifierView,
     StagedClassifierMetadata,
 )
-from bixolon_scanner.pipeline.ports import Detection
+from bixolon_scanner.pipeline.ports import Detection, DetectionResult
 
 
 class _Adapter:
@@ -462,6 +463,133 @@ def test_count_verifier_returns_label_and_confidence():
 
     assert count == 4
     assert confidence > 0.9
+
+
+def test_count_verified_detector_skips_verifier_for_existing_hard_recapture():
+    class Detector:
+        version = "1.0.0"
+
+        def detect(self, image):
+            del image
+            return DetectionResult(
+                [],
+                uncertain_candidate_count=1,
+                refinement_executed=True,
+            )
+
+    class Verifier:
+        metadata = SimpleNamespace(comparison_mode="object_presence")
+
+        def verify(self, image):
+            del image
+            raise AssertionError("hard recapture must not execute the presence verifier")
+
+    result = inference.CountVerifiedDetector(Detector(), Verifier()).detect(
+        np.zeros((64, 64, 3), dtype=np.uint8)
+    )
+
+    assert result.verified_count == 0
+    assert result.count_confidence == 1.0
+    assert result.refinement_executed is True
+
+
+def test_count_verified_detector_can_run_presence_verifier_in_parallel():
+    verifier_started = threading.Event()
+
+    class Detector:
+        version = "1.0.0"
+
+        def detect(self, image):
+            del image
+            assert verifier_started.wait(timeout=1)
+            return DetectionResult([Detection(0, 0, 32, 32, 0.99)])
+
+    class Verifier:
+        metadata = SimpleNamespace(comparison_mode="object_presence")
+
+        def verify(self, image):
+            del image
+            verifier_started.set()
+            return 1, 0.99
+
+    adapter = inference.CountVerifiedDetector(
+        Detector(),
+        Verifier(),
+        parallel_verification=True,
+    )
+    try:
+        result = adapter.detect(np.zeros((64, 64, 3), dtype=np.uint8))
+    finally:
+        adapter.close()
+
+    assert result.verified_count == 1
+    assert result.count_confidence == 0.99
+
+
+def test_parallel_presence_failure_does_not_replace_existing_hard_recapture():
+    class Detector:
+        version = "1.0.0"
+
+        def detect(self, image):
+            del image
+            return DetectionResult([], uncertain_candidate_count=1)
+
+    class Verifier:
+        metadata = SimpleNamespace(comparison_mode="object_presence")
+
+        def verify(self, image):
+            del image
+            raise ModelExecutionError
+
+    adapter = inference.CountVerifiedDetector(
+        Detector(),
+        Verifier(),
+        parallel_verification=True,
+    )
+    try:
+        result = adapter.detect(np.zeros((64, 64, 3), dtype=np.uint8))
+    finally:
+        adapter.close()
+
+    assert result.verified_count == 0
+    assert result.count_confidence == 1.0
+
+
+def test_count_verified_detector_replaces_and_closes_presence_verifier():
+    class Detector:
+        version = "1.0.0"
+
+        def detect(self, image):
+            del image
+            return DetectionResult([Detection(0, 0, 32, 32, 0.99)])
+
+    class Verifier:
+        metadata = SimpleNamespace(comparison_mode="object_presence")
+
+        def __init__(self, result):
+            self.result = result
+            self.closed = False
+
+        def verify(self, image):
+            del image
+            return self.result
+
+        def close(self):
+            self.closed = True
+
+    previous = Verifier((1, 0.98))
+    replacement = Verifier((1, 0.99))
+    adapter = inference.CountVerifiedDetector(Detector(), previous)
+    adapter.replace_verifier(replacement, parallel_verification=True)
+    try:
+        result = adapter.detect(np.zeros((64, 64, 3), dtype=np.uint8))
+    finally:
+        adapter.close()
+
+    assert previous.closed is True
+    assert replacement.closed is True
+    assert result.verified_count == 1
+    assert result.count_confidence == 0.99
 
 
 def test_detector_reports_separate_low_score_candidate():

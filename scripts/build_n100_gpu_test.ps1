@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.5",
+    [string]$Version = "0.1.6",
     [string]$Python311Executable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$ReuseBuildEnvironment,
@@ -125,6 +125,31 @@ foreach ($requiredPath in @(
 $config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
 if ([string]$config.version -ne $Version) {
     throw "Version config identity mismatch: $configPath"
+}
+$runtimeMetadataPath = Join-Path $stagingRoot "runtime/metadata.json"
+$runtimeMetadata = Get-Content -Raw -LiteralPath $runtimeMetadataPath | ConvertFrom-Json
+if (
+    [string]$runtimeMetadata.worker_version -ne $Version -or
+    $null -eq $runtimeMetadata.count_verifier -or
+    [string]$runtimeMetadata.count_verifier.filename -ne "count-verifier.onnx" -or
+    [string]$runtimeMetadata.count_verifier.comparison_mode -ne "object_presence" -or
+    [double]$runtimeMetadata.count_verifier.confidence_threshold -ne 0.54
+) {
+    throw "OpenVINO GPU test requires the final 0.1.6 object-presence Runtime."
+}
+$countVerifierPath = Join-Path (
+    Join-Path $stagingRoot "runtime"
+) ([string]$runtimeMetadata.count_verifier.filename)
+$countVerifierChecksumProperty = $runtimeMetadata.checksums.PSObject.Properties[
+    [string]$runtimeMetadata.count_verifier.filename
+]
+if (
+    -not (Test-Path -LiteralPath $countVerifierPath -PathType Leaf) -or
+    $null -eq $countVerifierChecksumProperty -or
+    (Get-FileHash -Algorithm SHA256 -LiteralPath $countVerifierPath).Hash.ToLowerInvariant() -ne
+        [string]$countVerifierChecksumProperty.Value
+) {
+    throw "OpenVINO GPU test object-presence verifier checksum is invalid."
 }
 
 Invoke-Native -FailureMessage "Python 3.11 validation failed" -Command {
@@ -253,6 +278,9 @@ try {
             baseline_detector = "OpenVINOExecutionProvider:CPU"
             baseline_embedder = "OpenVINOExecutionProvider:CPU"
             candidate_detector = "OpenVINOExecutionProvider:CPU"
+            baseline_object_presence_verifier = "OpenVINOExecutionProvider:CPU"
+            candidate_object_presence_verifier = "OpenVINOExecutionProvider:GPU"
+            candidate_object_presence_execution = "parallel_with_detector"
             candidate_embedder = "OpenVINOExecutionProvider:GPU"
             candidate_primary_embedder = "OpenVINOExecutionProvider:GPU"
             candidate_rotation_180_embedder = "OpenVINOExecutionProvider:GPU"
@@ -271,6 +299,12 @@ try {
         runtime = [ordered]@{
             file_count = $runtimeRecords.Count
             files = $runtimeRecords
+            object_presence_verifier = [ordered]@{
+                filename = [string]$runtimeMetadata.count_verifier.filename
+                comparison_mode = [string]$runtimeMetadata.count_verifier.comparison_mode
+                confidence_threshold = [double]$runtimeMetadata.count_verifier.confidence_threshold
+                sha256 = [string]$countVerifierChecksumProperty.Value
+            }
         }
         catalog = [ordered]@{
             file_count = $catalogRecords.Count

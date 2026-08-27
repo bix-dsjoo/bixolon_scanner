@@ -61,7 +61,7 @@ void main() {
     expect(find.byType(SvgPicture), findsOneWidget);
     expect(find.bySemanticsLabel('BIXOLON'), findsOneWidget);
     expect(tester.getSize(find.byType(SvgPicture)), const Size(105, 30));
-    expect(find.text('BIXOLON Scanner'), findsNothing);
+    expect(find.text('BIXOLON Bakery AI Scanner'), findsNothing);
     final topBar = tester.widget<Container>(
       find.byKey(const ValueKey('app-top-bar')),
     );
@@ -164,7 +164,7 @@ void main() {
     FocusManager.instance.primaryFocus?.unfocus();
     await tester.pumpAndSettle();
 
-    expect(find.text('BIXOLON Scanner'), findsNothing);
+    expect(find.text('BIXOLON Bakery AI Scanner'), findsNothing);
     expect(find.text('상품 확인이 필요해요'), findsOneWidget);
     expect(find.text('2번 상품을 확인해 주세요'), findsOneWidget);
     expect(find.text('선택하면 다음 확인 항목으로 이동해요.'), findsOneWidget);

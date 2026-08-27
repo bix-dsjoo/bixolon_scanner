@@ -1,7 +1,7 @@
-/// One product version embedded in every BIXOLON Scanner component.
+/// One product version embedded in every BIXOLON Bakery AI Scanner component.
 abstract final class VersionInfo {
   static const current = String.fromEnvironment(
     'BIXOLON_VERSION',
-    defaultValue: '0.1.5',
+    defaultValue: '0.1.6',
   );
 }
