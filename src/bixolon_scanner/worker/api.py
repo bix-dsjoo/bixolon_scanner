@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
 import time
 import uuid
@@ -13,24 +12,11 @@ from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
 from .. import __version__
-from ..contracts import (
-    ScanResponse,
-    Status,
-    load_runtime_package_v2,
-    load_store_catalog_package,
-)
-from ..contracts.errors import (
-    MissingImageError,
-    ModelExecutionError,
-    ProviderInitializationError,
-    ScannerError,
-)
-from ..contracts.model_package import load_model_package
+from ..contracts import ScanResponse, Status
+from ..contracts.errors import MissingImageError, ModelExecutionError, ScannerError
 from ..pipeline import DecisionPipeline
-from ..runtime.catalog import build_catalog_classifier
-from ..runtime.detector_v2 import build_detector_v2, replace_count_verifier_v2
 from ..runtime.imaging import decode_image
-from ..runtime.onnx import build_onnx_adapters, select_provider
+from .runtime_factory import WorkerRuntime, build_worker_runtime
 from .settings import WorkerSettings
 
 LOGGER = logging.getLogger(__name__)
@@ -76,144 +62,12 @@ def create_app(
             thread_name_prefix="bixolon-inference",
         )
         app.state.inference_executor = inference_executor
-        managed_pipeline: DecisionPipeline | None = None
-        managed_detector = None
+        runtime: WorkerRuntime | None = None
         try:
-            if injected_pipeline is None:
-                metadata_payload = json.loads(
-                    (worker_settings.package_dir / "metadata.json").read_text(encoding="utf-8")
-                )
-                if metadata_payload.get("schema_version") == "2.0":
-                    if worker_settings.catalog_dir is None:
-                        raise ValueError("2.0 Worker requires a Store Catalog directory")
-                    runtime_package = load_runtime_package_v2(worker_settings.package_dir)
-                    catalog = load_store_catalog_package(
-                        worker_settings.catalog_dir,
-                        signing_key=(
-                            None
-                            if worker_settings.catalog_signing_key is None
-                            else worker_settings.catalog_signing_key.get_secret_value().encode()
-                        ),
-                        expected_store_id=worker_settings.catalog_store_id,
-                        expected_key_id=worker_settings.catalog_key_id,
-                    )
-                    provider = select_provider(worker_settings.provider)
-                    embedder_provider = (
-                        provider
-                        if worker_settings.embedder_provider == "same"
-                        else select_provider(worker_settings.embedder_provider)
-                    )
-
-                    detector = build_detector_v2(
-                        runtime_package,
-                        provider,
-                        worker_settings.cuda_dll_dir,
-                        cpu_detector_workers=worker_settings.cpu_detector_workers,
-                        cpu_intra_op_threads=(worker_settings.cpu_detector_intra_op_threads),
-                        openvino_cache_dir=worker_settings.openvino_cache_dir,
-                    )
-                    managed_detector = detector
-                    detector.warmup()
-
-                    def build_and_warm_classifier(selected_provider):
-                        selected_classifier, selected_embedder = build_catalog_classifier(
-                            runtime_package,
-                            catalog,
-                            selected_provider,
-                            worker_settings.cuda_dll_dir,
-                            cpu_intra_op_threads=(worker_settings.cpu_embedder_intra_op_threads),
-                            openvino_cache_dir=worker_settings.openvino_cache_dir,
-                        )
-                        try:
-                            selected_embedder.warmup()
-                            classifier_warmup = getattr(selected_classifier, "warmup", None)
-                            if callable(classifier_warmup):
-                                classifier_warmup()
-                        except Exception:
-                            close = getattr(selected_classifier, "close", None)
-                            if callable(close):
-                                close()
-                            else:
-                                close = getattr(selected_embedder, "close", None)
-                                if callable(close):
-                                    close()
-                            raise
-                        return selected_classifier, selected_embedder
-
-                    try:
-                        classifier, embedder = build_and_warm_classifier(embedder_provider)
-                        if (
-                            embedder_provider == "openvino_gpu"
-                            and runtime_package.metadata.count_verifier is not None
-                        ):
-                            replace_count_verifier_v2(
-                                detector,
-                                runtime_package,
-                                embedder_provider,
-                                worker_settings.cuda_dll_dir,
-                                cpu_intra_op_threads=(
-                                    worker_settings.cpu_detector_intra_op_threads
-                                ),
-                                openvino_cache_dir=worker_settings.openvino_cache_dir,
-                                parallel_verification=True,
-                            )
-                    except (ProviderInitializationError, ModelExecutionError) as exc:
-                        fallback_enabled = (
-                            worker_settings.embedder_fallback_provider == "same"
-                            and embedder_provider != provider
-                        )
-                        if not fallback_enabled:
-                            raise
-                        LOGGER.warning(
-                            "embedder_provider_fallback",
-                            extra={
-                                "requested_provider": embedder_provider,
-                                "fallback_provider": provider,
-                                "exception_type": type(exc).__name__,
-                            },
-                        )
-                        embedder_provider = provider
-                        classifier, embedder = build_and_warm_classifier(embedder_provider)
-                    managed_pipeline = DecisionPipeline(
-                        detector,
-                        classifier,
-                        classifier.metadata,
-                        runtime_package.metadata.quality,
-                        runtime_package.metadata.count_verifier,
-                        worker_version=runtime_package.metadata.worker_version,
-                        embedder_version=runtime_package.metadata.embedder.version,
-                        detector_policy_version=runtime_package.metadata.detector_policy_version,
-                        classifier_policy_version=runtime_package.metadata.classifier_policy.version,
-                        catalog_version=catalog.metadata.catalog_version,
-                    )
-                    app.state.pipeline = managed_pipeline
-                    app.state.jpeg_draft_size = runtime_package.metadata.input.jpeg_draft_size
-                else:
-                    model_package = load_model_package(worker_settings.package_dir)
-                    detector, classifier, provider = build_onnx_adapters(
-                        model_package,
-                        worker_settings.provider,
-                        cuda_dll_dir=worker_settings.cuda_dll_dir,
-                    )
-                    embedder_provider = provider
-                    managed_detector = detector
-                    managed_pipeline = DecisionPipeline(
-                        detector,
-                        classifier,
-                        model_package.metadata.classifier,
-                        model_package.metadata.quality,
-                        model_package.metadata.count_verifier,
-                        worker_version=model_package.metadata.package_version,
-                    )
-                    app.state.pipeline = managed_pipeline
-                    app.state.jpeg_draft_size = model_package.metadata.input.jpeg_draft_size
-                app.state.provider = (
-                    provider if provider == embedder_provider else f"{provider}+{embedder_provider}"
-                )
-            else:
-                app.state.pipeline = injected_pipeline
-                app.state.provider = "injected"
-                app.state.jpeg_draft_size = worker_settings.jpeg_draft_size
+            runtime = build_worker_runtime(worker_settings, injected_pipeline)
+            app.state.pipeline = runtime.pipeline
+            app.state.provider = runtime.provider
+            app.state.jpeg_draft_size = runtime.jpeg_draft_size
             app.state.worker_version = app.state.pipeline.worker_version
             app.state.ready = True
             yield
@@ -224,12 +78,8 @@ def create_app(
                 wait=True,
                 cancel_futures=True,
             )
-            if managed_pipeline is not None:
-                managed_pipeline.close()
-            elif managed_detector is not None:
-                close = getattr(managed_detector, "close", None)
-                if callable(close):
-                    close()
+            if runtime is not None:
+                runtime.close()
 
     app = FastAPI(title="Bixolon Image Decision Worker", version=__version__, lifespan=lifespan)
     app.state.ready = False

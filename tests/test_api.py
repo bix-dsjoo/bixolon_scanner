@@ -15,7 +15,7 @@ from bixolon_scanner.config import WorkerSettings
 from bixolon_scanner.contracts.errors import ProviderInitializationError
 from bixolon_scanner.inference import Detection, DetectionResult
 from bixolon_scanner.pipeline import DecisionPipeline
-from bixolon_scanner.worker import api as worker_api
+from bixolon_scanner.worker import runtime_factory as worker_runtime
 
 
 class Detector:
@@ -175,16 +175,18 @@ def test_v2_runtime_warms_models_before_readiness(
             del args
             self.metadata = classifier_metadata
 
-    monkeypatch.setattr(worker_api, "load_runtime_package_v2", lambda _: runtime)
-    monkeypatch.setattr(worker_api, "load_store_catalog_package", lambda *args, **kwargs: catalog)
-    monkeypatch.setattr(worker_api, "select_provider", lambda _: "cpu")
+    monkeypatch.setattr(worker_runtime, "load_runtime_package_v2", lambda _: runtime)
     monkeypatch.setattr(
-        worker_api,
+        worker_runtime, "load_store_catalog_package", lambda *args, **kwargs: catalog
+    )
+    monkeypatch.setattr(worker_runtime, "select_provider", lambda _: "cpu")
+    monkeypatch.setattr(
+        worker_runtime,
         "build_detector_v2",
         lambda *args, **kwargs: WarmDetector(),
     )
     monkeypatch.setattr(
-        worker_api,
+        worker_runtime,
         "build_catalog_classifier",
         lambda *args, **kwargs: (CatalogClassifier(), WarmEmbedder()),
     )
@@ -270,11 +272,13 @@ def test_v2_runtime_falls_back_to_detector_provider_when_gpu_embedder_fails(
         )
         return WarmDetector()
 
-    monkeypatch.setattr(worker_api, "load_runtime_package_v2", lambda _: runtime)
-    monkeypatch.setattr(worker_api, "load_store_catalog_package", lambda *args, **kwargs: catalog)
-    monkeypatch.setattr(worker_api, "select_provider", lambda value: value)
-    monkeypatch.setattr(worker_api, "build_detector_v2", build_detector)
-    monkeypatch.setattr(worker_api, "build_catalog_classifier", build_classifier)
+    monkeypatch.setattr(worker_runtime, "load_runtime_package_v2", lambda _: runtime)
+    monkeypatch.setattr(
+        worker_runtime, "load_store_catalog_package", lambda *args, **kwargs: catalog
+    )
+    monkeypatch.setattr(worker_runtime, "select_provider", lambda value: value)
+    monkeypatch.setattr(worker_runtime, "build_detector_v2", build_detector)
+    monkeypatch.setattr(worker_runtime, "build_catalog_classifier", build_classifier)
 
     app = create_app(
         settings=WorkerSettings(
@@ -351,13 +355,15 @@ def test_v2_runtime_runs_gpu_presence_in_parallel_after_gpu_embedder_warmup(
         assert kwargs["parallel_verification"] is True
         events.append("presence")
 
-    monkeypatch.setattr(worker_api, "load_runtime_package_v2", lambda _: runtime)
-    monkeypatch.setattr(worker_api, "load_store_catalog_package", lambda *args, **kwargs: catalog)
-    monkeypatch.setattr(worker_api, "select_provider", lambda value: value)
-    monkeypatch.setattr(worker_api, "build_detector_v2", build_detector)
-    monkeypatch.setattr(worker_api, "replace_count_verifier_v2", replace_count_verifier)
+    monkeypatch.setattr(worker_runtime, "load_runtime_package_v2", lambda _: runtime)
     monkeypatch.setattr(
-        worker_api,
+        worker_runtime, "load_store_catalog_package", lambda *args, **kwargs: catalog
+    )
+    monkeypatch.setattr(worker_runtime, "select_provider", lambda value: value)
+    monkeypatch.setattr(worker_runtime, "build_detector_v2", build_detector)
+    monkeypatch.setattr(worker_runtime, "replace_count_verifier_v2", replace_count_verifier)
+    monkeypatch.setattr(
+        worker_runtime,
         "build_catalog_classifier",
         lambda *args, **kwargs: (CatalogClassifier(), WarmEmbedder()),
     )

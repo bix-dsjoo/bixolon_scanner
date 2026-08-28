@@ -18,8 +18,15 @@ from ..contracts.model_package import (
 )
 from ..contracts.runtime_package_v2 import DetectorCrowdingPolicyMetadata
 from ..pipeline.ports import ClassificationResult, Detection, DetectionResult
+from .geometry import box_containment, box_iou, nms
 from .imaging import image_original_size
 from .onnx_session import ExecutionProvider, OrtRunner, select_provider
+from .preprocessing import (
+    apply_classifier_background_masks,
+    classifier_crop_box,
+    classifier_neighbor_ownership_mask,
+    prepare_rgb,
+)
 
 
 def _sigmoid(values: np.ndarray) -> np.ndarray:
@@ -38,71 +45,11 @@ def _softmax_rows(values: np.ndarray, temperature: float) -> np.ndarray:
     return (exponential / exponential.sum(axis=1, keepdims=True)).astype(np.float32)
 
 
-def _nms(
-    detections: list[Detection],
-    threshold: float,
-    containment_threshold: float | None = None,
-    class_aware_containment: bool = False,
-) -> list[Detection]:
-    ordered = sorted(detections, key=lambda detection: detection.score, reverse=True)
-    kept: list[Detection] = []
-    while ordered:
-        current = ordered.pop(0)
-        kept.append(current)
-        remaining: list[Detection] = []
-        current_area = max(0.0, current.x2 - current.x1) * max(0.0, current.y2 - current.y1)
-        for candidate in ordered:
-            ix1 = max(current.x1, candidate.x1)
-            iy1 = max(current.y1, candidate.y1)
-            ix2 = min(current.x2, candidate.x2)
-            iy2 = min(current.y2, candidate.y2)
-            intersection = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
-            candidate_area = max(0.0, candidate.x2 - candidate.x1) * max(
-                0.0, candidate.y2 - candidate.y1
-            )
-            union = current_area + candidate_area - intersection
-            smaller_area = min(current_area, candidate_area)
-            contained = (
-                containment_threshold is not None
-                and smaller_area > 0.0
-                and intersection / smaller_area >= containment_threshold
-                and (
-                    not class_aware_containment
-                    or current.class_id is not None
-                    and current.class_id == candidate.class_id
-                )
-            )
-            if (union <= 0.0 or intersection / union <= threshold) and not contained:
-                remaining.append(candidate)
-        ordered = remaining
-    return kept
-
-
-def _box_iou(left: Detection, right: Detection) -> float:
-    ix1 = max(left.x1, right.x1)
-    iy1 = max(left.y1, right.y1)
-    ix2 = min(left.x2, right.x2)
-    iy2 = min(left.y2, right.y2)
-    intersection = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
-    left_area = max(0.0, left.x2 - left.x1) * max(0.0, left.y2 - left.y1)
-    right_area = max(0.0, right.x2 - right.x1) * max(0.0, right.y2 - right.y1)
-    union = left_area + right_area - intersection
-    return intersection / union if union > 0.0 else 0.0
-
-
-def _box_containment(outer: Detection, inner: Detection) -> float:
-    ix1 = max(outer.x1, inner.x1)
-    iy1 = max(outer.y1, inner.y1)
-    ix2 = min(outer.x2, inner.x2)
-    iy2 = min(outer.y2, inner.y2)
-    intersection = max(0.0, ix2 - ix1) * max(0.0, iy2 - iy1)
-    inner_area = max(0.0, inner.x2 - inner.x1) * max(0.0, inner.y2 - inner.y1)
-    return intersection / inner_area if inner_area > 0.0 else 0.0
-
-
 sigmoid = _sigmoid
-nms = _nms
-box_iou = _box_iou
+_nms = nms
+_box_iou = box_iou
+_box_containment = box_containment
+_prepare_rgb = prepare_rgb
 
 
 def _minimum_normalized_center_distance(detections: list[Detection]) -> float:
@@ -213,157 +160,6 @@ def detector_crowding_requires_recapture(
     )
     duplicate_fraction = duplicate_count / len(candidates)
     return duplicate_fraction >= policy.query_duplicate_minimum_fraction
-
-
-def _prepare_rgb(
-    image: np.ndarray | Image.Image,
-    size: tuple[int, int],
-    mean: tuple[float, ...],
-    std: tuple[float, ...],
-    *,
-    reducing_gap: float | None = None,
-) -> np.ndarray:
-    source = image if isinstance(image, Image.Image) else Image.fromarray(image, mode="RGB")
-    pil = source.resize(
-        (size[1], size[0]),
-        Image.Resampling.BILINEAR,
-        reducing_gap=reducing_gap,
-    )
-    tensor = np.ascontiguousarray(
-        np.transpose(np.asarray(pil, dtype=np.uint8), (2, 0, 1)),
-        dtype=np.float32,
-    )
-    tensor /= np.float32(255.0)
-    if any(value != 0.0 for value in mean):
-        tensor -= np.asarray(mean, dtype=np.float32)[:, None, None]
-    if any(value != 1.0 for value in std):
-        tensor /= np.asarray(std, dtype=np.float32)[:, None, None]
-    return tensor
-
-
-prepare_rgb = _prepare_rgb
-
-
-def classifier_neighbor_ownership_mask(
-    detections: list[Detection],
-    target_index: int,
-    *,
-    image_width: int,
-    image_height: int,
-    output_size: int,
-    margin_ratio: float,
-    distance_bias: float,
-    shared_scale: bool,
-    crop_mode: str = "box_resize",
-) -> np.ndarray:
-    if not 0 <= target_index < len(detections):
-        raise ValueError("target detection index is outside the detection list")
-    if output_size < 1 or margin_ratio < 0.0 or distance_bias < -1.0:
-        raise ValueError("mask size, margin, and distance bias are invalid")
-    target = detections[target_index]
-    target_width = target.x2 - target.x1
-    target_height = target.y2 - target.y1
-    if target_width <= 0.0 or target_height <= 0.0:
-        raise ValueError("target detection box is empty")
-    if crop_mode == "square_context":
-        crop_x1, crop_y1, crop_x2, crop_y2 = classifier_crop_box(
-            target,
-            image_width,
-            image_height,
-            margin_ratio=margin_ratio,
-            crop_mode=crop_mode,
-        )
-    elif crop_mode == "box_resize":
-        crop_x1 = max(0.0, target.x1 - target_width * margin_ratio)
-        crop_y1 = max(0.0, target.y1 - target_height * margin_ratio)
-        crop_x2 = min(float(image_width), target.x2 + target_width * margin_ratio)
-        crop_y2 = min(float(image_height), target.y2 + target_height * margin_ratio)
-    else:
-        raise ValueError(f"unsupported classifier crop mode: {crop_mode}")
-    x = crop_x1 + (np.arange(output_size) + 0.5) * (crop_x2 - crop_x1) / output_size
-    y = crop_y1 + (np.arange(output_size) + 0.5) * (crop_y2 - crop_y1) / output_size
-    grid_x, grid_y = np.meshgrid(x, y)
-    target_center_x = (target.x1 + target.x2) / 2.0
-    target_center_y = (target.y1 + target.y2) / 2.0
-    target_distance = ((grid_x - target_center_x) / max(target_width / 2.0, 1e-12)) ** 2 + (
-        (grid_y - target_center_y) / max(target_height / 2.0, 1e-12)
-    ) ** 2
-    mask = np.zeros((output_size, output_size), dtype=bool)
-    for index, other in enumerate(detections):
-        if index == target_index:
-            continue
-        other_width = other.x2 - other.x1
-        other_height = other.y2 - other.y1
-        if other_width <= 0.0 or other_height <= 0.0:
-            continue
-        inside = (
-            (grid_x >= other.x1)
-            & (grid_x <= other.x2)
-            & (grid_y >= other.y1)
-            & (grid_y <= other.y2)
-        )
-        width_scale = target_width if shared_scale else other_width
-        height_scale = target_height if shared_scale else other_height
-        other_distance = (
-            (grid_x - (other.x1 + other.x2) / 2.0) / max(width_scale / 2.0, 1e-12)
-        ) ** 2 + ((grid_y - (other.y1 + other.y2) / 2.0) / max(height_scale / 2.0, 1e-12)) ** 2
-        mask |= inside & (other_distance + distance_bias < target_distance)
-    return mask
-
-
-def apply_classifier_background_masks(batch: np.ndarray, masks: np.ndarray) -> np.ndarray:
-    if batch.ndim != 4 or masks.shape != (len(batch), batch.shape[2], batch.shape[3]):
-        raise ValueError("classifier batch and neighbor masks are not aligned")
-    output = batch.copy()
-    borders = np.concatenate(
-        (
-            batch[:, :, 0, :],
-            batch[:, :, -1, :],
-            batch[:, :, 1:-1, 0],
-            batch[:, :, 1:-1, -1],
-        ),
-        axis=2,
-    )
-    background = np.median(borders, axis=2)
-    for channel in range(batch.shape[1]):
-        output[:, channel] = np.where(
-            masks,
-            background[:, channel, None, None],
-            batch[:, channel],
-        )
-    return output
-
-
-def classifier_crop_box(
-    detection: Detection,
-    image_width: int,
-    image_height: int,
-    *,
-    margin_ratio: float,
-    crop_mode: str,
-) -> tuple[int, int, int, int]:
-    margin_x = (detection.x2 - detection.x1) * margin_ratio
-    margin_y = (detection.y2 - detection.y1) * margin_ratio
-    x1 = max(0.0, detection.x1 - margin_x)
-    y1 = max(0.0, detection.y1 - margin_y)
-    x2 = min(float(image_width), detection.x2 + margin_x)
-    y2 = min(float(image_height), detection.y2 + margin_y)
-    if crop_mode == "square_context":
-        side = min(max(x2 - x1, y2 - y1), float(image_width), float(image_height))
-        center_x = (x1 + x2) * 0.5
-        center_y = (y1 + y2) * 0.5
-        x1 = min(max(0.0, center_x - side * 0.5), image_width - side)
-        y1 = min(max(0.0, center_y - side * 0.5), image_height - side)
-        x2 = x1 + side
-        y2 = y1 + side
-    elif crop_mode != "box_resize":
-        raise ValueError(f"unsupported classifier crop mode: {crop_mode}")
-    return (
-        max(0, int(np.floor(x1))),
-        max(0, int(np.floor(y1))),
-        min(image_width, int(np.ceil(x2))),
-        min(image_height, int(np.ceil(y2))),
-    )
 
 
 class OnnxDetector:

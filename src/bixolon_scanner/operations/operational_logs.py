@@ -15,6 +15,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 from ..contracts.model_package import load_model_package, sha256_file
 from ..pipeline.ports import Detection
+from ..runtime.geometry import box_iou
 from ..runtime.imaging import decode_image
 from ..runtime.onnx import OnnxDetector, build_onnx_adapters
 from ..training.data import read_manifest
@@ -169,18 +170,6 @@ def _font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
     return ImageFont.load_default()
 
 
-def _box_iou(left: Detection, right: Detection) -> float:
-    x1 = max(left.x1, right.x1)
-    y1 = max(left.y1, right.y1)
-    x2 = min(left.x2, right.x2)
-    y2 = min(left.y2, right.y2)
-    intersection = max(0.0, x2 - x1) * max(0.0, y2 - y1)
-    left_area = max(0.0, left.x2 - left.x1) * max(0.0, left.y2 - left.y1)
-    right_area = max(0.0, right.x2 - right.x1) * max(0.0, right.y2 - right.y1)
-    union = left_area + right_area - intersection
-    return intersection / union if union > 0.0 else 0.0
-
-
 def _render_review(
     image_path: Path,
     record: dict[str, Any],
@@ -219,7 +208,7 @@ def _render_review(
         draw.text((x, text_y), text, fill=color, font=font, stroke_width=2, stroke_fill=(0, 0, 0))
 
     for detection in shadow:
-        if any(_box_iou(detection, accepted) >= 0.5 for accepted in accepted_boxes):
+        if any(box_iou(detection, accepted) >= 0.5 for accepted in accepted_boxes):
             continue
         color = (255, 170, 0)
         draw.rectangle(

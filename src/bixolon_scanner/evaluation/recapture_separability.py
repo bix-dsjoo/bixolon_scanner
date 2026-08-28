@@ -11,7 +11,7 @@ import numpy as np
 from PIL import Image, ImageOps
 
 from ..pipeline.ports import Detection
-from ..runtime.onnx import nms
+from ..runtime.geometry import box_iou, nms
 
 _GEOMETRY_SCORE_THRESHOLDS = (0.05, 0.1, 0.145, 0.25, 0.485, 0.65)
 
@@ -49,16 +49,6 @@ def _selected_detections(
         if score >= score_threshold and _allowed_box(box, maximum_aspect_ratio)
     ]
     return nms(candidates, nms_iou_threshold)
-
-
-def _box_iou(left: Detection, right: Detection) -> float:
-    intersection_width = max(0.0, min(left.x2, right.x2) - max(left.x1, right.x1))
-    intersection_height = max(0.0, min(left.y2, right.y2) - max(left.y1, right.y1))
-    intersection = intersection_width * intersection_height
-    left_area = (left.x2 - left.x1) * (left.y2 - left.y1)
-    right_area = (right.x2 - right.x1) * (right.y2 - right.y1)
-    union = left_area + right_area - intersection
-    return intersection / union if union > 0 else 0.0
 
 
 def _box_geometry_features(
@@ -108,7 +98,7 @@ def _box_geometry_features(
             intersection_width = max(0.0, min(left.x2, right.x2) - max(left.x1, right.x1))
             intersection_height = max(0.0, min(left.y2, right.y2) - max(left.y1, right.y1))
             intersection = intersection_width * intersection_height
-            pair_ious.append(_box_iou(left, right))
+            pair_ious.append(box_iou(left, right))
             pair_ioas.append(intersection / min(left_area, right_area))
             right_center = ((right.x1 + right.x2) / 2.0, (right.y1 + right.y2) / 2.0)
             center_distance = math.hypot(
@@ -156,9 +146,7 @@ def _query_cluster_features(
             f"{prefix}_mean_cluster_size": 0.0,
             f"{prefix}_duplicate_fraction": 0.0,
         }
-    cluster_sizes = [
-        sum(_box_iou(anchor, item) >= 0.7 for item in candidates) for anchor in anchors
-    ]
+    cluster_sizes = [sum(box_iou(anchor, item) >= 0.7 for item in candidates) for anchor in anchors]
     duplicate_count = sum(max(size - 1, 0) for size in cluster_sizes)
     return {
         f"{prefix}_maximum_cluster_size": float(max(cluster_sizes)),
@@ -406,7 +394,7 @@ def best_detector_policy(
                                 continue
                             if (
                                 not accepted
-                                or max(_box_iou(candidate, item) for item in accepted)
+                                or max(box_iou(candidate, item) for item in accepted)
                                 < match_iou_threshold
                             ):
                                 uncertain = True
