@@ -12,6 +12,8 @@ import '../../../shared/models/scan_models.dart';
 import '../../../shared/presentation/recapture_presentation.dart';
 import '../data/image_input.dart';
 import '../data/scanner_api.dart';
+import 'review_session.dart';
+import 'scan_performance_tracker.dart';
 
 enum CameraIssueType { unavailable, captureFailed }
 
@@ -45,14 +47,8 @@ class ScannerController extends ChangeNotifier {
   final ProductCatalog _catalog;
   final Duration completionFeedbackDuration;
   Timer? _completionFeedbackTimer;
-  Stopwatch? _resultFirstFrameStopwatch;
-  double _performanceBeforeFirstFrameMs = 0.0;
-  double _cameraCaptureMs = 0.0;
-  double _fileReadMs = 0.0;
-  double _flutterImageDecodeMs = 0.0;
-  Future<void>? _imageDecodeFuture;
-  var _imageGeneration = 0;
-  bool _decodeOverlappedWithAnalysis = false;
+  final ScanPerformanceTracker _performanceTracker = ScanPerformanceTracker();
+  final ReviewSession _reviewSession = ReviewSession();
   Future<void>? _workerPreparation;
 
   InputMode inputMode = InputMode.camera;
@@ -86,11 +82,8 @@ class ScannerController extends ChangeNotifier {
   ScanPerformanceMetrics? performanceMetrics;
   int _activityDataRevision = 0;
   String? _latestSavedScanId;
-  final List<_ReviewSnapshot> _undoStack = <_ReviewSnapshot>[];
-  final List<_ReviewSnapshot> _redoStack = <_ReviewSnapshot>[];
   final Set<String> _savedRecaptureScanIds = <String>{};
   final Set<String> _savedMissedDetectionScanIds = <String>{};
-  _ReviewSnapshot? _activeBoxEditStart;
   var _nextOperatorObjectNumber = 1;
   bool cameraInitializing = true;
   bool workerInitializing = false;
@@ -157,8 +150,8 @@ class ScannerController extends ChangeNotifier {
   bool get hasUserChanges =>
       detections.any((detection) => detection.wasUserChanged) ||
       operatorRequiresRecapture != isRecapture;
-  bool get canUndoReviewEdit => _undoStack.isNotEmpty;
-  bool get canRedoReviewEdit => _redoStack.isNotEmpty;
+  bool get canUndoReviewEdit => _reviewSession.canUndo;
+  bool get canRedoReviewEdit => _reviewSession.canRedo;
   Set<OperatorIssueCode> get inferredIssueCodes {
     final values = <OperatorIssueCode>{
       for (final detection in detections) ...detection.inferredIssueCodes,
@@ -399,7 +392,7 @@ class ScannerController extends ChangeNotifier {
     searchItemId = null;
     _resetReviewState();
     performanceMetrics = null;
-    _resultFirstFrameStopwatch = null;
+    _performanceTracker.resetAnalysis();
     _notify();
     try {
       final apiStopwatch = Stopwatch()..start();
@@ -409,7 +402,7 @@ class ScannerController extends ChangeNotifier {
       );
       final completed = await Future.wait<Object?>([
         resultFuture,
-        _imageDecodeFuture ?? Future<void>.value(),
+        _performanceTracker.imageDecodeFuture,
       ]);
       final result = completed.first! as ScanResponse;
       apiStopwatch.stop();
@@ -438,37 +431,15 @@ class ScannerController extends ChangeNotifier {
           (detections.isEmpty ? null : detections.first.source.itemId);
       mapping.stop();
       final imageDimensions = imageSize;
-      final effectiveApiTotalMs =
-          apiTimings?.totalMs ?? apiStopwatch.elapsedMicroseconds / 1000.0;
-      final decodeAndApiMs = _decodeOverlappedWithAnalysis
-          ? _flutterImageDecodeMs > effectiveApiTotalMs
-                ? _flutterImageDecodeMs
-                : effectiveApiTotalMs
-          : _flutterImageDecodeMs + effectiveApiTotalMs;
-      _performanceBeforeFirstFrameMs =
-          _cameraCaptureMs +
-          _fileReadMs +
-          decodeAndApiMs +
-          mapping.elapsedMicroseconds / 1000.0;
-      performanceMetrics = ScanPerformanceMetrics(
+      performanceMetrics = _performanceTracker.completeAnalysis(
         imageWidth: imageDimensions?.width.round() ?? 0,
         imageHeight: imageDimensions?.height.round() ?? 0,
         imageSizeBytes: bytes.length,
-        provider: apiTimings?.provider,
-        cameraCaptureMs: _cameraCaptureMs,
-        fileReadMs: _fileReadMs,
-        flutterImageDecodeMs: _flutterImageDecodeMs,
-        readinessMs: apiTimings?.readinessMs ?? 0.0,
-        requestBuildMs: apiTimings?.requestBuildMs ?? 0.0,
-        httpRoundTripMs: apiTimings?.httpRoundTripMs ?? effectiveApiTotalMs,
-        responseBodyReadMs: apiTimings?.responseBodyReadMs ?? 0.0,
-        responseParseMs: apiTimings?.responseParseMs ?? 0.0,
+        apiTimings: apiTimings,
+        fallbackApiTotalMs: apiStopwatch.elapsedMicroseconds / 1000.0,
         resultMappingMs: mapping.elapsedMicroseconds / 1000.0,
-        resultFirstFrameMs: 0.0,
-        endToEndMs: _performanceBeforeFirstFrameMs,
-        worker: result.stageTimings,
+        workerTimings: result.stageTimings,
       );
-      _resultFirstFrameStopwatch = Stopwatch()..start();
     } on ScannerApiException catch (error) {
       processState = ProcessState.error;
       errorMessage = error.message;
@@ -491,33 +462,11 @@ class ScannerController extends ChangeNotifier {
 
   void recordResultFirstFrame(String requestId) {
     final current = performanceMetrics;
-    final stopwatch = _resultFirstFrameStopwatch;
-    if (response?.requestId != requestId ||
-        current == null ||
-        stopwatch == null) {
+    if (response?.requestId != requestId || current == null) {
       return;
     }
-    _resultFirstFrameStopwatch = null;
-    stopwatch.stop();
-    final renderMs = stopwatch.elapsedMicroseconds / 1000.0;
-    performanceMetrics = ScanPerformanceMetrics(
-      imageWidth: current.imageWidth,
-      imageHeight: current.imageHeight,
-      imageSizeBytes: current.imageSizeBytes,
-      provider: current.provider,
-      cameraCaptureMs: current.cameraCaptureMs,
-      fileReadMs: current.fileReadMs,
-      flutterImageDecodeMs: current.flutterImageDecodeMs,
-      readinessMs: current.readinessMs,
-      requestBuildMs: current.requestBuildMs,
-      httpRoundTripMs: current.httpRoundTripMs,
-      responseBodyReadMs: current.responseBodyReadMs,
-      responseParseMs: current.responseParseMs,
-      resultMappingMs: current.resultMappingMs,
-      resultFirstFrameMs: renderMs,
-      endToEndMs: _performanceBeforeFirstFrameMs + renderMs,
-      worker: current.worker,
-    );
+    final updated = _performanceTracker.recordResultFirstFrame(current);
+    if (updated != null) performanceMetrics = updated;
   }
 
   void selectDetection(String itemId) {
@@ -684,10 +633,12 @@ class ScannerController extends ChangeNotifier {
   }
 
   void beginBoxEdit() {
-    if (selectedDetection == null || isBusy || _activeBoxEditStart != null) {
+    if (selectedDetection == null ||
+        isBusy ||
+        _reviewSession.hasActiveBoxEdit) {
       return;
     }
-    _activeBoxEditStart = _snapshot();
+    _reviewSession.beginBoxEdit(_snapshot());
   }
 
   void updateSelectedBbox(BoundingBox bbox, {bool recordUndo = false}) {
@@ -703,8 +654,7 @@ class ScannerController extends ChangeNotifier {
   }
 
   void commitBoxEdit() {
-    final start = _activeBoxEditStart;
-    _activeBoxEditStart = null;
+    final start = _reviewSession.finishBoxEdit();
     if (start == null) return;
     final current = selectedDetection;
     final before = start.detections.where(
@@ -715,44 +665,41 @@ class ScannerController extends ChangeNotifier {
         before.first.finalBbox == current.finalBbox) {
       return;
     }
-    _undoStack.add(start);
-    _redoStack.clear();
+    _reviewSession.record(start);
     _syncIssueCodesToInference();
     _notify();
   }
 
   void cancelBoxEdit() {
-    final start = _activeBoxEditStart;
+    final start = _reviewSession.finishBoxEdit();
     if (start == null) return;
-    _activeBoxEditStart = null;
     _restore(start);
   }
 
   void undoReviewEdit() {
-    if (_undoStack.isEmpty || isBusy) return;
-    _redoStack.add(_snapshot());
-    _restore(_undoStack.removeLast());
+    if (isBusy) return;
+    final snapshot = _reviewSession.undo(_snapshot());
+    if (snapshot != null) _restore(snapshot);
   }
 
   void redoReviewEdit() {
-    if (_redoStack.isEmpty || isBusy) return;
-    _undoStack.add(_snapshot());
-    _restore(_redoStack.removeLast());
+    if (isBusy) return;
+    final snapshot = _reviewSession.redo(_snapshot());
+    if (snapshot != null) _restore(snapshot);
   }
 
   void _pushUndo() {
-    _undoStack.add(_snapshot());
-    _redoStack.clear();
+    _reviewSession.record(_snapshot());
   }
 
-  _ReviewSnapshot _snapshot() => _ReviewSnapshot(
+  ReviewSnapshot _snapshot() => ReviewSnapshot(
     detections: detections.map((detection) => detection.copy()).toList(),
     selectedItemId: selectedItemId,
     operatorRequiresRecapture: operatorRequiresRecapture,
     reviewIssueCodes: Set<OperatorIssueCode>.from(reviewIssueCodes),
   );
 
-  void _restore(_ReviewSnapshot snapshot) {
+  void _restore(ReviewSnapshot snapshot) {
     detections = snapshot.detections
         .map((detection) => detection.copy())
         .toList(growable: false);
@@ -971,13 +918,13 @@ class ScannerController extends ChangeNotifier {
     imageFileName = image.fileName;
     imageSize = null;
     inputMode = mode;
-    _cameraCaptureMs = image.cameraCaptureMs;
-    _fileReadMs = image.fileReadMs;
-    _flutterImageDecodeMs = 0.0;
-    _decodeOverlappedWithAnalysis = !waitForDecode;
-    final generation = ++_imageGeneration;
+    final generation = _performanceTracker.beginImage(
+      cameraCaptureMs: image.cameraCaptureMs,
+      fileReadMs: image.fileReadMs,
+      waitForDecode: waitForDecode,
+    );
     final decodeFuture = _decodeInputImage(image.bytes, generation);
-    _imageDecodeFuture = decodeFuture;
+    _performanceTracker.trackDecode(decodeFuture);
     if (waitForDecode) await decodeFuture;
   }
 
@@ -987,12 +934,14 @@ class ScannerController extends ChangeNotifier {
     final frame = await codec.getNextFrame();
     try {
       imageDecode.stop();
-      if (generation != _imageGeneration) return;
+      if (!_performanceTracker.isCurrentImage(generation)) return;
       imageSize = Size(
         frame.image.width.toDouble(),
         frame.image.height.toDouble(),
       );
-      _flutterImageDecodeMs = imageDecode.elapsedMicroseconds / 1000.0;
+      _performanceTracker.completeDecode(
+        imageDecode.elapsedMicroseconds / 1000.0,
+      );
     } finally {
       frame.image.dispose();
       codec.dispose();
@@ -1029,20 +978,14 @@ class ScannerController extends ChangeNotifier {
     errorRecovery = ScannerErrorRecovery.retryAnalysis;
     _resetReviewState();
     performanceMetrics = null;
-    _resultFirstFrameStopwatch = null;
+    _performanceTracker.resetAnalysis();
   }
 
   void _resetSession({InputMode nextInputMode = InputMode.camera}) {
     inputMode = nextInputMode;
     processState = ProcessState.ready;
     imageBytes = null;
-    _imageGeneration += 1;
-    _imageDecodeFuture = null;
-    _decodeOverlappedWithAnalysis = false;
-    _cameraCaptureMs = 0.0;
-    _fileReadMs = 0.0;
-    _flutterImageDecodeMs = 0.0;
-    _performanceBeforeFirstFrameMs = 0.0;
+    _performanceTracker.resetSession();
     imageFileName = null;
     imageSize = null;
     _clearResult();
@@ -1054,9 +997,7 @@ class ScannerController extends ChangeNotifier {
     operatorRequiresRecapture = false;
     reviewIssueCodes = <OperatorIssueCode>{};
     reviewNote = '';
-    _undoStack.clear();
-    _redoStack.clear();
-    _activeBoxEditStart = null;
+    _reviewSession.clear();
     _nextOperatorObjectNumber = 1;
     recaptureLogSaveState = RecaptureLogSaveState.idle;
     recaptureLogError = null;
@@ -1096,18 +1037,4 @@ BoundingBox _clampBbox(BoundingBox bbox, Size imageSize) {
   final x = bbox.x.clamp(0, imageWidth - width).toInt();
   final y = bbox.y.clamp(0, imageHeight - height).toInt();
   return BoundingBox(x: x, y: y, width: width, height: height);
-}
-
-class _ReviewSnapshot {
-  const _ReviewSnapshot({
-    required this.detections,
-    required this.selectedItemId,
-    required this.operatorRequiresRecapture,
-    required this.reviewIssueCodes,
-  });
-
-  final List<ReviewDetection> detections;
-  final String? selectedItemId;
-  final bool operatorRequiresRecapture;
-  final Set<OperatorIssueCode> reviewIssueCodes;
 }

@@ -300,7 +300,8 @@ class _ActivityScreenState extends State<ActivityScreen> {
         '${date.month.toString().padLeft(2, '0')}'
         '${date.day.toString().padLeft(2, '0')}';
     final location = await getSaveLocation(
-      suggestedName: 'BixolonBakeryAIScanner-review-${VersionInfo.current}-$stamp.zip',
+      suggestedName:
+          'BixolonBakeryAIScanner-review-${VersionInfo.current}-$stamp.zip',
       acceptedTypeGroups: const [
         XTypeGroup(label: 'ZIP archive', extensions: ['zip']),
       ],
