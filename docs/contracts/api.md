@@ -1,7 +1,7 @@
 # Worker API 계약
 
-제품 `0.1.6` 외부 개발자용 빵 목록과 요청·응답 예시는
-[Worker 연동 명세](worker-integration-0.1.6.md)를 참조하십시오.
+제품 `0.1.7` 외부 개발자용 빵 목록과 요청·응답 예시는
+[Worker 연동 명세](worker-integration-0.1.7.md)를 참조하십시오.
 
 ## Endpoint
 
@@ -27,7 +27,7 @@
 
 1. 입력을 검증하고 decode합니다.
 2. Detector가 모든 segmentation 위치와 프레임 품질을 판단합니다.
-3. detector hard gate가 실패하면 classifier를 호출하지 않고 `IMAGE_RECAPTURE`와 공개 공통 reason `IMAGE_RECAPTURE_REQUIRED`를 반환합니다. `0.1.6`는 프레임 품질과 raw query의 근접·중복, 보강 증거가 있는 큰 제안을 이 단계에서 검사합니다. 큰 제안의 크기만으로는 재촬영하지 않습니다. 구체적인 detector 진단은 구조화 로그에만 남깁니다.
+3. detector hard gate가 실패하면 classifier를 호출하지 않고 `IMAGE_RECAPTURE`와 공개 공통 reason `IMAGE_RECAPTURE_REQUIRED`를 반환합니다. `0.1.7`는 프레임 품질과 raw query의 근접·중복, 보강 증거가 있는 큰 제안을 이 단계에서 검사합니다. 큰 제안의 크기만으로는 재촬영하지 않습니다. 구체적인 detector 진단은 구조화 로그에만 남깁니다.
 4. 정상 ROI와 `classifier_confidence` 경계 ROI를 한 batch로 분류합니다.
 5. 활성화된 detector corroboration은 metadata의 전역 confidence 조건을 만족하고 detector class가 원래 classifier Ridge Top-2 안에 있을 때만 두 후보의 순위를 교정합니다. 클래스·상품쌍·객체수·난이도별 예외는 적용하지 않습니다.
 6. classifier 품질 클래스는 해당 ROI를 `SEGMENT_RECAPTURE`로 만들고 공개 공통 reason `SEGMENT_RECAPTURE_REQUIRED`를 사용합니다.

@@ -7,7 +7,7 @@
 final api = WorkerScannerApi(
   baseUrl: 'http://127.0.0.1:8000',
   waitForReady: true,
-  expectedVersion: '0.1.6',
+  expectedVersion: '0.1.7',
   timeout: const Duration(seconds: 65),
   readinessTimeout: const Duration(seconds: 180),
 );
@@ -32,5 +32,5 @@ final response = await api.scan(
 - `ERROR` 또는 4xx/5xx: 입력·Worker 오류로 처리하며 재촬영 판정으로 바꾸지 않습니다.
 
 Windows 앱에서 Worker를 자동 실행할 경우 Worker process handle을 보관하고 앱 종료 시 같은
-process만 종료하십시오. API 호출은 readiness가 `ready`이고 모든 non-null version이 `0.1.6`인
+process만 종료하십시오. API 호출은 readiness가 `ready`이고 모든 non-null version이 `0.1.7`인
 경우에만 시작합니다.

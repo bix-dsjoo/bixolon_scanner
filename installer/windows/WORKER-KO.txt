@@ -1,4 +1,4 @@
-BIXOLON Bakery AI Scanner 0.1.6 - Windows OpenVINO Worker ZIP
+BIXOLON Bakery AI Scanner 0.1.7 - Windows OpenVINO Worker ZIP
 ================================================
 
 실행 방법

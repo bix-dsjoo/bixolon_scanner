@@ -145,6 +145,21 @@ Worker/N100 진단은 [당시 평가 문서](diagnostics/scanner-0.1.3-evaluatio
 - [0.1.5 packaged smoke](diagnostics/packaged-worker-0.1.5-build8-smoke.json)
 - [0.1.5 운영 설정](../../configs/archive/versions/0.1.5.json)
 
+## `0.1.6+9` 운영 기준선
+
+`0.1.6+9`는 기존 crowding 정책을 유지하면서 전체 프레임 `object_presence` verifier를 추가하고,
+Windows OpenVINO 구성에서 CPU Detector와 Intel GPU verifier를 병렬 실행했습니다. GPU 초기화에
+실패하면 명시적 CPU fallback으로 재조립했습니다. 2026-08-27 주석 69장과 기존 415장 packaged
+회귀 결과는 당시 활성 평가에 고정했으며, 이는 개발·비열화 방지 자료이지 독립 일반화 성능이나
+SLA 근거가 아닙니다. `0.1.7+10`에서 모델·정책을 바꾸지 않고 코드 책임을 분리했으므로 이 버전은
+archive로 이동했습니다.
+
+- [0.1.6 번들 구조](architecture/scanner-0.1.6.md)
+- [0.1.6 Worker 연동 계약](contracts/worker-integration-0.1.6.md)
+- [0.1.6 개발 평가](diagnostics/scanner-0.1.6-evaluation.md)
+- [0.1.6 packaged smoke](diagnostics/packaged-worker-0.1.6-build9-smoke.json)
+- [0.1.6 운영 설정](../../configs/archive/versions/0.1.6.json)
+
 ## `0.1.4` 이름의 더 이른 미채택 앱 후보
 
 현재 detector crowding 제품과 무관하게 과거에 `0.1.4` 이름으로 만든 로컬 앱 후보가 있었으나,

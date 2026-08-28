@@ -1,6 +1,6 @@
 # 설정 디렉터리
 
-- `versions/0.1.6.json`: BIXOLON Bakery AI Scanner의 유일한 활성 제품 조합
+- `versions/0.1.7.json`: BIXOLON Bakery AI Scanner의 유일한 활성 제품 조합
 - `runtime/`: Worker provider와 고정 dependency lock
 - `training/`: 재사용 가능한 학습 pipeline 설정과 recovery evidence
 - `experiments/`: 제품 버전과 분리된 실험 설정

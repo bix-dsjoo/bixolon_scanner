@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "product_name": "BIXOLON Bakery AI Scanner",
+  "product_version": "0.1.7",
+  "app_build": 10,
+  "target": "windows-x64-openvino-cpu-detector-gpu-embedder",
+  "passes": true,
+  "cases": {
+    "ready": {
+      "http_status": 200,
+      "status": "ready",
+      "requested_embedder_provider": "openvino_gpu",
+      "resolved_provider": "openvino",
+      "cpu_fallback_exercised": true,
+      "all_non_null_versions": "0.1.7"
+    },
+    "valid_scan": {
+      "http_status": 200,
+      "status": "SEGMENTATION",
+      "worker_version": "0.1.7",
+      "catalog_version": "0.1.7"
+    },
+    "operational_20260827": {
+      "image_count": 69,
+      "segmentation_count": 63,
+      "image_recapture_count": 6,
+      "error_count": 0,
+      "expected_status_mismatch_count": 0,
+      "false_positive_count": 0,
+      "false_negative_count": 0,
+      "semantic_diff_count": 0,
+      "maximum_confidence_delta": 0.0,
+      "worker_mean_ms": 87.787,
+      "worker_p95_ms": 154.987,
+      "baseline_mean_delta_ms": 3.549,
+      "baseline_p95_delta_ms": 0.558
+    },
+    "existing_415_regression": {
+      "image_count": 415,
+      "segmentation_count": 411,
+      "image_recapture_count": 4,
+      "error_count": 0,
+      "semantic_diff_count": 0,
+      "maximum_confidence_delta": 0.0,
+      "worker_mean_ms": 163.782,
+      "worker_p95_ms": 222.283,
+      "baseline_mean_delta_ms": 7.793,
+      "baseline_p95_delta_ms": 9.057
+    },
+    "corrupt_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": [
+        "CORRUPT_IMAGE"
+      ]
+    },
+    "missing_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": [
+        "MISSING_IMAGE_FIELD"
+      ]
+    },
+    "unsupported_image": {
+      "http_status": 415,
+      "status": "ERROR",
+      "reason_codes": [
+        "UNSUPPORTED_IMAGE_FORMAT"
+      ]
+    },
+    "manifests": {
+      "bundle_verify": true,
+      "payload_file_count": 138,
+      "payload_checksum_mismatch_count": 0,
+      "worker_file_count": 125,
+      "worker_checksum_mismatch_count": 0,
+      "forbidden_runtime_filename_count": 0,
+      "n100_product_filename_count": 0,
+      "intel_gpu_plugin_count": 1
+    }
+  },
+  "artifacts": {
+    "bundle_manifest_sha256": "9936d98fcdd874857fe99895c50999f4f67914928a8c7621c19d56496581731c",
+    "installer_manifest_sha256": "15329a1362d9eced695fc7ee79d934703c4643049a460b842bf2516d1d7dc42f",
+    "setup_sha256": "dd096fb2deb9d66a657c5395ab6a3abbc2c7688fde2cfbb1e0a9fa31f3a54c44",
+    "worker_zip_sha256": "b2472f459f4a660cad9aab0f3ecb6c99dd771aa4f4d3c95d083e68961c2ccb45",
+    "payload_manifest_sha256": "4a5a4f5b7222c36c8e6d927be371451401e0c715c19d7a00104ff80db645cd8f",
+    "worker_manifest_sha256": "7a457ee57eef50077af38b7e1b1963dc74a3e493f9ae3e6991604a53d225ad4f",
+    "packaged_smoke_sha256": "149ed3dfd9c6fcfd319739fa101d81ad895a08c3aefc6ba23d87b6f435b98ffa",
+    "operational_69_report_sha256": "d55d124f2fb1add63ff08471b6a8305b63b9f2dc0f6f8f689a675cd06a8eeaa7",
+    "operational_69_diff_sha256": "9fdcbc5e24de5de1d006c35479ec7bb37e3c0e1d6cee3d45ffd0adadd6df51cb",
+    "operational_69_coco_sha256": "502d7bf387b5091cde6c078198c02fc52c92766879a995b6dfb47762b7291f18",
+    "existing_415_report_sha256": "960b0fb74f41243da3fb6fa99e4bfc39c90ff0772d51c14247f1cb9ae6ffb042",
+    "existing_415_diff_sha256": "0846cd9b3161b1760f1ddf0a8aac0e70b5f323c126db44979a82750218308274",
+    "n100_source_measurement_sha256": "eb421557aa794e56726decd9eb53f9117860a91612e31309f3b617782de7e6aa"
+  },
+  "authenticode": "UNSIGNED",
+  "privacy": {
+    "image_paths_recorded": false,
+    "image_bytes_recorded": false
+  },
+  "limitations": [
+    "The N100 source-candidate measurement remains passes=false: hybrid worker p95 was 729.284 ms and maximum confidence delta was 0.008505523204803467.",
+    "The current-PC smoke exercised GPU initialization failure followed by the explicit CPU fallback; N100 GPU execution is evidenced only by the pinned source-candidate diagnostic.",
+    "SHA-256 checksums detect corruption or file changes but do not authenticate the publisher. The release is unsigned."
+  ]
+}

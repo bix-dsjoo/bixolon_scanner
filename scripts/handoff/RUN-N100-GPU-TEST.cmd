@@ -6,9 +6,9 @@ if not defined IMAGE_DIR set "IMAGE_DIR=C:\easy"
 
 set "POWERSHELL=C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 set "PACKAGE_DIR=%~dp0"
-set "RESULT_PATH=%PACKAGE_DIR%n100-0.1.6-openvino-device-matrix.json"
+set "RESULT_PATH=%PACKAGE_DIR%n100-0.1.7-openvino-device-matrix.json"
 
-echo BIXOLON Bakery AI Scanner 0.1.6 N100 OpenVINO CPU-only vs CPU Detector + Intel GPU Embedder
+echo BIXOLON Bakery AI Scanner 0.1.7 N100 OpenVINO CPU-only vs CPU Detector + Intel GPU Embedder
 echo Image directory: %IMAGE_DIR%
 echo.
 

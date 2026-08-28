@@ -313,7 +313,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--trace-output", type=Path)
     parser.add_argument("--store-id", required=True)
     parser.add_argument("--provider", choices=("cpu", "openvino"), default="openvino")
-    parser.add_argument("--expected-version", default="0.1.6")
+    parser.add_argument("--expected-version", default="0.1.7")
     parser.add_argument("--expected-image-count", type=int, default=415)
     parser.add_argument("--expected-full-path-count", type=int, default=411)
     parser.add_argument("--warmup-count", type=int, default=10)

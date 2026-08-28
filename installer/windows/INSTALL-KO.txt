@@ -1,4 +1,4 @@
-BIXOLON Bakery AI Scanner 0.1.6 - Windows OpenVINO 설치 안내
+BIXOLON Bakery AI Scanner 0.1.7 - Windows OpenVINO 설치 안내
 =====================================================
 
 지원 환경
@@ -42,5 +42,5 @@ Windows 기본 실행 구성
 - 기록은 현재 Windows 사용자 Application Support 아래 ProductScanner 폴더에 남습니다.
 
 버전
-- 제품, 앱 표시, Worker, Runtime, Catalog: 0.1.6
-- Flutter 내부 build: 0.1.6+9
+- 제품, 앱 표시, Worker, Runtime, Catalog: 0.1.7
+- Flutter 내부 build: 0.1.7+10

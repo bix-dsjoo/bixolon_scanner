@@ -22,8 +22,8 @@ def _row(image_id: int, *, class_id: str = "bread_01", latency: float = 10.0) ->
                 }
             ],
             "processing_time_ms": latency,
-            "worker_version": "0.1.6",
-            "classifier_version": "0.1.6",
+            "worker_version": "0.1.7",
+            "classifier_version": "0.1.7",
         },
     }
 

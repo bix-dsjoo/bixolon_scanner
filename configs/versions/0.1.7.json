@@ -1,0 +1,101 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.7",
+  "app_build": 10,
+  "source_date_epoch": 1787875200,
+  "source_candidate": "yolo26-objectness-single3-consensus-presence-verifier",
+  "runtime": {
+    "path": "artifacts/packages/bread-scanner-0.1.5-presence-consensus-runtime",
+    "manifest_sha256": "4030730b71213bf30f65e370d585560df7d43b60fbe7346adbef3f582ed7f316"
+  },
+  "catalog": {
+    "path": "artifacts/catalogs/bread-store-0.1.5-consensus",
+    "manifest_sha256": "085612ddd781a1879ae3bb2867c32c2174247ff8703e1641367d8c37226888b7",
+    "store_id": "bread-dev"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/runtime/cuda-13.0-cudnn-9.13.1-win-x64",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/evaluations/scanner-0.1.5/detector-crowding-large-proposal-corroboration.json",
+      "sha256": "accc3622ac2b033218ee45455e3f7f5093253b366cb7a715202cc10a15aa2707"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.5/runtime-presence-verifier-conversion.json",
+      "sha256": "77627a7b2aa1fc7e8bdd80a20318ddc29163767a443117be372f903434a1b300"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.5/presence-verifier-fixed-batch-optimization-v2.json",
+      "sha256": "17b91bdaf34b3bfdfb3885529ad3ce8f9459facd8f7f6a4ac036b19d4034709a"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.5/operational-20260827-presence-coco.json",
+      "sha256": "9bf76b71653e38ec73b5f28fd9f15c2cf1dbbf78e6c8c203cedeaa63aa3977f9"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.5/operational-20260827-presence-parallel-fallback-cleanup-final.json",
+      "sha256": "1e9d10221abed7684311b5cc6e1d1936e8b1a7666303d66bdbdcb6697af7a26d"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.5/operational-20260827-presence-parallel-fallback-cleanup-final-diff.json",
+      "sha256": "117a8f68bba88cbcf5676a30c265a9927d7a5f244771f020889fffd309e1289f"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.5/detector415-presence-parallel-fallback-cleanup-final.json",
+      "sha256": "4eb4ac6e2e27927d373e6924ac8e2c106ceb90005b68be102e33ad8f11c35e23"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.5/detector415-presence-parallel-fallback-cleanup-final-diff.json",
+      "sha256": "07ee334bcf0d8cfc2c7c34d7cbbfe7a8b8cd3b9d8428c4f8d0fefae8a17b1d77"
+    },
+    {
+      "path": "docs/diagnostics/n100-0.1.5-openvino-device-matrix.json",
+      "sha256": "eb421557aa794e56726decd9eb53f9117860a91612e31309f3b617782de7e6aa"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.7/packaged-worker-openvino-hybrid-smoke.json",
+      "sha256": "149ed3dfd9c6fcfd319739fa101d81ad895a08c3aefc6ba23d87b6f435b98ffa"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.7/operational-20260827-packaged-cpu-fallback.json",
+      "sha256": "d55d124f2fb1add63ff08471b6a8305b63b9f2dc0f6f8f689a675cd06a8eeaa7"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.7/operational-20260827-0.1.6-vs-0.1.7-diff.json",
+      "sha256": "9fdcbc5e24de5de1d006c35479ec7bb37e3c0e1d6cee3d45ffd0adadd6df51cb"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.7/operational-20260827-packaged-cpu-fallback-coco.json",
+      "sha256": "502d7bf387b5091cde6c078198c02fc52c92766879a995b6dfb47762b7291f18"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.7/detector415-packaged-cpu-fallback.json",
+      "sha256": "960b0fb74f41243da3fb6fa99e4bfc39c90ff0772d51c14247f1cb9ae6ffb042"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.7/detector415-0.1.6-vs-0.1.7-diff.json",
+      "sha256": "0846cd9b3161b1760f1ddf0a8aac0e70b5f323c126db44979a82750218308274"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}
