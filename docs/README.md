@@ -13,4 +13,5 @@
 - [0.1.7+10 packaged Worker smoke](diagnostics/packaged-worker-0.1.7-build10-smoke.json)
 - [N100 병렬 후보 측정 패키지](diagnostics/n100-0.1.5-measurement-package.json)
 - [N100 병렬 후보 원본 device matrix](diagnostics/n100-0.1.5-openvino-device-matrix.json)
+- [0.1.7 로컬 산출물 보존·정리 기록](maintenance/local-artifact-retention-2026-08-28.md)
 - [이전 0.1.5 문서와 smoke](archive/version-history.md)
