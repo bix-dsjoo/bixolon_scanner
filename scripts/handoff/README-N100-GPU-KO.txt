@@ -1,9 +1,9 @@
-BIXOLON Bakery AI Scanner 0.1.7 N100 OpenVINO CPU/GPU Embedder 비교
+BIXOLON Bakery AI Scanner 0.1.8 N100 OpenVINO CPU/GPU Embedder 비교
 ================================================
 
 목적
 ----
-- 0.1.7 Runtime, Catalog와 판정 정책은 변경하지 않습니다.
+- 0.1.8 Runtime, Catalog와 판정 정책은 변경하지 않습니다.
 - OpenVINO CPU-only 기준을 같은 이미지로 다시 측정합니다.
 - Detector는 양쪽 모두 OpenVINO CPU 1 worker x 4 threads입니다.
 - CPU-only 기준의 전체 프레임 object_presence verifier는 OpenVINO CPU에서 실행합니다.
@@ -18,7 +18,7 @@ BIXOLON Bakery AI Scanner 0.1.7 N100 OpenVINO CPU/GPU Embedder 비교
 2. C:\easy 폴더에 실제 촬영 JPEG/PNG 이미지 30장 이상을 넣습니다.
    정상 SEGMENTATION 결과가 나오는 이미지가 10장 이상 필요합니다.
 3. RUN-N100-GPU-TEST.cmd를 더블클릭합니다.
-4. 완료 후 n100-0.1.7-openvino-device-matrix.json을 가져옵니다.
+4. 완료 후 n100-0.1.8-openvino-device-matrix.json을 가져옵니다.
 
 이미지가 다른 폴더에 있으면 그 폴더를 RUN-N100-GPU-TEST.cmd 위로 끌어다 놓아도 됩니다.
 

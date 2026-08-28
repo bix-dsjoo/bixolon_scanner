@@ -171,7 +171,7 @@ def create_scanner_015_runtime(
     source_runtime_dir: Path,
     output_dir: Path,
     *,
-    version: str = "0.1.7",
+    version: str = "0.1.8",
     presence_verifier_path: Path | None = None,
     presence_verifier_report_path: Path | None = None,
     presence_verifier_conversion_report_path: Path | None = None,
@@ -207,11 +207,11 @@ def create_scanner_015_runtime(
 
 def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(
-        description="Add corroboration to the Scanner 0.1.7 large-proposal crowding gate"
+        description="Add corroboration to the Scanner 0.1.8 large-proposal crowding gate"
     )
     parser.add_argument("--source-runtime", type=Path, required=True)
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--version", default="0.1.7")
+    parser.add_argument("--version", default="0.1.8")
     parser.add_argument("--presence-verifier", type=Path)
     parser.add_argument("--presence-verifier-report", type=Path)
     parser.add_argument("--presence-verifier-conversion-report", type=Path)

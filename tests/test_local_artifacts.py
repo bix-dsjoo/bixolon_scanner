@@ -24,7 +24,7 @@ def _repository(tmp_path: Path) -> Path:
     runtime = _write(root / "artifacts/packages/runtime/model.onnx")
     evaluation = _write(root / "artifacts/evaluations/current/result.json")
     config = {
-        "version": "0.1.7",
+        "version": "0.1.8",
         "runtime": {
             "path": runtime.parent.relative_to(root).as_posix(),
             "manifest_sha256": "a" * 64,
@@ -36,7 +36,7 @@ def _repository(tmp_path: Path) -> Path:
             }
         ],
     }
-    config_path = root / "configs/versions/0.1.7.json"
+    config_path = root / "configs/versions/0.1.8.json"
     config_path.parent.mkdir(parents=True)
     config_path.write_text(json.dumps(config), encoding="utf-8")
     (root / "configs/archive").mkdir(parents=True)
@@ -47,7 +47,7 @@ def test_cleanup_plan_preserves_data_references_and_evidence(tmp_path: Path) -> 
     root = _repository(tmp_path)
     archive_evidence = _write(root / "artifacts/experiments/archive/metadata.json")
     (root / "configs/archive/versions").mkdir(parents=True)
-    (root / "configs/archive/versions/0.1.6.json").write_text(
+    (root / "configs/archive/versions/0.1.7.json").write_text(
         json.dumps(
             {
                 "evaluation_evidence": [
@@ -65,8 +65,8 @@ def test_cleanup_plan_preserves_data_references_and_evidence(tmp_path: Path) -> 
     _write(root / "artifacts/experiments/run/model.onnx")
     _write(root / "artifacts/experiments/openvino-venv/Lib/module.pyd")
     _write(root / "artifacts/experiments/openvino-venv/Lib/module.py")
-    _write(root / "artifacts/versions/0.1.6/old.bin")
-    _write(root / "artifacts/versions/0.1.7/final.bin")
+    _write(root / "artifacts/versions/0.1.7/old.bin")
+    _write(root / "artifacts/versions/0.1.8/final.bin")
     _write(root / "apps/product_scanner/build/intermediate.dll")
     _write(root / "runs/run-1/cache.bin")
 
@@ -78,8 +78,8 @@ def test_cleanup_plan_preserves_data_references_and_evidence(tmp_path: Path) -> 
     assert "artifacts/packages/runtime" in preserved
     assert "artifacts/evaluations/current/result.json" in preserved
     assert "artifacts/experiments/archive/metadata.json" in preserved
-    assert "artifacts/versions/0.1.7" in preserved
-    assert "artifacts/versions/0.1.6" in candidates
+    assert "artifacts/versions/0.1.8" in preserved
+    assert "artifacts/versions/0.1.7" in candidates
     assert "apps/product_scanner/build" in candidates
     assert "runs" in candidates
     assert "artifacts/experiments/run/model.onnx" in candidates

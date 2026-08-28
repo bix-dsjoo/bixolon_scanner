@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.7",
+    [string]$Version = "0.1.8",
     [string]$Python311Executable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$ReuseBuildEnvironment,
@@ -135,7 +135,7 @@ if (
     [string]$runtimeMetadata.count_verifier.comparison_mode -ne "object_presence" -or
     [double]$runtimeMetadata.count_verifier.confidence_threshold -ne 0.54
 ) {
-    throw "OpenVINO GPU test requires the final 0.1.7 object-presence Runtime."
+    throw "OpenVINO GPU test requires the final 0.1.8 object-presence Runtime."
 }
 $countVerifierPath = Join-Path (
     Join-Path $stagingRoot "runtime"

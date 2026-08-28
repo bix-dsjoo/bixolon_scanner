@@ -1,4 +1,4 @@
-BIXOLON Bakery AI Scanner 0.1.7 - Windows OpenVINO Worker ZIP
+BIXOLON Bakery AI Scanner 0.1.8 - Windows OpenVINO Worker ZIP
 ================================================
 
 실행 방법
@@ -26,13 +26,14 @@ BIXOLON Bakery AI Scanner 0.1.7 - Windows OpenVINO Worker ZIP
 무결성
 - ZIP 옆의 .sha256 파일로 ZIP을 검증할 수 있습니다.
 - worker-manifest.json에는 ZIP 내부 파일별 SHA-256이 기록됩니다.
-- hardware-reference-result.json은 이 구성을 선택할 때 사용한 N100 측정 원문입니다.
-- deployment-provenance.json은 선택한 Runtime·Catalog와 측정 원문의 SHA-256을 기록합니다.
+- hardware-reference-result.json은 현재 버전 N100 진단을 명시적으로 지정한 경우에만 포함됩니다.
+- deployment-provenance.json은 선택한 Runtime·Catalog와 N100 진단 실행 여부를 기록합니다.
 
 제한
-- 동일 모델·정책 후보의 N100 100장 측정에서 semantic mismatch와 오류는 0건이었고 CPU 대비
+- 공통 모델 payload를 사용한 이전 0.1.5 N100 100장 측정에서 semantic mismatch와 오류는 0건이었고 CPU 대비
   평균/p95 속도는 1.443/1.375배였습니다.
 - confidence 최대 차이는 0.0085055232였으므로 bit-exact parity 결과가 아닙니다.
 - GPU 구성 p95 732.288ms는 500ms 진단 기준을 넘었습니다.
 - 이 결과는 장비 한 대의 진단이며 SLA 또는 인증이 아닙니다.
+- 현재 0.1.8 N100 진단을 실행하지 않은 패키지는 NOT_RUN_FOR_SELECTED_VERSION을 기록합니다.
 - 배포 파일에는 Authenticode 서명이 없습니다.

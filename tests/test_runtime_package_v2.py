@@ -10,9 +10,35 @@ from bixolon_scanner.contracts.catalog import sha256_file
 from bixolon_scanner.contracts.errors import PackageValidationError
 from bixolon_scanner.contracts.runtime_package_v2 import (
     CatalogDecisionPolicy,
+    ClassifierVerificationMetadata,
     RuntimePackageV2Metadata,
     load_runtime_package_v2,
 )
+
+
+def test_classifier_verification_unknown_recapture_defaults_off_and_can_be_enabled() -> None:
+    payload = {
+        "ambiguity_maximum_approval_score": 0.5,
+        "independent_embedder": {
+            "filename": "verifier.onnx",
+            "embedder_id": "test-verifier",
+            "version": "0.1.7",
+            "embedding_dimension": 8,
+            "fixed_batch_size": 1,
+        },
+        "independent_metric_projection": {
+            "input_dimension": 8,
+            "output_dimension": 8,
+        },
+    }
+
+    disabled = ClassifierVerificationMetadata.model_validate(payload)
+    enabled = ClassifierVerificationMetadata.model_validate(
+        {**payload, "unknown_recapture_on_dual_verifier_rejection": True}
+    )
+
+    assert disabled.unknown_recapture_on_dual_verifier_rejection is False
+    assert enabled.unknown_recapture_on_dual_verifier_rejection is True
 
 
 def _metadata(root: Path) -> dict:

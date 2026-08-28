@@ -1,8 +1,8 @@
-# BIXOLON Bakery AI Scanner 0.1.7 번들
+# BIXOLON Bakery AI Scanner 0.1.8 번들
 
-`configs/versions/0.1.7.json`이 운영 조합의 유일한 기준입니다. Python·Worker·Detector·Embedder·
-판정 정책·Catalog와 Windows ProductVersion은 `0.1.7`, Flutter 내부 빌드는 `0.1.7+10`입니다.
-`0.1.6`의 payload와 판정 계약을 유지하고, Python과 Flutter의 내부 책임 경계만 재구성했습니다.
+`configs/versions/0.1.8.json`이 운영 조합의 유일한 기준입니다. Python·Worker·Detector·Embedder·
+판정 정책·Catalog와 Windows ProductVersion은 `0.1.8`, Flutter 내부 빌드는 `0.1.8+11`입니다.
+`0.1.7`의 model·Catalog payload와 공개 판정 계약을 유지하고 classifier 안전 정책을 활성화했습니다.
 
 Python의 `DecisionPipeline.scan()`은 입력 검증부터 detector 조기 종료, ROI batch, segmentation
 조립까지의 고정 순서를 orchestration하며 세부 품질·segmentation 정책은 같은 `pipeline` 패키지의
@@ -13,8 +13,8 @@ Runtime/Catalog 생성·해제는 Worker factory가 담당합니다. Flutter의 
 
 ```mermaid
 flowchart LR
-    CONFIG["configs/versions/0.1.7.json"] --> VERIFY["원본 manifest·증빙 해시 검증"]
-    VERIFY --> META["Runtime/Catalog metadata 0.1.7"]
+    CONFIG["configs/versions/0.1.8.json"] --> VERIFY["원본 manifest·증빙 해시 검증"]
+    VERIFY --> META["Runtime/Catalog metadata 0.1.8"]
     META --> DETECTOR["YOLO26 detector"]
     DETECTOR --> LARGE{"큰 proposal?"}
     LARGE -->|예| CORROBORATE{"query surplus 또는 복수 중심점?"}
@@ -25,7 +25,9 @@ flowchart LR
     LEGACY -->|정상 detection 있음| PRESENCE{"전체 프레임 object_presence<br/>confidence >= 0.54?"}
     PRESENCE -->|아니오| RECAPTURE
     PRESENCE -->|예| CLASSIFIER["ROI batch classifier"]
-    CLASSIFIER --> RESULT["SEGMENTATION"]
+    CLASSIFIER --> VERIFY_UNKNOWN{"승인 차단 ROI의 회전·독립 verifier<br/>모두 품질 실패?"}
+    VERIFY_UNKNOWN -->|예| SEG_RECAPTURE["SEGMENT_RECAPTURE"]
+    VERIFY_UNKNOWN -->|아니오| RESULT["APPROVED 또는 UNKNOWN Top-3"]
 ```
 
 큰 proposal의 면적은 후보 조건이며 단독 재촬영 사유가 아닙니다. 해당 proposal 안의 raw query
@@ -41,9 +43,14 @@ detector와 병렬로 미리 시작하되 hard 경로에서는 결과나 오류�
 ONNX는 batch 1 고정과 ORT extended 최적화로 packaged OpenVINO 호환성을 확보했으며 원본 weight는
 변경하지 않았습니다.
 
-`scripts/build_app.ps1 -Version 0.1.7`는 source Runtime/Catalog/CUDA와 평가 증빙 해시를 확인하고,
-검증된 source payload를 변경하지 않은 채 실행 구성요소 version만 `0.1.7`로 맞춥니다. 최종 번들은
+classifier의 primary 판정이 승인 임계값 아래인 ROI에는 기존 rotation·independent verifier를
+사용합니다. 둘 다 품질 실패를 반환하면 활성 Runtime metadata의
+`unknown_recapture_on_dual_verifier_rejection=true`에 따라 해당 ROI를 `SEGMENT_RECAPTURE`로
+처리합니다. Detector hard gate와 `IMAGE_RECAPTURE` 우선순위는 바뀌지 않습니다.
+
+`scripts/build_app.ps1 -Version 0.1.8`는 source Runtime/Catalog/CUDA와 평가 증빙 해시를 확인하고,
+검증된 source payload를 변경하지 않은 채 실행 구성요소 version만 `0.1.8`로 맞춥니다. 최종 번들은
 `version.json`, `provenance.json`, 전체 `bundle-manifest.json`과 필수 license를 포함합니다.
 
-데이터 범위와 한계는 [0.1.7 평가 보고서](../evaluation/scanner-0.1.7.md), API와 null 규칙은
-[Worker 연동 명세](../contracts/worker-integration-0.1.7.md)를 따릅니다.
+데이터 범위와 한계는 [0.1.8 평가 보고서](../evaluation/scanner-0.1.8.md), API와 null 규칙은
+[Worker 연동 명세](../contracts/worker-integration-0.1.8.md)를 따릅니다.

@@ -8,7 +8,7 @@ import pytest
 from bixolon_scanner.contracts.api import ItemStatus, ScanResponse, Status
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLES = ROOT / "docs" / "contracts" / "examples" / "0.1.7"
+EXAMPLES = ROOT / "docs" / "contracts" / "examples" / "0.1.8"
 
 
 @pytest.mark.parametrize(
@@ -29,9 +29,9 @@ def test_handoff_examples_follow_python_contract(
     response = ScanResponse.model_validate_json((EXAMPLES / name).read_text(encoding="utf-8"))
 
     assert response.status is status
-    assert response.worker_version == "0.1.7"
+    assert response.worker_version == "0.1.8"
     assert all(
-        value == "0.1.7"
+        value == "0.1.8"
         for value in (
             response.detector_version,
             response.classifier_version,
@@ -150,7 +150,7 @@ def test_n100_candidate_exposes_double_click_and_requested_powershell_entrypoint
     assert "scanner-$Version/full-valid-openvino.json" not in build_script
     assert '-File ".\\N100-STAGE-TEST.ps1"' in readme
     assert "N100-STAGE-TEST.ps1" in command_script
-    assert "n100-0.1.7-result.json" in command_script
+    assert "n100-0.1.8-result.json" in command_script
     assert "image_sha256_recorded = $true" in (
         ROOT / "scripts" / "handoff" / "benchmark-n100.ps1"
     ).read_text(encoding="utf-8")

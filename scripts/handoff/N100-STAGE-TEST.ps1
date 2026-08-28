@@ -17,7 +17,7 @@ if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
 }
 $manifest = Get-Content -Raw -LiteralPath $manifestPath | ConvertFrom-Json
 if (
-    [string]$manifest.product_version -ne "0.1.7" -or
+    [string]$manifest.product_version -ne "0.1.8" -or
     [string]$manifest.provider -ne "OpenVINOExecutionProvider:CPU" -or
     [int]$manifest.file_count -ne @($manifest.files).Count
 ) {

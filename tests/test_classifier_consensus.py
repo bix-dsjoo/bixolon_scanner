@@ -13,6 +13,7 @@ def _result(
     approval_score: float,
     retrieval_top1: int | None = None,
     class_count: int = 3,
+    segment_recapture_reason: str | None = None,
 ) -> ClassificationResult:
     logits = np.full((1, class_count), -1.0, dtype=np.float32)
     logits[0, top1] = 1.0
@@ -25,7 +26,7 @@ def _result(
         ranking_logits=logits,
         retrieval_logits=retrieval,
         approval_scores=np.asarray([approval_score], dtype=np.float32),
-        segment_recapture_reasons=(None,),
+        segment_recapture_reasons=(segment_recapture_reason,),
         unknown_reasons=(None,),
         approval_blocked=np.asarray([False]),
     )
@@ -65,7 +66,10 @@ class _Classifier:
             : result.logits.shape[1]
         ]
         self.version = "0.1.3"
-        self.metadata = SimpleNamespace(approval_threshold=threshold)
+        self.metadata = SimpleNamespace(
+            approval_threshold=threshold,
+            approval_thresholds=None,
+        )
         self.append_only_base_class_count = append_only_base_class_count
         self.embedder = (
             _IndependentEmbedder()
@@ -84,14 +88,28 @@ class _Classifier:
         return self.result
 
 
-def _consensus(rotation, independent):
-    primary = _Classifier(_result(0, approval_score=0.2))
+def _consensus(
+    rotation,
+    independent,
+    *,
+    verify_unknown_recapture: bool = False,
+    primary_threshold: float | None = None,
+):
+    primary = _Classifier(
+        _result(0, approval_score=0.2),
+        threshold=(
+            0.3
+            if verify_unknown_recapture and primary_threshold is None
+            else primary_threshold or 0.0
+        ),
+    )
     primary.embedder = _PrimaryEmbedder()
     return ConsensusCatalogClassifier(
         primary,
         _Classifier(rotation),
         _Classifier(independent, fixed_batch_size=1, threshold=0.212),
         ambiguity_maximum_approval_score=0.5,
+        unknown_recapture_on_dual_verifier_rejection=verify_unknown_recapture,
     )
 
 
@@ -128,6 +146,65 @@ def test_agreeing_geometric_views_are_blocked_by_strong_independent_disagreement
     result = classifier.classify(None, [Detection(0, 0, 1, 1, 0.9)])
 
     assert result.approval_blocked.tolist() == [True]
+
+
+def test_dual_verifier_rejection_marks_unknown_top3_unsafe() -> None:
+    classifier = _consensus(
+        _result(
+            1,
+            approval_score=0.1,
+            segment_recapture_reason="CLASSIFIER_OUT_OF_CATALOG",
+        ),
+        _result(
+            1,
+            approval_score=0.1,
+            segment_recapture_reason="CLASSIFIER_OUT_OF_CATALOG",
+        ),
+        verify_unknown_recapture=True,
+    )
+
+    result = classifier.classify(None, [Detection(0, 0, 1, 1, 0.9)])
+
+    assert result.segment_recapture_reasons == ("CLASSIFIER_TOP3_UNSAFE",)
+
+
+def test_single_verifier_rejection_preserves_safe_unknown_top3() -> None:
+    classifier = _consensus(
+        _result(
+            1,
+            approval_score=0.1,
+            segment_recapture_reason="CLASSIFIER_OUT_OF_CATALOG",
+        ),
+        _result(0, approval_score=0.1),
+        verify_unknown_recapture=True,
+    )
+
+    result = classifier.classify(None, [Detection(0, 0, 1, 1, 0.9)])
+
+    assert result.segment_recapture_reasons == (None,)
+
+
+def test_dual_rejection_marks_verifier_blocked_approval_top3_unsafe() -> None:
+    classifier = _consensus(
+        _result(
+            1,
+            approval_score=0.1,
+            segment_recapture_reason="CLASSIFIER_OUT_OF_CATALOG",
+        ),
+        _result(
+            1,
+            approval_score=0.1,
+            retrieval_top1=1,
+            segment_recapture_reason="CLASSIFIER_OUT_OF_CATALOG",
+        ),
+        verify_unknown_recapture=True,
+        primary_threshold=0.1,
+    )
+
+    result = classifier.classify(None, [Detection(0, 0, 1, 1, 0.9)])
+
+    assert result.approval_blocked.tolist() == [True]
+    assert result.segment_recapture_reasons == ("CLASSIFIER_TOP3_UNSAFE",)
 
 
 def _append_consensus(rotation_top1: int, independent_top1: int):

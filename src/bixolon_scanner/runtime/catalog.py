@@ -699,6 +699,7 @@ class ConsensusCatalogClassifier:
         independent: OnnxCatalogClassifier,
         *,
         ambiguity_maximum_approval_score: float,
+        unknown_recapture_on_dual_verifier_rejection: bool = False,
     ):
         if not 0.0 <= ambiguity_maximum_approval_score <= 1.0:
             raise ValueError("classifier verification ambiguity score must be in [0, 1]")
@@ -722,6 +723,9 @@ class ConsensusCatalogClassifier:
         self.rotation = rotation
         self.independent = independent
         self.ambiguity_maximum_approval_score = ambiguity_maximum_approval_score
+        self.unknown_recapture_on_dual_verifier_rejection = (
+            unknown_recapture_on_dual_verifier_rejection
+        )
         self.append_only_base_class_count = primary.append_only_base_class_count
         self.version = primary.version
         self.metadata = primary.metadata
@@ -908,10 +912,33 @@ class ConsensusCatalogClassifier:
             else np.asarray(result.approval_blocked, dtype=bool).copy()
         )
         recapture_reasons = result.segment_recapture_reasons or (None,) * len(detections)
+        approved_candidates = (
+            result.approval_scores >= self.metadata.approval_threshold
+        ) & ~approval_blocked
+        configured_thresholds = self.metadata.approval_thresholds
+        primary_top1_all = self._top1(result)
+        decision_thresholds = (
+            np.full(
+                len(detections),
+                self.metadata.approval_threshold,
+                dtype=np.float32,
+            )
+            if configured_thresholds is None
+            else np.asarray(
+                [
+                    self.metadata.approval_threshold
+                    if configured_thresholds[int(index)] is None
+                    else configured_thresholds[int(index)]
+                    for index in primary_top1_all
+                ],
+                dtype=np.float32,
+            )
+        )
+        primary_unknown = (result.approval_scores < decision_thresholds) | approval_blocked
+        unknown_candidates = self.unknown_recapture_on_dual_verifier_rejection & primary_unknown
         candidate_indices = np.flatnonzero(
             (result.approval_scores < self.ambiguity_maximum_approval_score)
-            & (result.approval_scores >= self.metadata.approval_threshold)
-            & ~approval_blocked
+            & (approved_candidates | unknown_candidates)
             & np.asarray([reason is None for reason in recapture_reasons], dtype=bool)
         )
         if not len(candidate_indices):
@@ -942,6 +969,26 @@ class ConsensusCatalogClassifier:
         ):
             raise ValueError("independent verifier must expose approval and retrieval scores")
 
+        dual_verifier_rejected = np.zeros(len(candidate_indices), dtype=bool)
+        if self.unknown_recapture_on_dual_verifier_rejection:
+            rotation_recapture = rotation_result.segment_recapture_reasons or (None,) * len(
+                candidate_indices
+            )
+            independent_recapture = independent_result.segment_recapture_reasons or (None,) * len(
+                candidate_indices
+            )
+            dual_verifier_rejected = np.asarray(
+                [
+                    left is not None and right is not None
+                    for left, right in zip(
+                        rotation_recapture,
+                        independent_recapture,
+                        strict=True,
+                    )
+                ],
+                dtype=bool,
+            )
+
         primary_top1 = self._top1(result)[candidate_indices]
         rotation_top1 = self._top1(rotation_result)
         independent_top1 = self._top1(independent_result)
@@ -961,6 +1008,16 @@ class ConsensusCatalogClassifier:
         rejected[rotation_agreement] = (independent_disagreement & strong_independent_disagreement)[
             rotation_agreement
         ]
+
+        dual_recapture = dual_verifier_rejected & (primary_unknown[candidate_indices] | rejected)
+        if np.any(dual_recapture):
+            updated_recapture_reasons = list(recapture_reasons)
+            for index in candidate_indices[dual_recapture]:
+                updated_recapture_reasons[int(index)] = "CLASSIFIER_TOP3_UNSAFE"
+            result = replace(
+                result,
+                segment_recapture_reasons=tuple(updated_recapture_reasons),
+            )
 
         rejected_indices = candidate_indices[rejected]
         if not len(rejected_indices):
@@ -1049,5 +1106,8 @@ def build_catalog_classifier(
             independent_embedder,
         ),
         ambiguity_maximum_approval_score=verification.ambiguity_maximum_approval_score,
+        unknown_recapture_on_dual_verifier_rejection=(
+            verification.unknown_recapture_on_dual_verifier_rejection
+        ),
     )
     return classifier, primary_embedder

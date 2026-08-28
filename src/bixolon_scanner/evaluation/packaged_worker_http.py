@@ -120,12 +120,14 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             "BIXOLON_CATALOG_DIR": str(args.catalog.resolve()),
             "BIXOLON_CATALOG_STORE_ID": args.store_id,
             "BIXOLON_PROVIDER": args.provider,
+            "BIXOLON_EMBEDDER_PROVIDER": args.embedder_provider,
+            "BIXOLON_EMBEDDER_FALLBACK_PROVIDER": args.embedder_fallback_provider,
             "BIXOLON_HOST": "127.0.0.1",
             "BIXOLON_PORT": str(port),
             "BIXOLON_REQUEST_TIMEOUT_SECONDS": "60",
             "BIXOLON_CPU_DETECTOR_WORKERS": "1",
-            "BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS": "0",
-            "BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS": "0",
+            "BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS": str(args.cpu_detector_threads),
+            "BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS": str(args.cpu_embedder_threads),
         }
     )
     creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -154,7 +156,9 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             try:
                 ready_status, ready, _ = _request(f"{base_url}/health/ready")
                 if ready_status == 200 and ready.get("status") == "ready":
-                    if ready.get("provider") != args.provider or not _version_contract(
+                    if ready.get(
+                        "provider"
+                    ) != args.expected_effective_provider or not _version_contract(
                         ready, args.expected_version
                     ):
                         raise RuntimeError("packaged Worker readiness contract mismatch")
@@ -258,7 +262,12 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         "schema_version": "1.0",
         "evaluation": "scanner_0_1_3_packaged_worker_full_valid_http",
         "product_version": args.expected_version,
-        "provider": args.provider,
+        "provider": {
+            "detector_requested": args.provider,
+            "embedder_requested": args.embedder_provider,
+            "embedder_fallback": args.embedder_fallback_provider,
+            "effective": ready.get("provider"),
+        },
         "dataset": {
             "manifest_sha256": sha256_file(args.manifest),
             "image_count": len(records),
@@ -313,7 +322,12 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--trace-output", type=Path)
     parser.add_argument("--store-id", required=True)
     parser.add_argument("--provider", choices=("cpu", "openvino"), default="openvino")
-    parser.add_argument("--expected-version", default="0.1.7")
+    parser.add_argument("--embedder-provider", choices=("same", "openvino_gpu"), default="same")
+    parser.add_argument("--embedder-fallback-provider", choices=("none", "same"), default="none")
+    parser.add_argument("--expected-effective-provider", default="openvino")
+    parser.add_argument("--cpu-detector-threads", type=int, default=4)
+    parser.add_argument("--cpu-embedder-threads", type=int, default=0)
+    parser.add_argument("--expected-version", default="0.1.8")
     parser.add_argument("--expected-image-count", type=int, default=415)
     parser.add_argument("--expected-full-path-count", type=int, default=411)
     parser.add_argument("--warmup-count", type=int, default=10)

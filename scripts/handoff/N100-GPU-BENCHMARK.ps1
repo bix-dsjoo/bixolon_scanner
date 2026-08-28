@@ -17,14 +17,14 @@ param(
     [double]$MaximumMemoryIncreaseRatio = 1.35,
     [ValidateRange(1.0, 60000.0)]
     [double]$MaximumFullPathLatencyMs = 500.0,
-    [string]$ExpectedVersion = "0.1.7"
+    [string]$ExpectedVersion = "0.1.8"
 )
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Net.Http
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $PSScriptRoot "n100-0.1.7-openvino-device-matrix.json"
+    $OutputPath = Join-Path $PSScriptRoot "n100-0.1.8-openvino-device-matrix.json"
 }
 
 function Get-Percentile {

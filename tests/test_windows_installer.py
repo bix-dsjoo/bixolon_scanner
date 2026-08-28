@@ -30,6 +30,10 @@ def test_windows_installer_uses_cpu_detector_gpu_embedder_payload_and_profile() 
     assert "installer-payload-manifest.json" in build_script
     assert "hardware-reference-result.json" in build_script
     assert "deployment-provenance.json" in build_script
+    assert 'n100_benchmark_status = "NOT_RUN_FOR_SELECTED_VERSION"' in build_script
+    assert "if ($hasN100Diagnostic)" in build_script
+    assert "Requested hardware device matrix is missing" in build_script
+    assert "Required hardware device matrix is missing" not in build_script
     assert '"REFERENCE_MEASURED_DIAGNOSTIC"' in build_script
     assert "reference_product_version = $diagnosticVersion" in build_script
     assert "config.runtime.path" in build_script

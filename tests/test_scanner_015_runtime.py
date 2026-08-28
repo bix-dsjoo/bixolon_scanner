@@ -28,12 +28,12 @@ def test_object_presence_verifier_uses_selected_uncertainty_threshold() -> None:
             "image_size": 192,
             "temperature": 1.0,
         },
-        version="0.1.7",
+        version="0.1.8",
         confidence_threshold=0.54,
     )
 
     assert metadata.filename == "count-verifier.onnx"
-    assert metadata.version == "0.1.7"
+    assert metadata.version == "0.1.8"
     assert metadata.input_size == (192, 192)
     assert metadata.count_labels == [0, 1]
     assert metadata.comparison_mode == "object_presence"
@@ -48,6 +48,6 @@ def test_object_presence_verifier_rejects_non_presence_report() -> None:
                 "comparison_mode": "exact_count",
                 "image_size": 192,
             },
-            version="0.1.7",
+            version="0.1.8",
             confidence_threshold=0.54,
         )

@@ -1,0 +1,107 @@
+{
+  "schema_version": "1.0",
+  "evaluation": "scanner_0_1_8_release_artifact_smoke",
+  "product_version": "0.1.8",
+  "app_build": 11,
+  "passes": true,
+  "cases": {
+    "ready": {
+      "http_status": 200,
+      "status": "ready",
+      "provider": "openvino",
+      "all_non_null_versions": "0.1.8"
+    },
+    "valid_scan": {
+      "http_status": 200,
+      "status": "SEGMENTATION",
+      "worker_version": "0.1.8",
+      "catalog_version": "0.1.8"
+    },
+    "operational_20260827": {
+      "image_count": 69,
+      "ground_truth_count": 138,
+      "matched_count": 138,
+      "expected_status_mismatch_count": 0,
+      "false_positive_count": 0,
+      "false_negative_count": 0,
+      "approved_wrong_count": 0,
+      "unknown_top3_miss_count": 0,
+      "semantic_prediction_diff_count": 0,
+      "confidence_only_diff_image_count": 62,
+      "maximum_confidence_delta": 0.0000033974647521972656
+    },
+    "existing_415_regression": {
+      "image_count": 415,
+      "ground_truth_count": 1914,
+      "matched_count": 1914,
+      "false_positive_count": 0,
+      "false_negative_count": 0,
+      "approved_wrong_count": 0,
+      "unknown_top3_miss_count": 0,
+      "semantic_prediction_diff_count": 0,
+      "confidence_only_diff_image_count": 13,
+      "maximum_confidence_delta": 0.00000030547380447387695
+    },
+    "target_20260828": {
+      "image_count": 10,
+      "ground_truth_count": 62,
+      "matched_count": 48,
+      "false_positive_count": 0,
+      "false_negative_count": 8,
+      "approved_wrong_count": 0,
+      "unknown_top3_miss_count": 0,
+      "segment_recapture_count": 2,
+      "bread_04_top3_miss_changed_to_segment_recapture": true
+    },
+    "corrupt_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": [
+        "CORRUPT_IMAGE"
+      ]
+    },
+    "missing_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": [
+        "MISSING_IMAGE_FIELD"
+      ]
+    },
+    "unsupported_image": {
+      "http_status": 415,
+      "status": "ERROR",
+      "reason_codes": [
+        "UNSUPPORTED_IMAGE_FORMAT"
+      ]
+    },
+    "deployment": {
+      "setup_authenticode": "UNSIGNED",
+      "n100_benchmark_status": "NOT_RUN_FOR_SELECTED_VERSION",
+      "hardware_reference_result_included": false,
+      "runtime_safety_flag_enabled": true
+    }
+  },
+  "artifacts": {
+    "bundle_manifest": "9fcc22a7f7d8bd8d40dfb0fd6532097bee98d0aef3d508489088a5105079c866",
+    "setup_executable": "3e756ecb787ea2a9a1fe0149455045d7d50247c664211bf97a6fcd4b5bbe6f3d",
+    "worker_zip": "3fecf5da3e92d14ad361754a2908e47e3b60a474506e00282e0380d3e1325a69",
+    "installer_manifest": "604c2a58d9f5d7e175a4c3b03cd3722141ada0b4850fdbb08c8e2eb4f32aabae",
+    "installer_payload_manifest": "93b63995721662c4895e2e4224a44193e32e35520c194d78a1cf845c5bc3f74a",
+    "deployment_provenance": "8f169403bd4a800df121ed27a9307aa6abd15479192ea3439889c8570ebc7052",
+    "packaged_worker_openvino_smoke": "1f78a4c19696ca5e17e5a44ef077273a85a1b87e97eeddfbf78f71526382f566",
+    "classifier_verifier_probe": "7b6d322ca3760e88f851dc2361299be4df2c1a9f62749dc9605d11f15e5c7034",
+    "detector415_baseline_candidate_diff": "7f1184ba603ad28727650b39da0554409bd6512807daef199c38f573ff3306b7",
+    "operational69_baseline_candidate_diff": "02d58e6936c66482e477f2dc4e2ab6ef2688ce2547f660c7216747884f0a883c",
+    "target_20260828_coco": "b7979534985cae119fe8eb6063093018240b0bcc204ec11a136af969957df228"
+  },
+  "privacy": {
+    "image_paths_recorded": false,
+    "image_bytes_recorded": false
+  },
+  "limitations": [
+    "The protected data are development and non-regression data, not an independent generalization test.",
+    "Eight detector false negatives remain in the 2026-08-28 ten-image set.",
+    "No 0.1.8 N100 benchmark was run, so no N100 latency or SLA claim is made.",
+    "SHA-256 detects corruption or file changes but does not authenticate the publisher; the Setup executable is unsigned."
+  ]
+}

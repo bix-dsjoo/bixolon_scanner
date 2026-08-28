@@ -311,6 +311,7 @@ class ClassifierVerificationMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ambiguity_maximum_approval_score: float = Field(ge=0.0, le=1.0)
+    unknown_recapture_on_dual_verifier_rejection: bool = False
     rotation_degrees: Literal[180] = 180
     independent_embedder: EmbedderMetadata
     independent_metric_projection: MetricProjectionMetadata

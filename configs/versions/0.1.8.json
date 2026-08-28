@@ -1,0 +1,85 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.8",
+  "app_build": 11,
+  "source_date_epoch": 1787875200,
+  "source_candidate": "yolo26-objectness-single3-consensus-presence-verifier-dual-verifier-recapture",
+  "runtime": {
+    "path": "artifacts/packages/bread-scanner-0.1.8-dual-verifier-recapture-runtime",
+    "manifest_sha256": "6d61d3fd15601af8891e920fbb7a091272229f40dfbb7c2f5eaf429a8b717915"
+  },
+  "catalog": {
+    "path": "artifacts/catalogs/bread-store-0.1.5-consensus",
+    "manifest_sha256": "085612ddd781a1879ae3bb2867c32c2174247ff8703e1641367d8c37226888b7",
+    "store_id": "bread-dev"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/runtime/cuda-13.0-cudnn-9.13.1-win-x64",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/evaluations/scanner-0.1.8/runtime-dual-verifier-recapture-package.json",
+      "sha256": "635dd80fc35a0b36f5314b2d5018f5ef824bbb67c183635db80a6dbd4a79270f"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.8/classifier-safety-final-report.md",
+      "sha256": "22dbea657462aa83a1f3617158e89b61010ab1f6142d5b945f30d53df62690a2"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.8/classifier-verifier-probe.json",
+      "sha256": "7b6d322ca3760e88f851dc2361299be4df2c1a9f62749dc9605d11f15e5c7034"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.8/detector415-baseline-vs-candidate-diff.json",
+      "sha256": "7f1184ba603ad28727650b39da0554409bd6512807daef199c38f573ff3306b7"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.8/detector415-candidate-coco.json",
+      "sha256": "775d16429bbb0ee63858ec798e4ce973a16a0a935a973e95c74ce4d9b0ec0b4c"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.8/detector415-source-audit.json",
+      "sha256": "881add03e7d0abdc00a7ea60ffd6d2fd5d885fe8d62c2d796196478d8d29c973"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.8/operational69-baseline-vs-candidate-diff.json",
+      "sha256": "02d58e6936c66482e477f2dc4e2ab6ef2688ce2547f660c7216747884f0a883c"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.8/operational69-candidate-coco.json",
+      "sha256": "ce053f5c95ae0c32ff39f069e37bbdbd20bdd24fb20d002a4e74bfc7b7e955b3"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.8/target-20260828-coco.json",
+      "sha256": "b7979534985cae119fe8eb6063093018240b0bcc204ec11a136af969957df228"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.8/target-cpu-vs-cuda-diff.json",
+      "sha256": "dab832b2655783c7c088901abda237b60d12762e663f056fa9a86b1cff5510d2"
+    },
+    {
+      "path": "artifacts/evaluations/scanner-0.1.8/latency-comparison.json",
+      "sha256": "c8fe8660d2a5ed67883e71742c2b180ae23272de7c934ee9b7074ee1adfb0a12"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}

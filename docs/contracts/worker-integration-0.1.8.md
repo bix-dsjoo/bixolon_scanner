@@ -1,12 +1,12 @@
 # BIXOLON Worker 연동 명세
 
-- 적용 제품 버전: `0.1.7`
+- 적용 제품 버전: `0.1.8`
 - 기본 주소: `http://127.0.0.1:8000`
 - 기본 endpoint: `POST /v1/scan`
 - multipart 필드: `image`
 
 클라이언트는 Worker 시작 후 `/health/ready`를 polling하고, 반환된 모든 non-null 구성요소 version이
-`0.1.7`인지 확인한 뒤 scan을 직렬로 전송합니다. JPEG/PNG 한 장만 허용하며 multipart boundary는
+`0.1.8`인지 확인한 뒤 scan을 직렬로 전송합니다. JPEG/PNG 한 장만 허용하며 multipart boundary는
 HTTP 라이브러리가 생성하도록 둡니다.
 
 ## 응답 상태
@@ -20,14 +20,18 @@ HTTP 라이브러리가 생성하도록 둡니다.
 `ERROR`를 재촬영으로 변환하지 마십시오. `IMAGE_RECAPTURE`는 classifier를 실행하지 않으므로
 `classifier_version`, `embedder_version`, `classifier_policy_version`, `catalog_version`이
 `null`입니다. `worker_version`, 실행한 `detector_version`과 `detector_policy_version`은
-`0.1.7`입니다.
+`0.1.8`입니다.
 
 `segmentations[]`의 `status`는 `APPROVED`, `UNKNOWN`, `SEGMENT_RECAPTURE` 중 하나입니다.
 `APPROVED`는 `prediction`을, `UNKNOWN`은 score 내림차순 Top-3를 반환합니다.
 `SEGMENT_RECAPTURE`는 `prediction: null`, 빈 `top3`를 반환합니다. 클라이언트는 `confidence`로
 threshold를 다시 계산하지 않고 Worker의 상태를 최종 판정으로 사용합니다.
 
-## 0.1.7 detector 검증
+`0.1.8`은 승인 차단 ROI의 회전·독립 verifier가 모두 품질 실패를 반환하면 해당 ROI를
+`SEGMENT_RECAPTURE`로 처리합니다. 이는 기존 공개 `SEGMENT_RECAPTURE_REQUIRED` reason과 빈 Top-3
+계약을 사용하므로 클라이언트에 새 enum이나 분기를 요구하지 않습니다.
+
+## 0.1.8 detector 검증
 
 큰 detector proposal은 크기만으로 재촬영하지 않습니다. proposal 내부의 raw query containment
 surplus 또는 제한된 선택 detection의 복수 중심점이 확인되거나, 기존 근접·query 중복 hard 조건이
@@ -45,5 +49,4 @@ Catalog 계열 version의 `null` 규칙은 다른 detector 조기 종료와 같�
 
 정식 필드와 enum은 [API 계약](api.md), JSON Schema는
 [scan-response.schema.json](../../schemas/scan-response.schema.json), 상태별 payload는
-[0.1.7 예시](examples/0.1.7/)를 참조하십시오. 빵 식별에는 표시명 대신 `class_id`를 사용합니다.
-
+[0.1.8 예시](examples/0.1.8/)를 참조하십시오. 빵 식별에는 표시명 대신 `class_id`를 사용합니다.
