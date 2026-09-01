@@ -39,6 +39,20 @@ def test_rfdetr_challenger_builds_reproducible_training_arguments(tmp_path):
     assert kwargs["run_test"] is False
 
 
+def test_rfdetr_challenger_accepts_class_agnostic_proposal_training(tmp_path):
+    payload = json.loads(CONFIG.read_text(encoding="utf-8"))
+    payload["dataset"]["class_mode"] = "class_agnostic_1"
+    payload["model"]["num_classes"] = 1
+    path = tmp_path / "objectness.json"
+    path.write_text(json.dumps(payload), encoding="utf-8")
+
+    config = load_config(path)
+
+    assert config["dataset"]["class_mode"] == "class_agnostic_1"
+    assert config["model"]["num_classes"] == 1
+    assert config["training"]["run_test"] is False
+
+
 def test_rfdetr_challenger_rejects_group_overlap_configuration(tmp_path):
     payload = json.loads(CONFIG.read_text(encoding="utf-8"))
     payload["dataset"]["group_fold_overlap_allowed"] = True

@@ -4,11 +4,13 @@ class _TopBar extends StatelessWidget {
   const _TopBar({
     required this.controller,
     required this.section,
+    required this.showBreadCapture,
     required this.onSectionChanged,
   });
 
   final ScannerController controller;
   final _WorkspaceSection section;
+  final bool showBreadCapture;
   final ValueChanged<_WorkspaceSection> onSectionChanged;
 
   @override
@@ -82,6 +84,14 @@ class _TopBar extends StatelessWidget {
                   selected: section == _WorkspaceSection.scan,
                   onTap: () => onSectionChanged(_WorkspaceSection.scan),
                 ),
+                if (showBreadCapture)
+                  _NavigationItem(
+                    key: const ValueKey('navigation-bread-capture'),
+                    label: '빵 촬영',
+                    selected: section == _WorkspaceSection.breadCapture,
+                    onTap: () =>
+                        onSectionChanged(_WorkspaceSection.breadCapture),
+                  ),
                 _NavigationItem(
                   key: const ValueKey('navigation-activity'),
                   label: '활동',

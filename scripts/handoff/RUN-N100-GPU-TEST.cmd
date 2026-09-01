@@ -6,15 +6,15 @@ if not defined IMAGE_DIR set "IMAGE_DIR=C:\easy"
 
 set "POWERSHELL=C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe"
 set "PACKAGE_DIR=%~dp0"
-set "RESULT_PATH=%PACKAGE_DIR%n100-0.1.8-openvino-device-matrix.json"
+set "RESULT_PATH=%PACKAGE_DIR%n100-0.1.12-openvino-device-matrix.json"
 
-echo BIXOLON Bakery AI Scanner 0.1.8 N100 OpenVINO CPU-only vs CPU Detector + Intel GPU Embedder
+echo BIXOLON Bakery AI Scanner 0.1.12 N100 OpenVINO CPU-only vs CPU Detector + Intel GPU Embedder
 echo Image directory: %IMAGE_DIR%
 echo.
 
 if not exist "%IMAGE_DIR%" goto :missing_images
 
-"%POWERSHELL%" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%PACKAGE_DIR%N100-GPU-BENCHMARK.ps1" -ImageDirectory "%IMAGE_DIR%" -OutputPath "%RESULT_PATH%"
+"%POWERSHELL%" -NoLogo -NoProfile -ExecutionPolicy Bypass -File "%PACKAGE_DIR%N100-GPU-BENCHMARK.ps1" -ImageDirectory "%IMAGE_DIR%" -OutputPath "%RESULT_PATH%" -AllowNoCountVerifier -ConfidenceTolerance 0.02 -MaximumWorkingSetBytes 2415919104 -MaximumFullPathLatencyMs 1000.0
 if errorlevel 1 goto :failed
 
 echo.

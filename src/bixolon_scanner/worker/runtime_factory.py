@@ -8,6 +8,7 @@ from ..contracts import load_runtime_package_v2, load_store_catalog_package
 from ..contracts.errors import ModelExecutionError, ProviderInitializationError
 from ..contracts.model_package import load_model_package
 from ..pipeline import DecisionPipeline
+from ..runtime.assisted_detector import attach_classifier_assisted_detector
 from ..runtime.catalog import build_catalog_classifier
 from ..runtime.detector_v2 import build_detector_v2, replace_count_verifier_v2
 from ..runtime.onnx import build_onnx_adapters, select_provider
@@ -132,6 +133,7 @@ def _build_v2_runtime(settings: WorkerSettings) -> WorkerRuntime:
                 embedder_provider,
                 settings,
             )
+        detector = attach_classifier_assisted_detector(detector, classifier)
         pipeline = DecisionPipeline(
             detector,
             classifier,
@@ -143,6 +145,25 @@ def _build_v2_runtime(settings: WorkerSettings) -> WorkerRuntime:
             detector_policy_version=runtime_package.metadata.detector_policy_version,
             classifier_policy_version=runtime_package.metadata.classifier_policy.version,
             catalog_version=catalog.metadata.catalog_version,
+            assisted_policy=(
+                None
+                if (
+                    ensemble := getattr(
+                        getattr(runtime_package.metadata, "detector", None),
+                        "ensemble",
+                        None,
+                    )
+                )
+                is None
+                else ensemble.class_verified_selector
+            ),
+            detector_primary_classifier_routing=(
+                getattr(
+                    runtime_package.metadata,
+                    "detector_primary_classifier_routing",
+                    None,
+                )
+            ),
         )
     except BaseException:
         _close_resource(classifier)

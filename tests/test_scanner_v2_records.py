@@ -2,9 +2,56 @@ from __future__ import annotations
 
 import json
 
+import numpy as np
 import pytest
 
-from bixolon_scanner.evaluation.scanner_v2 import _records
+from bixolon_scanner.evaluation.scanner_v2 import RecordingClassifier, _records
+from bixolon_scanner.pipeline.ports import ClassificationResult
+
+
+def test_recording_classifier_preserves_runtime_fallback_capabilities() -> None:
+    primary_result = ClassificationResult(
+        logits=np.asarray([[2.0, 1.0], [1.0, 2.0]], dtype=np.float32),
+        ranking_logits=np.asarray([[2.0, 1.0], [1.0, 2.0]], dtype=np.float32),
+        approval_scores=np.asarray([0.8, 0.4], dtype=np.float32),
+    )
+    fallback_result = ClassificationResult(
+        logits=np.asarray([[3.0, 1.0], [1.0, 3.0]], dtype=np.float32),
+        ranking_logits=np.asarray([[3.0, 1.0], [1.0, 3.0]], dtype=np.float32),
+        approval_scores=np.asarray([0.9, 0.9], dtype=np.float32),
+    )
+    selected_result = ClassificationResult(
+        logits=np.asarray([[4.0, 1.0]], dtype=np.float32),
+        ranking_logits=np.asarray([[4.0, 1.0]], dtype=np.float32),
+        approval_scores=np.asarray([0.95], dtype=np.float32),
+    )
+
+    class Classifier:
+        version = "0.1.7"
+        metadata = object()
+        resolution_fallback_metadata = object()
+        assisted_policy = "policy"
+
+        def classify(self, image, detections):
+            return primary_result
+
+        def classify_fallback(self, image, detections):
+            return fallback_result
+
+        def classify_fallback_selected(self, image, detections, detection_indices):
+            return selected_result
+
+    wrapped = RecordingClassifier(Classifier())
+
+    assert wrapped.resolution_fallback_metadata is not None
+    assert wrapped.classify_fallback(None, []) is fallback_result
+    assert wrapped.last_result is fallback_result
+    wrapped.classify(None, [object(), object()])
+    returned = wrapped.classify_fallback_selected(None, [object(), object()], [1])
+    assert returned is selected_result
+    assert wrapped.last_result.logits.tolist() == [[2.0, 1.0], [4.0, 1.0]]
+    assert wrapped.last_result.approval_scores.tolist() == pytest.approx([0.8, 0.95])
+    assert wrapped.assisted_policy == "policy"
 
 
 def test_records_loads_coco_json(tmp_path) -> None:

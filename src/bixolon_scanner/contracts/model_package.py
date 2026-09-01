@@ -20,8 +20,17 @@ class DetectorEnsembleMember(BaseModel):
     filename: str = Field(min_length=1)
     weight: float = Field(default=1.0, gt=0.0)
     score_threshold: float = Field(ge=0.0, le=1.0)
+    input_size: tuple[int, int] | None = None
+    ensemble_fallback: bool = True
 
     _validate_filename = field_validator("filename")(validate_package_filename)
+
+    @field_validator("input_size")
+    @classmethod
+    def validate_input_size(cls, value: tuple[int, int] | None) -> tuple[int, int] | None:
+        if value is not None and any(size < 32 or size % 32 for size in value):
+            raise ValueError("detector ensemble input dimensions must be positive multiples of 32")
+        return value
 
 
 class DetectorFusionMetadata(BaseModel):
@@ -31,6 +40,7 @@ class DetectorFusionMetadata(BaseModel):
     maximum_candidates_per_model: int = Field(default=300, gt=0)
     cluster_iou_threshold: float = Field(ge=0.0, le=1.0)
     score_mode: Literal["maximum"] = "maximum"
+    class_agnostic_output: bool = False
 
 
 class DetectorBaseSelectionMetadata(BaseModel):
@@ -117,6 +127,169 @@ class DetectorClassVerifiedSelectorMetadata(BaseModel):
     independent_minimum_score: float = Field(ge=0.0, le=1.0)
     classifier_batch_size: int = Field(default=96, gt=0)
     unique_class_per_image_contract: Literal[True] = True
+    low_resolution_maximum_dimension: int | None = Field(default=None, gt=0)
+    low_resolution_primary_minimum_dimension: int | None = Field(default=None, gt=0)
+    low_resolution_small_image_primary_member_filename: str | None = None
+    low_resolution_small_image_score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    low_resolution_score_threshold: float | None = Field(default=None, ge=0.0, le=1.0)
+    low_resolution_positive_count_minimum_confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0
+    )
+    low_resolution_recovery_maximum_count: int | None = Field(default=None, ge=1)
+    low_resolution_recovery_maximum_aspect_ratio: float | None = Field(default=None, gt=1.0)
+    low_resolution_recovery_minimum_approval_score: float | None = Field(
+        default=None, ge=0.0, le=1.0
+    )
+    low_resolution_primary_member_filename: str | None = None
+    low_resolution_maximum_box_area_ratio: float | None = Field(default=None, gt=0.0, le=1.0)
+    low_resolution_ensemble_fallback_minimum_dimension: int | None = Field(default=None, gt=0)
+    low_resolution_ensemble_fallback_minimum_count_confidence: float | None = Field(
+        default=None, ge=0.0, le=1.0
+    )
+    low_resolution_unknown_ensemble_fallback: bool = False
+    low_resolution_risky_approval_ensemble_fallback: bool = False
+    low_resolution_risky_approval_maximum_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    low_resolution_risky_approval_minimum_aspect_ratio: float | None = Field(default=None, gt=1.0)
+    count_assistance_minimum_dimension: int | None = Field(default=None, gt=0)
+    count_assistance_on_count_mismatch: bool = True
+    zero_count_minimum_confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    refinement_candidate_maximum_support: int | None = Field(default=None, ge=1)
+    single_object_expansion_minimum_containment: float | None = Field(default=None, gt=0.0, le=1.0)
+    single_object_expansion_minimum_area_ratio: float | None = Field(default=None, gt=1.0)
+    single_object_expansion_minimum_approval_score: float | None = Field(
+        default=None, ge=0.0, le=1.0
+    )
+    single_object_expansion_minimum_approval_margin: float | None = Field(
+        default=None, ge=0.0, le=1.0
+    )
+    wide_pair_detector_class_index: int | None = Field(default=None, ge=0)
+    wide_pair_classifier_class_index: int | None = Field(default=None, ge=0)
+    wide_pair_target_aspect_ratio: float | None = Field(default=None, gt=1.0)
+    unknown_consensus_promotion: bool = False
+    unknown_promotion_minimum_single_view_approval: float | None = Field(
+        default=None, ge=0.0, le=1.0
+    )
+    single_view_top3_fusion: bool = False
+
+    _validate_low_resolution_primary_filename = field_validator(
+        "low_resolution_primary_member_filename",
+        "low_resolution_small_image_primary_member_filename",
+    )(validate_package_filename)
+
+    @model_validator(mode="after")
+    def validate_assisted_policy(self) -> "DetectorClassVerifiedSelectorMetadata":
+        low_resolution = (
+            self.low_resolution_maximum_dimension,
+            self.low_resolution_score_threshold,
+        )
+        if (low_resolution[0] is None) != (low_resolution[1] is None):
+            raise ValueError("low-resolution selector fields must be configured together")
+        if (
+            self.low_resolution_primary_minimum_dimension is not None
+            and self.low_resolution_maximum_dimension is None
+        ):
+            raise ValueError("low-resolution primary minimum requires low-resolution selection")
+        if (
+            self.low_resolution_primary_minimum_dimension is not None
+            and self.low_resolution_primary_minimum_dimension
+            > self.low_resolution_maximum_dimension
+        ):
+            raise ValueError("low-resolution primary range is empty")
+        small_image_primary = (
+            self.low_resolution_small_image_primary_member_filename,
+            self.low_resolution_small_image_score_threshold,
+        )
+        if self.low_resolution_primary_minimum_dimension is not None and not all(
+            value is not None for value in small_image_primary
+        ):
+            raise ValueError("low-resolution primary minimum requires a small-image primary")
+        if self.low_resolution_primary_minimum_dimension is None and any(
+            value is not None for value in small_image_primary
+        ):
+            raise ValueError("small-image primary requires a low-resolution primary minimum")
+        low_resolution_recovery = (
+            self.low_resolution_positive_count_minimum_confidence,
+            self.low_resolution_recovery_maximum_count,
+            self.low_resolution_recovery_maximum_aspect_ratio,
+            self.low_resolution_recovery_minimum_approval_score,
+        )
+        if any(value is not None for value in low_resolution_recovery) and (
+            self.low_resolution_maximum_dimension is None
+            or not all(value is not None for value in low_resolution_recovery)
+        ):
+            raise ValueError(
+                "low-resolution recovery fields require low-resolution selection and each other"
+            )
+        if (
+            self.low_resolution_primary_member_filename is not None
+            and self.low_resolution_maximum_dimension is None
+        ):
+            raise ValueError("low-resolution primary member requires low-resolution selection")
+        if (
+            self.low_resolution_maximum_box_area_ratio is not None
+            and self.low_resolution_maximum_dimension is None
+        ):
+            raise ValueError("low-resolution area override requires low-resolution selection")
+        low_resolution_ensemble_fallback = (
+            self.low_resolution_ensemble_fallback_minimum_dimension,
+            self.low_resolution_ensemble_fallback_minimum_count_confidence,
+        )
+        if any(value is not None for value in low_resolution_ensemble_fallback) and (
+            self.low_resolution_primary_member_filename is None
+            or not all(value is not None for value in low_resolution_ensemble_fallback)
+        ):
+            raise ValueError(
+                "low-resolution ensemble fallback fields require a primary member and each other"
+            )
+        if self.low_resolution_unknown_ensemble_fallback and not all(
+            value is not None for value in low_resolution_ensemble_fallback
+        ):
+            raise ValueError(
+                "low-resolution UNKNOWN fallback requires ensemble fallback thresholds"
+            )
+        if self.low_resolution_risky_approval_ensemble_fallback and not all(
+            value is not None for value in low_resolution_ensemble_fallback
+        ):
+            raise ValueError(
+                "low-resolution risky-approval fallback requires ensemble fallback thresholds"
+            )
+        risky_approval_filters = (
+            self.low_resolution_risky_approval_maximum_score,
+            self.low_resolution_risky_approval_minimum_aspect_ratio,
+        )
+        if self.low_resolution_risky_approval_ensemble_fallback and not any(
+            value is not None for value in risky_approval_filters
+        ):
+            raise ValueError("low-resolution risky-approval fallback requires a risk filter")
+        if not self.low_resolution_risky_approval_ensemble_fallback and any(
+            value is not None for value in risky_approval_filters
+        ):
+            raise ValueError("low-resolution risky-approval filters require fallback")
+        single_object_expansion = (
+            self.single_object_expansion_minimum_containment,
+            self.single_object_expansion_minimum_area_ratio,
+            self.single_object_expansion_minimum_approval_score,
+            self.single_object_expansion_minimum_approval_margin,
+        )
+        if any(value is not None for value in single_object_expansion) and not all(
+            value is not None for value in single_object_expansion
+        ):
+            raise ValueError("single-object expansion fields must be configured together")
+        wide_pair = (
+            self.wide_pair_detector_class_index,
+            self.wide_pair_classifier_class_index,
+            self.wide_pair_target_aspect_ratio,
+        )
+        if any(value is not None for value in wide_pair) and not all(
+            value is not None for value in wide_pair
+        ):
+            raise ValueError("wide-pair selector fields must be configured together")
+        if (
+            self.unknown_promotion_minimum_single_view_approval is not None
+            and not self.unknown_consensus_promotion
+        ):
+            raise ValueError("unknown promotion confidence requires unknown consensus promotion")
+        return self
 
 
 class DetectorSelectiveCascadeMetadata(BaseModel):
@@ -171,6 +344,8 @@ class DetectorEnsembleMetadata(BaseModel):
         filenames = [member.filename for member in self.members]
         if len(filenames) != len(set(filenames)):
             raise ValueError("detector ensemble filenames must be unique")
+        if not any(member.ensemble_fallback for member in self.members):
+            raise ValueError("detector ensemble requires at least one fallback member")
         if self.cuda_graph_execution and self.parallel_execution:
             raise ValueError("CUDA graph detector sessions must execute sequentially")
         if self.policy_consensus is not None:
@@ -194,6 +369,16 @@ class DetectorEnsembleMetadata(BaseModel):
                 raise ValueError("detector cascade primary must reference an ensemble member")
             if self.parallel_execution:
                 raise ValueError("detector selective cascade must execute sequentially")
+            if not all(member.ensemble_fallback for member in self.members):
+                raise ValueError("detector selective cascade members must enable fallback")
+        low_resolution_primary = self.class_verified_selector.low_resolution_primary_member_filename
+        if low_resolution_primary is not None and low_resolution_primary not in filenames:
+            raise ValueError("low-resolution primary must reference an ensemble member")
+        small_image_primary = (
+            self.class_verified_selector.low_resolution_small_image_primary_member_filename
+        )
+        if small_image_primary is not None and small_image_primary not in filenames:
+            raise ValueError("small-image primary must reference an ensemble member")
         return self
 
 
@@ -460,6 +645,18 @@ class CountVerifierMetadata(BaseModel):
         return self
 
 
+class DetectorClassifierConsensusMetadata(BaseModel):
+    """Safety reconciliation for a class-aware detector and the ROI classifier."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    minimum_detector_score: float = Field(ge=0.0, le=1.0)
+    approved_disagreement_maximum_classifier_score: float = Field(ge=0.0, le=1.0)
+    promote_safe_unknown_on_top3_consensus: bool = True
+    promote_recapture_on_top1_consensus: bool = True
+    inject_detector_class_into_unknown_top3: bool = True
+
+
 class QualityMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -470,6 +667,7 @@ class QualityMetadata(BaseModel):
     min_sharpness: float | None = Field(default=None, ge=0.0)
     min_mean_luminance: float | None = Field(default=None, ge=0.0, le=255.0)
     max_mean_luminance: float | None = Field(default=None, ge=0.0, le=255.0)
+    detector_classifier_consensus: DetectorClassifierConsensusMetadata | None = None
 
     @model_validator(mode="after")
     def validate_luminance(self) -> "QualityMetadata":

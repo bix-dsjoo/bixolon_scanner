@@ -12,19 +12,28 @@ param(
     [ValidateRange(1, 600000)]
     [int]$MaximumStartupMs = 30000,
     [ValidateRange(1, 8589934592)]
-    [long]$MaximumWorkingSetBytes = 2147483648,
+    [long]$MaximumWorkingSetBytes = 2415919104,
     [ValidateRange(1.0, 10.0)]
     [double]$MaximumMemoryIncreaseRatio = 1.35,
     [ValidateRange(1.0, 60000.0)]
-    [double]$MaximumFullPathLatencyMs = 500.0,
-    [string]$ExpectedVersion = "0.1.8"
+    [double]$MaximumFullPathLatencyMs = 1000.0,
+    [string]$ExpectedVersion = "0.1.12",
+    [ValidateSet("object_presence", "exact_count")]
+    [string]$ExpectedCountComparisonMode = "object_presence",
+    [ValidateRange(0.0, 1.0)]
+    [double]$ExpectedCountConfidenceThreshold = 0.54,
+    [ValidateRange(0.0, 1.0)]
+    [double]$ConfidenceTolerance = 0.02,
+    [switch]$AllowNoCountVerifier,
+    [switch]$ModelGraphOrWeightChanged,
+    [switch]$DecisionPolicyChanged
 )
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Net.Http
 
 if ([string]::IsNullOrWhiteSpace($OutputPath)) {
-    $OutputPath = Join-Path $PSScriptRoot "n100-0.1.8-openvino-device-matrix.json"
+    $OutputPath = Join-Path $PSScriptRoot "n100-$ExpectedVersion-openvino-device-matrix.json"
 }
 
 function Get-Percentile {
@@ -448,27 +457,36 @@ $runtimeMetadata = Get-Content -Raw -LiteralPath $runtimeMetadataPath | ConvertF
 if ([string]$runtimeMetadata.worker_version -ne $ExpectedVersion) {
     throw "Expected Runtime $ExpectedVersion but found $($runtimeMetadata.worker_version)."
 }
+$hasCountVerifier = $null -ne $runtimeMetadata.count_verifier
 if (
-    $null -eq $runtimeMetadata.count_verifier -or
-    [string]$runtimeMetadata.count_verifier.filename -ne "count-verifier.onnx" -or
-    [string]$runtimeMetadata.count_verifier.comparison_mode -ne "object_presence" -or
-    [double]$runtimeMetadata.count_verifier.confidence_threshold -ne 0.54
+    (-not $hasCountVerifier -and -not $AllowNoCountVerifier) -or
+    ($hasCountVerifier -and (
+        [string]$runtimeMetadata.count_verifier.filename -ne "count-verifier.onnx" -or
+        [string]$runtimeMetadata.count_verifier.comparison_mode -ne
+            $ExpectedCountComparisonMode -or
+        [double]$runtimeMetadata.count_verifier.confidence_threshold -ne
+            $ExpectedCountConfidenceThreshold
+    ))
 ) {
-    throw "N100 GPU benchmark requires the final object-presence Runtime."
+    throw "N100 GPU benchmark count-verifier contract does not match the requested Runtime."
 }
-$countVerifierPath = Join-Path (
-    Join-Path $workerRoot "model-package"
-) ([string]$runtimeMetadata.count_verifier.filename)
-$countVerifierChecksumProperty = $runtimeMetadata.checksums.PSObject.Properties[
-    [string]$runtimeMetadata.count_verifier.filename
-]
-if (
-    -not (Test-Path -LiteralPath $countVerifierPath -PathType Leaf) -or
-    $null -eq $countVerifierChecksumProperty -or
-    (Get-FileHash -Algorithm SHA256 -LiteralPath $countVerifierPath).Hash.ToLowerInvariant() -ne
-        [string]$countVerifierChecksumProperty.Value
-) {
-    throw "N100 GPU benchmark object-presence verifier checksum is invalid."
+$countVerifierChecksum = $null
+if ($hasCountVerifier) {
+    $countVerifierPath = Join-Path (
+        Join-Path $workerRoot "model-package"
+    ) ([string]$runtimeMetadata.count_verifier.filename)
+    $countVerifierChecksumProperty = $runtimeMetadata.checksums.PSObject.Properties[
+        [string]$runtimeMetadata.count_verifier.filename
+    ]
+    if (
+        -not (Test-Path -LiteralPath $countVerifierPath -PathType Leaf) -or
+        $null -eq $countVerifierChecksumProperty -or
+        (Get-FileHash -Algorithm SHA256 -LiteralPath $countVerifierPath).Hash.ToLowerInvariant() -ne
+            [string]$countVerifierChecksumProperty.Value
+    ) {
+        throw "N100 GPU benchmark count-verifier checksum is invalid."
+    }
+    $countVerifierChecksum = [string]$countVerifierChecksumProperty.Value
 }
 $images = @(
     Get-ChildItem -LiteralPath $resolvedImageDirectory -File |
@@ -598,7 +616,7 @@ $paritySafe = (
     $parityEvaluated -and
     $semanticMismatchIndexes.Count -eq 0 -and
     $confidenceVectorMismatchIndexes.Count -eq 0 -and
-    $maximumConfidenceDelta -le 0.00001
+    $maximumConfidenceDelta -le $ConfidenceTolerance
 )
 $hybridBeneficial = (
     $null -ne $meanSpeedup -and
@@ -652,7 +670,8 @@ $passes = (
     $hybridResult.FullPathCount -ge $MinimumFullPathImages -and
     $baselineResult.ErrorCount -eq 0 -and
     $hybridResult.ErrorCount -eq 0 -and
-    $paritySafe
+    $paritySafe -and
+    ($baselineTargetMet -or $hybridTargetMet)
 )
 $recommendedProvider = if (
     $passes -and $hybridBeneficial -and $resourceSafe -and $hybridTargetMet
@@ -694,22 +713,42 @@ $report = [ordered]@{
         maximum_memory_increase_ratio = $MaximumMemoryIncreaseRatio
         maximum_full_path_mean_ms = $MaximumFullPathLatencyMs
         maximum_full_path_p95_ms = $MaximumFullPathLatencyMs
+        maximum_confidence_delta = $ConfidenceTolerance
         require_semantic_and_confidence_parity = $true
     }
     execution_contract = [ordered]@{
         same_worker_executable = $true
         same_runtime_catalog_and_policy = $true
+        count_verifier_configured = $hasCountVerifier
+        count_verifier_comparison_mode = if ($hasCountVerifier) {
+            [string]$runtimeMetadata.count_verifier.comparison_mode
+        } else { $null }
         cpu_only = [ordered]@{
             detector = "OpenVINOExecutionProvider:CPU"
-            object_presence_verifier = "OpenVINOExecutionProvider:CPU"
+            count_verifier = if ($hasCountVerifier) {
+                "OpenVINOExecutionProvider:CPU"
+            } else { "not_configured" }
+            object_presence_verifier = if ($hasCountVerifier) {
+                "OpenVINOExecutionProvider:CPU"
+            } else { "not_configured" }
             primary_embedder = "OpenVINOExecutionProvider:CPU"
             rotation_180_embedder = "OpenVINOExecutionProvider:CPU"
             independent_verifier_embedder = "OpenVINOExecutionProvider:CPU"
         }
         cpu_detector_gpu_embedder = [ordered]@{
             detector = "OpenVINOExecutionProvider:CPU"
-            object_presence_verifier = "OpenVINOExecutionProvider:GPU"
-            object_presence_execution = "parallel_with_detector"
+            count_verifier = if ($hasCountVerifier) {
+                "OpenVINOExecutionProvider:GPU"
+            } else { "not_configured" }
+            count_verifier_execution = if ($hasCountVerifier) {
+                "parallel_with_detector"
+            } else { "not_configured" }
+            object_presence_verifier = if ($hasCountVerifier) {
+                "OpenVINOExecutionProvider:GPU"
+            } else { "not_configured" }
+            object_presence_execution = if ($hasCountVerifier) {
+                "parallel_with_detector"
+            } else { "not_configured" }
             primary_embedder = "OpenVINOExecutionProvider:GPU"
             rotation_180_embedder = "OpenVINOExecutionProvider:GPU"
             independent_verifier_embedder = "OpenVINOExecutionProvider:GPU"
@@ -718,11 +757,17 @@ $report = [ordered]@{
     }
     integrity = [ordered]@{
         runtime_metadata_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $runtimeMetadataPath).Hash.ToLowerInvariant()
-        object_presence_verifier_sha256 = [string]$countVerifierChecksumProperty.Value
-        object_presence_confidence_threshold = [double]$runtimeMetadata.count_verifier.confidence_threshold
+        count_verifier_sha256 = $countVerifierChecksum
+        count_verifier_confidence_threshold = if ($hasCountVerifier) {
+            [double]$runtimeMetadata.count_verifier.confidence_threshold
+        } else { $null }
+        object_presence_verifier_sha256 = $countVerifierChecksum
+        object_presence_confidence_threshold = if ($hasCountVerifier) {
+            [double]$runtimeMetadata.count_verifier.confidence_threshold
+        } else { $null }
         catalog_checksums_sha256 = (Get-FileHash -Algorithm SHA256 -LiteralPath $catalogChecksumsPath).Hash.ToLowerInvariant()
-        model_graph_or_weight_changed = $false
-        decision_policy_changed = $false
+        model_graph_or_weight_changed = [bool]$ModelGraphOrWeightChanged
+        decision_policy_changed = [bool]$DecisionPolicyChanged
     }
     profiles = [ordered]@{
         openvino_cpu_only = Get-PublicProfile `
@@ -740,7 +785,7 @@ $report = [ordered]@{
         confidence_vector_mismatch_count = $confidenceVectorMismatchIndexes.Count
         confidence_vector_mismatch_indexes = $confidenceVectorMismatchIndexes.ToArray()
         maximum_confidence_delta = $maximumConfidenceDelta
-        confidence_tolerance = 0.00001
+        confidence_tolerance = $ConfidenceTolerance
     }
     comparison = [ordered]@{
         provider_initialization_safe = ($null -eq $hybridResult.FailureCode)

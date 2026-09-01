@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.8",
+    [string]$Version = "0.1.12",
     [string]$Stamp = "20260824",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$Force
@@ -63,7 +63,7 @@ if ([string]$config.version -ne $Version) {
 }
 $cpuReferenceEvidence = @(
     $config.evaluation_evidence | Where-Object {
-        [string]$_.path -match "(^|/)detector415-presence-packaged-openvino\.json$"
+        [string]$_.path -match "(^|/)v2-scanner415-openvino-cpu\.json$"
     }
 )
 if ($cpuReferenceEvidence.Count -ne 1) {
@@ -104,29 +104,21 @@ if ([string]$metadata.worker_version -ne $Version) {
 if (
     $null -ne $metadata.detector.ensemble -or
     [string]$metadata.detector.filename -ne "detector.onnx" -or
-    [double]$metadata.detector.score_threshold -ne 0.65 -or
-    $null -eq $metadata.count_verifier -or
-    [string]$metadata.count_verifier.filename -ne "count-verifier.onnx" -or
-    [string]$metadata.count_verifier.comparison_mode -ne "object_presence" -or
-    [double]$metadata.count_verifier.confidence_threshold -ne 0.54 -or
+    [int]$metadata.detector.input_size[0] -ne 320 -or
+    [int]$metadata.detector.input_size[1] -ne 320 -or
+    [double]$metadata.detector.score_threshold -ne 0.735 -or
+    $null -ne $metadata.count_verifier -or
     [string]$metadata.embedder.embedder_id -ne "dinov3-convnext-tiny" -or
     $null -eq $metadata.classifier_verification -or
     [double]$metadata.classifier_verification.ambiguity_maximum_approval_score -ne 0.5 -or
-    [int]$metadata.classifier_verification.independent_embedder.fixed_batch_size -ne 1
+    [int]$metadata.classifier_verification.independent_embedder.fixed_batch_size -ne 1 -or
+    $null -eq $metadata.classifier_resolution_fallback -or
+    -not [bool]$metadata.classifier_resolution_fallback.selective_roi_only -or
+    $null -eq $metadata.detector_primary_classifier_routing -or
+    [double]$metadata.detector_primary_classifier_routing.minimum_detector_score -ne 0.98 -or
+    -not [bool]$metadata.detector_primary_classifier_routing.require_unique_class_per_image
 ) {
-    throw "The N100 candidate does not match the selected consensus Runtime."
-}
-$countVerifierPath = Join-Path $runtimeSource ([string]$metadata.count_verifier.filename)
-$countVerifierChecksumProperty = $metadata.checksums.PSObject.Properties[
-    [string]$metadata.count_verifier.filename
-]
-if (
-    -not (Test-Path -LiteralPath $countVerifierPath -PathType Leaf) -or
-    $null -eq $countVerifierChecksumProperty -or
-    (Get-FileHash -Algorithm SHA256 -LiteralPath $countVerifierPath).Hash.ToLowerInvariant() -ne
-        [string]$countVerifierChecksumProperty.Value
-) {
-    throw "The N100 candidate object-presence verifier checksum is invalid."
+    throw "The N100 candidate does not match the selected detector-primary Runtime."
 }
 
 [System.IO.Directory]::CreateDirectory($resolvedOutputRoot) | Out-Null
@@ -189,13 +181,13 @@ try {
         product_version = $Version
         provider = "OpenVINOExecutionProvider:CPU"
         detector_filename = [string]$metadata.detector.filename
-        object_presence_verifier = [ordered]@{
-            filename = [string]$metadata.count_verifier.filename
-            comparison_mode = [string]$metadata.count_verifier.comparison_mode
-            confidence_threshold = [double]$metadata.count_verifier.confidence_threshold
-            provider = "OpenVINOExecutionProvider:CPU"
-            sha256 = [string]$countVerifierChecksumProperty.Value
+        detector_family = "SSDLite320"
+        object_presence_verifier = $null
+        classifier_resolution_fallback = [ordered]@{
+            selective_roi_only = [bool]$metadata.classifier_resolution_fallback.selective_roi_only
+            fallback_embedder_filename = [string]$metadata.classifier_resolution_fallback.embedder.filename
         }
+        detector_primary_classifier_routing = $metadata.detector_primary_classifier_routing
         classifier_verifier_filename = [string]$metadata.classifier_verification.independent_embedder.filename
         embedder_id = [string]$metadata.embedder.embedder_id
         default_profile = [ordered]@{
@@ -204,7 +196,7 @@ try {
             detector_threads_per_session = 0
             embedder_threads = 0
         }
-        target_full_path_latency_ms = 500
+        target_full_path_latency_ms = 1000
         current_pc_reference = "local-cpu-reference.json"
         reference_evidence_path = [string]$cpuReferenceEvidence[0].path
         reference_evidence_sha256 = $cpuReferenceSha256

@@ -28,8 +28,7 @@ def _write_runtime(root: Path) -> None:
     (root / "detector.onnx").write_bytes(b"detector-graph")
     (root / "embedder.onnx").write_bytes(b"embedder-graph")
     licenses = {
-        "licenses/APACHE-2.0.txt": "Apache License 2.0\n",
-        "licenses/AGPL-3.0.txt": "GNU Affero General Public License v3.0\n",
+        "licenses/TORCHVISION-LICENSE.txt": "BSD 3-Clause License\n",
         "licenses/DINOV3-LICENSE.md": "DINOv3 license\n",
         "licenses/THIRD_PARTY_MODELS.md": "Third-party models\n",
     }
@@ -185,6 +184,23 @@ def test_version_bundle_relabels_only_metadata_and_keeps_payloads(tmp_path: Path
     assert (staging / "runtime" / "embedder.onnx").read_bytes() == b"embedder-graph"
     assert (staging / "catalog" / "supports.bin").read_bytes() == b"supports"
     assert verify_prepared_version(config, repository_root=tmp_path)["passed"] is True
+
+
+def test_rewrite_runtime_relabels_resolution_fallback_embedder(tmp_path: Path) -> None:
+    source = tmp_path / "source"
+    target = tmp_path / "target"
+    _write_runtime(source)
+    metadata_path = source / "metadata.json"
+    metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
+    metadata["classifier_resolution_fallback"] = {
+        "embedder": {"filename": "fallback.onnx", "version": "2.0.1-rc.3"}
+    }
+    metadata_path.write_text(json.dumps(metadata) + "\n", encoding="utf-8")
+
+    _rewrite_runtime(source, target, "0.1.11")
+
+    rewritten = json.loads((target / "metadata.json").read_text(encoding="utf-8"))
+    assert rewritten["classifier_resolution_fallback"]["embedder"]["version"] == "0.1.11"
 
 
 def test_version_bundle_rewrites_nested_detector_filename_references(tmp_path: Path) -> None:

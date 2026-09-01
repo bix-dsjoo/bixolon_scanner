@@ -106,6 +106,203 @@ def test_runtime_package_v2_loads_checked_license_files(tmp_path: Path) -> None:
     assert package.detector_path == tmp_path.resolve() / "detector.onnx"
 
 
+def test_runtime_package_v2_loads_optional_detector_classifier_consensus(
+    tmp_path: Path,
+) -> None:
+    payload = _metadata(tmp_path)
+    payload["quality"]["detector_classifier_consensus"] = {
+        "minimum_detector_score": 0.735,
+        "approved_disagreement_maximum_classifier_score": 0.8,
+        "promote_safe_unknown_on_top3_consensus": True,
+        "promote_recapture_on_top1_consensus": True,
+        "inject_detector_class_into_unknown_top3": True,
+    }
+    _write_package(tmp_path, payload)
+
+    package = load_runtime_package_v2(tmp_path)
+
+    consensus = package.metadata.quality.detector_classifier_consensus
+    assert consensus is not None
+    assert consensus.minimum_detector_score == 0.735
+    assert consensus.approved_disagreement_maximum_classifier_score == 0.8
+    assert consensus.promote_safe_unknown_on_top3_consensus is True
+
+
+def test_class_agnostic_runtime_decouples_detector_and_classifier_class_counts(
+    tmp_path: Path,
+) -> None:
+    payload = _metadata(tmp_path)
+    payload["detector_class_mode"] = "class_agnostic"
+    payload["detector_class_count"] = 1
+    payload["classifier_policy"]["ridge_approval_thresholds"] = [0.7, None]
+
+    metadata = RuntimePackageV2Metadata.model_validate(payload)
+
+    assert metadata.detector_class_count == 1
+    assert metadata.classifier_policy.ridge_approval_thresholds == [0.7, None]
+
+
+def test_class_agnostic_runtime_rejects_class_coupled_policies(tmp_path: Path) -> None:
+    payload = _metadata(tmp_path)
+    payload["detector_class_mode"] = "class_agnostic"
+    payload["detector_class_count"] = 1
+    payload["quality"]["detector_classifier_consensus"] = {
+        "minimum_detector_score": 0.7,
+        "approved_disagreement_maximum_classifier_score": 0.8,
+    }
+
+    with pytest.raises(ValidationError):
+        RuntimePackageV2Metadata.model_validate(payload)
+
+
+def test_runtime_accepts_bounded_detector_primary_classifier_routing(tmp_path: Path) -> None:
+    payload = _metadata(tmp_path)
+    payload["detector_primary_classifier_routing"] = {
+        "direct_approval_class_indices": [0, 1],
+        "minimum_detector_score": 0.98,
+        "require_unique_class_per_image": True,
+    }
+
+    metadata = RuntimePackageV2Metadata.model_validate(payload)
+
+    routing = metadata.detector_primary_classifier_routing
+    assert routing is not None
+    assert routing.direct_approval_class_indices == [0, 1]
+    assert routing.minimum_detector_score == 0.98
+
+
+@pytest.mark.parametrize(
+    "routing",
+    [
+        {"direct_approval_class_indices": [0, 0]},
+        {"direct_approval_class_indices": [2]},
+    ],
+)
+def test_runtime_rejects_invalid_detector_primary_classes(tmp_path: Path, routing: dict) -> None:
+    payload = _metadata(tmp_path)
+    payload["detector_primary_classifier_routing"] = routing
+
+    with pytest.raises(ValidationError):
+        RuntimePackageV2Metadata.model_validate(payload)
+
+
+def test_class_agnostic_runtime_rejects_detector_primary_routing(tmp_path: Path) -> None:
+    payload = _metadata(tmp_path)
+    payload["detector_class_mode"] = "class_agnostic"
+    payload["detector_class_count"] = 1
+    payload["detector_primary_classifier_routing"] = {"direct_approval_class_indices": [0]}
+
+    with pytest.raises(ValidationError):
+        RuntimePackageV2Metadata.model_validate(payload)
+
+
+def test_runtime_package_v2_loads_checked_classifier_resolution_fallback(
+    tmp_path: Path,
+) -> None:
+    payload = _metadata(tmp_path)
+    payload["embedder"]["input_size"] = [192, 192]
+    fallback_path = tmp_path / "embedder-fallback.onnx"
+    fallback_path.write_bytes(b"fallback embedder")
+    fallback_embedder = dict(payload["embedder"])
+    fallback_embedder.update(
+        filename="embedder-fallback.onnx",
+        input_size=[224, 224],
+    )
+    payload["classifier_resolution_fallback"] = {
+        "embedder": fallback_embedder,
+        "fallback_on_unknown": True,
+        "fallback_on_unsafe": True,
+        "minimum_detector_support": 3,
+        "approval_disagreement_rules": [
+            {
+                "minimum_detection_count": 5,
+                "maximum_detection_count": 5,
+                "maximum_approval_score": 0.6,
+                "require_detector_disagreement": False,
+                "minimum_box_aspect_ratio": 3.0,
+                "maximum_approval_score_decrease": 0.2,
+            }
+        ],
+        "fuse_unapproved_top3": True,
+        "minimum_fallback_approval_score": 0.08,
+    }
+    payload["checksums"]["embedder-fallback.onnx"] = sha256_file(fallback_path)
+    _write_package(tmp_path, payload)
+
+    package = load_runtime_package_v2(tmp_path)
+
+    assert package.classifier_fallback_embedder_path == fallback_path.resolve()
+    assert package.metadata.classifier_resolution_fallback is not None
+    assert package.metadata.classifier_resolution_fallback.fallback_on_unsafe is True
+    assert package.metadata.classifier_resolution_fallback.selective_roi_only is False
+    assert package.metadata.classifier_resolution_fallback.fuse_unapproved_top3 is True
+    assert package.metadata.classifier_resolution_fallback.minimum_fallback_approval_score == 0.08
+    assert (
+        package.metadata.classifier_resolution_fallback.approval_disagreement_rules[
+            0
+        ].minimum_detection_count
+        == 5
+    )
+    assert (
+        package.metadata.classifier_resolution_fallback.approval_disagreement_rules[
+            0
+        ].maximum_detection_count
+        == 5
+    )
+    assert (
+        package.metadata.classifier_resolution_fallback.approval_disagreement_rules[
+            0
+        ].require_detector_disagreement
+        is False
+    )
+    assert (
+        package.metadata.classifier_resolution_fallback.approval_disagreement_rules[
+            0
+        ].minimum_box_aspect_ratio
+        == 3.0
+    )
+    assert (
+        package.metadata.classifier_resolution_fallback.approval_disagreement_rules[
+            0
+        ].maximum_approval_score_decrease
+        == 0.2
+    )
+
+
+def test_classifier_resolution_fallback_accepts_selective_roi_execution(tmp_path: Path) -> None:
+    payload = _metadata(tmp_path)
+    payload["embedder"]["input_size"] = [192, 192]
+    fallback_path = tmp_path / "embedder-fallback.onnx"
+    fallback_path.write_bytes(b"fallback embedder")
+    fallback_embedder = dict(payload["embedder"])
+    fallback_embedder.update(filename="embedder-fallback.onnx", input_size=[224, 224])
+    payload["classifier_resolution_fallback"] = {
+        "embedder": fallback_embedder,
+        "fallback_on_unknown": True,
+        "selective_roi_only": True,
+    }
+    payload["checksums"]["embedder-fallback.onnx"] = sha256_file(fallback_path)
+    _write_package(tmp_path, payload)
+
+    package = load_runtime_package_v2(tmp_path)
+
+    assert package.metadata.classifier_resolution_fallback is not None
+    assert package.metadata.classifier_resolution_fallback.selective_roi_only is True
+
+
+def test_classifier_resolution_fallback_requires_higher_resolution(tmp_path: Path) -> None:
+    payload = _metadata(tmp_path)
+    fallback_embedder = dict(payload["embedder"])
+    fallback_embedder["filename"] = "embedder-fallback.onnx"
+    payload["classifier_resolution_fallback"] = {
+        "embedder": fallback_embedder,
+        "fallback_on_unknown": True,
+    }
+
+    with pytest.raises(ValidationError):
+        RuntimePackageV2Metadata.model_validate(payload)
+
+
 def test_runtime_package_v2_accepts_attested_production_status(tmp_path: Path) -> None:
     payload = _metadata(tmp_path)
     payload["promotion_status"] = "production"
@@ -241,8 +438,6 @@ def test_runtime_package_v2_accepts_per_class_ridge_thresholds(tmp_path: Path) -
 @pytest.mark.parametrize(
     "thresholds",
     (
-        [0.7],
-        [0.7, None, 0.8],
         [-0.1, None],
         [1.1, None],
     ),

@@ -116,7 +116,14 @@ def filter_prediction_by_area(
         if _area(np.asarray(box, dtype=np.float32)) / image_area <= maximum_area_ratio
     ]
     output = dict(prediction)
-    for key in ("boxes_xyxy", "scores", "class_ids", "support_counts"):
+    for key in (
+        "boxes_xyxy",
+        "scores",
+        "class_ids",
+        "support_counts",
+        "class_support_counts",
+        "detector_class_ids",
+    ):
         if key in prediction:
             output[key] = [prediction[key][index] for index in kept]
     return output
@@ -250,12 +257,20 @@ def fuse_prediction_rows(
             class_scores[int(member["class_id"])] += float(member["score"]) * float(
                 weights[int(member["source_id"])]
             )
+        winning_class = int(
+            max(class_scores, key=lambda class_id: (class_scores[class_id], -class_id))
+        )
         outputs.append(
             {
                 "box": box.tolist(),
                 "score": max(float(member["score"]) for member in members),
-                "class_id": int(
-                    max(class_scores, key=lambda class_id: (class_scores[class_id], -class_id))
+                "class_id": winning_class,
+                "class_support_count": len(
+                    {
+                        int(member["source_id"])
+                        for member in members
+                        if int(member["class_id"]) == winning_class
+                    }
                 ),
                 "support_count": len(source_ids),
             }
@@ -266,6 +281,7 @@ def fuse_prediction_rows(
         "scores": [item["score"] for item in outputs],
         "class_ids": [item["class_id"] for item in outputs],
         "support_counts": [item["support_count"] for item in outputs],
+        "class_support_counts": [item["class_support_count"] for item in outputs],
     }
 
 

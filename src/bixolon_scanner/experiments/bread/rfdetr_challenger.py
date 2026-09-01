@@ -28,10 +28,15 @@ def load_config(path: Path) -> dict[str, Any]:
         raise ValueError("RF-DETR challenger requires the locked three group-aware folds")
     if config["dataset"]["group_fold_overlap_allowed"] is not False:
         raise ValueError("RF-DETR challenger cannot allow group-fold overlap")
-    if config["dataset"]["class_mode"] != "class_aware_20":
-        raise ValueError("RF-DETR challenger must keep the locked class-aware detector task")
-    if int(config["model"]["num_classes"]) != 20:
-        raise ValueError("RF-DETR challenger requires exactly 20 detector classes")
+    class_mode = str(config["dataset"]["class_mode"])
+    expected_class_counts = {
+        "class_aware_20": 20,
+        "class_agnostic_1": 1,
+    }
+    if class_mode not in expected_class_counts:
+        raise ValueError(f"unsupported RF-DETR challenger class mode: {class_mode}")
+    if int(config["model"]["num_classes"]) != expected_class_counts[class_mode]:
+        raise ValueError("RF-DETR num_classes does not match dataset class_mode")
     if config["training"]["run_test"] is not False:
         raise ValueError("RF-DETR development folds cannot be reported as a held-out test")
     return config
@@ -67,6 +72,9 @@ def validate_inputs(config: dict[str, Any], repository_root: Path, fold: int) ->
         raise ValueError("RF-DETR fold dataset provenance mismatch")
     if int(dataset_report["group_fold_overlap_count"]) != 0:
         raise ValueError("RF-DETR fold dataset contains group leakage")
+    expected_class_agnostic = config["dataset"]["class_mode"] == "class_agnostic_1"
+    if bool(dataset_report.get("class_agnostic")) is not expected_class_agnostic:
+        raise ValueError("RF-DETR fold dataset class mode mismatch")
     if dataset_report["source_manifest_sha256"] != config["dataset"]["historical_manifest_sha256"]:
         raise ValueError("RF-DETR fold dataset manifest checksum mismatch")
     output = _resolve_repository_path(

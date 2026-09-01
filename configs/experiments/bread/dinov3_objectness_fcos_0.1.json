@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "experiment": "bread-dinov3-recall-first-objectness-0.1",
+  "architecture": "dinov3_convnext_tiny_fpn_fcos_objectness",
+  "selection_scope": "three-fold grouped development OOF",
+  "prohibited_inputs": {
+    "existing_detector_weights": true,
+    "existing_detector_predictions": true,
+    "yolo_family": true,
+    "rfdetr": true
+  },
+  "backbone": {
+    "kind": "dinov3_convnext_tiny",
+    "source": "official Meta DINOv3 torch hub",
+    "source_revision": "6876159a11b4df116f30f667f8c9888617df0751",
+    "weights_filename": "dinov3_convnext_tiny_pretrain_lvd1689m-21b726bb.pth",
+    "weights_sha256": "21b726bb286e037f00a23fb4699fa9bda9c75b6a615bd57ce3013cec1b528d54",
+    "license": "DINOv3 License",
+    "unfreeze_last_stages": 0
+  },
+  "dataset": {
+    "manifest": "manifests/bread-zero-error-1.1/detector_manifest.jsonl",
+    "manifest_sha256": "309a7b8a3f5072ced17106f26f1a5004b13218ed310b6bd012b5c29b6fcce406",
+    "root": "datasets/bread_dataset",
+    "image_cache": "artifacts/cache/bread-dinov3-detector-640",
+    "folds": [0, 1, 2],
+    "group_key": "perceptual_group_id",
+    "group_fold_overlap_allowed": false,
+    "held_out_test_set": false
+  },
+  "model": {
+    "image_size": 640,
+    "fpn_channels": 256,
+    "proposal_score_floor": 0.001,
+    "inference_nms_threshold": 0.7,
+    "detections_per_image": 200,
+    "topk_candidates": 2000,
+    "device": "cuda"
+  },
+  "training": {
+    "epochs": 48,
+    "batch_size": 4,
+    "learning_rate": 0.0002,
+    "backbone_learning_rate": 0.000002,
+    "minimum_learning_rate_ratio": 0.01,
+    "weight_decay": 0.0001,
+    "evaluation_interval": 4,
+    "num_workers": 2,
+    "seed": 20260831,
+    "run_test": false
+  },
+  "selection": {
+    "primary": "minimum proposal false-negative count at IoU 0.5",
+    "secondary": "minimum missed-image count then minimum surplus proposal count",
+    "accepted_path_requirement": "zero false negatives and zero false positives after independent count/residual verification",
+    "test_threshold_tuning_forbidden": true
+  },
+  "output": {
+    "fold_template": "artifacts/experiments/bread-adaptive-cascade-0.1/detector/dinov3-fcos-objectness/fold{fold}"
+  }
+}

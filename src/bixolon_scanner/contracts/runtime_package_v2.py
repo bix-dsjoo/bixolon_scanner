@@ -326,6 +326,70 @@ class ClassifierVerificationMetadata(BaseModel):
         return self
 
 
+class ClassifierFallbackApprovalRule(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    minimum_detection_count: int = Field(default=1, ge=1)
+    maximum_detection_count: int | None = Field(default=None, ge=1)
+    maximum_approval_score: float = Field(ge=0.0, le=1.0)
+    require_detector_disagreement: bool = True
+    minimum_box_aspect_ratio: float | None = Field(default=None, ge=1.0)
+    maximum_approval_score_decrease: float | None = Field(default=None, ge=0.0, le=1.0)
+
+    @model_validator(mode="after")
+    def validate_detection_count_range(self) -> "ClassifierFallbackApprovalRule":
+        if (
+            self.maximum_detection_count is not None
+            and self.maximum_detection_count < self.minimum_detection_count
+        ):
+            raise ValueError("classifier fallback detection count range is inverted")
+        return self
+
+
+class ClassifierResolutionFallbackMetadata(BaseModel):
+    """Higher-resolution classifier used only for unsafe fast-path decisions."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    embedder: EmbedderMetadata
+    fallback_on_unknown: bool = True
+    fallback_on_unsafe: bool = False
+    selective_roi_only: bool = False
+    fuse_unapproved_top3: bool = False
+    minimum_fallback_approval_score: float | None = Field(default=None, ge=0.0, le=1.0)
+    minimum_detector_support: int = Field(default=3, ge=1)
+    approval_disagreement_rules: list[ClassifierFallbackApprovalRule] = Field(default_factory=list)
+
+    @model_validator(mode="after")
+    def validate_trigger(self) -> "ClassifierResolutionFallbackMetadata":
+        if (
+            not self.fallback_on_unknown
+            and not self.fallback_on_unsafe
+            and not self.approval_disagreement_rules
+        ):
+            raise ValueError("classifier resolution fallback requires at least one trigger")
+        return self
+
+
+class DetectorPrimaryClassifierRoutingMetadata(BaseModel):
+    """Allow calibrated detector classes to bypass the Catalog embedder."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    direct_approval_class_indices: list[int] = Field(min_length=1)
+    minimum_detector_score: float = Field(default=0.98, ge=0.0, le=1.0)
+    require_unique_class_per_image: bool = True
+
+    @field_validator("direct_approval_class_indices")
+    @classmethod
+    def validate_direct_approval_classes(cls, value: list[int]) -> list[int]:
+        if any(index < 0 for index in value):
+            raise ValueError("detector-primary class indices must be non-negative")
+        if len(value) != len(set(value)):
+            raise ValueError("detector-primary class indices must be unique")
+        return value
+
+
 class RuntimePackageV2Metadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -335,6 +399,7 @@ class RuntimePackageV2Metadata(BaseModel):
     promotion_status: Literal["development", "independent_test_pending", "production"] | None = None
     dataset_version: str
     detector_policy_version: str
+    detector_class_mode: Literal["class_agnostic", "class_aware"] = "class_aware"
     detector_class_count: int = Field(default=20, gt=0)
     detector: DetectorMetadata
     detector_refinement: DetectorRefinementMetadata | None = None
@@ -347,6 +412,8 @@ class RuntimePackageV2Metadata(BaseModel):
     metric_projection: MetricProjectionMetadata
     classifier_policy: CatalogDecisionPolicy
     classifier_verification: ClassifierVerificationMetadata | None = None
+    classifier_resolution_fallback: ClassifierResolutionFallbackMetadata | None = None
+    detector_primary_classifier_routing: DetectorPrimaryClassifierRoutingMetadata | None = None
     input: InputMetadata = Field(default_factory=InputMetadata)
     quality: QualityMetadata
     checksums: dict[str, str]
@@ -362,10 +429,37 @@ class RuntimePackageV2Metadata(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def validate_classifier_threshold_count(self) -> "RuntimePackageV2Metadata":
-        thresholds = self.classifier_policy.ridge_approval_thresholds
-        if thresholds is not None and len(thresholds) != self.detector_class_count:
-            raise ValueError("Ridge per-class approval thresholds must match detector classes")
+    def validate_detector_class_contract(self) -> "RuntimePackageV2Metadata":
+        routing = self.detector_primary_classifier_routing
+        if self.detector_class_mode != "class_agnostic":
+            if routing is not None and any(
+                index >= self.detector_class_count
+                for index in routing.direct_approval_class_indices
+            ):
+                raise ValueError("detector-primary class index exceeds detector class count")
+            return self
+        if self.detector_class_count != 1:
+            raise ValueError("class-agnostic detector must expose one objectness class")
+        if routing is not None:
+            raise ValueError("class-agnostic detector cannot approve Catalog classes directly")
+        if self.quality.detector_classifier_consensus is not None:
+            raise ValueError("class-agnostic detector cannot use detector-class consensus")
+        detector_corroboration = (
+            self.classifier_policy.detector_corroboration_minimum_score,
+            self.classifier_policy.detector_corroboration_maximum_approval_score,
+            self.classifier_policy.detector_corroboration_low_similarity_minimum_score,
+            self.classifier_policy.detector_corroboration_low_similarity_maximum_retrieval,
+            self.classifier_policy.detector_corroboration_low_similarity_minimum_approval_score,
+        )
+        if any(value is not None for value in detector_corroboration):
+            raise ValueError("class-agnostic detector cannot corroborate Catalog classes")
+        fallback = self.classifier_resolution_fallback
+        if fallback is not None and any(
+            rule.require_detector_disagreement for rule in fallback.approval_disagreement_rules
+        ):
+            raise ValueError(
+                "class-agnostic detector fallback rules cannot require class disagreement"
+            )
         return self
 
     @model_validator(mode="after")
@@ -407,6 +501,51 @@ class RuntimePackageV2Metadata(BaseModel):
                 raise ValueError("verification embedder must use a distinct package filename")
             if verification.independent_embedder.version != self.classifier_policy.version:
                 raise ValueError("verification embedder must use the product policy version")
+        fallback = self.classifier_resolution_fallback
+        if fallback is not None:
+            fallback_embedder = fallback.embedder
+            if fallback_embedder.filename == self.embedder.filename:
+                raise ValueError(
+                    "classifier fallback embedder must use a distinct package filename"
+                )
+            if fallback_embedder.version != self.embedder.version:
+                raise ValueError("classifier fallback embedder version must match the primary")
+            if fallback_embedder.embedder_id != self.embedder.embedder_id:
+                raise ValueError("classifier fallback must use the primary embedder architecture")
+            if fallback_embedder.embedding_dimension != self.embedder.embedding_dimension:
+                raise ValueError("classifier fallback embedding dimension must match the primary")
+            if (
+                any(
+                    fallback_size < primary_size
+                    for fallback_size, primary_size in zip(
+                        fallback_embedder.input_size,
+                        self.embedder.input_size,
+                        strict=True,
+                    )
+                )
+                or fallback_embedder.input_size == self.embedder.input_size
+            ):
+                raise ValueError("classifier fallback input must be strictly higher resolution")
+            comparable_fields = (
+                "input_name",
+                "output_name",
+                "mean",
+                "std",
+                "crop_margin_ratio",
+                "crop_mode",
+                "l2_normalized",
+                "resize_reducing_gap",
+                "horizontal_flip_tta",
+                "rotation_180_tta",
+                "neighbor_mask",
+                "neighbor_distance_bias",
+                "neighbor_shared_scale",
+            )
+            if any(
+                getattr(fallback_embedder, field) != getattr(self.embedder, field)
+                for field in comparable_fields
+            ):
+                raise ValueError("classifier fallback preprocessing must match the primary")
         return self
 
 
@@ -417,6 +556,7 @@ class RuntimePackageV2:
     detector_path: Path
     count_verifier_path: Path | None
     embedder_path: Path
+    classifier_fallback_embedder_path: Path | None
     metric_projection_path: Path | None
     verification_embedder_path: Path | None
     verification_metric_projection_path: Path | None
@@ -443,6 +583,8 @@ def load_runtime_package_v2(root: Path) -> RuntimePackageV2:
         verification_projection = metadata.classifier_verification.independent_metric_projection
         if verification_projection.filename is not None:
             required.add(verification_projection.filename)
+    if metadata.classifier_resolution_fallback is not None:
+        required.add(metadata.classifier_resolution_fallback.embedder.filename)
     required.update(metadata.license_files)
     if set(metadata.checksums) != required:
         raise PackageValidationError
@@ -475,6 +617,11 @@ def load_runtime_package_v2(root: Path) -> RuntimePackageV2:
             else resolved_files[metadata.count_verifier.filename]
         ),
         embedder_path=resolved_files[metadata.embedder.filename],
+        classifier_fallback_embedder_path=(
+            None
+            if metadata.classifier_resolution_fallback is None
+            else resolved_files[metadata.classifier_resolution_fallback.embedder.filename]
+        ),
         metric_projection_path=projection_path,
         verification_embedder_path=(
             None

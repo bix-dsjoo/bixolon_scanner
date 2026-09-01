@@ -1,1 +1,1 @@
-export '../features/scanner/data/image_input.dart';
+export '../shared/input/image_input.dart';

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ctypes
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -19,6 +20,22 @@ ExecutionProvider: TypeAlias = Literal[
     "openvino",
     "openvino_gpu",
 ]
+
+
+def _openvino_model_cache_directory(
+    cache_root: Path,
+    device: str,
+    model_path: Path,
+) -> Path:
+    resolved_model = model_path.resolve()
+    stat = resolved_model.stat()
+    identity = f"{resolved_model}|{stat.st_size}|{stat.st_mtime_ns}"
+    digest = hashlib.sha256(identity.encode("utf-8")).hexdigest()[:16]
+    safe_stem = "".join(
+        character if character.isalnum() or character in {"-", "_"} else "-"
+        for character in resolved_model.stem
+    )
+    return (cache_root.resolve() / device.lower() / f"{safe_stem}-{digest}").resolve()
 
 
 class OrtRunner:
@@ -129,7 +146,11 @@ class OrtRunner:
                     if cpu_intra_op_threads > 0:
                         device_config["INFERENCE_NUM_THREADS"] = str(cpu_intra_op_threads)
                 if openvino_cache_dir is not None:
-                    cache_dir = openvino_cache_dir.resolve() / device.lower()
+                    cache_dir = _openvino_model_cache_directory(
+                        openvino_cache_dir,
+                        device,
+                        model_path,
+                    )
                     cache_dir.mkdir(parents=True, exist_ok=True)
                     device_config["CACHE_DIR"] = str(cache_dir)
                     device_config["CACHE_MODE"] = "OPTIMIZE_SPEED"

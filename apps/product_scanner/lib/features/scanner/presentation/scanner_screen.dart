@@ -33,6 +33,9 @@ typedef ActivityWorkspaceBuilder =
       required VoidCallback onNavigateToScan,
     });
 
+typedef BreadCaptureWorkspaceBuilder =
+    Widget Function(BuildContext context, {required bool active});
+
 class ScannerScreen extends StatefulWidget {
   const ScannerScreen({
     super.key,
@@ -40,12 +43,14 @@ class ScannerScreen extends StatefulWidget {
     required this.autoInitialize,
     required this.disposeController,
     this.activityWorkspaceBuilder,
+    this.breadCaptureWorkspaceBuilder,
   });
 
   final ScannerController controller;
   final bool autoInitialize;
   final bool disposeController;
   final ActivityWorkspaceBuilder? activityWorkspaceBuilder;
+  final BreadCaptureWorkspaceBuilder? breadCaptureWorkspaceBuilder;
 
   @override
   State<ScannerScreen> createState() => _ScannerScreenState();
@@ -55,6 +60,7 @@ class _ScannerScreenState extends State<ScannerScreen>
     with WidgetsBindingObserver {
   _WorkspaceSection _section = _WorkspaceSection.scan;
   bool _activityMounted = false;
+  bool _breadCaptureMounted = false;
   final GlobalKey<_PreviewSurfaceState> _previewSurfaceKey =
       GlobalKey<_PreviewSurfaceState>();
   final GlobalKey<_ResultPanelState> _resultPanelKey =
@@ -175,6 +181,8 @@ class _ScannerScreenState extends State<ScannerScreen>
       _section = section;
       if (section == _WorkspaceSection.activity) {
         _activityMounted = true;
+      } else if (section == _WorkspaceSection.breadCapture) {
+        _breadCaptureMounted = true;
       }
     });
     if (section == _WorkspaceSection.scan) {
@@ -364,6 +372,8 @@ class _ScannerScreenState extends State<ScannerScreen>
                     _TopBar(
                       controller: controller,
                       section: _section,
+                      showBreadCapture:
+                          widget.breadCaptureWorkspaceBuilder != null,
                       onSectionChanged: _showSection,
                     ),
                     Expanded(
@@ -381,6 +391,15 @@ class _ScannerScreenState extends State<ScannerScreen>
                                   _chooseImage(showScanOnSelection: true),
                               onNavigateToScan: () =>
                                   _showSection(_WorkspaceSection.scan),
+                            )
+                          else
+                            const SizedBox.shrink(),
+                          if (_breadCaptureMounted &&
+                              widget.breadCaptureWorkspaceBuilder != null)
+                            widget.breadCaptureWorkspaceBuilder!(
+                              context,
+                              active:
+                                  _section == _WorkspaceSection.breadCapture,
                             )
                           else
                             const SizedBox.shrink(),
@@ -412,4 +431,4 @@ class _ScannerScreenState extends State<ScannerScreen>
   }
 }
 
-enum _WorkspaceSection { scan, activity }
+enum _WorkspaceSection { scan, activity, breadCapture }

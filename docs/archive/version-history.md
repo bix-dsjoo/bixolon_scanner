@@ -1,17 +1,37 @@
 # 버전 이력
 
-이 문서는 현재 단일 제품 버전 `0.1.8` 외의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
+이 문서는 현재 단일 제품 버전 `0.1.12` 외의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
 archive 인덱스입니다. 아래의 `production`, promotion, waiver, certification, release lock 표현은
 당시 기록의 용어이며 현재 빌드 수명주기나 활성 기본값이 아닙니다. Git 밖의 실험·평가 결과는
 보존하되 재생성 가능한 과거 전달물과 캐시는 정리할 수 있습니다.
 
-## `0.1.7` 유지보수 기준선
+## Scanner 0.1.11
 
-`0.1.7`은 `0.1.6`의 model·Catalog payload와 판정 정책을 유지하면서 Python과 Flutter 내부 책임
-경계를 정리한 patch였습니다. 설정, 번들 구조, Worker 연동 명세, 상태별 예시와 packaged smoke는
-각 archive 디렉터리에 원문으로 보존합니다. 2026-08-28 운영 10장 진단에서 detector 누락 8개와
-`bread_04` UNKNOWN Top-3 정답 누락 1개가 확인됐고, 이 자료는 이후 `0.1.8` classifier 안전 정책
-선택에 사용됐으므로 독립 test가 아닙니다.
+`0.1.11` 앱 build 14는 YOLO 계열을 제거하고 외부 detector pretrained weight 없이 프로젝트
+데이터로 학습한 class-aware SSDLite320 MobileNetV3-Large를 배포했습니다. 모든 정상 ROI를
+DINOv3로 분류하고 위험 ROI만 224로 다시 실행했으며 415장·운영69장 회귀에서 FP/FN·오승인·Top-3
+실패·`ERROR` 0을 기록했습니다. `0.1.12`에서 모델 binary는 유지하고 검증된 Detector class를 직접
+판정하는 Worker routing으로 변경했습니다.
+
+## Scanner 0.1.10
+
+`0.1.10` 앱 build 13은 `camera_windows`가 라이브 텍스처에만 적용하는 좌우 미러링을 보정해,
+촬영 전 미리보기와 촬영 후 저장 JPEG의 방향을 일치시킨 앱 patch입니다. 왼쪽·오른쪽 위치 촬영이
+저장 파일에서도 같은 구역에 유지됩니다. Worker 모델·Catalog·threshold와 판정 순서는 `0.1.9`에서
+변경하지 않았습니다.
+
+## Scanner 0.1.9
+
+`0.1.9` 앱 build 12는 빵 원본 촬영 작업공간을 추가하고 카메라 미리보기가 가로·세로 크기를 뒤집어
+가로 영상 좌우를 손실할 수 있던 문제를 수정한 앱 patch입니다. 카메라 고유 종횡비를 그대로
+사용하고 3×3 촬영 가이드를 실제 영상 영역에 맞췄습니다. Worker 모델·Catalog·threshold와 판정
+순서는 `0.1.8`에서 변경하지 않았습니다.
+
+## Scanner 0.1.8
+
+`0.1.8` 앱 build 11은 `0.1.7` payload를 기반으로 승인 차단 ROI의 회전·독립 verifier가 모두 품질
+실패를 반환할 때 `SEGMENT_RECAPTURE`로 처리하는 classifier 안전 정책을 활성화했습니다. 당시
+설정·평가·packaged smoke는 canonical `0.1.8` archive에 보존합니다.
 
 ## 0.x와 1.x
 

@@ -173,6 +173,7 @@ class OnnxDetector:
         crowding_policy: DetectorCrowdingPolicyMetadata | None = None,
         enable_cuda_graph: bool = False,
         detector_class_count: int | None = None,
+        class_agnostic: bool = False,
         cpu_intra_op_threads: int = 0,
         openvino_cache_dir: Path | None = None,
     ):
@@ -180,6 +181,7 @@ class OnnxDetector:
             raise ValueError("CUDA graph detector requires the packaged class count")
         self.metadata = metadata
         self.crowding_policy = crowding_policy
+        self.class_agnostic = class_agnostic
         output_shapes = (
             {
                 metadata.logits_output: (1, metadata.max_queries, detector_class_count),
@@ -247,7 +249,11 @@ class OnnxDetector:
                     # suppression is class agnostic.  The NMS policy flag controls only whether
                     # class equality participates in suppression; downstream diagnostics and
                     # model-level fusion still need the detector output that was actually run.
-                    class_id = int(np.argmax(logits[index])) if logits.ndim == 2 else None
+                    class_id = (
+                        None
+                        if getattr(self, "class_agnostic", False) or logits.ndim != 2
+                        else int(np.argmax(logits[index]))
+                    )
                     converted.append(Detection(x1, y1, x2, y2, float(scores[index]), class_id))
             return converted
 
@@ -953,6 +959,12 @@ class CountVerifiedDetector:
             self._verification_executor.shutdown(wait=True, cancel_futures=True)
             self._verification_executor = None
 
+    def detach_parallel_verification(self) -> bool:
+        """Transfer speculative-verifier ownership to another detector adapter."""
+        enabled = self._verification_executor is not None
+        self._shutdown_verification_executor()
+        return enabled
+
     def detect(self, image: np.ndarray | Image.Image) -> DetectionResult:
         verification: Future[tuple[int, float]] | None = None
         if self._verification_executor is not None:
@@ -993,6 +1005,8 @@ class CountVerifiedDetector:
             uncertain_candidate_count=result.uncertain_candidate_count,
             uncertain_candidate_scores=result.uncertain_candidate_scores,
             refinement_executed=result.refinement_executed,
+            detector_class_ids=result.detector_class_ids,
+            detector_class_support_counts=result.detector_class_support_counts,
         )
 
 

@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.11",
+  "app_build": 14,
+  "source_date_epoch": 1788220800,
+  "source_candidate": "ssdlite320-class-aware-selective-roi-fallback-v42",
+  "runtime": {
+    "path": "artifacts/experiments/yolo-free-0.1.7/runtime-candidate-v42-ssdlite320-selective-fallback",
+    "manifest_sha256": "c90926cfe948c190e5883fb44941f2c47f86e88dfdb9429bde3b34bf1c803e1a"
+  },
+  "catalog": {
+    "path": "artifacts/catalogs/bread-store-0.1.5-consensus",
+    "manifest_sha256": "085612ddd781a1879ae3bb2867c32c2174247ff8703e1641367d8c37226888b7",
+    "store_id": "bread-dev"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/runtime/cuda-13.0-cudnn-9.13.1-win-x64",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/experiments/yolo-free-0.1.7/baseline-0.1.7-rescored-current-manifest-coco.json",
+      "sha256": "cbdace8bd390530e41ad248ce96ce584ca4d15bbf733f166f532026285d1d1f9"
+    },
+    {
+      "path": "artifacts/experiments/yolo-free-0.1.7/v42-scanner415-openvino-cpu.json",
+      "sha256": "e3f6f327031efcd88cadd6c76d23302514c35c251b5767ac2d748746bfbf1c64"
+    },
+    {
+      "path": "artifacts/experiments/yolo-free-0.1.7/v42-scanner415-cuda.json",
+      "sha256": "899035d1b5c013a66a19d9fda0fd9daf80dec819427707941d80ff6f0638d7d2"
+    },
+    {
+      "path": "artifacts/experiments/yolo-free-0.1.7/v42-scanner415-cuda-openvino-parity.json",
+      "sha256": "c60044a8404335a68842bafded8a107a0cdd0f6601c3faf2b141df5aec716f75"
+    },
+    {
+      "path": "artifacts/experiments/yolo-free-0.1.7/v42-operational69-openvino-cpu.json",
+      "sha256": "01eb5c7660b214035f99e6c917701e4537878173d456a689062baad31fc0ced3"
+    },
+    {
+      "path": "artifacts/experiments/yolo-free-0.1.7/v41-v42-scanner415-openvino-parity.json",
+      "sha256": "acab041c92c8ccb37139176a26d2a27aa93abed32f7f0bbbe35552526fc3da9a"
+    },
+    {
+      "path": "artifacts/experiments/yolo-free-0.1.7/v42-packaged-worker-openvino-smoke.json",
+      "sha256": "63ca5d19c210e60587788e79e151f30e66821305d077f8d745c73936589128b0"
+    },
+    {
+      "path": "docs/diagnostics/n100-ssdlite-0.1.7-openvino-device-matrix.json",
+      "sha256": "eecf21734281e89046f7802b78bd65224a09dbcc41bca5df9a2629492575d0f8"
+    },
+    {
+      "path": "docs/diagnostics/n100-ssdlite-0.1.7-assessment.json",
+      "sha256": "12c31dd7cce58fe7ddde90e109102f66cd18444b046a7da16f2979b21e854f06"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}

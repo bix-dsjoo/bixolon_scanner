@@ -273,7 +273,11 @@ def main() -> None:
     parser.add_argument("--expected-status")
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--predictions-output", type=Path)
-    parser.add_argument("--provider", choices=("cuda", "cpu"), default="cuda")
+    parser.add_argument(
+        "--provider",
+        choices=("cuda", "cpu", "openvino", "openvino_gpu"),
+        default="cuda",
+    )
     parser.add_argument("--cuda-dll-dir", type=Path)
     parser.add_argument("--input-name", default="pixel_values")
     parser.add_argument("--logits-output", default="logits")

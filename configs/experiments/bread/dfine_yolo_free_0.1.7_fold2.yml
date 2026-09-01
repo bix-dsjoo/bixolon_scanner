@@ -1,0 +1,12 @@
+__include__:
+  - ./dfine_yolo_free_0.1.7_fold0.yml
+
+output_dir: artifacts/experiments/yolo-free-0.1.7/detector/fold2/training-canonical300
+
+train_dataloader:
+  dataset:
+    ann_file: artifacts/experiments/yolo-free-0.1.7/detector/fold2/coco-class-aware/instances_train.json
+
+val_dataloader:
+  dataset:
+    ann_file: artifacts/experiments/yolo-free-0.1.7/detector/fold2/coco-class-aware/instances_validation.json

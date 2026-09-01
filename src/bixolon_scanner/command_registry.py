@@ -89,6 +89,38 @@ DIAGNOSTIC_COMMANDS: dict[CommandPath, CommandTarget] = {
         "bixolon_scanner.experiments.bread.data_scale",
         "main",
     ),
+    ("experiment", "bread-adaptive-cascade"): (
+        "bixolon_scanner.experiments.bread.adaptive_cascade",
+        "main",
+    ),
+    ("experiment", "bread-dinov3-detector"): (
+        "bixolon_scanner.experiments.bread.dinov3_objectness_detector",
+        "main",
+    ),
+    ("experiment", "bread-dinov3-detector-oof"): (
+        "bixolon_scanner.experiments.bread.dinov3_detector_oof_report",
+        "main",
+    ),
+    ("experiment", "bread-dinov3-count-oof"): (
+        "bixolon_scanner.experiments.bread.dinov3_count_oof",
+        "main",
+    ),
+    ("experiment", "bread-dinov3-proposal-features"): (
+        "bixolon_scanner.experiments.bread.dinov3_proposal_features",
+        "main",
+    ),
+    ("experiment", "bread-dinov3-catalog-proposals"): (
+        "bixolon_scanner.experiments.bread.dinov3_catalog_proposal_logits",
+        "main",
+    ),
+    ("experiment", "bread-dinov3-proposal-ranker-oof"): (
+        "bixolon_scanner.experiments.bread.dinov3_proposal_ranker_oof",
+        "main",
+    ),
+    ("experiment", "bread-dinov3-selective-e2e"): (
+        "bixolon_scanner.experiments.bread.dinov3_selective_e2e",
+        "main",
+    ),
     ("experiment", "detector-target"): (
         "bixolon_scanner.experiments.detector.target",
         "main",

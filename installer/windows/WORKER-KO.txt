@@ -1,4 +1,4 @@
-BIXOLON Bakery AI Scanner 0.1.8 - Windows OpenVINO Worker ZIP
+BIXOLON Bakery AI Scanner 0.1.12 - Windows OpenVINO Worker ZIP
 ================================================
 
 실행 방법
@@ -8,32 +8,28 @@ BIXOLON Bakery AI Scanner 0.1.8 - Windows OpenVINO Worker ZIP
 4. 종료하려면 Worker 창에서 Ctrl+C를 누릅니다.
 
 실행 구성
-- Detector: OpenVINOExecutionProvider CPU
-- object_presence verifier: Detector와 병렬로 OpenVINOExecutionProvider Intel GPU
+- class-aware SSDLite320 Detector: OpenVINOExecutionProvider CPU
 - 주 Embedder, 180도 Embedder, 독립 Verifier: OpenVINOExecutionProvider Intel GPU
-- Intel GPU graph 전체를 초기화할 수 없으면 경고 로그를 남기고 object_presence와 Embedder를
-  CPU로 재시작합니다.
-- fallback 후 /health/ready의 provider는 openvino로 표시됩니다.
-- Python, Flutter, CUDA는 별도로 설치하지 않습니다.
-- 사용자별 version 디렉터리의 OpenVINO 컴파일 캐시를 사용합니다.
+- count verifier와 object_presence verifier는 구성하지 않음
+- Intel GPU graph를 초기화할 수 없으면 경고를 남기고 classifier를 CPU로 재시작
+- fallback 후 /health/ready의 provider는 openvino
+- Python, Flutter, CUDA 별도 설치 불필요
+- 사용자별 version 디렉터리의 OpenVINO 컴파일 캐시 사용
 
 필수 조건
 - Windows 10 1809 이상, x64
-- Intel GPU 가속 사용 시 활성화된 Intel UHD Graphics
-- Intel Graphics Driver 32.0.101.6299 이상 권장; GPU가 없거나 초기화에 실패하면 CPU fallback
+- Intel GPU 가속 사용 시 활성화된 Intel UHD Graphics와 최신 Intel Graphics Driver
 - Microsoft Visual C++ 2015-2022 x64 Runtime
 
 무결성
 - ZIP 옆의 .sha256 파일로 ZIP을 검증할 수 있습니다.
 - worker-manifest.json에는 ZIP 내부 파일별 SHA-256이 기록됩니다.
-- hardware-reference-result.json은 현재 버전 N100 진단을 명시적으로 지정한 경우에만 포함됩니다.
-- deployment-provenance.json은 선택한 Runtime·Catalog와 N100 진단 실행 여부를 기록합니다.
+- hardware-reference-result.json은 동일 모델·정책의 N100 참조 측정 원문입니다.
+- deployment-provenance.json은 Runtime·Catalog와 측정 원문의 SHA-256을 기록합니다.
 
 제한
-- 공통 모델 payload를 사용한 이전 0.1.5 N100 100장 측정에서 semantic mismatch와 오류는 0건이었고 CPU 대비
-  평균/p95 속도는 1.443/1.375배였습니다.
-- confidence 최대 차이는 0.0085055232였으므로 bit-exact parity 결과가 아닙니다.
-- GPU 구성 p95 732.288ms는 500ms 진단 기준을 넘었습니다.
-- 이 결과는 장비 한 대의 진단이며 SLA 또는 인증이 아닙니다.
-- 현재 0.1.8 N100 진단을 실행하지 않은 패키지는 NOT_RUN_FOR_SELECTED_VERSION을 기록합니다.
+- Intel N100 v41 100장 측정에서 GPU classifier 구성 평균/p95는 336.946/488.413ms,
+  semantic mismatch와 ERROR는 0건이었습니다.
+- v42 선택 ROI Worker 변경의 N100 추가 효과는 직접 측정하지 않았습니다.
+- 장비 한 대의 참조 결과이며 SLA 또는 인증이 아닙니다.
 - 배포 파일에는 Authenticode 서명이 없습니다.

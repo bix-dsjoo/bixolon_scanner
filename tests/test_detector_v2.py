@@ -4,6 +4,7 @@ import pytest
 from pydantic import ValidationError
 
 import bixolon_scanner.runtime.detector_v2 as detector_v2_runtime
+from bixolon_scanner.contracts.model_package import DetectorEnsembleMember
 from bixolon_scanner.contracts.runtime_package_v2 import (
     DetectorAmbiguityPolicyMetadata,
     DetectorCrowdingPolicyMetadata,
@@ -12,6 +13,7 @@ from bixolon_scanner.pipeline.ports import Detection
 from bixolon_scanner.runtime.detector_v2 import (
     CrossScaleOnnxDetector,
     FixedEnsembleOnnxDetector,
+    detector_class_votes,
 )
 from bixolon_scanner.runtime.onnx import detector_crowding_requires_recapture
 
@@ -38,6 +40,25 @@ def _crowding_policy() -> DetectorCrowdingPolicyMetadata:
         rotation_recovery_minimum_count_gain=1,
         rotation_recovery_agreement_iou_threshold=0.5,
     )
+
+
+def test_detector_ensemble_member_accepts_only_stride_aligned_input_size() -> None:
+    member = DetectorEnsembleMember(
+        filename="detector-fast.onnx",
+        score_threshold=0.1,
+        input_size=(480, 480),
+    )
+
+    assert member.input_size == (480, 480)
+    assert member.ensemble_fallback is True
+    fast_only = member.model_copy(update={"ensemble_fallback": False})
+    assert fast_only.ensemble_fallback is False
+    with pytest.raises(ValidationError):
+        DetectorEnsembleMember(
+            filename="detector-invalid.onnx",
+            score_threshold=0.1,
+            input_size=(481, 480),
+        )
 
 
 def _duplicates(box: tuple[float, float, float, float], count: int) -> list[Detection]:
@@ -279,6 +300,32 @@ def _selected(boxes: list[list[float]]) -> dict:
         "scores": [0.9] * len(boxes),
         "class_ids": [0] * len(boxes),
     }
+
+
+def test_detector_class_votes_match_nearest_member_proposals() -> None:
+    raw = {
+        "boxes_xyxy": [[0, 0, 10, 10], [20, 20, 30, 30], [40, 40, 50, 50]],
+        "class_ids": [8, 9, 7],
+    }
+    rows = [
+        {
+            "boxes_xyxy": [[0, 0, 10, 10], [20, 20, 30, 30]],
+            "class_ids": [2, 4],
+        },
+        {
+            "boxes_xyxy": [[0, 0, 10, 10], [20.2, 20, 30.2, 30]],
+            "class_ids": [2, 5],
+        },
+        {
+            "boxes_xyxy": [[0, 0, 10, 10]],
+            "class_ids": [3],
+        },
+    ]
+
+    class_ids, support_counts = detector_class_votes(raw, rows)
+
+    assert class_ids == [2, 4, 7]
+    assert support_counts == [2, 1, 0]
 
 
 def test_selective_ambiguity_policy_uses_geometry_and_dense_consensus() -> None:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import numpy as np
+
 from ..pipeline.ports import Detection
 
 
@@ -13,6 +15,29 @@ def box_iou(left: Detection, right: Detection) -> float:
     right_area = max(0.0, right.x2 - right.x1) * max(0.0, right.y2 - right.y1)
     union = left_area + right_area - intersection
     return intersection / union if union > 0.0 else 0.0
+
+
+def box_iou_matrix(
+    left_boxes: np.ndarray | list[list[float]],
+    right_boxes: np.ndarray | list[list[float]],
+) -> np.ndarray:
+    """Return pairwise IoU for two xyxy box collections without Python box loops."""
+    left = np.asarray(left_boxes, dtype=np.float64).reshape(-1, 4)
+    right = np.asarray(right_boxes, dtype=np.float64).reshape(-1, 4)
+    if not len(left) or not len(right):
+        return np.zeros((len(left), len(right)), dtype=np.float64)
+    upper_left = np.maximum(left[:, None, :2], right[None, :, :2])
+    lower_right = np.minimum(left[:, None, 2:], right[None, :, 2:])
+    intersection = np.prod(np.maximum(0.0, lower_right - upper_left), axis=2)
+    left_areas = np.prod(np.maximum(0.0, left[:, 2:] - left[:, :2]), axis=1)
+    right_areas = np.prod(np.maximum(0.0, right[:, 2:] - right[:, :2]), axis=1)
+    union = left_areas[:, None] + right_areas[None, :] - intersection
+    return np.divide(
+        intersection,
+        union,
+        out=np.zeros_like(intersection),
+        where=union > 0.0,
+    )
 
 
 def box_containment(outer: Detection, inner: Detection) -> float:
@@ -69,4 +94,4 @@ def nms(
     return kept
 
 
-__all__ = ["box_containment", "box_iou", "nms"]
+__all__ = ["box_containment", "box_iou", "box_iou_matrix", "nms"]

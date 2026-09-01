@@ -20,10 +20,6 @@ FINAL_BUNDLE_REQUIRED_FILES = (
     "worker/model-package/metadata.json",
     "worker/store-catalog/catalog.json",
     "worker/store-catalog/checksums.json",
-    "worker/model-package/licenses/APACHE-2.0.txt",
-    "worker/model-package/licenses/AGPL-3.0.txt",
-    "worker/model-package/licenses/DINOV3-LICENSE.md",
-    "worker/model-package/licenses/THIRD_PARTY_MODELS.md",
     "worker/cuda-runtime/cudart64_13.dll",
     "worker/cuda-runtime/cublas64_13.dll",
     "worker/cuda-runtime/cudnn64_9.dll",
@@ -182,6 +178,9 @@ def _rewrite_runtime(source: Path, target: Path, version: str) -> None:
     verification = metadata.get("classifier_verification")
     if isinstance(verification, dict):
         verification["independent_embedder"]["version"] = version
+    resolution_fallback = metadata.get("classifier_resolution_fallback")
+    if isinstance(resolution_fallback, dict):
+        resolution_fallback["embedder"]["version"] = version
     legacy_detector_name = "detector-production.onnx"
     versioned_detector_name = "detector-reference.onnx"
     legacy_detector = target / legacy_detector_name
@@ -295,6 +294,8 @@ def _validate_composition(
     ]
     if runtime.metadata.classifier_verification is not None:
         versions.append(runtime.metadata.classifier_verification.independent_embedder.version)
+    if runtime.metadata.classifier_resolution_fallback is not None:
+        versions.append(runtime.metadata.classifier_resolution_fallback.embedder.version)
     auxiliary_catalogs = []
     if catalog.rotation_catalog_root is not None:
         auxiliary_catalogs.append(catalog.rotation_catalog_root)
@@ -483,6 +484,10 @@ def _validate_final_bundle_content(
     for relative in FINAL_BUNDLE_REQUIRED_FILES:
         if not (bundle / relative).is_file():
             raise ValueError(f"final bundle is missing a required file: {relative}")
+    runtime_package = load_runtime_package_v2(runtime)
+    for relative in runtime_package.metadata.license_files:
+        if not (runtime / relative).is_file():
+            raise ValueError(f"final bundle is missing a declared Runtime license: {relative}")
 
 
 def write_final_bundle_manifest(

@@ -188,9 +188,11 @@ def test_openvino_runner_enables_persistent_speed_cache(
     fake_ort, captured = _fake_ort()
     monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
     cache_root = tmp_path / "compiled-model-cache"
+    model_path = tmp_path / "model.onnx"
+    model_path.write_bytes(b"model-one")
 
     onnx_session.OrtRunner(
-        tmp_path / "model.onnx",
+        model_path,
         provider,
         openvino_cache_dir=cache_root,
     )
@@ -198,9 +200,21 @@ def test_openvino_runner_enables_persistent_speed_cache(
     session = captured["session"]
     provider_options = session.providers[0][1]
     load_config = json.loads(provider_options["load_config"])
-    assert load_config[device]["CACHE_DIR"] == str((cache_root / device.lower()).resolve())
+    model_cache = Path(load_config[device]["CACHE_DIR"])
+    assert model_cache.parent == (cache_root / device.lower()).resolve()
+    assert model_cache.name.startswith("model-")
     assert load_config[device]["CACHE_MODE"] == "OPTIMIZE_SPEED"
-    assert (cache_root / device.lower()).is_dir()
+    assert model_cache.is_dir()
+
+    other_model_path = tmp_path / "other-model.onnx"
+    other_model_path.write_bytes(b"model-two")
+    onnx_session.OrtRunner(
+        other_model_path,
+        provider,
+        openvino_cache_dir=cache_root,
+    )
+    other_config = json.loads(captured["session"].providers[0][1]["load_config"])
+    assert Path(other_config[device]["CACHE_DIR"]) != model_cache
 
 
 def test_explicit_openvino_gpu_never_falls_back(monkeypatch) -> None:
@@ -570,6 +584,172 @@ def test_cuda_detector_keeps_metadata_parallel_setting(monkeypatch, tmp_path: Pa
         cpu_intra_op_threads=1,
     )
     assert detector.executor is None
+
+
+def test_detector_prepares_each_member_at_its_declared_input_size(monkeypatch) -> None:
+    class ShapeRunner:
+        def __init__(self) -> None:
+            self.shapes: list[tuple[int, ...]] = []
+
+        def run(self, _outputs, _input_name, tensor):
+            self.shapes.append(tensor.shape)
+            return [
+                np.zeros((1, 1, 1), dtype=np.float32),
+                np.zeros((1, 1, 4), dtype=np.float32),
+            ]
+
+    detector = object.__new__(FixedEnsembleOnnxDetector)
+    detector.metadata = SimpleNamespace(
+        input_size=(640, 640),
+        mean=(0.0, 0.0, 0.0),
+        std=(1.0, 1.0, 1.0),
+        resize_reducing_gap=1.0,
+        logits_output="logits",
+        boxes_output="boxes",
+        input_name="input",
+    )
+    detector.ensemble = SimpleNamespace(
+        members=[
+            SimpleNamespace(filename="fast.onnx", input_size=(480, 480)),
+            SimpleNamespace(filename="fallback.onnx", input_size=None),
+        ],
+        selective_cascade=None,
+    )
+    detector.runners = [ShapeRunner(), ShapeRunner()]
+    detector.executor = None
+    detector._select_outputs = lambda outputs, **_kwargs: outputs
+    monkeypatch.setattr(
+        detector_v2,
+        "prepare_rgb",
+        lambda _image, size, *_args, **_kwargs: np.zeros((3, *size), dtype=np.float32),
+    )
+
+    detector._predict(np.zeros((8, 8, 3), dtype=np.uint8), width=8, height=8)
+
+    assert detector.runners[0].shapes == [(1, 3, 480, 480)]
+    assert detector.runners[1].shapes == [(1, 3, 640, 640)]
+
+
+def test_detector_keeps_fast_primary_out_of_full_fallback(monkeypatch) -> None:
+    class MarkerRunner:
+        def __init__(self, marker: float) -> None:
+            self.marker = marker
+            self.calls = 0
+
+        def run(self, _outputs, _input_name, _tensor):
+            self.calls += 1
+            return [
+                np.full((1, 1, 1), self.marker, dtype=np.float32),
+                np.zeros((1, 1, 4), dtype=np.float32),
+            ]
+
+    detector = object.__new__(FixedEnsembleOnnxDetector)
+    detector.metadata = SimpleNamespace(
+        input_size=(640, 640),
+        mean=(0.0, 0.0, 0.0),
+        std=(1.0, 1.0, 1.0),
+        resize_reducing_gap=1.0,
+        logits_output="logits",
+        boxes_output="boxes",
+        input_name="input",
+    )
+    detector.ensemble = SimpleNamespace(
+        members=[
+            SimpleNamespace(
+                filename="fast.onnx",
+                input_size=(480, 480),
+                ensemble_fallback=False,
+            ),
+            SimpleNamespace(
+                filename="fold.onnx",
+                input_size=None,
+                ensemble_fallback=True,
+            ),
+            SimpleNamespace(
+                filename="production-640.onnx",
+                input_size=None,
+                ensemble_fallback=True,
+            ),
+        ],
+        selective_cascade=None,
+    )
+    detector.runners = [MarkerRunner(1.0), MarkerRunner(2.0), MarkerRunner(3.0)]
+    detector.executor = None
+    captured: list[tuple[list[float], list[int]]] = []
+
+    def capture(outputs, **kwargs):
+        markers = [float(output[0][0, 0]) for output in outputs]
+        captured.append((markers, kwargs["member_indices"]))
+        return outputs
+
+    detector._select_outputs = capture
+    monkeypatch.setattr(
+        detector_v2,
+        "prepare_rgb",
+        lambda _image, size, *_args, **_kwargs: np.zeros((3, *size), dtype=np.float32),
+    )
+
+    detector._predict(
+        np.zeros((8, 8, 3), dtype=np.uint8),
+        width=8,
+        height=8,
+        replicated_member_filename="fast.onnx",
+    )
+    detector._predict(np.zeros((8, 8, 3), dtype=np.uint8), width=8, height=8)
+
+    assert captured == [([1.0, 1.0], [1, 2]), ([2.0, 3.0], [1, 2])]
+    assert [runner.calls for runner in detector.runners] == [1, 1, 1]
+
+
+def test_detector_fast_primary_respects_source_dimension_floor() -> None:
+    detector = object.__new__(FixedEnsembleOnnxDetector)
+    detector.ensemble = SimpleNamespace(
+        class_verified_selector=SimpleNamespace(
+            low_resolution_maximum_dimension=5000,
+            low_resolution_primary_minimum_dimension=1000,
+            low_resolution_small_image_primary_member_filename="fallback.onnx",
+            low_resolution_small_image_score_threshold=0.58,
+            low_resolution_score_threshold=0.45,
+            low_resolution_primary_member_filename="fast.onnx",
+            low_resolution_maximum_box_area_ratio=0.35,
+        )
+    )
+    calls = []
+
+    def capture(_image, **kwargs):
+        calls.append(kwargs)
+        return kwargs
+
+    detector._predict = capture
+
+    detector.predict_candidates(np.zeros((640, 640, 3), dtype=np.uint8))
+    detector.predict_candidates(np.zeros((1200, 1200, 3), dtype=np.uint8))
+
+    assert calls[0]["replicated_member_filename"] == "fallback.onnx"
+    assert calls[0]["score_threshold"] == 0.58
+    assert calls[1]["replicated_member_filename"] == "fast.onnx"
+    assert calls[1]["score_threshold"] == 0.45
+
+
+def test_openvino_cpu_detector_uses_requested_worker_limit(monkeypatch, tmp_path: Path) -> None:
+    class FakeRunner(_WarmupRunner):
+        def __init__(self, _path, _provider, _cuda_dir, **_kwargs):
+            super().__init__(cuda=False)
+
+    monkeypatch.setattr(detector_v2, "OrtRunner", FakeRunner)
+    package = _ensemble_package(tmp_path)
+    package.metadata.detector.ensemble.parallel_execution = True
+    detector = FixedEnsembleOnnxDetector(
+        package,
+        "openvino",
+        cpu_detector_workers=2,
+        cpu_intra_op_threads=1,
+    )
+    try:
+        assert detector.executor is not None
+        assert detector.executor._max_workers == 2
+    finally:
+        detector.close()
 
 
 @pytest.mark.parametrize(

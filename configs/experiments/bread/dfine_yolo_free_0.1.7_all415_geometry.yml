@@ -1,0 +1,26 @@
+__include__:
+  - dfine_yolo_free_0.1.7_all415.yml
+
+# Iteration 2: the conservative 1e-6/1e-5 fine-tune improved class ranking but
+# did not adapt overlapping-object geometry. Keep the synthetic-trained 0.1.0
+# checkpoint as initialization and use a moderate discriminative learning rate.
+output_dir: artifacts/experiments/yolo-free-0.1.7/detector/all415-geometry/training
+epochs: 12
+
+lr_warmup_scheduler:
+  type: LinearWarmup
+  warmup_duration: 3
+
+optimizer:
+  type: AdamW
+  params:
+    - params: '^(?=.*backbone)(?!.*norm|bn).*$'
+      lr: 0.00001
+    - params: '^(?=.*backbone)(?=.*norm|bn).*$'
+      lr: 0.00001
+      weight_decay: 0.0
+    - params: '^(?=.*(?:encoder|decoder))(?=.*(?:norm|bn|bias)).*$'
+      weight_decay: 0.0
+  lr: 0.0001
+  betas: [0.9, 0.999]
+  weight_decay: 0.0001

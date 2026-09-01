@@ -260,7 +260,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--key-id")
     parser.add_argument("--signing-key-env", default="BIXOLON_CATALOG_SIGNING_KEY")
     parser.add_argument("--provider", choices=("cuda", "cpu", "openvino"), default="cuda")
-    parser.add_argument("--expected-version", default="0.1.8")
+    parser.add_argument("--expected-version", default="0.1.12")
     parser.add_argument("--cuda-dll-dir", type=Path)
     parser.add_argument("--startup-timeout-seconds", type=float, default=120.0)
     evaluate(parser.parse_args(argv))

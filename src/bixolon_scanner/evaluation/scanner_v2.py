@@ -14,6 +14,7 @@ from ..contracts import ItemStatus, Status, load_runtime_package_v2, load_store_
 from ..contracts.catalog import sha256_file
 from ..pipeline import DecisionPipeline
 from ..pipeline.ports import ClassificationResult, Detection, DetectionResult
+from ..runtime.assisted_detector import attach_classifier_assisted_detector
 from ..runtime.catalog import build_catalog_classifier
 from ..runtime.detector_v2 import build_detector_v2
 from ..runtime.imaging import decode_image
@@ -88,7 +89,7 @@ def _match(
 ) -> tuple[dict[int, int], set[int]]:
     ground_truth = [
         Detection(x, y, x + width, y + height, 1.0)
-        for x, y, width, height in (row["bbox_xywh"] for row in annotations)
+        for x, y, width, height in (row.get("bbox_xywh", row.get("bbox")) for row in annotations)
     ]
     candidates = sorted(
         (
@@ -148,11 +149,168 @@ class RecordingClassifier:
         self.classifier = classifier
         self.version = classifier.version
         self.metadata = classifier.metadata
+        self.resolution_fallback_metadata = getattr(
+            classifier,
+            "resolution_fallback_metadata",
+            None,
+        )
         self.last_result: ClassificationResult | None = None
 
     def classify(self, image, detections: list[Detection]) -> ClassificationResult:
         self.last_result = self.classifier.classify(image, detections)
         return self.last_result
+
+    def record_detector_primary_batch(self, batch) -> None:
+        self.last_result = ClassificationResult(
+            logits=batch.probabilities,
+            ranking_logits=batch.ranking_probabilities,
+            retrieval_logits=None,
+            approval_scores=batch.approval_scores,
+            top3_safety_scores=np.ones(len(batch.approved), dtype=np.float32),
+            ranking_scores=batch.ranking_probabilities,
+            segment_recapture_reasons=batch.segment_recapture_reasons,
+            unknown_reasons=batch.unknown_reasons,
+            approval_blocked=~batch.approved,
+        )
+
+    def classify_selected(
+        self,
+        image,
+        detections: list[Detection],
+        detection_indices,
+    ) -> ClassificationResult:
+        selected = self.classifier.classify_selected(image, detections, detection_indices)
+        if not isinstance(selected, ClassificationResult):
+            raise RuntimeError("selected classifier did not return diagnostics")
+        indices = np.asarray(detection_indices, dtype=np.int64)
+        detection_count = len(detections)
+        class_count = len(self.metadata.labels)
+
+        def direct_array(selected_value, *, fill: float = 0.0):
+            if selected_value is None:
+                return None
+            shape = (detection_count, *np.asarray(selected_value).shape[1:])
+            value = np.full(shape, fill, dtype=np.asarray(selected_value).dtype)
+            value[indices] = selected_value
+            return value
+
+        logits = direct_array(selected.logits, fill=-1.0)
+        ranking_logits = direct_array(selected.ranking_logits, fill=-1.0)
+        ranking_scores = direct_array(selected.ranking_scores)
+        approval_scores = direct_array(selected.approval_scores)
+        top3_safety_scores = direct_array(selected.top3_safety_scores)
+        approval_blocked = direct_array(selected.approval_blocked)
+        selected_set = set(int(index) for index in indices)
+        for index, detection in enumerate(detections):
+            if index in selected_set:
+                continue
+            class_index = detection.class_id
+            if class_index is None or not 0 <= class_index < class_count:
+                raise RuntimeError("direct detector diagnostic class is invalid")
+            logits[index, class_index] = 1.0
+            ranking_logits[index, class_index] = 1.0
+            if ranking_scores is not None:
+                ranking_scores[index, class_index] = 1.0
+            if approval_scores is not None:
+                approval_scores[index] = detection.score
+        selected_recapture = selected.segment_recapture_reasons or (None,) * len(indices)
+        selected_unknown = selected.unknown_reasons or (None,) * len(indices)
+        recapture_reasons = [None] * detection_count
+        unknown_reasons = [None] * detection_count
+        for selected_index, base_index in enumerate(indices):
+            recapture_reasons[int(base_index)] = selected_recapture[selected_index]
+            unknown_reasons[int(base_index)] = selected_unknown[selected_index]
+        self.last_result = ClassificationResult(
+            logits=logits,
+            ranking_logits=ranking_logits,
+            retrieval_logits=direct_array(selected.retrieval_logits, fill=-1.0),
+            approval_scores=approval_scores,
+            top3_safety_scores=top3_safety_scores,
+            ranking_scores=ranking_scores,
+            segment_recapture_reasons=tuple(recapture_reasons),
+            unknown_reasons=tuple(unknown_reasons),
+            approval_blocked=approval_blocked,
+        )
+        return selected
+
+    def classify_fallback(self, image, detections) -> ClassificationResult:
+        self.last_result = self.classifier.classify_fallback(image, detections)
+        return self.last_result
+
+    def classify_fallback_selected(
+        self,
+        image,
+        detections,
+        detection_indices,
+    ) -> ClassificationResult:
+        if not isinstance(self.last_result, ClassificationResult):
+            raise RuntimeError("selected classifier fallback requires a recorded primary result")
+        selected = self.classifier.classify_fallback_selected(
+            image,
+            detections,
+            detection_indices,
+        )
+        if not isinstance(selected, ClassificationResult):
+            raise RuntimeError("selected classifier fallback did not return diagnostics")
+        indices = np.asarray(detection_indices, dtype=np.int64)
+
+        def merge_array(base, replacement):
+            if base is None and replacement is None:
+                return None
+            if base is None or replacement is None:
+                raise RuntimeError("selected classifier diagnostic fields differ")
+            merged = np.asarray(base).copy()
+            merged[indices] = replacement
+            return merged
+
+        def merge_reasons(base, replacement):
+            if base is None and replacement is None:
+                return None
+            merged = list(base or (None,) * len(self.last_result.logits))
+            replacements = replacement or (None,) * len(indices)
+            for selected_index, base_index in enumerate(indices):
+                merged[int(base_index)] = replacements[selected_index]
+            return tuple(merged)
+
+        self.last_result = ClassificationResult(
+            logits=merge_array(self.last_result.logits, selected.logits),
+            ranking_logits=merge_array(
+                self.last_result.ranking_logits,
+                selected.ranking_logits,
+            ),
+            retrieval_logits=merge_array(
+                self.last_result.retrieval_logits,
+                selected.retrieval_logits,
+            ),
+            approval_scores=merge_array(
+                self.last_result.approval_scores,
+                selected.approval_scores,
+            ),
+            top3_safety_scores=merge_array(
+                self.last_result.top3_safety_scores,
+                selected.top3_safety_scores,
+            ),
+            ranking_scores=merge_array(
+                self.last_result.ranking_scores,
+                selected.ranking_scores,
+            ),
+            segment_recapture_reasons=merge_reasons(
+                self.last_result.segment_recapture_reasons,
+                selected.segment_recapture_reasons,
+            ),
+            unknown_reasons=merge_reasons(
+                self.last_result.unknown_reasons,
+                selected.unknown_reasons,
+            ),
+            approval_blocked=merge_array(
+                self.last_result.approval_blocked,
+                selected.approval_blocked,
+            ),
+        )
+        return selected
+
+    def __getattr__(self, name: str):
+        return getattr(self.classifier, name)
 
 
 @dataclass
@@ -189,14 +347,12 @@ def evaluate(args: argparse.Namespace) -> dict:
         expected_store_id=args.store_id,
         expected_key_id=args.key_id,
     )
-    detector = RecordingDetector(
-        build_detector_v2(
-            runtime,
-            args.provider,
-            args.cuda_dll_dir,
-            cpu_detector_workers=args.cpu_detector_workers,
-            cpu_intra_op_threads=args.cpu_detector_threads,
-        )
+    built_detector = build_detector_v2(
+        runtime,
+        args.provider,
+        args.cuda_dll_dir,
+        cpu_detector_workers=args.cpu_detector_workers,
+        cpu_intra_op_threads=args.cpu_detector_threads,
     )
     catalog_classifier, embedder = build_catalog_classifier(
         runtime,
@@ -206,6 +362,10 @@ def evaluate(args: argparse.Namespace) -> dict:
         cpu_intra_op_threads=args.cpu_embedder_threads,
     )
     classifier = RecordingClassifier(catalog_classifier)
+    detector = RecordingDetector(
+        attach_classifier_assisted_detector(built_detector, catalog_classifier)
+    )
+    ensemble = runtime.metadata.detector.ensemble
     pipeline = DecisionPipeline(
         detector,
         classifier,
@@ -217,6 +377,8 @@ def evaluate(args: argparse.Namespace) -> dict:
         detector_policy_version=runtime.metadata.detector_policy_version,
         classifier_policy_version=runtime.metadata.classifier_policy.version,
         catalog_version=catalog.metadata.catalog_version,
+        assisted_policy=(None if ensemble is None else ensemble.class_verified_selector),
+        detector_primary_classifier_routing=(runtime.metadata.detector_primary_classifier_routing),
     )
     records = _records(args.manifest, args.dataset_root)
     expected_image_count = int(getattr(args, "expected_image_count", 300))
@@ -225,6 +387,9 @@ def evaluate(args: argparse.Namespace) -> dict:
         raise ValueError(
             f"evaluation requires exactly {expected_image_count} images; observed {len(records)}"
         )
+    detector_warmup = getattr(detector.detector, "warmup", None)
+    if callable(detector_warmup):
+        detector_warmup()
     embedder.warmup()
     classifier_warmup = getattr(catalog_classifier, "warmup", None)
     if callable(classifier_warmup):

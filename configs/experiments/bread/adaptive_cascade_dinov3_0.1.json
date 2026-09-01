@@ -1,0 +1,57 @@
+{
+  "schema_version": "1.0",
+  "experiment": "bread-dinov3-recall-first-adaptive-cascade",
+  "selection_scope": "development_only",
+  "threshold_provenance": "selected on group-aware development OOF including the gate; diagnostic only until frozen on separate calibration and confirmed on locked test",
+  "architecture": {
+    "shared_backbone": "licensed DINOv3",
+    "proposal_head": "DINOv3 FPN anchor-free class-agnostic objectness challenger",
+    "fast_identity": "shared-feature catalog retrieval",
+    "stage2": "high-resolution proposal and scene completeness verifier",
+    "stage3": "independent catalog verifier and calibrated prediction set",
+    "scene_recovery": "at most one separately trained tile or DINOv3 residual proposal pass before IMAGE_RECAPTURE; cross-resolution reuse of the same head is rejected"
+  },
+  "adaptive_cascade": {
+    "proposal_minimum_score": 0.05,
+    "early_detector_score_minimum": 0.9,
+    "early_localization_score_minimum": 0.9,
+    "early_quality_score_minimum": 0.9,
+    "early_catalog_inlier_minimum": 0.9,
+    "early_top1_score_minimum": 0.85,
+    "early_top1_margin_minimum": 0.2,
+    "early_support_agreement_minimum": 0.8,
+    "stage2_confidence_minimum": 0.9,
+    "stage3_catalog_inlier_minimum": 0.9,
+    "stage3_approval_score_minimum": 0.9,
+    "stage3_approval_margin_minimum": 0.2,
+    "stage3_support_agreement_minimum": 0.8,
+    "patch_count_confidence_minimum": 0.97,
+    "cls_count_confidence_minimum": 0.8,
+    "require_count_head_agreement": true,
+    "unexplained_foreground_maximum": 0.05,
+    "require_exact_count": true,
+    "require_foreground_evidence": true,
+    "maximum_prediction_set_size": 3
+  },
+  "measured_development_candidate": {
+    "proposal_score": "geometric mean of dense objectness, compact objectness and compact IoU",
+    "sku_unique_suppression": true,
+    "nms_iou": 0.3,
+    "catalog_aggregation_iou": 0.3,
+    "maximum_residual_ratio": 0.9,
+    "accepted_image_count": 2,
+    "accepted_segmentation_count": 6,
+    "accepted_error_count": 0,
+    "independent_test": false,
+    "activation_allowed": false
+  },
+  "selection_order": [
+    "accepted image false-negative count equals zero",
+    "accepted image false-positive count equals zero",
+    "APPROVED misrecognition count equals zero",
+    "UNKNOWN Top-3 candidate-out count equals zero",
+    "maximize SEGMENTATION coverage",
+    "maximize APPROVED and EARLY_LOCK coverage",
+    "minimize stage2 and stage3 calls and p95/p99 latency"
+  ]
+}

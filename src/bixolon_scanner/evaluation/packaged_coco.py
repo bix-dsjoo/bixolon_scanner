@@ -88,6 +88,7 @@ def evaluate_packaged_coco(
         "unknown_top3_miss_count": 0,
         "segment_recapture_count": 0,
     }
+    failure_rows = []
     for image_id in sorted(manifest_rows):
         record = manifest_rows[image_id]
         response = trace_rows[image_id]["response"]
@@ -113,6 +114,13 @@ def evaluate_packaged_coco(
         counts["matched_count"] += len(matches)
         counts["false_negative_count"] += len(targets) - len(matches)
         counts["false_positive_count"] += len(predictions) - len(matches)
+        image_failures = {
+            "image_id": image_id,
+            "false_negative_count": len(targets) - len(matches),
+            "false_positive_count": len(predictions) - len(matches),
+            "approved_wrong": [],
+            "unknown_top3_miss": [],
+        }
         for prediction_index, segmentation in enumerate(segmentations):
             status = segmentation["status"]
             if status == "APPROVED":
@@ -131,10 +139,35 @@ def evaluate_packaged_coco(
                 correct = segmentation["prediction"]["class_id"] == expected
                 counts["approved_correct_count"] += int(correct)
                 counts["approved_wrong_count"] += int(not correct)
+                if not correct:
+                    image_failures["approved_wrong"].append(
+                        {
+                            "segmentation_index": prediction_index,
+                            "expected": expected,
+                            "actual": segmentation["prediction"]["class_id"],
+                        }
+                    )
             elif status == "UNKNOWN":
                 hit = expected in {candidate["class_id"] for candidate in segmentation["top3"]}
                 counts["unknown_top3_hit_count"] += int(hit)
                 counts["unknown_top3_miss_count"] += int(not hit)
+                if not hit:
+                    image_failures["unknown_top3_miss"].append(
+                        {
+                            "segmentation_index": prediction_index,
+                            "expected": expected,
+                            "actual": [candidate["class_id"] for candidate in segmentation["top3"]],
+                        }
+                    )
+        if any(
+            (
+                image_failures["false_negative_count"],
+                image_failures["false_positive_count"],
+                image_failures["approved_wrong"],
+                image_failures["unknown_top3_miss"],
+            )
+        ):
+            failure_rows.append(image_failures)
 
     ground_truth_count = counts["ground_truth_count"]
     return {
@@ -150,6 +183,7 @@ def evaluate_packaged_coco(
         },
         "match_iou_threshold": match_iou_threshold,
         "counts": counts,
+        "failure_rows": failure_rows,
         "rates": {
             "matched_ground_truth_rate": _rate(counts["matched_count"], ground_truth_count),
             "false_positive_per_ground_truth": _rate(

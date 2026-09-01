@@ -863,6 +863,39 @@ def test_detector_preserves_class_id_with_class_agnostic_containment():
     assert result.detections[0].class_id == 1
 
 
+def test_class_agnostic_detector_does_not_expose_objectness_as_catalog_class():
+    metadata = SimpleNamespace(
+        input_size=(32, 32),
+        mean=(0.0, 0.0, 0.0),
+        std=(1.0, 1.0, 1.0),
+        resize_reducing_gap=None,
+        logits_output="logits",
+        boxes_output="boxes",
+        input_name="pixel_values",
+        score_threshold=0.7,
+        uncertainty_score_threshold=None,
+        nms_iou_threshold=0.7,
+        nms_containment_threshold=None,
+        max_queries=300,
+    )
+
+    class Runner:
+        def run(self, output_names, input_name, tensor):
+            del output_names, input_name, tensor
+            logits = np.asarray([[[3.0]]], dtype=np.float32)
+            boxes = np.asarray([[[0.5, 0.5, 0.4, 0.4]]], dtype=np.float32)
+            return [logits, boxes]
+
+    adapter = inference.OnnxDetector.__new__(inference.OnnxDetector)
+    adapter.metadata = metadata
+    adapter.runner = Runner()
+    adapter.class_agnostic = True
+
+    result = adapter.detect(np.zeros((100, 100, 3), dtype=np.uint8))
+
+    assert result.detections[0].class_id is None
+
+
 @pytest.mark.parametrize(
     ("candidate_logit", "candidate_box"),
     [

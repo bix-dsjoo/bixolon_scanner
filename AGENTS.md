@@ -47,9 +47,9 @@ Flutter canonical 코드는 `apps/product_scanner/lib`의 `core/design_system`, 
 ## 단일 제품 버전
 
 배포 가능한 앱·Worker·Runtime·Catalog 조합은 하나의 semantic version으로 식별합니다. 현재
-기준은 `configs/versions/0.1.8.json`이며 Python, Worker, Detector, Embedder, Detector policy,
-Classifier policy, Catalog와 사용자 표시 버전은 모두 `0.1.8`입니다. Flutter 내부 빌드만
-`0.1.8+11`을 사용합니다.
+기준은 `configs/versions/0.1.12.json`이며 Python, Worker, Detector, Embedder, Detector policy,
+Classifier policy, Catalog와 사용자 표시 버전은 모두 `0.1.12`입니다. Flutter 내부 빌드만
+`0.1.12+15`를 사용합니다.
 
 - development, demo, production 환경 버전을 만들지 않습니다.
 - 활성 설정과 CLI에 promotion, waiver, certification 또는 release-lock 수명주기를 추가하지
@@ -89,7 +89,10 @@ Runtime, Catalog, CUDA와 Flutter를 자체 포함 번들로 구성합니다.
 1. 입력 이미지를 검증하고 디코딩합니다.
 2. Detector가 모든 객체 위치와 프레임 전체 촬영 품질을 판단합니다.
 3. hard 품질 조건이 재촬영을 요구하면 classifier를 호출하지 않고 `IMAGE_RECAPTURE`를 반환합니다.
-4. 정상 ROI와 `classifier_confidence` 경계 ROI 전체를 한 batch로 classifier에 전달합니다.
+4. `detector_primary_classifier_routing`이 활성화된 class-aware Runtime은 검증 class·최소 detector
+   score·프레임 내 class 유일성 조건을 모두 만족한 ROI를 Detector 결과로 직접 판정하고,
+   혼동·신규·저신뢰·동일 class 중복 ROI만 한 batch로 classifier에 전달합니다. 이 옵션이 없으면
+   정상 ROI와 `classifier_confidence` 경계 ROI 전체를 한 batch로 classifier에 전달합니다.
 5. Classifier 품질 클래스는 해당 segmentation을 `SEGMENT_RECAPTURE`로 만듭니다.
 6. 경계 접촉 ROI의 Top-1이 승인 임계값 미만이면 `DETECTOR_BORDER_CLIPPED`
    `SEGMENT_RECAPTURE`로 반환합니다.
@@ -136,13 +139,15 @@ fallback이나 임의의 기본 승인 결과를 추가하지 마십시오.
 - p50, p95, p99와 표본 수를 함께 기록하고 detector 조기 종료와 full-path를 구분합니다.
 
 과거 KPI, 평가 결과, 예외와 제한은 `docs/archive/version-history.md` 및 그 링크 문서에 남아
-있습니다. 현재 `0.1.8`를 독립 일반화 성능, 인증 또는 SLA 달성으로 표현하지 마십시오.
+있습니다. 현재 `0.1.12`를 독립 일반화 성능, 인증 또는 SLA 달성으로 표현하지 마십시오.
 
 ## 테스트 요구사항
 
 동작 변경에 영향 범위 테스트를 추가합니다. 특히 다음 계약을 유지합니다.
 
 - Detector 조기 종료 시 classifier가 호출되지 않는지 검증
+- Detector-primary routing에서 검증된 ROI는 classifier를 호출하지 않고, 혼동·신규·저신뢰·동일
+  class 중복 ROI만 선택 batch로 전달되는지 검증
 - `classifier_confidence` 경계 정책에서 높은 신뢰도는 계속 진행하고 낮은 신뢰도만 `DETECTOR_BORDER_CLIPPED`로 재촬영하는지 검증
 - detector 불확실 독립 후보 및 선택적 count verifier의 불일치·저신뢰가 classifier 실행 전 `RECAPTURE`가 되는지 검증
 - Classifier 품질 클래스가 해당 `SEGMENT_RECAPTURE`로 변환되는지 검증

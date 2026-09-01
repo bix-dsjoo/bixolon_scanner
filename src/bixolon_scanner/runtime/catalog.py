@@ -431,6 +431,31 @@ class OnnxCatalogClassifier:
         raw_embeddings = self.embedder.embed_detections_raw(image, detections)
         return self.classify_embeddings(raw_embeddings, detections)
 
+    def classify_selected(
+        self,
+        image: np.ndarray | Image.Image,
+        detections: list[Detection],
+        detection_indices: np.ndarray,
+    ) -> ClassificationResult:
+        indices = np.asarray(detection_indices, dtype=np.int64)
+        prepared = self.embedder.prepare_selected_detection_tensors(image, detections, indices)
+        raw_embeddings = self.embedder.embed_prepared_tensors_raw(prepared)
+        selected_detections = [detections[int(index)] for index in indices]
+        return self.classify_embeddings(raw_embeddings, selected_detections)
+
+    def classify_single_views(
+        self, image: np.ndarray | Image.Image, detections: list[Detection]
+    ) -> ClassificationResult:
+        prepared = np.concatenate(
+            [
+                self.embedder.prepare_detection_tensors(image, [detection])
+                for detection in detections
+            ],
+            axis=0,
+        )
+        raw_embeddings = self.embedder.embed_prepared_tensors_raw(prepared)
+        return self.classify_embeddings(raw_embeddings, detections)
+
     def classify_embeddings(
         self,
         raw_embeddings: np.ndarray,
@@ -676,6 +701,7 @@ def verification_runtime_package(package: RuntimePackageV2) -> RuntimePackageV2:
         mode="json"
     )
     payload["classifier_verification"] = None
+    payload["classifier_resolution_fallback"] = None
     metadata = RuntimePackageV2Metadata.model_validate(payload)
     return RuntimePackageV2(
         root=package.root,
@@ -683,9 +709,32 @@ def verification_runtime_package(package: RuntimePackageV2) -> RuntimePackageV2:
         detector_path=package.detector_path,
         count_verifier_path=package.count_verifier_path,
         embedder_path=package.verification_embedder_path,
+        classifier_fallback_embedder_path=None,
         metric_projection_path=package.verification_metric_projection_path,
         verification_embedder_path=None,
         verification_metric_projection_path=None,
+    )
+
+
+def classifier_fallback_runtime_package(package: RuntimePackageV2) -> RuntimePackageV2:
+    """Create the checksum-validated higher-resolution classifier view."""
+    fallback = package.metadata.classifier_resolution_fallback
+    if fallback is None or package.classifier_fallback_embedder_path is None:
+        raise ValueError("runtime does not contain a classifier resolution fallback")
+    payload = package.metadata.model_dump(mode="json")
+    payload["embedder"] = fallback.embedder.model_dump(mode="json")
+    payload["classifier_resolution_fallback"] = None
+    metadata = RuntimePackageV2Metadata.model_validate(payload)
+    return RuntimePackageV2(
+        root=package.root,
+        metadata=metadata,
+        detector_path=package.detector_path,
+        count_verifier_path=package.count_verifier_path,
+        embedder_path=package.classifier_fallback_embedder_path,
+        classifier_fallback_embedder_path=None,
+        metric_projection_path=package.metric_projection_path,
+        verification_embedder_path=package.verification_embedder_path,
+        verification_metric_projection_path=package.verification_metric_projection_path,
     )
 
 
@@ -847,6 +896,9 @@ class ConsensusCatalogClassifier:
         prepared: np.ndarray,
         primary_raw: np.ndarray,
         extended_result: ClassificationResult,
+        *,
+        context_detections: list[Detection] | None = None,
+        context_indices: np.ndarray | None = None,
     ) -> ClassificationResult:
         base_count = self.append_only_base_class_count
         if base_count is None:
@@ -863,6 +915,8 @@ class ConsensusCatalogClassifier:
             primary_raw,
             base_result,
             class_limit=base_count,
+            context_detections=context_detections,
+            context_indices=context_indices,
         )
         primary_top1 = self._top1(extended_result)
         candidate_indices = np.flatnonzero(primary_top1 >= base_count)
@@ -878,10 +932,18 @@ class ConsensusCatalogClassifier:
         )
         rotation_result = self.rotation.classify_embeddings(rotation_raw)
         selected_detections = [detections[int(index)] for index in candidate_indices]
+        if context_detections is None:
+            verification_detections = detections
+            verification_indices = candidate_indices
+        else:
+            if context_indices is None or len(context_indices) != len(detections):
+                raise ValueError("selected classifier context indices do not match detections")
+            verification_detections = context_detections
+            verification_indices = np.asarray(context_indices, dtype=np.int64)[candidate_indices]
         independent_prepared = self.independent.embedder.prepare_selected_detection_tensors(
             image,
-            detections,
-            candidate_indices,
+            verification_detections,
+            verification_indices,
         )
         independent_raw = self.independent.embedder.embed_prepared_tensors_raw(independent_prepared)
         independent_result = self.independent.classify_embeddings(
@@ -903,6 +965,8 @@ class ConsensusCatalogClassifier:
         result: ClassificationResult,
         *,
         class_limit: int | None = None,
+        context_detections: list[Detection] | None = None,
+        context_indices: np.ndarray | None = None,
     ) -> ClassificationResult:
         if result.approval_scores is None:
             raise ValueError("selective verification requires explicit approval scores")
@@ -952,10 +1016,18 @@ class ConsensusCatalogClassifier:
         )
         rotation_result = self.rotation.classify_embeddings(rotation_raw, class_limit=class_limit)
         selected_detections = [detections[int(index)] for index in candidate_indices]
+        if context_detections is None:
+            verification_detections = detections
+            verification_indices = candidate_indices
+        else:
+            if context_indices is None or len(context_indices) != len(detections):
+                raise ValueError("selected classifier context indices do not match detections")
+            verification_detections = context_detections
+            verification_indices = np.asarray(context_indices, dtype=np.int64)[candidate_indices]
         independent_prepared = self.independent.embedder.prepare_selected_detection_tensors(
             image,
-            detections,
-            candidate_indices,
+            verification_detections,
+            verification_indices,
         )
         independent_raw = self.independent.embedder.embed_prepared_tensors_raw(independent_prepared)
         independent_result = self.independent.classify_embeddings(
@@ -1054,6 +1126,128 @@ class ConsensusCatalogClassifier:
             result,
         )
 
+    def classify_selected(
+        self,
+        image: np.ndarray | Image.Image,
+        detections: list[Detection],
+        detection_indices: np.ndarray,
+    ) -> ClassificationResult:
+        indices = np.asarray(detection_indices, dtype=np.int64)
+        prepared = self.primary.embedder.prepare_selected_detection_tensors(
+            image,
+            detections,
+            indices,
+        )
+        primary_raw = self.primary.embedder.embed_prepared_tensors_raw(prepared)
+        selected_detections = [detections[int(index)] for index in indices]
+        result = self.primary.classify_embeddings(primary_raw, selected_detections)
+        if self.append_only_base_class_count is not None:
+            return self._apply_append_only_consensus(
+                image,
+                selected_detections,
+                prepared,
+                primary_raw,
+                result,
+                context_detections=detections,
+                context_indices=indices,
+            )
+        return self._apply_selective_verification(
+            image,
+            selected_detections,
+            prepared,
+            primary_raw,
+            result,
+            context_detections=detections,
+            context_indices=indices,
+        )
+
+    def classify_single_views(
+        self, image: np.ndarray | Image.Image, detections: list[Detection]
+    ) -> ClassificationResult:
+        return self.primary.classify_single_views(image, detections)
+
+
+class ResolutionFallbackCatalogClassifier:
+    """Expose fast and higher-resolution classifier paths to the decision policy."""
+
+    def __init__(
+        self,
+        primary_classifier: OnnxCatalogClassifier | ConsensusCatalogClassifier,
+        fallback_classifier: OnnxCatalogClassifier | ConsensusCatalogClassifier,
+        *,
+        owned_embedders: tuple[OnnxEmbedder, ...],
+        resolution_fallback_metadata,
+    ) -> None:
+        self.primary_classifier = primary_classifier
+        self.fallback_classifier = fallback_classifier
+        # The assisted detector needs direct access to the fast primary embedder.
+        self.primary = getattr(primary_classifier, "primary", primary_classifier)
+        self.metadata = primary_classifier.metadata
+        self.version = primary_classifier.version
+        self.resolution_fallback_metadata = resolution_fallback_metadata
+        self._owned_embedders = owned_embedders
+
+    def warmup(self) -> None:
+        fallback_primary = getattr(
+            self.fallback_classifier,
+            "primary",
+            self.fallback_classifier,
+        )
+        fallback_primary.embedder.warmup()
+        warmup = getattr(self.primary_classifier, "warmup", None)
+        if callable(warmup):
+            warmup()
+
+    def close(self) -> None:
+        closed: set[int] = set()
+        for embedder in self._owned_embedders:
+            if id(embedder) in closed:
+                continue
+            closed.add(id(embedder))
+            embedder.close()
+
+    def classify(
+        self, image: np.ndarray | Image.Image, detections: list[Detection]
+    ) -> ClassificationResult:
+        return self.primary_classifier.classify(image, detections)
+
+    def classify_selected(
+        self,
+        image: np.ndarray | Image.Image,
+        detections: list[Detection],
+        detection_indices: np.ndarray,
+    ) -> ClassificationResult:
+        classify_selected = getattr(self.primary_classifier, "classify_selected", None)
+        if not callable(classify_selected):
+            raise ValueError("primary classifier does not support selected ROIs")
+        return classify_selected(image, detections, detection_indices)
+
+    def classify_fallback(
+        self, image: np.ndarray | Image.Image, detections: list[Detection]
+    ) -> ClassificationResult:
+        return self.fallback_classifier.classify(image, detections)
+
+    def classify_fallback_selected(
+        self,
+        image: np.ndarray | Image.Image,
+        detections: list[Detection],
+        detection_indices: np.ndarray,
+    ) -> ClassificationResult:
+        classify_selected = getattr(self.fallback_classifier, "classify_selected", None)
+        if not callable(classify_selected):
+            raise ValueError("classifier resolution fallback does not support selected ROIs")
+        return classify_selected(image, detections, detection_indices)
+
+    def classify_single_views(
+        self, image: np.ndarray | Image.Image, detections: list[Detection]
+    ) -> ClassificationResult:
+        return self.primary_classifier.classify_single_views(image, detections)
+
+    def classify_fallback_single_views(
+        self, image: np.ndarray | Image.Image, detections: list[Detection]
+    ) -> ClassificationResult:
+        return self.fallback_classifier.classify_single_views(image, detections)
+
 
 def build_catalog_classifier(
     runtime: RuntimePackageV2,
@@ -1063,7 +1257,10 @@ def build_catalog_classifier(
     *,
     cpu_intra_op_threads: int = 0,
     openvino_cache_dir: Path | None = None,
-) -> tuple[OnnxCatalogClassifier | ConsensusCatalogClassifier, OnnxEmbedder]:
+) -> tuple[
+    OnnxCatalogClassifier | ConsensusCatalogClassifier | ResolutionFallbackCatalogClassifier,
+    OnnxEmbedder,
+]:
     """Build the primary Catalog classifier and its optional selective verifier."""
     primary_embedder = OnnxEmbedder(
         runtime,
@@ -1077,8 +1274,38 @@ def build_catalog_classifier(
     catalog_has_verification = catalog.metadata.verification is not None
     if (verification is None) != (not catalog_has_verification):
         raise ValueError("Runtime and Catalog classifier verification contracts differ")
+    fallback_policy = runtime.metadata.classifier_resolution_fallback
+    fallback_runtime = (
+        None if fallback_policy is None else classifier_fallback_runtime_package(runtime)
+    )
+    fallback_embedder = (
+        None
+        if fallback_runtime is None
+        else OnnxEmbedder(
+            fallback_runtime,
+            provider,
+            cuda_dll_dir,
+            cpu_intra_op_threads=cpu_intra_op_threads,
+            openvino_cache_dir=openvino_cache_dir,
+        )
+    )
+    fallback_primary = (
+        None
+        if fallback_runtime is None or fallback_embedder is None
+        else OnnxCatalogClassifier(fallback_runtime, catalog, fallback_embedder)
+    )
     if verification is None:
-        return primary, primary_embedder
+        if fallback_primary is None or fallback_embedder is None or fallback_policy is None:
+            return primary, primary_embedder
+        return (
+            ResolutionFallbackCatalogClassifier(
+                primary,
+                fallback_primary,
+                owned_embedders=(primary_embedder, fallback_embedder),
+                resolution_fallback_metadata=fallback_policy,
+            ),
+            primary_embedder,
+        )
     if catalog.rotation_catalog_root is None or catalog.independent_catalog_root is None:
         raise ValueError("Catalog verification payloads are missing")
     rotation_catalog = load_store_catalog_package(
@@ -1097,17 +1324,48 @@ def build_catalog_classifier(
         cpu_intra_op_threads=cpu_intra_op_threads,
         openvino_cache_dir=openvino_cache_dir,
     )
+    independent_classifier = OnnxCatalogClassifier(
+        independent_runtime,
+        independent_catalog,
+        independent_embedder,
+    )
     classifier = ConsensusCatalogClassifier(
         primary,
         OnnxCatalogClassifier(runtime, rotation_catalog, primary_embedder),
-        OnnxCatalogClassifier(
-            independent_runtime,
-            independent_catalog,
-            independent_embedder,
-        ),
+        independent_classifier,
         ambiguity_maximum_approval_score=verification.ambiguity_maximum_approval_score,
         unknown_recapture_on_dual_verifier_rejection=(
             verification.unknown_recapture_on_dual_verifier_rejection
         ),
     )
+    if (
+        fallback_primary is not None
+        and fallback_embedder is not None
+        and fallback_policy is not None
+    ):
+        if fallback_runtime is None:
+            raise ValueError("classifier fallback runtime is missing")
+        fallback_classifier = ConsensusCatalogClassifier(
+            fallback_primary,
+            OnnxCatalogClassifier(
+                fallback_runtime,
+                rotation_catalog,
+                fallback_embedder,
+            ),
+            independent_classifier,
+            ambiguity_maximum_approval_score=verification.ambiguity_maximum_approval_score,
+            unknown_recapture_on_dual_verifier_rejection=(
+                verification.unknown_recapture_on_dual_verifier_rejection
+            ),
+        )
+        classifier = ResolutionFallbackCatalogClassifier(
+            classifier,
+            fallback_classifier,
+            owned_embedders=(
+                primary_embedder,
+                fallback_embedder,
+                independent_embedder,
+            ),
+            resolution_fallback_metadata=fallback_policy,
+        )
     return classifier, primary_embedder

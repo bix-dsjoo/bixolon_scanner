@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "evaluation": "yolo_free_0.1.7_n100_result_assessment",
+  "source_report": {
+    "filename": "n100-ssdlite-0.1.7-openvino-device-matrix.json",
+    "sha256": "eecf21734281e89046f7802b78bd65224a09dbcc41bca5df9a2629492575d0f8",
+    "self_assessment_passed": false,
+    "confidence_tolerance": 0.01
+  },
+  "acceptance": {
+    "minimum_image_count": 30,
+    "minimum_full_path_count_per_profile": 10,
+    "maximum_full_path_mean_ms": 1000.0,
+    "maximum_full_path_p95_ms": 1000.0,
+    "maximum_confidence_delta": 0.02
+  },
+  "passed": true,
+  "failed_criteria": [],
+  "criteria": {
+    "expected_report_identity": true,
+    "expected_product_version": true,
+    "benchmark_completed": true,
+    "target_n100_cpu_detected": true,
+    "target_intel_gpu_detected": true,
+    "minimum_image_sample": true,
+    "fixed_execution_contract": true,
+    "model_and_policy_unchanged": true,
+    "fixed_latency_and_parity_policy": true,
+    "cpu_profile_completed": true,
+    "hybrid_profile_completed": true,
+    "minimum_full_path_samples": true,
+    "no_worker_errors": true,
+    "provider_initialization_safe": true,
+    "semantic_parity": true,
+    "confidence_parity": true,
+    "reported_latency_flags_consistent": true,
+    "at_least_one_profile_within_1000ms": true,
+    "selected_provider_within_1000ms": true,
+    "privacy_safe": true,
+    "image_hash_provenance_complete": true
+  },
+  "hardware": {
+    "cpu_name": "Intel(R) N100",
+    "video_controllers": [
+      {
+        "name": "Intel(R) UHD Graphics",
+        "adapter_ram_bytes": 2003034112,
+        "driver_version": "32.0.101.6299"
+      }
+    ]
+  },
+  "profiles": {
+    "openvino_cpu_only": {
+      "completed": true,
+      "failure_code": null,
+      "full_path_count": 100,
+      "error_count": 0,
+      "mean_ms": 418.587,
+      "p95_ms": 681.696,
+      "target_met": true
+    },
+    "openvino_cpu_detector_intel_gpu_embedder": {
+      "completed": true,
+      "failure_code": null,
+      "full_path_count": 100,
+      "error_count": 0,
+      "mean_ms": 336.946,
+      "p95_ms": 488.413,
+      "target_met": true
+    }
+  },
+  "selected_provider": "openvino",
+  "parity": {
+    "semantic_mismatch_count": 0,
+    "confidence_vector_mismatch_count": 0,
+    "maximum_confidence_delta": 0.013719737529754639,
+    "confidence_tolerance": 0.01
+  },
+  "limitation": "Diagnostic assessment only; not an SLA, certification, or deployment approval."
+}

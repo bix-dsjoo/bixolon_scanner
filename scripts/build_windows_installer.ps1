@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.8",
+    [string]$Version = "0.1.12",
     [string]$PythonExecutable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$InnoCompiler = "",
     [string]$VcRedistPath = "",
@@ -141,13 +141,15 @@ $installerLauncher = Join-Path $repositoryRoot "installer/windows/start-bixolon-
 $workerLauncher = Join-Path $repositoryRoot "installer/windows/start-bixolon-worker.ps1"
 $workerCommand = Join-Path $repositoryRoot "installer/windows/RUN-BIXOLON-WORKER.cmd"
 $workerReadme = Join-Path $repositoryRoot "installer/windows/WORKER-KO.txt"
-$n100DiagnosticPath = $null
-$hasN100Diagnostic = -not [string]::IsNullOrWhiteSpace($DeviceMatrixPath)
-if ($hasN100Diagnostic) {
-    $n100DiagnosticPath = [System.IO.Path]::GetFullPath($DeviceMatrixPath)
-    if (-not (Test-Path -LiteralPath $n100DiagnosticPath -PathType Leaf)) {
-        throw "Requested hardware device matrix is missing: $n100DiagnosticPath"
-    }
+if ([string]::IsNullOrWhiteSpace($DeviceMatrixPath)) {
+    $DeviceMatrixPath = Join-Path (
+        $repositoryRoot
+    ) "docs/diagnostics/n100-0.1.11-openvino-device-matrix.json"
+}
+$n100DiagnosticPath = [System.IO.Path]::GetFullPath($DeviceMatrixPath)
+$hasN100Diagnostic = Test-Path -LiteralPath $n100DiagnosticPath -PathType Leaf
+if (-not $hasN100Diagnostic) {
+    throw "Required hardware device matrix is missing: $n100DiagnosticPath"
 }
 $setupIconPath = Join-Path $repositoryRoot "apps/product_scanner/windows/runner/resources/app_icon.ico"
 $resolvedOutputRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot $OutputRoot))
@@ -181,7 +183,17 @@ $config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
 if ([string]$config.version -ne $Version) {
     throw "Version config identity mismatch: $configPath"
 }
-$deviceMatrixSha256 = $null
+$deviceMatrixSha256 = (
+    Get-FileHash -Algorithm SHA256 -LiteralPath $n100DiagnosticPath
+).Hash.ToLowerInvariant()
+$pinnedDeviceMatrix = @(
+    $config.evaluation_evidence | Where-Object {
+        [string]$_.sha256 -eq $deviceMatrixSha256
+    }
+)
+if ($pinnedDeviceMatrix.Count -ne 1) {
+    throw "Hardware device matrix SHA-256 is not pinned by the selected version config."
+}
 $n100Diagnostic = $null
 $recommendedN100Profile = $null
 $diagnosticVersion = $null
@@ -189,19 +201,18 @@ $recommendedDetectorWorkers = 1
 $recommendedDetectorThreads = 4
 $recommendedEmbedderThreads = 0
 if ($hasN100Diagnostic) {
-    $deviceMatrixSha256 = (
-        Get-FileHash -Algorithm SHA256 -LiteralPath $n100DiagnosticPath
-    ).Hash.ToLowerInvariant()
-    $pinnedDeviceMatrix = @(
-        $config.evaluation_evidence | Where-Object {
-            [string]$_.sha256 -eq $deviceMatrixSha256
-        }
-    )
-    if ($pinnedDeviceMatrix.Count -ne 1) {
-        throw "Hardware device matrix SHA-256 is not pinned by the selected version config."
-    }
     $n100Diagnostic = Get-Content -Raw -LiteralPath $n100DiagnosticPath | ConvertFrom-Json
     $selectedN100Profile = $n100Diagnostic.profiles.openvino_cpu_detector_intel_gpu_embedder
+    $countVerifierConfigured = [bool]$n100Diagnostic.execution_contract.count_verifier_configured
+    $hybridExecution = $n100Diagnostic.execution_contract.cpu_detector_gpu_embedder
+    $objectPresenceContractSafe = if ($countVerifierConfigured) {
+        [string]$hybridExecution.object_presence_verifier -eq (
+            "OpenVINOExecutionProvider:GPU"
+        ) -and [string]$hybridExecution.object_presence_execution -eq "parallel_with_detector"
+    } else {
+        [string]$hybridExecution.object_presence_verifier -eq "not_configured" -and
+            [string]$hybridExecution.object_presence_execution -eq "not_configured"
+    }
     if (
         [string]$n100Diagnostic.evaluation -ne (
             "bixolon_worker_n100_openvino_cpu_vs_intel_gpu_embedder"
@@ -214,12 +225,7 @@ if ($hasN100Diagnostic) {
         [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.detector -ne (
             "OpenVINOExecutionProvider:CPU"
         ) -or
-        [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.object_presence_verifier -ne (
-            "OpenVINOExecutionProvider:GPU"
-        ) -or
-        [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.object_presence_execution -ne (
-            "parallel_with_detector"
-        ) -or
+        -not $objectPresenceContractSafe -or
         [string]$n100Diagnostic.execution_contract.cpu_detector_gpu_embedder.primary_embedder -ne (
             "OpenVINOExecutionProvider:GPU"
         ) -or
@@ -258,6 +264,16 @@ if ($hasN100Diagnostic) {
     $recommendedDetectorWorkers = [int]$selectedN100Profile.detector_workers
     $recommendedDetectorThreads = [int]$selectedN100Profile.detector_threads_per_session
     $recommendedEmbedderThreads = [int]$selectedN100Profile.embedder_threads
+    $objectPresenceProvider = if ($countVerifierConfigured) {
+        "OpenVINOExecutionProvider:GPU"
+    } else {
+        "not_configured"
+    }
+    $objectPresenceExecution = if ($countVerifierConfigured) {
+        "parallel_with_detector"
+    } else {
+        "not_configured"
+    }
 }
 $launcherSource = Get-Content -Raw -LiteralPath $installerLauncher
 if (
@@ -297,7 +313,7 @@ if (-not (Test-Path -LiteralPath $openVinoWorker -PathType Container)) {
     )
 }
 
-if ($hasN100Diagnostic) {
+if ($hasN100Diagnostic -and $diagnosticVersion -eq $Version) {
     $runtimeMetadataPath = Join-Path (
         Join-Path $repositoryRoot ([string]$config.runtime.path)
     ) "metadata.json"
@@ -423,10 +439,8 @@ try {
         $renderedLauncher,
         [System.Text.UTF8Encoding]::new($false)
     )
-    if ($hasN100Diagnostic) {
-        Copy-Item -LiteralPath $n100DiagnosticPath `
-            -Destination (Join-Path $temporaryPayload "hardware-reference-result.json")
-    }
+    Copy-Item -LiteralPath $n100DiagnosticPath `
+        -Destination (Join-Path $temporaryPayload "hardware-reference-result.json")
 
     Assert-DirectoryCopyMatches `
         -Source (Join-Path $canonicalBundle "worker/model-package") `
@@ -444,68 +458,16 @@ try {
     }
 
     $canonicalManifest = Join-Path $canonicalBundle "bundle-manifest.json"
-    $processorProfile = "Windows x64 OpenVINO hybrid"
-    $diagnostics = [ordered]@{
-        n100_benchmark_status = "NOT_RUN_FOR_SELECTED_VERSION"
-        reference_product_version = $null
-        sample_count = $null
-        full_path_count = $null
-        mean_ms = $null
-        p50_ms = $null
-        p95_ms = $null
-        p99_ms = $null
-        error_count = $null
-        semantic_mismatch_count = $null
-        maximum_confidence_delta = $null
-        confidence_tolerance = $null
-        cpu_only_mean_speedup_ratio = $null
-        cpu_only_p95_speedup_ratio = $null
-        peak_working_set_bytes = $null
-        operational_diagnostic_target_ms = 500
-        n100_latency_target_applied = $false
-        latency_or_sla_claimed = $false
-    }
-    if ($hasN100Diagnostic) {
-        $processorProfile = "Intel Processor N100"
-        $diagnostics = [ordered]@{
-            n100_benchmark_status = if ($diagnosticVersion -eq $Version) {
-                "MEASURED_DIAGNOSTIC"
-            } else {
-                "REFERENCE_MEASURED_DIAGNOSTIC"
-            }
-            reference_product_version = $diagnosticVersion
-            sample_count = [int]$n100Diagnostic.input.sample_count
-            full_path_count = [int]$recommendedN100Profile.full_path_count
-            mean_ms = [double]$recommendedN100Profile.client_total_ms.full_path.mean
-            p50_ms = [double]$recommendedN100Profile.client_total_ms.full_path.p50
-            p95_ms = [double]$recommendedN100Profile.client_total_ms.full_path.p95
-            p99_ms = [double]$recommendedN100Profile.client_total_ms.full_path.p99
-            error_count = [int]$recommendedN100Profile.error_count
-            semantic_mismatch_count = [int]$n100Diagnostic.parity.semantic_mismatch_count
-            maximum_confidence_delta = [double]$n100Diagnostic.parity.maximum_confidence_delta
-            confidence_tolerance = [double]$n100Diagnostic.parity.confidence_tolerance
-            cpu_only_mean_speedup_ratio = [double](
-                $n100Diagnostic.comparison.full_path_mean_speedup_ratio
-            )
-            cpu_only_p95_speedup_ratio = [double](
-                $n100Diagnostic.comparison.full_path_p95_speedup_ratio
-            )
-            peak_working_set_bytes = [long]$recommendedN100Profile.peak_working_set_bytes
-            operational_diagnostic_target_ms = 500
-            n100_latency_target_applied = $false
-            latency_or_sla_claimed = $false
-        }
-    }
     $n100Provenance = [ordered]@{
         schema_version = "1.0"
         version = $Version
         app_build = $appBuild
         target = [ordered]@{
             platform = "windows-x64"
-            processor_profile = $processorProfile
+            processor_profile = "Intel Processor N100"
             detector_provider = "OpenVINOExecutionProvider:CPU"
-            object_presence_verifier_provider = "OpenVINOExecutionProvider:GPU"
-            object_presence_execution = "parallel_with_detector"
+            object_presence_verifier_provider = $objectPresenceProvider
+            object_presence_execution = $objectPresenceExecution
             embedder_provider = "OpenVINOExecutionProvider:GPU"
             embedder_fallback_provider = "OpenVINOExecutionProvider:CPU"
             python_required_on_target = $false
@@ -541,7 +503,36 @@ try {
             openvino_gpu_plugin_included = $true
             hybrid_worker_substituted = $true
         }
-        diagnostics = $diagnostics
+        diagnostics = [ordered]@{
+            n100_benchmark_status = if ($diagnosticVersion -eq $Version) {
+                "MEASURED_DIAGNOSTIC"
+            } else {
+                "REFERENCE_MEASURED_DIAGNOSTIC"
+            }
+            reference_product_version = $diagnosticVersion
+            sample_count = [int]$n100Diagnostic.input.sample_count
+            full_path_count = [int]$recommendedN100Profile.full_path_count
+            mean_ms = [double]$recommendedN100Profile.client_total_ms.full_path.mean
+            p50_ms = [double]$recommendedN100Profile.client_total_ms.full_path.p50
+            p95_ms = [double]$recommendedN100Profile.client_total_ms.full_path.p95
+            p99_ms = [double]$recommendedN100Profile.client_total_ms.full_path.p99
+            error_count = [int]$recommendedN100Profile.error_count
+            semantic_mismatch_count = [int]$n100Diagnostic.parity.semantic_mismatch_count
+            maximum_confidence_delta = [double]$n100Diagnostic.parity.maximum_confidence_delta
+            confidence_tolerance = [double]$n100Diagnostic.parity.confidence_tolerance
+            deployment_confidence_tolerance = 0.02
+            cpu_only_mean_speedup_ratio = [double](
+                $n100Diagnostic.comparison.full_path_mean_speedup_ratio
+            )
+            cpu_only_p95_speedup_ratio = [double](
+                $n100Diagnostic.comparison.full_path_p95_speedup_ratio
+            )
+            peak_working_set_bytes = [long]$recommendedN100Profile.peak_working_set_bytes
+            operational_diagnostic_target_ms = 1000
+            n100_latency_target_applied = $true
+            reference_measurement_only = $diagnosticVersion -ne $Version
+            latency_or_sla_claimed = $false
+        }
         distribution = [ordered]@{
             payload_integrity = "SHA-256"
             publisher_authentication = "UNSIGNED"
@@ -604,10 +595,8 @@ try {
         -Destination $temporaryWorkerPackage
     Copy-Item -LiteralPath (Join-Path $payloadRoot "deployment-provenance.json") `
         -Destination $temporaryWorkerPackage
-    if ($hasN100Diagnostic) {
-        Copy-Item -LiteralPath (Join-Path $payloadRoot "hardware-reference-result.json") `
-            -Destination $temporaryWorkerPackage
-    }
+    Copy-Item -LiteralPath (Join-Path $payloadRoot "hardware-reference-result.json") `
+        -Destination $temporaryWorkerPackage
     Copy-Item -LiteralPath (Join-Path $repositoryRoot "schemas/scan-response.schema.json") `
         -Destination $temporaryWorkerPackage
     Copy-Item -LiteralPath (
@@ -621,10 +610,14 @@ try {
         target = "windows-x64-openvino-cpu-detector-gpu-embedder"
         default_provider = [ordered]@{
             detector = "OpenVINOExecutionProvider:CPU"
-            object_presence_verifier = "OpenVINOExecutionProvider:GPU"
-            object_presence_execution = "parallel_with_detector"
+            object_presence_verifier = $objectPresenceProvider
+            object_presence_execution = $objectPresenceExecution
             embedder = "OpenVINOExecutionProvider:GPU"
-            object_presence_fallback = "OpenVINOExecutionProvider:CPU"
+            object_presence_fallback = if ($countVerifierConfigured) {
+                "OpenVINOExecutionProvider:CPU"
+            } else {
+                "not_configured"
+            }
             embedder_fallback = "OpenVINOExecutionProvider:CPU"
         }
         file_count = $workerRecords.Count

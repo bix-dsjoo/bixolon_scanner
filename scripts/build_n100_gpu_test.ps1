@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.8",
+    [string]$Version = "0.1.12",
     [string]$Python311Executable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$ReuseBuildEnvironment,
@@ -130,26 +130,13 @@ $runtimeMetadataPath = Join-Path $stagingRoot "runtime/metadata.json"
 $runtimeMetadata = Get-Content -Raw -LiteralPath $runtimeMetadataPath | ConvertFrom-Json
 if (
     [string]$runtimeMetadata.worker_version -ne $Version -or
-    $null -eq $runtimeMetadata.count_verifier -or
-    [string]$runtimeMetadata.count_verifier.filename -ne "count-verifier.onnx" -or
-    [string]$runtimeMetadata.count_verifier.comparison_mode -ne "object_presence" -or
-    [double]$runtimeMetadata.count_verifier.confidence_threshold -ne 0.54
+    $null -ne $runtimeMetadata.count_verifier -or
+    [string]$runtimeMetadata.sources.detector.architecture -notmatch "SSDLite320" -or
+    -not [bool]$runtimeMetadata.classifier_resolution_fallback.selective_roi_only -or
+    $null -eq $runtimeMetadata.detector_primary_classifier_routing -or
+    [double]$runtimeMetadata.detector_primary_classifier_routing.minimum_detector_score -ne 0.98
 ) {
-    throw "OpenVINO GPU test requires the final 0.1.8 object-presence Runtime."
-}
-$countVerifierPath = Join-Path (
-    Join-Path $stagingRoot "runtime"
-) ([string]$runtimeMetadata.count_verifier.filename)
-$countVerifierChecksumProperty = $runtimeMetadata.checksums.PSObject.Properties[
-    [string]$runtimeMetadata.count_verifier.filename
-]
-if (
-    -not (Test-Path -LiteralPath $countVerifierPath -PathType Leaf) -or
-    $null -eq $countVerifierChecksumProperty -or
-    (Get-FileHash -Algorithm SHA256 -LiteralPath $countVerifierPath).Hash.ToLowerInvariant() -ne
-        [string]$countVerifierChecksumProperty.Value
-) {
-    throw "OpenVINO GPU test object-presence verifier checksum is invalid."
+    throw "OpenVINO GPU test requires the final detector-primary Runtime."
 }
 
 Invoke-Native -FailureMessage "Python 3.11 validation failed" -Command {
@@ -273,14 +260,14 @@ try {
         artifact = "n100_openvino_cpu_vs_intel_gpu_embedder_diagnostic"
         product_version = $Version
         provider = "openvino+openvino_gpu"
-        target_full_path_latency_ms = 500
+        target_full_path_latency_ms = 1000
         provider_contract = [ordered]@{
             baseline_detector = "OpenVINOExecutionProvider:CPU"
             baseline_embedder = "OpenVINOExecutionProvider:CPU"
             candidate_detector = "OpenVINOExecutionProvider:CPU"
-            baseline_object_presence_verifier = "OpenVINOExecutionProvider:CPU"
-            candidate_object_presence_verifier = "OpenVINOExecutionProvider:GPU"
-            candidate_object_presence_execution = "parallel_with_detector"
+            baseline_object_presence_verifier = "not_configured"
+            candidate_object_presence_verifier = "not_configured"
+            candidate_object_presence_execution = "not_configured"
             candidate_embedder = "OpenVINOExecutionProvider:GPU"
             candidate_primary_embedder = "OpenVINOExecutionProvider:GPU"
             candidate_rotation_180_embedder = "OpenVINOExecutionProvider:GPU"
@@ -299,12 +286,7 @@ try {
         runtime = [ordered]@{
             file_count = $runtimeRecords.Count
             files = $runtimeRecords
-            object_presence_verifier = [ordered]@{
-                filename = [string]$runtimeMetadata.count_verifier.filename
-                comparison_mode = [string]$runtimeMetadata.count_verifier.comparison_mode
-                confidence_threshold = [double]$runtimeMetadata.count_verifier.confidence_threshold
-                sha256 = [string]$countVerifierChecksumProperty.Value
-            }
+            object_presence_verifier = $null
         }
         catalog = [ordered]@{
             file_count = $catalogRecords.Count

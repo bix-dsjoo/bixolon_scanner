@@ -1,0 +1,73 @@
+{
+  "experiment": "yolo-free-0.1.7-detector-challenger",
+  "comparison_product_version": "0.1.7",
+  "candidate": {
+    "architecture": "D-FINE-N with HGNetv2 backbone",
+    "detector_license": "Apache-2.0",
+    "detector_repository": "https://github.com/Peterande/D-FINE",
+    "forbidden_detector_dependencies": [
+      "ultralytics",
+      "YOLO",
+      "AGPL-3.0"
+    ]
+  },
+  "development_targets": {
+    "emh_300": {
+      "image_count": 300,
+      "ground_truth_count": 1410,
+      "maximum_false_positive_count": 0,
+      "maximum_false_negative_count": 0,
+      "maximum_error_count": 0,
+      "maximum_approved_wrong_count": 0,
+      "maximum_unknown_top3_miss_count": 0
+    },
+    "operational_2026_08_27": {
+      "image_count": 69,
+      "ground_truth_count": 138,
+      "maximum_false_positive_count": 0,
+      "maximum_false_negative_count": 0,
+      "maximum_error_count": 0,
+      "maximum_approved_wrong_count": 0,
+      "maximum_unknown_top3_miss_count": 0,
+      "minimum_approved_count": 136,
+      "maximum_processing_time_p95_ms": 300.0
+    },
+    "combined_415": {
+      "image_count": 415,
+      "ground_truth_count": 1914,
+      "maximum_false_positive_count": 0,
+      "maximum_false_negative_count": 0,
+      "maximum_error_count": 0,
+      "maximum_approved_wrong_count": 0,
+      "maximum_unknown_top3_miss_count": 0,
+      "minimum_approved_count": 1895,
+      "maximum_processing_time_p95_ms": 300.0
+    }
+  },
+  "output_contract": {
+    "accepted_segment_results": [
+      "APPROVED",
+      "UNKNOWN_WITH_TOP3",
+      "SEGMENT_RECAPTURE"
+    ],
+    "accepted_image_results": [
+      "SEGMENTATION",
+      "IMAGE_RECAPTURE"
+    ],
+    "system_error_is_not_recapture": true,
+    "pipeline_order_is_constrained": false,
+    "optimization_priority": [
+      "zero_errors",
+      "zero_approved_misrecognitions",
+      "zero_unknown_top3_misses",
+      "zero_false_positives_and_false_negatives",
+      "approved_count_non_regression",
+      "latency_non_regression"
+    ]
+  },
+  "evidence_limits": [
+    "The 300- and 415-image collections are development evidence, not independent generalization evidence.",
+    "The detector replacement does not change the separate DINOv3 classifier license obligation.",
+    "Latency comparisons are valid only on the same machine and execution provider."
+  ]
+}

@@ -22,6 +22,7 @@ from .catalog import (
 from .runtime_package_v2 import (
     CatalogDecisionPolicy,
     DetectorAmbiguityPolicyMetadata,
+    DetectorPrimaryClassifierRoutingMetadata,
     DetectorRefinementMetadata,
     EmbedderMetadata,
     MetricProjectionMetadata,
@@ -48,6 +49,7 @@ __all__ = [
     "load_store_catalog_package",
     "CatalogDecisionPolicy",
     "DetectorAmbiguityPolicyMetadata",
+    "DetectorPrimaryClassifierRoutingMetadata",
     "DetectorRefinementMetadata",
     "EmbedderMetadata",
     "MetricProjectionMetadata",

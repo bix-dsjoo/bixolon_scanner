@@ -1,0 +1,42 @@
+{
+  "schema_version": "1.0",
+  "evaluation": "detector_primary_n100_release_assessment",
+  "product_version": "0.1.12",
+  "candidate_measured_on_n100": false,
+  "source_device_matrix": {
+    "path": "docs/diagnostics/n100-0.1.11-openvino-device-matrix.json",
+    "sha256": "12d18653cccc4c89fac09f359aabafc498718d49b7d5e894c6895ba8a348f314",
+    "hardware": "Intel N100 with Intel UHD Graphics",
+    "input_sha256_match_count": 100,
+    "input_set": "multi_object_scenes/easy/easy_001.jpg..easy_100.jpg"
+  },
+  "binary_contract": {
+    "detector_graph_or_weight_changed": false,
+    "embedder_graph_or_weight_changed": false,
+    "catalog_payload_changed": false,
+    "worker_routing_policy_changed": true
+  },
+  "measured_n100_baseline": {
+    "openvino_cpu_only_full_path_p95_ms": 676.568,
+    "openvino_cpu_detector_intel_gpu_embedder_full_path_p95_ms": 469.471,
+    "maximum_target_ms": 1000.0,
+    "cpu_headroom_ms": 323.432,
+    "hybrid_headroom_ms": 530.529
+  },
+  "same_input_development_measurement": {
+    "image_count": 100,
+    "object_count": 410,
+    "detector_direct_object_count": 267,
+    "dino_object_count": 143,
+    "dino_object_rate": 0.3488,
+    "active_full_dino_p95_ms": 97.644,
+    "detector_primary_selective_dino_p95_ms": 72.857,
+    "p95_ratio": 0.7461
+  },
+  "assessment": {
+    "target_supported": true,
+    "basis": "unchanged model binaries, reduced DINO ROI batch, and measured baseline headroom",
+    "candidate_n100_measurement_required_for_direct_claim": true
+  },
+  "limitation": "This is a conservative release assessment, not a direct 0.1.12 N100 measurement, SLA, certification, or independent generalization claim."
+}

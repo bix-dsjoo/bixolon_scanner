@@ -7,10 +7,10 @@ import 'package:flutter/widgets.dart';
 
 import '../../../core/design_system/tokens.dart';
 import '../../../shared/catalog/product_catalog.dart';
+import '../../../shared/input/image_input.dart';
 import '../../../shared/logging/scan_log_repository.dart';
 import '../../../shared/models/scan_models.dart';
 import '../../../shared/presentation/recapture_presentation.dart';
-import '../data/image_input.dart';
 import '../data/scanner_api.dart';
 import 'review_session.dart';
 import 'scan_performance_tracker.dart';

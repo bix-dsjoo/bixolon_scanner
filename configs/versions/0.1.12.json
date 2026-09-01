@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.12",
+  "app_build": 15,
+  "source_date_epoch": 1788220800,
+  "source_candidate": "ssdlite320-detector-primary-selective-dino-v2",
+  "runtime": {
+    "path": "artifacts/experiments/detector-primary-0.1.11/runtime-candidate-v2-0.1.11-selective-dino",
+    "manifest_sha256": "08b70842f64aa8647f835288fb84b2a496f588e426b2fb3b28d54f831a240462"
+  },
+  "catalog": {
+    "path": "artifacts/catalogs/bread-store-0.1.5-consensus",
+    "manifest_sha256": "085612ddd781a1879ae3bb2867c32c2174247ff8703e1641367d8c37226888b7",
+    "store_id": "bread-dev"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/runtime/cuda-13.0-cudnn-9.13.1-win-x64",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/experiments/detector-primary-0.1.11/runtime-candidate-v2-build.json",
+      "sha256": "b986621497f42bb7367c6d553ab01e88239584feaa3489f2dccc33f001fe94b5"
+    },
+    {
+      "path": "artifacts/experiments/detector-primary-0.1.11/v2-scanner415-openvino-cpu.json",
+      "sha256": "82ec57ca40e0e221660dc97bbe6a1b2bf343d3342099a7f01f624ed055446b3c"
+    },
+    {
+      "path": "artifacts/experiments/detector-primary-0.1.11/v2-scanner415-cuda.json",
+      "sha256": "cdf37fc2764275d6d3dfd70e36469f432319eaa9b7aa202d7bd36e5cb77e057a"
+    },
+    {
+      "path": "artifacts/experiments/detector-primary-0.1.11/v2-scanner415-cuda-openvino-parity.json",
+      "sha256": "8a9123fe32e6745cf8a6232fc36e420cd900c51ae097ffa56abe5b06f21b5ac6"
+    },
+    {
+      "path": "artifacts/experiments/detector-primary-0.1.11/v2-operational69-openvino-cpu.json",
+      "sha256": "e09fb4b77c98301941c1e87cf1556483c070b1912d0566970e3890e8377687ad"
+    },
+    {
+      "path": "artifacts/experiments/detector-primary-0.1.11/v2-multi300-openvino-cpu.json",
+      "sha256": "de680f40832b31f290c55b7a71bb7cfe14e6062fc698e036a218607b3e61fa15"
+    },
+    {
+      "path": "artifacts/experiments/detector-primary-0.1.11/v2-active-multi300-decision-parity.json",
+      "sha256": "9d23e80e30fc46b12415fbc88c91f4084d52d99c44ad07ba1cf37e28194020b4"
+    },
+    {
+      "path": "artifacts/experiments/detector-primary-0.1.11/v2-packaged-worker-openvino-smoke.json",
+      "sha256": "c18de704fa2979e4d4d77b74257b24bdf636de179884f4bc09621c6c3724d84e"
+    },
+    {
+      "path": "docs/diagnostics/n100-0.1.11-openvino-device-matrix.json",
+      "sha256": "12d18653cccc4c89fac09f359aabafc498718d49b7d5e894c6895ba8a348f314"
+    },
+    {
+      "path": "docs/diagnostics/n100-detector-primary-0.1.12-assessment.json",
+      "sha256": "05823a8b61e667241105d19d59e02aeb367918302419fa0b6cb41fb522ad9598"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}

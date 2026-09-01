@@ -28,6 +28,74 @@ class ClassifierBatch:
     uses_explicit_ranking_scores: bool
 
 
+def merge_selected_classifier_batch(
+    base: ClassifierBatch,
+    selected: ClassifierBatch,
+    indices: np.ndarray,
+    *,
+    fuse_unapproved_top3: bool = False,
+) -> ClassifierBatch:
+    """Replace selected classifier rows while preserving the original batch order."""
+    selected_indices = np.asarray(indices, dtype=np.int64)
+    if selected_indices.ndim != 1 or len(np.unique(selected_indices)) != len(selected_indices):
+        raise ValueError("selected classifier indices must be one-dimensional and unique")
+    if np.any(selected_indices < 0) or np.any(selected_indices >= len(base.approved)):
+        raise ValueError("selected classifier index is outside the base batch")
+    if len(selected_indices) != len(selected.approved):
+        raise ValueError("selected classifier rows do not match selected indices")
+
+    def merge_array(base_value: np.ndarray, selected_value: np.ndarray) -> np.ndarray:
+        merged = np.asarray(base_value).copy()
+        merged[selected_indices] = selected_value
+        return merged
+
+    def merge_tuple(
+        base_value: tuple[str | None, ...] | None,
+        selected_value: tuple[str | None, ...] | None,
+    ) -> tuple[str | None, ...] | None:
+        if base_value is None and selected_value is None:
+            return None
+        merged = list(base_value or (None,) * len(base.approved))
+        selected_reasons = selected_value or (None,) * len(selected.approved)
+        for selected_row, base_row in enumerate(selected_indices):
+            merged[int(base_row)] = selected_reasons[selected_row]
+        return tuple(merged)
+
+    if base.uses_explicit_ranking_scores != selected.uses_explicit_ranking_scores:
+        raise ValueError("base and selected classifier ranking modes differ")
+    ranking_probabilities = merge_array(
+        base.ranking_probabilities,
+        selected.ranking_probabilities,
+    )
+    decision_indices = merge_array(base.decision_indices, selected.decision_indices)
+    if fuse_unapproved_top3:
+        for selected_row, base_row in enumerate(selected_indices):
+            if selected.approved[selected_row]:
+                continue
+            ranking_probabilities[base_row] = np.maximum(
+                base.ranking_probabilities[base_row],
+                selected.ranking_probabilities[selected_row],
+            )
+            decision_indices[base_row] = np.argsort(
+                -ranking_probabilities[base_row],
+                kind="stable",
+            )
+    return ClassifierBatch(
+        probabilities=merge_array(base.probabilities, selected.probabilities),
+        ranking_probabilities=ranking_probabilities,
+        decision_indices=decision_indices,
+        approval_scores=merge_array(base.approval_scores, selected.approval_scores),
+        approved=merge_array(base.approved, selected.approved),
+        top3_unsafe=merge_array(base.top3_unsafe, selected.top3_unsafe),
+        segment_recapture_reasons=merge_tuple(
+            base.segment_recapture_reasons,
+            selected.segment_recapture_reasons,
+        ),
+        unknown_reasons=merge_tuple(base.unknown_reasons, selected.unknown_reasons),
+        uses_explicit_ranking_scores=base.uses_explicit_ranking_scores,
+    )
+
+
 def normalize_classification(
     classification: np.ndarray | ClassificationResult,
     *,
@@ -144,4 +212,9 @@ def normalize_classification(
     )
 
 
-__all__ = ["ClassifierBatch", "normalize_classification", "softmax"]
+__all__ = [
+    "ClassifierBatch",
+    "merge_selected_classifier_batch",
+    "normalize_classification",
+    "softmax",
+]

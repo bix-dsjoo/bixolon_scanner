@@ -234,7 +234,7 @@ def evaluate_artifacts(
     return {
         "schema_version": "1.0",
         "evaluation": "append_only_three_way_consensus_new_sku",
-        "product_version": "0.1.8",
+        "product_version": "0.1.12",
         "method": {
             "base_adapter_columns": "bit_stable",
             "new_outputs": "independent_binary_ridge",

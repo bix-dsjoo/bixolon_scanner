@@ -5,14 +5,16 @@ import json
 from pathlib import Path
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 
 from .data import read_manifest
 
 
 def build_cache(args: argparse.Namespace) -> None:
     records = [
-        record for record in read_manifest(args.manifest) if record["record_type"] == "detection"
+        record
+        for record in read_manifest(args.manifest)
+        if record.get("record_type", "detection") == "detection"
     ]
     args.output_dir.mkdir(parents=True, exist_ok=True)
     array_filename = "images.npy"
@@ -23,9 +25,12 @@ def build_cache(args: argparse.Namespace) -> None:
         shape=(len(records), args.image_size, args.image_size, 3),
     )
     index: dict[str, int] = {}
+    source_shapes: dict[str, list[int]] = {}
     for row, record in enumerate(records):
         with Image.open(args.dataset_root / record["image_path"]) as source:
-            image = source.convert("RGB").resize(
+            oriented = ImageOps.exif_transpose(source)
+            source_shapes[str(record["image_id"])] = [oriented.width, oriented.height]
+            image = oriented.convert("RGB").resize(
                 (args.image_size, args.image_size), Image.Resampling.BILINEAR
             )
         images[row] = np.asarray(image, dtype=np.uint8)
@@ -40,6 +45,7 @@ def build_cache(args: argparse.Namespace) -> None:
         "entry_count": len(records),
         "array_filename": array_filename,
         "index": index,
+        "source_shapes": source_shapes,
     }
     (args.output_dir / "index.json").write_text(
         json.dumps(metadata, indent=2) + "\n", encoding="utf-8"

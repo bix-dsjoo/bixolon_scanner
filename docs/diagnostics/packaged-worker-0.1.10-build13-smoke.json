@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "product_name": "BIXOLON Bakery AI Scanner",
+  "product_version": "0.1.10",
+  "app_build": 13,
+  "target": "windows-x64-openvino-cpu-detector-gpu-embedder",
+  "passes": true,
+  "cases": {
+    "ready": {
+      "http_status": 200,
+      "status": "ready",
+      "resolved_provider": "openvino",
+      "all_non_null_versions": "0.1.10"
+    },
+    "valid_scan": {
+      "http_status": 200,
+      "status": "SEGMENTATION",
+      "worker_version": "0.1.10",
+      "catalog_version": "0.1.10"
+    },
+    "corrupt_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": [
+        "CORRUPT_IMAGE"
+      ]
+    },
+    "missing_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": [
+        "MISSING_IMAGE_FIELD"
+      ]
+    },
+    "unsupported_image": {
+      "http_status": 415,
+      "status": "ERROR",
+      "reason_codes": [
+        "UNSUPPORTED_IMAGE_FORMAT"
+      ]
+    },
+    "manifests": {
+      "bundle_verify": true,
+      "bundle_file_count": 159,
+      "payload_file_count": 138,
+      "worker_file_count": 115,
+      "prohibited_runtime_module_path_count": 0,
+      "unlocked_bundled_distribution_count": 0,
+      "setup_sha256_file_matches": true,
+      "worker_zip_sha256_file_matches": true
+    },
+    "windows_version": {
+      "product_version": "0.1.10",
+      "file_version": "0.1.10+13"
+    }
+  },
+  "artifacts": {
+    "version_config_sha256": "0b84c92215de751d08b71cb707b3276fee7d609fba8c6b7b4123f4ad2d4b0e02",
+    "bundle_manifest_sha256": "c603e476415b442e88c6082c14d452626bc46880aa1607b2d0a1c524f4d32442",
+    "installer_manifest_sha256": "adf34f6102bf9a90bf6d3f156a7cb7ea3f5d96d6478af6f6395107c68a959e9c",
+    "payload_manifest_sha256": "706171bbc6b3f9f6f9d0a96019839be37d7afaeaf9903cc291f25eadb2d2b00e",
+    "setup_sha256": "53fd59d5850e3b94e339d029094a878384a9e06261890d6e94312ce1f494e3ee",
+    "worker_zip_sha256": "8bea8e0c11ee4c9ffff3f060edd375fcaba289e44b13da152f793fb1bf8110e7",
+    "product_executable_sha256": "d73db4034a7014a7d27c05c84329d6913a0c2ac1cfb3af80bb657254b162717d",
+    "packaged_smoke_sha256": "54f437bc86af320063481fbaa91ee1f07121d67d04e8604dd6149be5cd7ec206"
+  },
+  "authenticode": "UNSIGNED",
+  "privacy": {
+    "image_paths_recorded": false,
+    "image_bytes_recorded": false
+  },
+  "limitations": [
+    "The current-PC packaged smoke exercised the OpenVINO CPU path; Intel GPU execution remains supported by the bundled plugin and is evidenced separately by the pinned N100 diagnostic.",
+    "The Setup executable was compiled and checksum-verified but was not installed on this development PC.",
+    "SHA-256 checksums detect corruption or file changes but do not authenticate the publisher. The release is unsigned."
+  ]
+}

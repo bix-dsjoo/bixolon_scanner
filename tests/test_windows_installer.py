@@ -30,23 +30,21 @@ def test_windows_installer_uses_cpu_detector_gpu_embedder_payload_and_profile() 
     assert "installer-payload-manifest.json" in build_script
     assert "hardware-reference-result.json" in build_script
     assert "deployment-provenance.json" in build_script
-    assert 'n100_benchmark_status = "NOT_RUN_FOR_SELECTED_VERSION"' in build_script
-    assert "if ($hasN100Diagnostic)" in build_script
-    assert "Requested hardware device matrix is missing" in build_script
-    assert "Required hardware device matrix is missing" not in build_script
     assert '"REFERENCE_MEASURED_DIAGNOSTIC"' in build_script
+    assert "if ($hasN100Diagnostic)" in build_script
+    assert "Required hardware device matrix is missing" in build_script
     assert "reference_product_version = $diagnosticVersion" in build_script
     assert "config.runtime.path" in build_script
     assert "config.catalog.path" in build_script
-    assert "n100_latency_target_applied = $false" in build_script
+    assert "n100_latency_target_applied = $true" in build_script
+    assert "reference_measurement_only = $diagnosticVersion -ne $Version" in build_script
     assert "hardware.target_cpu_detected" in build_script
     assert "hardware.target_intel_gpu_detected" in build_script
-    assert "object_presence_verifier -ne (" in build_script
+    assert "objectPresenceContractSafe" in build_script
     assert '"OpenVINOExecutionProvider:GPU"' in build_script
-    assert "object_presence_execution -ne (" in build_script
-    assert '"parallel_with_detector"' in build_script
+    assert '"not_configured"' in build_script
     assert "parity.semantic_mismatch_count" in build_script
-    assert "operational_diagnostic_target_ms = 500" in build_script
+    assert "operational_diagnostic_target_ms = 1000" in build_script
     assert "BixolonBakeryAIScanner-$Version-Worker" in build_script
     assert 'target = "windows-x64-openvino-cpu-detector-gpu-embedder"' in build_script
     assert "worker-manifest.json" in build_script
@@ -83,10 +81,10 @@ def test_windows_installer_documents_target_requirements_and_limits() -> None:
     assert "OpenVINOExecutionProvider" in guide
     assert "CPU, 1 worker x 4 threads" in guide
     assert "OpenVINOExecutionProvider Intel GPU" in guide
-    assert "object_presence verifier는 Detector와 병렬" in guide
-    assert "object_presence와 Embedder를 CPU로 명시적으로 fallback" in guide
+    assert "count verifier와 object_presence verifier는 구성하지 않음" in guide
+    assert "classifier를 CPU로 명시적으로 fallback" in guide
     assert "p95는" in guide
-    assert "기준을 넘었습니다" in guide
+    assert "실제 N100 추가 효과는 직접 측정하지" in guide
     assert "지연시간 또는 SLA를 보장하지 않습니다" in guide
     assert "Authenticode 서명은 없습니다" in guide
 

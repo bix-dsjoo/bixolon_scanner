@@ -38,6 +38,7 @@ def extract_predictions(
     threshold: float,
     batch_size: int,
     device: str,
+    num_classes: int = 20,
 ) -> dict[str, Any]:
     from rfdetr import RFDETRLarge
 
@@ -52,7 +53,7 @@ def extract_predictions(
         raise ValueError(f"RF-DETR prediction fold {fold} has no records")
     model = RFDETRLarge(
         pretrain_weights=str(checkpoint),
-        num_classes=20,
+        num_classes=num_classes,
         device=device,
         resolution=resolution,
     )
@@ -94,6 +95,7 @@ def extract_predictions(
         "threshold": threshold,
         "resolution": resolution,
         "batch_size": batch_size,
+        "num_classes": num_classes,
         "checkpoint": str(checkpoint),
         "checkpoint_sha256": _sha256(checkpoint),
         "manifest": str(manifest_path),
@@ -123,6 +125,7 @@ def main() -> None:
     parser.add_argument("--threshold", type=float, default=0.001)
     parser.add_argument("--batch-size", type=int, default=4)
     parser.add_argument("--device", default="cuda")
+    parser.add_argument("--num-classes", type=int, choices=(1, 20), default=20)
     args = parser.parse_args()
     report = extract_predictions(
         args.manifest,
@@ -134,6 +137,7 @@ def main() -> None:
         threshold=args.threshold,
         batch_size=args.batch_size,
         device=args.device,
+        num_classes=args.num_classes,
     )
     print(json.dumps(report, ensure_ascii=False, indent=2))
 

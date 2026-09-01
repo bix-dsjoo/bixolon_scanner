@@ -125,6 +125,24 @@ def test_rotation_disagreement_keeps_primary_only_with_two_head_corroboration() 
     assert classifier.independent.embedder.selected_indices == (0,)
 
 
+def test_selected_consensus_preserves_full_detection_context_indices() -> None:
+    classifier = _consensus(
+        _result(0, approval_score=0.4),
+        _result(0, approval_score=0.3, retrieval_top1=0),
+    )
+    detections = [
+        Detection(0, 0, 1, 1, 0.9),
+        Detection(1, 0, 2, 1, 0.9),
+        Detection(2, 0, 3, 1, 0.9),
+    ]
+
+    result = classifier.classify_selected(None, detections, np.asarray([2]))
+
+    assert result.approval_blocked.tolist() == [False]
+    assert classifier.primary.embedder.selected_indices == (2,)
+    assert classifier.independent.embedder.selected_indices == (2,)
+
+
 def test_rotation_disagreement_without_independent_corroboration_blocks_approval() -> None:
     classifier = _consensus(
         _result(1, approval_score=0.4),
@@ -249,6 +267,21 @@ def test_append_only_disagreement_restores_bit_stable_base_decision() -> None:
     assert ConsensusCatalogClassifier._top1(result).tolist() == [0]
     assert result.approval_scores.tolist() == pytest.approx([0.8])
     assert np.isneginf(result.logits[0, 3])
+
+
+def test_selected_append_only_consensus_preserves_full_detection_context() -> None:
+    classifier = _append_consensus(3, 3)
+    detections = [
+        Detection(0, 0, 1, 1, 0.9),
+        Detection(1, 0, 2, 1, 0.9),
+        Detection(2, 0, 3, 1, 0.9),
+    ]
+
+    result = classifier.classify_selected(None, detections, np.asarray([2]))
+
+    assert ConsensusCatalogClassifier._top1(result).tolist() == [3]
+    assert classifier.primary.embedder.selected_indices == (2,)
+    assert classifier.independent.embedder.selected_indices == (2,)
 
 
 def test_append_only_fallback_preserves_base_selective_verification() -> None:

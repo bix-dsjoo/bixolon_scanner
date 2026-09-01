@@ -26,6 +26,8 @@ class DetectionResult:
     uncertain_candidate_count: int = 0
     uncertain_candidate_scores: tuple[float, ...] = ()
     refinement_executed: bool = False
+    detector_class_ids: tuple[int | None, ...] = ()
+    detector_class_support_counts: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
