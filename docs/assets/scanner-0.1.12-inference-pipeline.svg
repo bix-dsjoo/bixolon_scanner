@@ -1,0 +1,208 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="980" viewBox="0 0 1600 980" role="img" aria-labelledby="flow-title flow-desc">
+  <title id="flow-title">BIXOLON Bakery AI Scanner 0.1.12 이미지 판별 예시</title>
+  <desc id="flow-desc">빵 세 개가 있는 한 장의 입력 이미지가 detector를 거쳐 객체별로 직접 판정 또는 DINOv3 선택 분류되고, APPROVED, UNKNOWN, SEGMENT_RECAPTURE를 포함한 SEGMENTATION 응답으로 조립되는 과정을 보여 준다.</desc>
+
+  <defs>
+    <clipPath id="input-photo-clip"><rect x="88" y="242" width="244" height="332" rx="16"/></clipPath>
+    <clipPath id="detector-photo-clip"><rect x="428" y="242" width="304" height="332" rx="16"/></clipPath>
+    <clipPath id="result-photo-clip"><rect x="1302" y="242" width="220" height="278" rx="16"/></clipPath>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L10 5L0 10Z" fill="#334155"/>
+    </marker>
+    <marker id="arrow-blue" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto" markerUnits="strokeWidth">
+      <path d="M0 0L10 5L0 10Z" fill="#2563EB"/>
+    </marker>
+    <filter id="soft-shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="5" stdDeviation="8" flood-color="#0F172A" flood-opacity=".09"/>
+    </filter>
+    <linearGradient id="photo-bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E8EEF7"/>
+      <stop offset="1" stop-color="#CFD9E8"/>
+    </linearGradient>
+    <linearGradient id="croissant-fill" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#F8D477"/>
+      <stop offset=".6" stop-color="#D99A36"/>
+      <stop offset="1" stop-color="#B96F22"/>
+    </linearGradient>
+    <linearGradient id="roll-fill" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F3C879"/>
+      <stop offset="1" stop-color="#B86A2D"/>
+    </linearGradient>
+    <g id="bread-croissant">
+      <path d="M7 37C13 9 35 0 54 7C72 0 94 10 99 37C88 29 79 27 69 29C60 31 51 31 42 29C31 26 20 29 7 37Z" fill="url(#croissant-fill)" stroke="#945321" stroke-width="2"/>
+      <path d="M27 10C31 22 35 28 42 29M50 6C50 18 52 24 56 30M74 8C70 20 67 26 63 30" fill="none" stroke="#FFF1B8" stroke-width="4" stroke-linecap="round" opacity=".72"/>
+    </g>
+    <g id="bread-croffle">
+      <rect x="2" y="2" width="76" height="76" rx="16" fill="#D9953F" stroke="#8E5422" stroke-width="3"/>
+      <path d="M20 6V74M40 4V76M60 6V74M6 20H74M4 40H76M6 60H74" stroke="#F7D58B" stroke-width="4" opacity=".76"/>
+    </g>
+    <g id="bread-roll">
+      <ellipse cx="49" cy="28" rx="47" ry="26" fill="url(#roll-fill)" stroke="#8A4C22" stroke-width="3"/>
+      <path d="M20 17C30 8 40 7 50 10M47 10C58 6 69 10 78 18" fill="none" stroke="#FFE5A8" stroke-width="5" stroke-linecap="round" opacity=".72"/>
+    </g>
+    <style>
+      .display { font: 700 36px 'Pretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; fill: #101D3A; }
+      .subtitle { font: 500 18px 'Pretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; fill: #526078; }
+      .stage-no { font: 700 15px Consolas, 'SFMono-Regular', monospace; fill: #2563EB; letter-spacing: .08em; }
+      .stage-title { font: 700 21px 'Pretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; fill: #17233B; }
+      .card-title { font: 700 20px 'Pretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; fill: #17233B; }
+      .body { font: 500 16px 'Pretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; fill: #415069; }
+      .small { font: 500 14px 'Pretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; fill: #627087; }
+      .small-center { font: 500 14px 'Pretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; fill: #627087; text-anchor: middle; }
+      .label { font: 700 14px 'Pretendard', 'Noto Sans KR', 'Malgun Gothic', sans-serif; fill: #FFFFFF; text-anchor: middle; }
+      .mono { font: 700 14px Consolas, 'SFMono-Regular', monospace; fill: #17233B; }
+      .mono-center { font: 700 14px Consolas, 'SFMono-Regular', monospace; fill: #17233B; text-anchor: middle; }
+      .card { fill: #FFFFFF; stroke: #D7DFEB; stroke-width: 1.5; filter: url(#soft-shadow); }
+      .subcard { fill: #F8FAFD; stroke: #E2E8F0; stroke-width: 1.5; }
+      .flow { fill: none; stroke: #334155; stroke-width: 2.5; marker-end: url(#arrow); }
+      .flow-blue { fill: none; stroke: #2563EB; stroke-width: 3; marker-end: url(#arrow-blue); }
+      .box-green { fill: none; stroke: #159B69; stroke-width: 3; }
+      .box-violet { fill: none; stroke: #7357D9; stroke-width: 3; }
+      .box-orange { fill: none; stroke: #E08718; stroke-width: 3; stroke-dasharray: 8 5; }
+    </style>
+  </defs>
+
+  <rect width="1600" height="980" fill="#F7F9FC"/>
+
+  <text class="display" x="60" y="62">사진 한 장은 이렇게 판별됩니다</text>
+  <text class="subtitle" x="60" y="94">0.1.12 · 같은 객체 번호를 따라가면 Detector 직접 판정과 DINOv3 선택 분류의 차이가 보입니다.</text>
+
+  <text class="stage-no" x="60" y="148">01</text>
+  <text class="stage-title" x="60" y="176">입력 이미지</text>
+  <text class="stage-no" x="400" y="148">02</text>
+  <text class="stage-title" x="400" y="176">객체 검출 · 품질 확인</text>
+  <text class="stage-no" x="790" y="148">03</text>
+  <text class="stage-title" x="790" y="176">ROI별 판정</text>
+  <text class="stage-no" x="1280" y="148">04</text>
+  <text class="stage-title" x="1280" y="176">응답 조립</text>
+
+  <rect class="card" x="60" y="202" width="300" height="598" rx="22"/>
+  <rect x="88" y="242" width="244" height="332" rx="16" fill="url(#photo-bg)"/>
+  <g clip-path="url(#input-photo-clip)">
+    <rect x="103" y="267" width="214" height="285" rx="22" fill="#35445A" opacity=".76"/>
+    <rect x="113" y="277" width="194" height="265" rx="16" fill="#E8EEF4"/>
+    <ellipse cx="205" cy="565" rx="100" ry="20" fill="#101828" opacity=".12"/>
+    <use href="#bread-croissant" transform="translate(116 304) scale(1.05)"/>
+    <use href="#bread-croffle" transform="translate(224 385) rotate(8 40 40) scale(.9)"/>
+    <use href="#bread-roll" transform="translate(130 526) scale(1.2)"/>
+  </g>
+  <g>
+    <circle cx="115" cy="303" r="16" fill="#159B69"/><text class="label" x="115" y="308">1</text>
+    <circle cx="227" cy="382" r="16" fill="#7357D9"/><text class="label" x="227" y="387">2</text>
+    <circle cx="127" cy="535" r="16" fill="#E08718"/><text class="label" x="127" y="540">3</text>
+  </g>
+  <text class="card-title" x="88" y="625">JPEG/PNG 한 장</text>
+  <text class="body" x="88" y="656">형식과 손상 여부를 확인한 뒤</text>
+  <text class="body" x="88" y="681">RGB 이미지로 decode합니다.</text>
+  <rect x="88" y="718" width="244" height="52" rx="12" fill="#EEF3FA"/>
+  <text class="small-center" x="210" y="740">입력 검증 실패는</text>
+  <text class="mono-center" x="210" y="760">ERROR · RECAPTURE 아님</text>
+
+  <path class="flow" d="M360 435H395"/>
+
+  <rect class="card" x="400" y="202" width="360" height="598" rx="22"/>
+  <rect x="428" y="242" width="304" height="332" rx="16" fill="url(#photo-bg)"/>
+  <g clip-path="url(#detector-photo-clip)">
+    <rect x="445" y="267" width="270" height="285" rx="22" fill="#35445A" opacity=".76"/>
+    <rect x="455" y="277" width="250" height="265" rx="16" fill="#E8EEF4"/>
+    <ellipse cx="570" cy="565" rx="115" ry="20" fill="#101828" opacity=".12"/>
+    <use href="#bread-croissant" transform="translate(470 304) scale(1.05)"/>
+    <use href="#bread-croffle" transform="translate(620 385) rotate(8 40 40) scale(.9)"/>
+    <use href="#bread-roll" transform="translate(500 526) scale(1.2)"/>
+    <rect class="box-green" x="463" y="292" width="119" height="77" rx="6"/>
+    <rect class="box-violet" x="606" y="369" width="103" height="101" rx="6"/>
+    <rect class="box-orange" x="487" y="510" width="134" height="77" rx="6"/>
+  </g>
+  <rect x="463" y="271" width="153" height="25" rx="6" fill="#159B69"/>
+  <text class="label" x="539" y="289">1 Croissant · .992</text>
+  <rect x="545" y="458" width="164" height="25" rx="6" fill="#7357D9"/>
+  <text class="label" x="627" y="476">2 Croffle · .840</text>
+  <rect x="487" y="540" width="178" height="25" rx="6" fill="#E08718"/>
+  <text class="label" x="576" y="558">3 Dinner Roll · .790</text>
+  <text class="card-title" x="428" y="625">SSDLite320이 한 번에 확인</text>
+  <text class="body" x="428" y="656">bbox · detector class · score</text>
+  <text class="body" x="428" y="681">프레임 전체 촬영 품질</text>
+  <rect x="428" y="711" width="304" height="59" rx="12" fill="#EAF8F2" stroke="#9BD8C2"/>
+  <text class="mono-center" x="580" y="737">이 예시: hard gate 통과</text>
+  <text class="small-center" x="580" y="758">실패하면 IMAGE_RECAPTURE 후 종료</text>
+
+  <path class="flow-blue" d="M760 435H785"/>
+
+  <rect class="card" x="790" y="202" width="460" height="598" rx="22"/>
+
+  <rect x="814" y="238" width="412" height="116" rx="16" fill="#ECF9F4" stroke="#96D9BF"/>
+  <circle cx="842" cy="266" r="17" fill="#159B69"/><text class="label" x="842" y="271">1</text>
+  <text class="card-title" x="870" y="272">Detector 결과로 바로 승인</text>
+  <text class="small" x="870" y="301">검증 class · score ≥ 0.98 · 이미지 안에서 class 1개</text>
+  <path class="flow" d="M870 327H1088"/>
+  <rect x="1098" y="308" width="108" height="38" rx="10" fill="#159B69"/>
+  <text class="label" x="1152" y="332">APPROVED</text>
+
+  <rect x="814" y="372" width="412" height="228" rx="16" fill="#F4F1FF" stroke="#C3B7F4"/>
+  <circle cx="842" cy="400" r="17" fill="#7357D9"/><text class="label" x="842" y="405">2</text>
+  <text class="card-title" x="870" y="406">불확실한 ROI만 DINOv3 실행</text>
+  <text class="small" x="870" y="435">혼동 class · 신규 class · 저신뢰 · 동일 class 중복</text>
+  <rect x="840" y="458" width="116" height="54" rx="10" fill="#FFFFFF" stroke="#8D79E5"/>
+  <text class="mono-center" x="898" y="480">ConvNeXt-T</text>
+  <text class="small-center" x="898" y="501">192 주 분류</text>
+  <path class="flow" d="M956 485H984"/>
+  <rect x="984" y="458" width="116" height="54" rx="10" fill="#FFFFFF" stroke="#8D79E5"/>
+  <text class="mono-center" x="1042" y="480">ConvNeXt-T</text>
+  <text class="small-center" x="1042" y="501">필요 시 224</text>
+  <path class="flow" d="M1100 485H1128"/>
+  <rect x="1128" y="458" width="78" height="54" rx="10" fill="#7357D9"/>
+  <text class="label" x="1167" y="482">UNKNOWN</text>
+  <text class="label" x="1167" y="500">+ Top-3</text>
+  <rect x="840" y="530" width="260" height="48" rx="10" fill="#FFFFFF" stroke="#8D79E5" stroke-dasharray="6 4"/>
+  <text class="small-center" x="970" y="550">모호 후보만 독립 검증</text>
+  <text class="mono-center" x="970" y="569">ViT-B/16 · 160 verifier</text>
+  <text class="small" x="1116" y="550">2 backbones</text>
+  <text class="small" x="1116" y="572">3 ONNX graphs</text>
+
+  <rect x="814" y="618" width="412" height="142" rx="16" fill="#FFF7E9" stroke="#F1C37A"/>
+  <circle cx="842" cy="646" r="17" fill="#E08718"/><text class="label" x="842" y="651">3</text>
+  <text class="card-title" x="870" y="652">경계 접촉 ROI는 더 엄격하게</text>
+  <text class="small" x="840" y="684">분류 Top-1이 승인 임계값 미만 + 이미지 경계 접촉</text>
+  <path class="flow" d="M840 718H1036"/>
+  <rect x="1046" y="698" width="160" height="42" rx="10" fill="#E08718"/>
+  <text class="label" x="1126" y="724">SEGMENT_RECAPTURE</text>
+
+  <path class="flow" d="M1250 435H1275"/>
+
+  <rect class="card" x="1280" y="202" width="270" height="598" rx="22"/>
+  <rect x="1302" y="242" width="220" height="278" rx="16" fill="url(#photo-bg)"/>
+  <g clip-path="url(#result-photo-clip)">
+    <rect x="1316" y="262" width="192" height="244" rx="18" fill="#35445A" opacity=".76"/>
+    <rect x="1326" y="272" width="172" height="224" rx="13" fill="#E8EEF4"/>
+    <use href="#bread-croissant" transform="translate(1335 305) scale(.7)"/>
+    <use href="#bread-croffle" transform="translate(1436 361) rotate(8 40 40) scale(.55)"/>
+    <use href="#bread-roll" transform="translate(1354 481) scale(.83)"/>
+    <rect class="box-green" x="1328" y="297" width="83" height="57" rx="5"/>
+    <rect class="box-violet" x="1424" y="350" width="68" height="67" rx="5"/>
+    <rect class="box-orange" x="1344" y="470" width="94" height="58" rx="5"/>
+  </g>
+  <rect x="1302" y="548" width="220" height="46" rx="10" fill="#ECF9F4"/>
+  <circle cx="1324" cy="571" r="13" fill="#159B69"/><text class="label" x="1324" y="576">1</text>
+  <text class="mono" x="1346" y="576">APPROVED · Croissant</text>
+  <rect x="1302" y="604" width="220" height="60" rx="10" fill="#F4F1FF"/>
+  <circle cx="1324" cy="634" r="13" fill="#7357D9"/><text class="label" x="1324" y="639">2</text>
+  <text class="mono" x="1346" y="628">UNKNOWN</text>
+  <text class="small" x="1346" y="650">Croffle 외 Top-3</text>
+  <rect x="1302" y="674" width="220" height="60" rx="10" fill="#FFF7E9"/>
+  <circle cx="1324" cy="704" r="13" fill="#E08718"/><text class="label" x="1324" y="709">3</text>
+  <text class="mono" x="1346" y="698">SEGMENT_RECAPTURE</text>
+  <text class="small" x="1346" y="720">해당 ROI만 재촬영</text>
+  <rect x="1302" y="748" width="220" height="52" rx="12" fill="#2563EB"/>
+  <text class="label" x="1412" y="770">최상위 status</text>
+  <text class="label" x="1412" y="790">SEGMENTATION</text>
+
+  <rect x="60" y="840" width="720" height="92" rx="18" fill="#FFF8E9" stroke="#F0C56D"/>
+  <text class="mono" x="84" y="872">IMAGE_RECAPTURE</text>
+  <text class="body" x="84" y="900">Detector hard 품질 실패 → classifier를 호출하지 않고 빈 segmentations 반환</text>
+  <text class="small" x="84" y="922">실행하지 않은 classifier · embedder · classifier policy · Catalog version은 null</text>
+
+  <rect x="800" y="840" width="750" height="92" rx="18" fill="#FFF0F0" stroke="#EE9B9B"/>
+  <text class="mono" x="824" y="872">ERROR</text>
+  <text class="body" x="824" y="900">입력 4xx 또는 Worker · 모델 · 시스템 5xx → 빈 segmentations 반환</text>
+  <text class="small" x="824" y="922">시스템 장애를 IMAGE_RECAPTURE나 SEGMENT_RECAPTURE로 바꾸지 않음</text>
+</svg>

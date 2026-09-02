@@ -7,6 +7,8 @@ Python `DecisionPipeline.scan()`이 입력 검증, detector 조기 종료, ROI b
 segmentation 조립 순서를 소유합니다. Worker는 HTTP·예외·동시성·provider 조립만 담당하고 실행
 경로에서 PyTorch를 import하지 않습니다.
 
+![0.1.12 추론 파이프라인](../assets/scanner-0.1.12-inference-pipeline.svg)
+
 ```mermaid
 flowchart LR
     CONFIG["configs/versions/0.1.12.json"] --> VERIFY["source manifest·증빙 SHA-256 검증"]
