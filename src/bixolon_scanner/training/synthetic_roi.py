@@ -68,6 +68,9 @@ class DirectRoiRecipe:
     canvas_scale_max: float = 0.94
     rotation_degrees: float = 25.0
     perspective_fraction: float = 0.04
+    side_view_probability: float = 0.0
+    side_view_minimum_compression: float = 0.30
+    side_view_maximum_compression: float = 0.58
     brightness_min: float = 0.80
     brightness_max: float = 1.20
     contrast_min: float = 0.85
@@ -94,6 +97,10 @@ class DirectRoiRecipe:
             raise ValueError("ROI canvas scale range is invalid")
         if not 0 <= self.blur_probability <= 1:
             raise ValueError("ROI blur_probability is invalid")
+        if not 0 <= self.side_view_probability <= 1:
+            raise ValueError("ROI side_view_probability is invalid")
+        if not (0 < self.side_view_minimum_compression <= self.side_view_maximum_compression <= 1):
+            raise ValueError("ROI side-view compression range is invalid")
         if not 1 <= self.jpeg_quality_min <= self.jpeg_quality_max <= 100:
             raise ValueError("ROI JPEG quality range is invalid")
         if self.crop_mode not in {
@@ -353,6 +360,18 @@ def augment_direct_roi(
     rgb = ImageEnhance.Color(rgb).enhance(saturation)
     cutout = rgb.convert("RGBA")
     cutout.putalpha(alpha)
+    side_view_compression = 1.0
+    if rng.random() < recipe.side_view_probability:
+        side_view_compression = float(
+            rng.uniform(
+                recipe.side_view_minimum_compression,
+                recipe.side_view_maximum_compression,
+            )
+        )
+        cutout = cutout.resize(
+            (cutout.width, max(2, round(cutout.height * side_view_compression))),
+            Image.Resampling.LANCZOS,
+        )
     cutout, perspective = _perspective_transform(cutout, recipe.perspective_fraction, rng)
     rotation = float(rng.uniform(-recipe.rotation_degrees, recipe.rotation_degrees))
     cutout = cutout.rotate(rotation, resample=Image.Resampling.BICUBIC, expand=True)
@@ -408,6 +427,7 @@ def augment_direct_roi(
                 "brightness": brightness,
                 "contrast": contrast,
                 "saturation": saturation,
+                "side_view_compression": side_view_compression,
                 "perspective": perspective,
                 "rotation_degrees": rotation,
                 "crop_mode": recipe.crop_mode,

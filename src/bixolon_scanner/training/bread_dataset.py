@@ -21,6 +21,7 @@ TRAINING_SOURCES = {
     "single_objects_1": 7,
     "single_objects_2": 10,
     "single_objects_3": 12,
+    "single_objects_4": 10,
 }
 CLASS_DIRECTORY_PATTERN = re.compile(r"^bread_(?P<number>\d{2})_(?P<slug>[a-z0-9_]+)$")
 IMAGE_NAME_PATTERN = re.compile(
@@ -186,7 +187,11 @@ def audit_bread_dataset(
     labels = _validate_categories(multi_coco)
 
     single_root = root / training_source
-    class_directories = sorted(path for path in single_root.iterdir() if path.is_dir())
+    class_directories = sorted(
+        path
+        for path in single_root.iterdir()
+        if path.is_dir() and CLASS_DIRECTORY_PATTERN.fullmatch(path.name)
+    )
     if len(class_directories) != EXPECTED_CLASS_COUNT:
         raise ValueError(f"{training_source} must contain exactly 20 class directories")
 
@@ -212,17 +217,22 @@ def audit_bread_dataset(
                 f"{directory.name} must contain exactly {shots_per_class} original JPEGs"
             )
         slots: set[tuple[str, str]] = set()
-        for path in files:
-            image_match = GENERAL_IMAGE_NAME_PATTERN.fullmatch(path.name)
-            if image_match is None or int(image_match.group("number")) != category_id:
-                raise ValueError(f"invalid single-object filename: {path.name}")
-            capture = image_match.group("capture").lower()
-            if capture.startswith("normal_"):
-                slot = ("normal", capture.removeprefix("normal_"))
-            elif capture.startswith("flipped_"):
-                slot = ("flipped", capture.removeprefix("flipped_"))
+        for capture_index, path in enumerate(files):
+            if training_source == "single_objects_4":
+                if path.suffix.lower() not in {".jpg", ".jpeg"}:
+                    raise ValueError(f"invalid single-object filename: {path.name}")
+                slot = ("store_capture", f"capture_{capture_index:02d}")
             else:
-                slot = ("unpaired", capture)
+                image_match = GENERAL_IMAGE_NAME_PATTERN.fullmatch(path.name)
+                if image_match is None or int(image_match.group("number")) != category_id:
+                    raise ValueError(f"invalid single-object filename: {path.name}")
+                capture = image_match.group("capture").lower()
+                if capture.startswith("normal_"):
+                    slot = ("normal", capture.removeprefix("normal_"))
+                elif capture.startswith("flipped_"):
+                    slot = ("flipped", capture.removeprefix("flipped_"))
+                else:
+                    slot = ("unpaired", capture)
             if slot in slots:
                 raise ValueError(f"duplicate capture slot in {directory.name}: {slot}")
             slots.add(slot)

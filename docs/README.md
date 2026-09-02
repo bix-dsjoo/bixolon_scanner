@@ -12,6 +12,7 @@
 - [0.1.7 개발 평가와 한계](archive/diagnostics/scanner-0.1.7-evaluation.md)
 - [0.1.12+15 packaged Worker smoke](diagnostics/packaged-worker-0.1.12-build15-smoke.json)
 - [0.1.12 N100 보수적 판정](diagnostics/n100-detector-primary-0.1.12-assessment.json)
+- [Store 2 `single_objects_4` 완전 초기화 실험 기록](diagnostics/store2-single4-fresh-0.1.12.md)
 - [SSDLite N100 원본 device matrix](diagnostics/n100-ssdlite-0.1.7-openvino-device-matrix.json)
 - [SSDLite N100 독립 판정](diagnostics/n100-ssdlite-0.1.7-assessment.json)
 - [YOLO-free SSDLite 0.1.7 진단](experiments/yolo-free-0.1.7.md)

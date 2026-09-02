@@ -1,0 +1,18 @@
+{
+  "image_count": 6000,
+  "image_size": 640,
+  "empty_probability": 0.08,
+  "single_probability": 0.07,
+  "minimum_objects": 3,
+  "maximum_objects": 7,
+  "minimum_scale": 0.10,
+  "maximum_scale": 0.44,
+  "hard_scene_probability": 0.35,
+  "easy_scene_probability": 0.25,
+  "border_probability": 0.08,
+  "duplicate_class_probability": 0.16,
+  "maximum_rotation_degrees": 180.0,
+  "placement_margin_ratio": 0.07,
+  "qa_image_count": 100,
+  "seed": 20260901
+}

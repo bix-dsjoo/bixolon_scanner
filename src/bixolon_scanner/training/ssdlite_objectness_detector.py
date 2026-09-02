@@ -147,7 +147,8 @@ class CachedObjectnessDataset:
         self.class_aware = class_aware
         metadata = json.loads((cache_dir / "index.json").read_text(encoding="utf-8"))
         self.cache_index = {str(key): int(value) for key, value in metadata["index"].items()}
-        self.cache_images = np.load(cache_dir / metadata["array_filename"], mmap_mode="r")
+        self.cache_array_path = (cache_dir / metadata["array_filename"]).resolve()
+        self.cache_images = np.load(self.cache_array_path, mmap_mode="r")
         self.image_size = int(metadata["image_size"])
         self.source_shapes = {
             str(key): (int(value[0]), int(value[1]))
@@ -160,6 +161,15 @@ class CachedObjectnessDataset:
         ]
         if missing:
             raise ValueError(f"SSDLite image cache is incomplete: {missing[:3]}")
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state["cache_images"] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self.cache_images = np.load(self.cache_array_path, mmap_mode="r")
 
     def __len__(self) -> int:
         return len(self.records)

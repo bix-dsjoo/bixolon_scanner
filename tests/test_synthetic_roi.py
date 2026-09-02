@@ -105,6 +105,21 @@ def test_direct_roi_is_seeded_and_never_claims_detector_provenance():
     assert "detector" not in str(first.provenance).lower()
 
 
+def test_direct_roi_records_forced_side_view_compression():
+    recipe = DirectRoiRecipe(
+        output_size=224,
+        blur_probability=0,
+        side_view_probability=1,
+        side_view_minimum_compression=0.4,
+        side_view_maximum_compression=0.4,
+    )
+    sample = augment_direct_roi(
+        _support(), source_sha256="c" * 64, category_id=3, seed=9, recipe=recipe
+    )
+
+    assert sample.provenance["parameters"]["side_view_compression"] == 0.4
+
+
 @dataclass(frozen=True)
 class _Detection:
     x1: float

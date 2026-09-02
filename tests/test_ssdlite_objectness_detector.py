@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import pickle
 
 import numpy as np
 from PIL import Image
@@ -57,6 +58,12 @@ def test_detector_cache_applies_exif_orientation_before_resizing(tmp_path):
         target["boxes"].numpy(),
         np.asarray([[3.0, 4.0, 9.0, 10.0]], dtype=np.float32),
     )
+    payload = pickle.dumps(dataset)
+    assert len(payload) < 10_000
+    restored = pickle.loads(payload)
+    restored_image, restored_target = restored[0]
+    assert restored_image.shape == image.shape
+    np.testing.assert_allclose(restored_target["boxes"].numpy(), target["boxes"].numpy())
 
 
 def test_objectness_dataset_accepts_operational_bbox_shape_metadata(tmp_path):

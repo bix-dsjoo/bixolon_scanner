@@ -1,0 +1,21 @@
+{
+  "image_count": 10000,
+  "image_size": 640,
+  "empty_probability": 0.10,
+  "single_probability": 0.06,
+  "minimum_objects": 3,
+  "maximum_objects": 8,
+  "minimum_scale": 0.08,
+  "maximum_scale": 0.50,
+  "hard_scene_probability": 0.55,
+  "easy_scene_probability": 0.15,
+  "border_probability": 0.12,
+  "duplicate_class_probability": 0.30,
+  "medium_maximum_overlap": 0.32,
+  "hard_maximum_overlap": 0.62,
+  "hard_cluster_probability": 0.82,
+  "maximum_rotation_degrees": 180.0,
+  "placement_margin_ratio": 0.04,
+  "qa_image_count": 160,
+  "seed": 20260904
+}

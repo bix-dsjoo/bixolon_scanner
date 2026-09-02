@@ -24,6 +24,7 @@ def test_canonical_bread_dataset_locks_training_and_evaluation_sources():
         "single_objects_1",
         "single_objects_2",
         "single_objects_3",
+        "single_objects_4",
     ]
     assert metadata["training_contract"] == {
         "allowed_directory": "single_objects",
@@ -46,6 +47,7 @@ def test_canonical_bread_dataset_locks_training_and_evaluation_sources():
         ("single_objects_1", 7),
         ("single_objects_2", 10),
         ("single_objects_3", 12),
+        ("single_objects_4", 10),
     ],
 )
 def test_training_sources_are_audited_independently(training_source, shots_per_class):

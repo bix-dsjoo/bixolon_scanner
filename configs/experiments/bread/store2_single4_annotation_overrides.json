@@ -1,0 +1,56 @@
+{
+  "schema_version": "1.0",
+  "source_image_set_sha256": "155af9f0aa3eb6a130f78f8a0586f7785a7ff9dec715e105565352b85f897b87",
+  "review_basis": "manual visual inspection of all 200 source mask and bbox overlays",
+  "overrides": [
+    {
+      "image_id": 81,
+      "original_image_sha256": "8a5d2b6801685d56fa6dde3c6a51e8c67b2d3e2af7875254041b3da32e8e2ad9",
+      "point_xy": [1440, 620],
+      "box_xyxy": [1240, 440, 1600, 800],
+      "reason": "automatic seed selected tray behind low-saturation dinner roll"
+    },
+    {
+      "image_id": 91,
+      "original_image_sha256": "ffc0201e7135b4ba4333b5258aff94d5ea350cf8baa78812cf92e5dd5932f508",
+      "point_xy": [1500, 620],
+      "box_xyxy": [1120, 440, 1640, 860],
+      "reason": "automatic seed selected donut hole instead of bread surface"
+    },
+    {
+      "image_id": 95,
+      "original_image_sha256": "fa804aed1a370db1495616ae94b45b5675555556d87d385e1a150b4f28930112",
+      "point_xy": [1840, 320],
+      "box_xyxy": [1500, 120, 2020, 560],
+      "reason": "automatic seed connected sugar donut to tray"
+    },
+    {
+      "image_id": 96,
+      "original_image_sha256": "e9fdec61b59d1b5aff4ee47f3393d6428cedacf5fa10f32e0e37c190fb2db398",
+      "point_xy": [1492, 704],
+      "box_xyxy": [1100, 460, 1660, 940],
+      "reason": "automatic seed connected sugar donut to tray"
+    },
+    {
+      "image_id": 108,
+      "original_image_sha256": "a1d7e5c0e7cc811e5843bcb57b9ead868467619f58db05ac3e0e66fc5b8cd32d",
+      "point_xy": [900, 1000],
+      "box_xyxy": [540, 760, 1100, 1300],
+      "reason": "automatic seed selected table to the right of pale bagel"
+    },
+    {
+      "image_id": 109,
+      "original_image_sha256": "92a1f7e654e4e48f0d1c16ab0f9d73d4ecb93d1a536f7083bea6cb133a8d8b74",
+      "point_xy": [980, 340],
+      "box_xyxy": [680, 80, 1160, 520],
+      "reason": "automatic seed selected table to the right of pale bagel"
+    },
+    {
+      "image_id": 110,
+      "original_image_sha256": "009b31f4127d673ddeefda6eb7ed6eaf985e68f43afa0998d52cce8703233c33",
+      "point_xy": [1784, 244],
+      "box_xyxy": [1470, 40, 1950, 480],
+      "reason": "automatic seed selected table to the right of pale bagel"
+    }
+  ]
+}

@@ -248,7 +248,29 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
 
     if not torch.cuda.is_available():
         raise RuntimeError("SSDLite experiment requires CUDA")
+    if args.fixed_epochs_no_selection and args.initial_checkpoint is not None:
+        raise ValueError("fixed-epoch source-only training forbids --initial-checkpoint")
+    if args.fixed_epochs_no_selection and args.operational_repeat:
+        raise ValueError("fixed-epoch source-only training forbids operational training records")
+    operational_args = (
+        args.operational_manifest,
+        args.operational_root,
+        args.operational_cache,
+    )
+    if not args.fixed_epochs_no_selection and any(value is None for value in operational_args):
+        raise ValueError(
+            "operational manifest, root, and cache are required unless "
+            "--fixed-epochs-no-selection is enabled"
+        )
     _seed_everything(args.seed)
+    if (
+        args.fixed_epochs_no_selection
+        and args.output_dir.exists()
+        and any(args.output_dir.iterdir())
+    ):
+        raise FileExistsError(
+            f"fixed-epoch training output must be a new empty directory: {args.output_dir}"
+        )
     args.output_dir.mkdir(parents=True, exist_ok=True)
     real_train = CachedObjectnessDataset(
         args.real_manifest,
@@ -264,36 +286,40 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
         training=True,
         class_aware=args.class_aware,
     )
-    real_evaluation = CachedObjectnessDataset(
-        args.real_manifest, args.real_root, args.real_cache, training=False
-    )
-    operational_evaluation = CachedObjectnessDataset(
-        args.operational_manifest,
-        args.operational_root,
-        args.operational_cache,
-        training=False,
-    )
-    operational_train = CachedObjectnessDataset(
-        args.operational_manifest,
-        args.operational_root,
-        args.operational_cache,
-        training=True,
-        class_aware=args.class_aware,
-    )
+    real_evaluation = None
+    operational_evaluation = None
+    operational_train = None
+    if not args.fixed_epochs_no_selection:
+        real_evaluation = CachedObjectnessDataset(
+            args.real_manifest, args.real_root, args.real_cache, training=False
+        )
+        operational_evaluation = CachedObjectnessDataset(
+            args.operational_manifest,
+            args.operational_root,
+            args.operational_cache,
+            training=False,
+        )
+        operational_train = CachedObjectnessDataset(
+            args.operational_manifest,
+            args.operational_root,
+            args.operational_cache,
+            training=True,
+            class_aware=args.class_aware,
+        )
+    negative_sources = [real_train]
+    negative_records = list(real_train.records)
+    if operational_train is not None:
+        negative_sources.append(operational_train)
+        negative_records.extend(operational_train.records)
     hard_negative_train = Subset(
-        ConcatDataset([real_train, operational_train]),
-        [
-            index
-            for index, record in enumerate(real_train.records + operational_train.records)
-            if not record["annotations"]
-        ],
+        ConcatDataset(negative_sources),
+        [index for index, record in enumerate(negative_records) if not record["annotations"]],
     )
-    train_parts = (
-        [real_train for _ in range(args.real_repeat)]
-        + [operational_train for _ in range(args.operational_repeat)]
-        + [hard_negative_train for _ in range(args.hard_negative_repeat)]
-        + [synthetic_train]
-    )
+    train_parts = [real_train for _ in range(args.real_repeat)]
+    if operational_train is not None:
+        train_parts.extend(operational_train for _ in range(args.operational_repeat))
+    train_parts.extend(hard_negative_train for _ in range(args.hard_negative_repeat))
+    train_parts.append(synthetic_train)
     train_loader = DataLoader(
         ConcatDataset(train_parts),
         batch_size=args.batch_size,
@@ -370,7 +396,11 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
             "losses": {name: value / batch_count for name, value in running.items()},
             "duration_seconds": time.perf_counter() - epoch_started,
         }
-        if epoch % args.evaluate_every == 0 or epoch == args.epochs:
+        if not args.fixed_epochs_no_selection and (
+            epoch % args.evaluate_every == 0 or epoch == args.epochs
+        ):
+            assert real_evaluation is not None
+            assert operational_evaluation is not None
             evaluation = _evaluate(
                 model,
                 real_evaluation,
@@ -399,18 +429,24 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
         history.append(entry)
         print(json.dumps(entry), flush=True)
         if (
-            best_evaluation is not None
+            not args.fixed_epochs_no_selection
+            and best_evaluation is not None
             and best_evaluation["error_count"] == 0
             and (not args.class_aware or best_evaluation["detector_class_error_count"] == 0)
             and epoch >= args.minimum_epochs
         ):
             break
     torch.save(model.state_dict(), args.output_dir / "last.pt")
-    if best_epoch is None:
-        raise RuntimeError("training completed without an evaluation checkpoint")
-    model.load_state_dict(
-        torch.load(args.output_dir / "best.pt", map_location="cpu", weights_only=True)
-    )
+    selected_checkpoint = args.output_dir / "last.pt"
+    if not args.fixed_epochs_no_selection:
+        if best_epoch is None:
+            raise RuntimeError("training completed without an evaluation checkpoint")
+        selected_checkpoint = args.output_dir / "best.pt"
+        model.load_state_dict(
+            torch.load(selected_checkpoint, map_location="cpu", weights_only=True)
+        )
+    else:
+        best_epoch = args.epochs
     export_ssdlite_onnx(
         model,
         args.output_dir / "detector.onnx",
@@ -438,19 +474,37 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
             "learning_rate": args.learning_rate,
             "weight_decay": args.weight_decay,
             "nms_threshold": args.nms_threshold,
+            "selection_policy": (
+                "fixed_last_epoch_without_evaluation"
+                if args.fixed_epochs_no_selection
+                else "development_evaluation"
+            ),
+            "development_evaluation_accessed": not args.fixed_epochs_no_selection,
+            "initial_checkpoint": (
+                None if args.initial_checkpoint is None else str(args.initial_checkpoint)
+            ),
         },
         "sample_counts": {
             "real_training": len(real_train),
             "synthetic_training": len(synthetic_train),
-            "operational_evaluation": len(operational_evaluation),
-            "operational_training": (len(operational_train) if args.operational_repeat else 0),
+            "operational_evaluation": (
+                0 if operational_evaluation is None else len(operational_evaluation)
+            ),
+            "operational_training": (
+                len(operational_train)
+                if operational_train is not None and args.operational_repeat
+                else 0
+            ),
             "hard_negative_training": len(hard_negative_train),
         },
         "best_epoch": best_epoch,
         "best_evaluation": best_evaluation,
         "history": history,
         "duration_seconds": time.perf_counter() - started,
-        "artifacts": {"checkpoint": "best.pt", "onnx": "detector.onnx"},
+        "artifacts": {
+            "checkpoint": selected_checkpoint.name,
+            "onnx": "detector.onnx",
+        },
     }
     (args.output_dir / "report.json").write_text(
         json.dumps(report, indent=2) + "\n", encoding="utf-8"
@@ -469,11 +523,19 @@ def main() -> None:
     parser.add_argument("--synthetic-manifest", type=Path, required=True)
     parser.add_argument("--synthetic-root", type=Path, required=True)
     parser.add_argument("--synthetic-cache", type=Path, required=True)
-    parser.add_argument("--operational-manifest", type=Path, required=True)
-    parser.add_argument("--operational-root", type=Path, required=True)
-    parser.add_argument("--operational-cache", type=Path, required=True)
+    parser.add_argument("--operational-manifest", type=Path)
+    parser.add_argument("--operational-root", type=Path)
+    parser.add_argument("--operational-cache", type=Path)
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--initial-checkpoint", type=Path)
+    parser.add_argument(
+        "--fixed-epochs-no-selection",
+        action="store_true",
+        help=(
+            "train exactly --epochs from random initialization without development "
+            "evaluation, early stopping, or checkpoint selection"
+        ),
+    )
     parser.add_argument("--epochs", type=int, default=60)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--evaluation-batch-size", type=int, default=32)
