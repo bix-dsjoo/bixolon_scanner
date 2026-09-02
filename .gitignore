@@ -9,6 +9,7 @@ dist/
 build/
 .omo/
 tmp/
+/output/
 apps/product_scanner/.dart_tool/
 apps/product_scanner/build/
 apps/product_scanner/test/failures/
