@@ -1,0 +1,24 @@
+name: bixolon_scanner_sdk
+description: BIXOLON Scanner Worker client and Windows lifecycle integration.
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+  flutter: ">=3.35.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^6.0.0
+
+flutter:
+  plugin:
+    platforms:
+      windows:
+        pluginClass: BixolonScannerSdkPluginCApi

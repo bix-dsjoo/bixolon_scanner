@@ -1,0 +1,18 @@
+name: bixolon_scanner_sdk_example
+description: BIXOLON Scanner SDK lifecycle examples.
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
+
+dependencies:
+  bixolon_scanner_sdk:
+    path: ../
+  flutter:
+    sdk: flutter
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+
+flutter:
+  uses-material-design: true

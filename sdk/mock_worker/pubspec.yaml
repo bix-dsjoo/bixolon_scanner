@@ -1,0 +1,7 @@
+name: bixolon_scanner_mock_worker
+description: Dependency-free mock server for BIXOLON Scanner Flutter integration.
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ^3.12.2
