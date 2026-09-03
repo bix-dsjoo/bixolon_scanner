@@ -54,7 +54,7 @@ def _load_image(path: Path, jpeg_draft_size: int | None):
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Evaluate the exported fresh ONNX candidate with the 0.1.12 ROI policy"
+        description="Evaluate the exported fresh ONNX candidate with the 0.1.13 ROI policy"
     )
     parser.add_argument("--evaluation-manifest", type=Path, required=True)
     parser.add_argument("--evaluation-root", type=Path, required=True)
@@ -327,7 +327,7 @@ def main() -> None:
     ground_truth_count = sum(len(record["annotations"]) for record in records)
     report = {
         "schema_version": "1.0",
-        "policy_version": "0.1.12",
+        "policy_version": "0.1.13",
         "execution": "onnxruntime-cpu",
         "image_count": len(records),
         "ground_truth_count": ground_truth_count,

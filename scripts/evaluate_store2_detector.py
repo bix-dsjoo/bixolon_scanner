@@ -210,7 +210,7 @@ def main() -> None:
     )
     args.predictions.write_text(prediction_body, encoding="utf-8", newline="\n")
     report = {
-        "policy_version": "0.1.12",
+        "policy_version": "0.1.13",
         "architecture": args.architecture,
         "score_threshold": args.score_threshold,
         "nms_iou_threshold": args.nms_threshold,

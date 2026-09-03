@@ -93,10 +93,13 @@ def _consensus(
     independent,
     *,
     verify_unknown_recapture: bool = False,
+    verify_any_unknown_recapture: bool = False,
+    verify_all_approved_candidates: bool = False,
+    primary_approval_score: float = 0.2,
     primary_threshold: float | None = None,
 ):
     primary = _Classifier(
-        _result(0, approval_score=0.2),
+        _result(0, approval_score=primary_approval_score),
         threshold=(
             0.3
             if verify_unknown_recapture and primary_threshold is None
@@ -109,8 +112,58 @@ def _consensus(
         _Classifier(rotation),
         _Classifier(independent, fixed_batch_size=1, threshold=0.212),
         ambiguity_maximum_approval_score=0.5,
+        verify_all_approved_candidates=verify_all_approved_candidates,
         unknown_recapture_on_dual_verifier_rejection=verify_unknown_recapture,
+        unknown_recapture_on_any_verifier_rejection=verify_any_unknown_recapture,
     )
+
+
+def test_all_approved_policy_verifies_candidate_above_ambiguity_band() -> None:
+    classifier = _consensus(
+        _result(1, approval_score=0.7),
+        _result(1, approval_score=0.7, retrieval_top1=1),
+        verify_all_approved_candidates=True,
+        primary_approval_score=0.7,
+        primary_threshold=0.1,
+    )
+
+    result = classifier.classify(None, [Detection(0, 0, 1, 1, 0.9)])
+
+    assert classifier.independent.embedder.selected_indices == (0,)
+    assert result.approval_blocked.tolist() == [True]
+
+
+def test_default_policy_skips_approved_candidate_above_ambiguity_band() -> None:
+    classifier = _consensus(
+        _result(1, approval_score=0.7),
+        _result(1, approval_score=0.7, retrieval_top1=1),
+        primary_approval_score=0.7,
+        primary_threshold=0.1,
+    )
+
+    result = classifier.classify(None, [Detection(0, 0, 1, 1, 0.9)])
+
+    assert not hasattr(classifier.independent.embedder, "selected_indices")
+    assert result.approval_blocked.tolist() == [False]
+
+
+def test_all_approved_policy_maps_any_verifier_quality_rejection_to_recapture() -> None:
+    classifier = _consensus(
+        _result(
+            0,
+            approval_score=0.7,
+            segment_recapture_reason="CLASSIFIER_OUT_OF_CATALOG",
+        ),
+        _result(0, approval_score=0.7, retrieval_top1=0),
+        verify_any_unknown_recapture=True,
+        verify_all_approved_candidates=True,
+        primary_approval_score=0.7,
+        primary_threshold=0.1,
+    )
+
+    result = classifier.classify(None, [Detection(0, 0, 1, 1, 0.9)])
+
+    assert result.segment_recapture_reasons == ("CLASSIFIER_TOP3_UNSAFE",)
 
 
 def test_rotation_disagreement_keeps_primary_only_with_two_head_corroboration() -> None:
@@ -200,6 +253,23 @@ def test_single_verifier_rejection_preserves_safe_unknown_top3() -> None:
     result = classifier.classify(None, [Detection(0, 0, 1, 1, 0.9)])
 
     assert result.segment_recapture_reasons == (None,)
+
+
+def test_single_verifier_rejection_can_mark_unknown_top3_unsafe() -> None:
+    classifier = _consensus(
+        _result(0, approval_score=0.1),
+        _result(
+            1,
+            approval_score=0.1,
+            segment_recapture_reason="CLASSIFIER_OUT_OF_CATALOG",
+        ),
+        verify_any_unknown_recapture=True,
+        primary_threshold=0.3,
+    )
+
+    result = classifier.classify(None, [Detection(0, 0, 1, 1, 0.9)])
+
+    assert result.segment_recapture_reasons == ("CLASSIFIER_TOP3_UNSAFE",)
 
 
 def test_dual_rejection_marks_verifier_blocked_approval_top3_unsafe() -> None:

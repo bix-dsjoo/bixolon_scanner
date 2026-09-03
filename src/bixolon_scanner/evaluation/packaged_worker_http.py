@@ -105,10 +105,18 @@ def _public_response_contract(body: dict[str, Any]) -> bool:
     return True
 
 
+def expected_provider_label(provider: str, embedder_provider: str) -> str:
+    return provider if embedder_provider == "same" else f"{provider}+{embedder_provider}"
+
+
 def evaluate(args: argparse.Namespace) -> dict[str, Any]:
     records = _records(args.manifest)
     if len(records) != args.expected_image_count:
         raise ValueError("packaged HTTP evaluation image count does not match the lock")
+    if args.cpu_detector_workers < 1:
+        raise ValueError("CPU detector workers must be at least one")
+    if args.cpu_detector_intra_op_threads < 0 or args.cpu_embedder_intra_op_threads < 0:
+        raise ValueError("CPU intra-op thread counts must not be negative")
     executable = args.executable.resolve()
     worker_artifact = args.worker_artifact.resolve()
     executable.relative_to(worker_artifact)
@@ -120,12 +128,13 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             "BIXOLON_CATALOG_DIR": str(args.catalog.resolve()),
             "BIXOLON_CATALOG_STORE_ID": args.store_id,
             "BIXOLON_PROVIDER": args.provider,
+            "BIXOLON_EMBEDDER_PROVIDER": args.embedder_provider,
             "BIXOLON_HOST": "127.0.0.1",
             "BIXOLON_PORT": str(port),
             "BIXOLON_REQUEST_TIMEOUT_SECONDS": "60",
-            "BIXOLON_CPU_DETECTOR_WORKERS": "1",
-            "BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS": "0",
-            "BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS": "0",
+            "BIXOLON_CPU_DETECTOR_WORKERS": str(args.cpu_detector_workers),
+            "BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS": str(args.cpu_detector_intra_op_threads),
+            "BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS": str(args.cpu_embedder_intra_op_threads),
         }
     )
     creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
@@ -154,7 +163,10 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             try:
                 ready_status, ready, _ = _request(f"{base_url}/health/ready")
                 if ready_status == 200 and ready.get("status") == "ready":
-                    if ready.get("provider") != args.provider or not _version_contract(
+                    expected_provider = expected_provider_label(
+                        args.provider, args.embedder_provider
+                    )
+                    if ready.get("provider") != expected_provider or not _version_contract(
                         ready, args.expected_version
                     ):
                         raise RuntimeError("packaged Worker readiness contract mismatch")
@@ -259,6 +271,12 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
         "evaluation": "scanner_0_1_3_packaged_worker_full_valid_http",
         "product_version": args.expected_version,
         "provider": args.provider,
+        "execution_profile": {
+            "embedder_provider": args.embedder_provider,
+            "cpu_detector_workers": args.cpu_detector_workers,
+            "cpu_detector_intra_op_threads": args.cpu_detector_intra_op_threads,
+            "cpu_embedder_intra_op_threads": args.cpu_embedder_intra_op_threads,
+        },
         "dataset": {
             "manifest_sha256": sha256_file(args.manifest),
             "image_count": len(records),
@@ -313,7 +331,15 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--trace-output", type=Path)
     parser.add_argument("--store-id", required=True)
     parser.add_argument("--provider", choices=("cpu", "openvino"), default="openvino")
-    parser.add_argument("--expected-version", default="0.1.12")
+    parser.add_argument(
+        "--embedder-provider",
+        choices=("same", "openvino_gpu"),
+        default="same",
+    )
+    parser.add_argument("--cpu-detector-workers", type=int, default=1)
+    parser.add_argument("--cpu-detector-intra-op-threads", type=int, default=0)
+    parser.add_argument("--cpu-embedder-intra-op-threads", type=int, default=0)
+    parser.add_argument("--expected-version", default="0.1.14")
     parser.add_argument("--expected-image-count", type=int, default=415)
     parser.add_argument("--expected-full-path-count", type=int, default=411)
     parser.add_argument("--warmup-count", type=int, default=10)

@@ -12,7 +12,7 @@ from bixolon_scanner.contracts.runtime_package_v2 import RuntimePackageV2Metadat
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Build an isolated 0.1.12-policy Runtime from fresh Store 2 ONNX files"
+        description="Build an isolated 0.1.13-policy Runtime from fresh Store 2 ONNX files"
     )
     parser.add_argument("--policy-metadata", type=Path, required=True)
     parser.add_argument("--detector", type=Path, required=True)
@@ -28,7 +28,7 @@ def main() -> None:
     payload = load_json_config(args.policy_metadata)
     detector_report = load_json_config(args.detector_report)
     embedder_report = load_json_config(args.embedder_report)
-    version = "0.1.12"
+    version = "0.1.13"
     payload["worker_version"] = version
     payload["dataset_version"] = "bread-store2-single4-fresh"
     payload["detector_policy_version"] = version
@@ -110,7 +110,7 @@ def main() -> None:
             "training_dataset_version": "bread-store2-single4-synthetic-v1",
             "training_manifest_sha256": sha256_file(
                 Path(
-                    "artifacts/experiments/bread-store2-single4-0.1.12/synthetic-v1/manifest.jsonl"
+                    "artifacts/experiments/bread-store2-single4-0.1.13/synthetic-v1/manifest.jsonl"
                 )
             ),
         },

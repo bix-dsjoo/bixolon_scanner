@@ -5,7 +5,13 @@ import json
 from bixolon_scanner.evaluation.packaged_response_diff import compare_packaged_responses
 
 
-def _row(image_id: int, *, class_id: str = "bread_01", latency: float = 10.0) -> dict:
+def _row(
+    image_id: int,
+    *,
+    class_id: str = "bread_01",
+    confidence: float = 0.9,
+    latency: float = 10.0,
+) -> dict:
     return {
         "image_id": image_id,
         "response": {
@@ -18,7 +24,7 @@ def _row(image_id: int, *, class_id: str = "bread_01", latency: float = 10.0) ->
                     "reason_codes": [],
                     "prediction": {"class_id": class_id, "class_name": "Bread"},
                     "top3": [],
-                    "confidence": 0.9,
+                    "confidence": confidence,
                 }
             ],
             "processing_time_ms": latency,
@@ -52,3 +58,20 @@ def test_packaged_response_diff_reports_class_change(tmp_path) -> None:
 
     assert report["semantic_diff_count"] == 1
     assert report["component_diff_counts"]["prediction"] == 1
+
+
+def test_packaged_response_diff_applies_explicit_confidence_tolerance(tmp_path) -> None:
+    baseline = tmp_path / "baseline.jsonl"
+    candidate = tmp_path / "candidate.jsonl"
+    baseline.write_text(json.dumps(_row(1)) + "\n", encoding="utf-8")
+    candidate.write_text(json.dumps(_row(1, confidence=0.9005)) + "\n", encoding="utf-8")
+
+    report = compare_packaged_responses(
+        baseline,
+        candidate,
+        confidence_tolerance=0.001,
+    )
+
+    assert report["semantic_diff_count"] == 0
+    assert report["confidence_value_diff_count"] == 1
+    assert report["maximum_confidence_delta"] < 0.001

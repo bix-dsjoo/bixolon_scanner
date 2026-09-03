@@ -56,13 +56,21 @@ def _latency(values: list[float]) -> dict[str, float | int | None]:
     }
 
 
-def compare_packaged_responses(baseline_path: Path, candidate_path: Path) -> dict[str, Any]:
+def compare_packaged_responses(
+    baseline_path: Path,
+    candidate_path: Path,
+    *,
+    confidence_tolerance: float = 0.0,
+) -> dict[str, Any]:
+    if confidence_tolerance < 0.0:
+        raise ValueError("confidence tolerance must not be negative")
     baseline = _index(_rows(baseline_path))
     candidate = _index(_rows(candidate_path))
     if set(baseline) != set(candidate):
         raise ValueError("packaged response evidence image IDs differ")
 
     differences = {component: set() for component in COMPONENTS}
+    confidence_value_differences: set[int] = set()
     maximum_confidence_delta = 0.0
     baseline_full_path_latency: list[float] = []
     candidate_full_path_latency: list[float] = []
@@ -112,6 +120,8 @@ def compare_packaged_responses(baseline_path: Path, candidate_path: Path) -> dic
             ]
             maximum_confidence_delta = max(maximum_confidence_delta, *deltas)
             if any(delta != 0.0 for delta in deltas):
+                confidence_value_differences.add(image_id)
+            if any(delta > confidence_tolerance for delta in deltas):
                 differences["confidence"].add(image_id)
 
     component_counts = {key: len(value) for key, value in differences.items()}
@@ -137,6 +147,8 @@ def compare_packaged_responses(baseline_path: Path, candidate_path: Path) -> dic
             "sha256": sha256_file(candidate_path),
         },
         "image_count": len(baseline),
+        "confidence_tolerance": confidence_tolerance,
+        "confidence_value_diff_count": len(confidence_value_differences),
         "semantic_diff_count": len(set().union(*differences.values())),
         "component_diff_counts": component_counts,
         "component_diff_image_ids": {
@@ -156,8 +168,13 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--baseline", type=Path, required=True)
     parser.add_argument("--candidate", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--confidence-tolerance", type=float, default=0.0)
     args = parser.parse_args(argv)
-    report = compare_packaged_responses(args.baseline, args.candidate)
+    report = compare_packaged_responses(
+        args.baseline,
+        args.candidate,
+        confidence_tolerance=args.confidence_tolerance,
+    )
     rendered = json.dumps(report, ensure_ascii=False, indent=2) + "\n"
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(rendered, encoding="utf-8")

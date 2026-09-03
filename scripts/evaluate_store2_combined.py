@@ -398,7 +398,7 @@ def main() -> None:
         )
     report = {
         "schema_version": "1.0",
-        "policy_version": "0.1.12",
+        "policy_version": "0.1.13",
         "image_count": len(records),
         "ground_truth_count": sum(len(row["annotations"]) for row in records),
         "approved_correct_count": correct,

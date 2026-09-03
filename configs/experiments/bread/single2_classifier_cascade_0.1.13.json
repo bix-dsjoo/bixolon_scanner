@@ -1,0 +1,88 @@
+{
+  "schema_version": "1.0",
+  "experiment": {
+    "name": "single_objects_2 consistent selective classifier cascade",
+    "product_context": "0.1.13",
+    "seed": 13213
+  },
+  "dataset": {
+    "allowed_root": "datasets/bread_dataset/single_objects_2",
+    "source_manifest_sha256": "e25b4f5ac44de98e60f93b172e639d28bf7ed0443d4d8978926405dea8c45c8f",
+    "class_count": 20,
+    "source_count": 200,
+    "training_roi_count": 5000
+  },
+  "preprocessing": {
+    "crop_mode": "box_resize",
+    "crop_margin_ratio": 0.0,
+    "neighbor_mask": true,
+    "neighbor_distance_bias": -0.1,
+    "neighbor_shared_scale": false
+  },
+  "training": {
+    "feature_batch_size": 64,
+    "verifier_head": {"kind": "regularized_linear_ridge", "alpha": 1.0},
+    "candidates": [
+      {
+        "name": "random_ft_lr1e-5",
+        "head_initialization": "random",
+        "backbone_learning_rate": 0.00001
+      },
+      {
+        "name": "prototype_lpft_lr1e-6",
+        "head_initialization": "frozen_feature_prototype",
+        "backbone_learning_rate": 0.000001
+      },
+      {
+        "name": "prototype_lpft_lr1e-5",
+        "head_initialization": "frozen_feature_prototype",
+        "backbone_learning_rate": 0.00001,
+        "epochs": 1
+      },
+      {
+        "name": "prototype_lpft_lr3e-6_e3",
+        "head_initialization": "frozen_feature_prototype",
+        "backbone_learning_rate": 0.000003,
+        "epochs": 3
+      },
+      {
+        "name": "prototype_lpft_lr1e-5_e3",
+        "head_initialization": "frozen_feature_prototype",
+        "backbone_learning_rate": 0.00001,
+        "epochs": 3
+      },
+      {
+        "name": "prototype_lpft_lr1e-5_e5",
+        "head_initialization": "frozen_feature_prototype",
+        "backbone_learning_rate": 0.00001,
+        "epochs": 5
+      }
+    ],
+    "finetune": {
+      "epochs": 1,
+      "batch_size": 48,
+      "workers": 4,
+      "backbone_learning_rate": 0.00001,
+      "head_learning_rate": 0.001,
+      "weight_decay": 0.0001,
+      "label_smoothing": 0.05,
+      "resolution_consistency_weight": 0.2,
+      "unfreeze_last_stages": 1
+    }
+  },
+  "finetune_calibration": {
+    "primary_margin_candidates": [0.1, 0.14, 0.18, 0.24, 0.32, 0.42, 0.55, 0.7],
+    "fallback_margin_candidates": [0.0, 0.04, 0.08, 0.12, 0.16, 0.24],
+    "verifier_margin_candidates": [0.0, 0.02, 0.04, 0.06, 0.1, 0.16]
+  },
+  "selection": {
+    "model_priority": ["top3_miss_count", "top1_error_count", "candidate_order"],
+    "policy_priority": [
+      "wrong_approved_count",
+      "top3_miss_count",
+      "negative_correct_approved_count",
+      "reject_approved_count"
+    ],
+    "multi_object_used_for_selection": false
+  }
+}

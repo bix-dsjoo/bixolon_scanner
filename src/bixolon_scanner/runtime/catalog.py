@@ -748,7 +748,9 @@ class ConsensusCatalogClassifier:
         independent: OnnxCatalogClassifier,
         *,
         ambiguity_maximum_approval_score: float,
+        verify_all_approved_candidates: bool = False,
         unknown_recapture_on_dual_verifier_rejection: bool = False,
+        unknown_recapture_on_any_verifier_rejection: bool = False,
     ):
         if not 0.0 <= ambiguity_maximum_approval_score <= 1.0:
             raise ValueError("classifier verification ambiguity score must be in [0, 1]")
@@ -772,8 +774,12 @@ class ConsensusCatalogClassifier:
         self.rotation = rotation
         self.independent = independent
         self.ambiguity_maximum_approval_score = ambiguity_maximum_approval_score
+        self.verify_all_approved_candidates = verify_all_approved_candidates
         self.unknown_recapture_on_dual_verifier_rejection = (
             unknown_recapture_on_dual_verifier_rejection
+        )
+        self.unknown_recapture_on_any_verifier_rejection = (
+            unknown_recapture_on_any_verifier_rejection
         )
         self.append_only_base_class_count = primary.append_only_base_class_count
         self.version = primary.version
@@ -999,10 +1005,19 @@ class ConsensusCatalogClassifier:
             )
         )
         primary_unknown = (result.approval_scores < decision_thresholds) | approval_blocked
-        unknown_candidates = self.unknown_recapture_on_dual_verifier_rejection & primary_unknown
+        verify_unknown_recapture = (
+            self.unknown_recapture_on_dual_verifier_rejection
+            or self.unknown_recapture_on_any_verifier_rejection
+        )
+        unknown_candidates = verify_unknown_recapture & primary_unknown
+        within_ambiguity_band = result.approval_scores < self.ambiguity_maximum_approval_score
+        verification_candidates = (
+            approved_candidates
+            if self.verify_all_approved_candidates
+            else approved_candidates & within_ambiguity_band
+        ) | (unknown_candidates & within_ambiguity_band)
         candidate_indices = np.flatnonzero(
-            (result.approval_scores < self.ambiguity_maximum_approval_score)
-            & (approved_candidates | unknown_candidates)
+            verification_candidates
             & np.asarray([reason is None for reason in recapture_reasons], dtype=bool)
         )
         if not len(candidate_indices):
@@ -1041,25 +1056,38 @@ class ConsensusCatalogClassifier:
         ):
             raise ValueError("independent verifier must expose approval and retrieval scores")
 
-        dual_verifier_rejected = np.zeros(len(candidate_indices), dtype=bool)
-        if self.unknown_recapture_on_dual_verifier_rejection:
+        unsafe_verifier_rejection = np.zeros(len(candidate_indices), dtype=bool)
+        if verify_unknown_recapture:
             rotation_recapture = rotation_result.segment_recapture_reasons or (None,) * len(
                 candidate_indices
             )
             independent_recapture = independent_result.segment_recapture_reasons or (None,) * len(
                 candidate_indices
             )
-            dual_verifier_rejected = np.asarray(
-                [
-                    left is not None and right is not None
-                    for left, right in zip(
-                        rotation_recapture,
-                        independent_recapture,
-                        strict=True,
-                    )
-                ],
-                dtype=bool,
-            )
+            if self.unknown_recapture_on_any_verifier_rejection:
+                unsafe_verifier_rejection = np.asarray(
+                    [
+                        left is not None or right is not None
+                        for left, right in zip(
+                            rotation_recapture,
+                            independent_recapture,
+                            strict=True,
+                        )
+                    ],
+                    dtype=bool,
+                )
+            else:
+                unsafe_verifier_rejection = np.asarray(
+                    [
+                        left is not None and right is not None
+                        for left, right in zip(
+                            rotation_recapture,
+                            independent_recapture,
+                            strict=True,
+                        )
+                    ],
+                    dtype=bool,
+                )
 
         primary_top1 = self._top1(result)[candidate_indices]
         rotation_top1 = self._top1(rotation_result)
@@ -1081,10 +1109,15 @@ class ConsensusCatalogClassifier:
             rotation_agreement
         ]
 
-        dual_recapture = dual_verifier_rejected & (primary_unknown[candidate_indices] | rejected)
-        if np.any(dual_recapture):
+        approved_verification_candidate = approved_candidates[candidate_indices]
+        unsafe_recapture = unsafe_verifier_rejection & (
+            primary_unknown[candidate_indices]
+            | rejected
+            | (self.verify_all_approved_candidates & approved_verification_candidate)
+        )
+        if np.any(unsafe_recapture):
             updated_recapture_reasons = list(recapture_reasons)
-            for index in candidate_indices[dual_recapture]:
+            for index in candidate_indices[unsafe_recapture]:
                 updated_recapture_reasons[int(index)] = "CLASSIFIER_TOP3_UNSAFE"
             result = replace(
                 result,
@@ -1334,8 +1367,12 @@ def build_catalog_classifier(
         OnnxCatalogClassifier(runtime, rotation_catalog, primary_embedder),
         independent_classifier,
         ambiguity_maximum_approval_score=verification.ambiguity_maximum_approval_score,
+        verify_all_approved_candidates=verification.verify_all_approved_candidates,
         unknown_recapture_on_dual_verifier_rejection=(
             verification.unknown_recapture_on_dual_verifier_rejection
+        ),
+        unknown_recapture_on_any_verifier_rejection=(
+            verification.unknown_recapture_on_any_verifier_rejection
         ),
     )
     if (
@@ -1354,8 +1391,12 @@ def build_catalog_classifier(
             ),
             independent_classifier,
             ambiguity_maximum_approval_score=verification.ambiguity_maximum_approval_score,
+            verify_all_approved_candidates=verification.verify_all_approved_candidates,
             unknown_recapture_on_dual_verifier_rejection=(
                 verification.unknown_recapture_on_dual_verifier_rejection
+            ),
+            unknown_recapture_on_any_verifier_rejection=(
+                verification.unknown_recapture_on_any_verifier_rejection
             ),
         )
         classifier = ResolutionFallbackCatalogClassifier(

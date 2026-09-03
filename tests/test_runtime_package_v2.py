@@ -36,9 +36,29 @@ def test_classifier_verification_unknown_recapture_defaults_off_and_can_be_enabl
     enabled = ClassifierVerificationMetadata.model_validate(
         {**payload, "unknown_recapture_on_dual_verifier_rejection": True}
     )
+    any_enabled = ClassifierVerificationMetadata.model_validate(
+        {**payload, "unknown_recapture_on_any_verifier_rejection": True}
+    )
 
     assert disabled.unknown_recapture_on_dual_verifier_rejection is False
+    assert disabled.unknown_recapture_on_any_verifier_rejection is False
+    assert disabled.verify_all_approved_candidates is False
     assert enabled.unknown_recapture_on_dual_verifier_rejection is True
+    assert any_enabled.unknown_recapture_on_any_verifier_rejection is True
+
+    all_approved = ClassifierVerificationMetadata.model_validate(
+        {**payload, "verify_all_approved_candidates": True}
+    )
+    assert all_approved.verify_all_approved_candidates is True
+
+    with pytest.raises(ValidationError, match="dual and any rejection policies conflict"):
+        ClassifierVerificationMetadata.model_validate(
+            {
+                **payload,
+                "unknown_recapture_on_dual_verifier_rejection": True,
+                "unknown_recapture_on_any_verifier_rejection": True,
+            }
+        )
 
 
 def _metadata(root: Path) -> dict:

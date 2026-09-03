@@ -311,13 +311,20 @@ class ClassifierVerificationMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     ambiguity_maximum_approval_score: float = Field(ge=0.0, le=1.0)
+    verify_all_approved_candidates: bool = False
     unknown_recapture_on_dual_verifier_rejection: bool = False
+    unknown_recapture_on_any_verifier_rejection: bool = False
     rotation_degrees: Literal[180] = 180
     independent_embedder: EmbedderMetadata
     independent_metric_projection: MetricProjectionMetadata
 
     @model_validator(mode="after")
     def validate_dimensions(self) -> "ClassifierVerificationMetadata":
+        if (
+            self.unknown_recapture_on_dual_verifier_rejection
+            and self.unknown_recapture_on_any_verifier_rejection
+        ):
+            raise ValueError("classifier verifier dual and any rejection policies conflict")
         if (
             self.independent_metric_projection.input_dimension
             != self.independent_embedder.embedding_dimension

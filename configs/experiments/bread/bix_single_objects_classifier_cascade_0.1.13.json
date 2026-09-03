@@ -1,0 +1,134 @@
+{
+  "schema_version": "1.0",
+  "experiment": {
+    "name": "bix single_objects selective classifier cascade",
+    "product_context": "0.1.13",
+    "seed": 13121
+  },
+  "dataset": {
+    "allowed_root": "datasets/bix_bakery_dataset/single_objects",
+    "class_count": 20,
+    "shots_per_class": 10,
+    "original_image_count": 200,
+    "external_image_access_allowed": false,
+    "physical_item_identity_available": false
+  },
+  "generation": {
+    "output_size": 224,
+    "train_views_per_source_per_bank": 8,
+    "probe_views_per_source": 3,
+    "reject_views_per_source": 4,
+    "image_format": "PNG"
+  },
+  "banks": {
+    "appearance": {
+      "canvas_scale_min": 0.7,
+      "canvas_scale_max": 0.94,
+      "rotation_degrees": 15.0,
+      "perspective_fraction": 0.025,
+      "brightness_min": 0.68,
+      "brightness_max": 1.32,
+      "contrast_min": 0.72,
+      "contrast_max": 1.28,
+      "saturation_min": 0.72,
+      "saturation_max": 1.28,
+      "blur_probability": 0.3,
+      "blur_radius_max": 1.1,
+      "jpeg_quality_min": 70,
+      "jpeg_quality_max": 96,
+      "crop_mode": "border_connected_composite",
+      "procedural_gradient": true,
+      "procedural_shadow": true
+    },
+    "geometry": {
+      "canvas_scale_min": 0.58,
+      "canvas_scale_max": 0.94,
+      "rotation_degrees": 180.0,
+      "perspective_fraction": 0.075,
+      "side_view_probability": 0.35,
+      "side_view_minimum_compression": 0.52,
+      "side_view_maximum_compression": 0.82,
+      "brightness_min": 0.88,
+      "brightness_max": 1.12,
+      "contrast_min": 0.9,
+      "contrast_max": 1.1,
+      "saturation_min": 0.9,
+      "saturation_max": 1.1,
+      "blur_probability": 0.08,
+      "blur_radius_max": 0.5,
+      "jpeg_quality_min": 86,
+      "jpeg_quality_max": 98,
+      "crop_mode": "border_connected_composite"
+    },
+    "context": {
+      "target_scale_min": 0.58,
+      "target_scale_max": 0.9,
+      "distractor_count_min": 1,
+      "distractor_count_max": 3,
+      "distractor_scale_min": 0.28,
+      "distractor_scale_max": 0.62,
+      "maximum_rotation_degrees": 45.0,
+      "foreground_distractor_probability": 0.4,
+      "maximum_target_occlusion": 0.16,
+      "background_min": 175,
+      "background_max": 238,
+      "jpeg_quality_min": 76,
+      "jpeg_quality_max": 96
+    }
+  },
+  "training": {
+    "convnext_backbone": "dinov3_convnext_tiny_frozen",
+    "shared_resolutions": [192, 224],
+    "verifier_backbone": "dinov3_vitb16_frozen",
+    "verifier_resolution": 160,
+    "feature_batch_size": 64,
+    "shared_head_candidates": [
+      {"kind": "regularized_linear_ridge", "alpha": 0.1},
+      {"kind": "regularized_linear_ridge", "alpha": 1.0},
+      {"kind": "regularized_linear_ridge", "alpha": 10.0},
+      {"kind": "cosine_prototype"}
+    ],
+    "verifier_head_candidates": [
+      {"kind": "regularized_linear_ridge", "alpha": 1.0},
+      {"kind": "regularized_linear_ridge", "alpha": 10.0},
+      {"kind": "cosine_prototype"}
+    ],
+    "finetune": {
+      "epochs": 1,
+      "batch_size": 48,
+      "workers": 4,
+      "backbone_learning_rate": 0.00001,
+      "head_learning_rate": 0.001,
+      "weight_decay": 0.0001,
+      "label_smoothing": 0.05,
+      "resolution_consistency_weight": 0.2,
+      "unfreeze_last_stages": 1
+    }
+  },
+  "routing": {
+    "primary_margin_candidates": [0.04, 0.06, 0.08, 0.1, 0.14, 0.18],
+    "fallback_margin_candidates": [0.02, 0.04, 0.06, 0.08, 0.1, 0.14],
+    "verifier_margin_candidates": [0.0, 0.02, 0.04, 0.06, 0.08, 0.1],
+    "fallback_requires_192_224_agreement": true,
+    "verifier_is_veto_only": true
+  },
+  "finetune_calibration": {
+    "primary_margin_candidates": [0.06, 0.1, 0.14, 0.18, 0.24, 0.32, 0.42, 0.55, 0.7],
+    "fallback_margin_candidates": [0.0, 0.02, 0.04, 0.06, 0.1, 0.16, 0.24],
+    "verifier_margin_candidates": [0.0, 0.02, 0.04, 0.06, 0.1, 0.16, 0.24],
+    "training_policy": "one inner source-view fold trains calibration model; the other inner fold selects a global policy"
+  },
+  "selection": {
+    "fold_policy": "source-view-grouped-three-fold",
+    "inner_policy": "next_fold_train_remaining_fold_calibrate",
+    "priority": [
+      "wrong_approved_count",
+      "top3_miss_count",
+      "negative_correct_approved_count",
+      "reject_approved_count",
+      "fallback_count",
+      "verifier_count"
+    ],
+    "external_evaluation_used": false
+  }
+}

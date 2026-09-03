@@ -1,4 +1,8 @@
-from bixolon_scanner.evaluation.packaged_worker_http import latency_summary, percentile
+from bixolon_scanner.evaluation.packaged_worker_http import (
+    expected_provider_label,
+    latency_summary,
+    percentile,
+)
 
 
 def test_packaged_http_latency_summary_uses_full_path_samples_only() -> None:
@@ -13,3 +17,8 @@ def test_packaged_http_latency_summary_uses_full_path_samples_only() -> None:
         "p95_ms": 38.5,
         "p99_ms": 39.7,
     }
+
+
+def test_packaged_http_provider_label_describes_split_execution() -> None:
+    assert expected_provider_label("openvino", "same") == "openvino"
+    assert expected_provider_label("openvino", "openvino_gpu") == "openvino+openvino_gpu"
