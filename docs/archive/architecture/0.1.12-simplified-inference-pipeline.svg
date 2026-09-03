@@ -1,0 +1,146 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080" role="img" aria-labelledby="title desc">
+  <title id="title">0.1.12 단순화 후보 추론 파이프라인</title>
+  <desc id="desc">이미지를 1-class SSDLite로 검출하고, 정상 ROI 전체를 DINOv3 ConvNeXt-Tiny 224로 주 분류한 뒤 경계 ROI만 Frozen DINOv3 ViT-B/16 160으로 독립 검증하여 APPROVED, UNKNOWN Top-3 또는 RECAPTURE를 결정하는 흐름</desc>
+
+  <defs>
+    <marker id="arrow-blue" markerWidth="16" markerHeight="16" refX="13" refY="8" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M1 1L14 8L1 15Z" fill="#1769E0"/>
+    </marker>
+    <marker id="arrow-red" markerWidth="16" markerHeight="16" refX="13" refY="8" orient="auto" markerUnits="userSpaceOnUse">
+      <path d="M1 1L14 8L1 15Z" fill="#B34242"/>
+    </marker>
+    <style>
+      .bg { fill: #FFFFFF; }
+      .ink { fill: #121820; }
+      .muted { fill: #5E6877; }
+      .blue { fill: #1769E0; }
+      .red { fill: #B34242; }
+      .title { font: 700 54px "Pretendard", "Noto Sans KR", "Malgun Gothic", Arial, sans-serif; letter-spacing: -1.4px; }
+      .subtitle { font: 400 24px "Pretendard", "Noto Sans KR", "Malgun Gothic", Arial, sans-serif; letter-spacing: -0.25px; }
+      .eyebrow { font: 700 17px "Pretendard", "Noto Sans KR", "Malgun Gothic", Arial, sans-serif; letter-spacing: 1.4px; }
+      .step { font: 700 17px "Pretendard", "Noto Sans KR", "Malgun Gothic", Arial, sans-serif; letter-spacing: .6px; }
+      .node-title { font: 700 28px "Pretendard", "Noto Sans KR", "Malgun Gothic", Arial, sans-serif; letter-spacing: -.4px; }
+      .node-model { font: 700 23px "Pretendard", "Noto Sans KR", "Malgun Gothic", Arial, sans-serif; letter-spacing: -.2px; }
+      .body { font: 400 19px "Pretendard", "Noto Sans KR", "Malgun Gothic", Arial, sans-serif; letter-spacing: -.15px; }
+      .small { font: 500 16px "Pretendard", "Noto Sans KR", "Malgun Gothic", Arial, sans-serif; }
+      .outcome { font: 700 22px "Pretendard", "Noto Sans KR", "Malgun Gothic", Arial, sans-serif; letter-spacing: -.15px; }
+      .outcome-note { font: 400 16px "Pretendard", "Noto Sans KR", "Malgun Gothic", Arial, sans-serif; }
+      .node { fill: #FFFFFF; stroke: #B9C1CC; stroke-width: 2; }
+      .node-strong { fill: #F3F7FE; stroke: #1769E0; stroke-width: 2.5; }
+      .node-red { fill: #FFFFFF; stroke: #B34242; stroke-width: 2; }
+      .flow { fill: none; stroke: #1769E0; stroke-width: 4; stroke-linecap: square; stroke-linejoin: round; }
+      .flow-thin { fill: none; stroke: #1769E0; stroke-width: 3; stroke-linecap: square; stroke-linejoin: round; }
+      .flow-red { fill: none; stroke: #B34242; stroke-width: 3.5; stroke-linecap: square; stroke-linejoin: round; }
+      .rule { stroke: #D9DEE5; stroke-width: 2; }
+    </style>
+  </defs>
+
+  <rect class="bg" width="1920" height="1080"/>
+
+  <!-- Header -->
+  <text x="96" y="92" class="title ink">주 경로는 한 줄로, 독립 검증은 필요한 ROI에만</text>
+  <text x="96" y="140" class="subtitle muted">0.1.12 단순화 후보 · 주 분류는 전체 정상 ROI, Frozen ViT 검증은 경계 사례만 수행</text>
+  <text x="1824" y="76" text-anchor="end" class="eyebrow muted">DESIGN CANDIDATE</text>
+  <text x="1824" y="106" text-anchor="end" class="small muted">활성 파이프라인 아님</text>
+  <line x1="96" y1="184" x2="1824" y2="184" class="rule"/>
+
+  <!-- Section labels -->
+  <text x="96" y="246" class="step muted">01  입력</text>
+  <text x="364" y="246" class="step muted">02  검출</text>
+  <text x="732" y="246" class="step muted">03  ROI</text>
+  <text x="1000" y="246" class="step blue">04  주 분류</text>
+  <text x="1470" y="246" class="step muted">05  안전 판정</text>
+
+  <!-- Connectors are intentionally drawn behind nodes -->
+  <path d="M306 415H364" class="flow" marker-end="url(#arrow-blue)"/>
+  <path d="M664 415H732" class="flow" marker-end="url(#arrow-blue)"/>
+  <path d="M932 415H1000" class="flow" marker-end="url(#arrow-blue)"/>
+  <path d="M1350 415H1470" class="flow" marker-end="url(#arrow-blue)"/>
+
+  <!-- Detector early exit -->
+  <path d="M514 520V650" class="flow-red" marker-end="url(#arrow-red)"/>
+
+  <!-- Selective verification branch and return -->
+  <path d="M1175 520V650" class="flow-thin" marker-end="url(#arrow-blue)"/>
+  <path d="M1350 730H1426V556H1516V520" class="flow-thin" marker-end="url(#arrow-blue)"/>
+
+  <!-- Outcome rail -->
+  <path d="M1635 520V842H1185" class="flow-thin"/>
+  <path d="M1185 842H1695" class="flow-thin"/>
+  <path d="M1185 842V882" class="flow-thin" marker-end="url(#arrow-blue)"/>
+  <path d="M1435 842V882" class="flow-thin" marker-end="url(#arrow-blue)"/>
+  <path d="M1695 842V882" class="flow-red" marker-end="url(#arrow-red)"/>
+
+  <!-- Main path nodes -->
+  <rect x="96" y="310" width="210" height="210" rx="10" class="node"/>
+  <rect x="96" y="310" width="9" height="210" fill="#1769E0"/>
+  <g transform="translate(135 345)" fill="none" stroke="#121820" stroke-width="3">
+    <rect x="0" y="0" width="70" height="54" rx="4"/>
+    <path d="M9 43L27 26L39 37L49 29L62 43"/>
+    <circle cx="52" cy="14" r="6"/>
+  </g>
+  <text x="135" y="440" class="node-title ink">이미지</text>
+  <text x="135" y="475" class="body muted">JPEG / PNG 검증</text>
+
+  <rect x="364" y="310" width="300" height="210" rx="10" class="node"/>
+  <text x="400" y="361" class="node-title ink">1-class SSDLite320</text>
+  <text x="400" y="407" class="node-model ink">box + frame quality</text>
+  <line x1="400" y1="433" x2="628" y2="433" class="rule"/>
+  <text x="400" y="470" class="body muted">class-agnostic · recall-first</text>
+
+  <rect x="732" y="310" width="200" height="210" rx="10" class="node"/>
+  <text x="766" y="373" class="node-title ink">ROI batch</text>
+  <text x="766" y="416" class="body muted">margin crop</text>
+  <text x="766" y="449" class="body muted">metadata resize</text>
+
+  <rect x="1000" y="310" width="350" height="210" rx="10" class="node-strong"/>
+  <text x="1038" y="358" class="eyebrow blue">PRIMARY · ALL NORMAL ROI</text>
+  <text x="1038" y="405" class="node-title ink" style="font-size:27px">DINOv3 ConvNeXt-Tiny</text>
+  <text x="1038" y="446" class="node-model ink">고정 224 × 224</text>
+  <text x="1038" y="484" class="body muted">Top-1 · Top-3 · approval score</text>
+
+  <rect x="1470" y="310" width="330" height="210" rx="10" class="node"/>
+  <text x="1508" y="358" class="eyebrow blue">CONSERVATIVE ARBITER</text>
+  <text x="1508" y="405" class="node-title ink">보수적 안전 판정</text>
+  <text x="1508" y="449" class="body muted">primary + verifier</text>
+  <text x="1508" y="480" class="body muted">+ detector policy</text>
+
+  <!-- Early exit -->
+  <text x="538" y="584" class="small red">hard 촬영 품질 실패</text>
+  <rect x="364" y="650" width="300" height="150" rx="10" class="node-red"/>
+  <text x="400" y="704" class="outcome red">IMAGE_RECAPTURE</text>
+  <text x="400" y="745" class="body muted">classifier 미실행 · 즉시 종료</text>
+  <text x="400" y="776" class="small muted">segmentations = []</text>
+
+  <!-- Selective verifier -->
+  <text x="1199" y="584" class="small blue">approval score &lt; 0.55만 검증</text>
+  <text x="1199" y="611" class="small muted">승인 후보 또는 UNKNOWN</text>
+  <rect x="1000" y="650" width="350" height="150" rx="10" class="node"/>
+  <text x="1038" y="696" class="eyebrow blue">INDEPENDENT CHECK</text>
+  <text x="1038" y="735" class="node-model ink" style="font-size:22px">Frozen DINOv3 ViT-B/16 160</text>
+  <text x="1038" y="770" class="body muted">+ 180° rotation consistency</text>
+  <text x="1384" y="706" class="small muted">독립 의견</text>
+
+  <!-- Outcomes -->
+  <text x="1060" y="820" class="eyebrow muted">PER-ROI RESULT</text>
+
+  <rect x="1060" y="890" width="250" height="110" class="node"/>
+  <rect x="1060" y="890" width="250" height="6" fill="#1769E0"/>
+  <text x="1185" y="939" text-anchor="middle" class="outcome ink">APPROVED</text>
+  <text x="1185" y="972" text-anchor="middle" class="outcome-note muted">임계값 충족 · 검증 일치</text>
+
+  <rect x="1310" y="890" width="250" height="110" class="node"/>
+  <rect x="1310" y="890" width="250" height="6" fill="#7A8594"/>
+  <text x="1435" y="939" text-anchor="middle" class="outcome ink">UNKNOWN + Top-3</text>
+  <text x="1435" y="972" text-anchor="middle" class="outcome-note muted">승인 보류 · 안전 후보 3개</text>
+
+  <rect x="1560" y="890" width="270" height="110" class="node"/>
+  <rect x="1560" y="890" width="270" height="6" fill="#B34242"/>
+  <text x="1695" y="939" text-anchor="middle" class="outcome red">SEGMENT_RECAPTURE</text>
+  <text x="1695" y="972" text-anchor="middle" class="outcome-note muted">OOD · 품질 · Top-3 unsafe</text>
+
+  <!-- Footer contract -->
+  <line x1="96" y1="1030" x2="1824" y2="1030" class="rule"/>
+  <text x="96" y="1062" class="small muted">ERROR는 입력·모델·시스템 장애의 별도 상태이며 RECAPTURE로 변환하지 않음</text>
+  <text x="1824" y="1062" text-anchor="end" class="small muted">APPROVED / UNKNOWN + Top-3 / RECAPTURE</text>
+</svg>

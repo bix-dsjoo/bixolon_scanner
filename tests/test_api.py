@@ -7,6 +7,7 @@ from io import BytesIO
 from types import SimpleNamespace
 
 import numpy as np
+import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
 
@@ -201,11 +202,13 @@ def test_v2_runtime_warms_models_before_readiness(
         assert response.json()["worker_version"] == "2.0.0"
 
 
+@pytest.mark.parametrize("fallback_provider_fails", [False, True])
 def test_v2_runtime_falls_back_to_detector_provider_when_gpu_embedder_fails(
     tmp_path,
     monkeypatch,
     classifier_metadata,
     quality_metadata,
+    fallback_provider_fails,
 ):
     package_dir = tmp_path / "runtime"
     package_dir.mkdir()
@@ -242,7 +245,7 @@ def test_v2_runtime_falls_back_to_detector_provider_when_gpu_embedder_fails(
             self.provider = provider
 
         def warmup(self):
-            if self.provider == "openvino_gpu":
+            if self.provider == "openvino_gpu" or fallback_provider_fails:
                 raise ProviderInitializationError
             return None
 
@@ -289,11 +292,14 @@ def test_v2_runtime_falls_back_to_detector_provider_when_gpu_embedder_fails(
             embedder_fallback_provider="same",
         ),
     )
-    with TestClient(app) as client:
-        response = client.get("/health/ready")
-
-    assert response.status_code == 200
-    assert response.json()["provider"] == "openvino"
+    if fallback_provider_fails:
+        with pytest.raises(ProviderInitializationError), TestClient(app):
+            pass
+    else:
+        with TestClient(app) as client:
+            response = client.get("/health/ready")
+        assert response.status_code == 200
+        assert response.json()["provider"] == "openvino"
     assert attempted_providers == ["openvino_gpu", "openvino"]
     assert closed_providers == ["openvino_gpu", "openvino"]
     assert detector_count_providers == [(None, False)]

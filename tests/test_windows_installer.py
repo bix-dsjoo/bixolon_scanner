@@ -7,6 +7,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_windows_installer_uses_cpu_detector_gpu_embedder_payload_and_profile() -> None:
     build_script = (ROOT / "scripts" / "build_windows_installer.ps1").read_text(encoding="utf-8")
+    worker_builder = (ROOT / "scripts" / "build_openvino_worker.ps1").read_text(encoding="utf-8")
+    version_config = (ROOT / "configs" / "versions" / "0.1.14.json").read_text(encoding="utf-8")
     inno_script = (ROOT / "installer" / "windows" / "BixolonBakeryAIScanner.iss").read_text(
         encoding="utf-8"
     )
@@ -18,6 +20,8 @@ def test_windows_installer_uses_cpu_detector_gpu_embedder_payload_and_profile() 
     )
 
     assert "openvino-gpu-worker-build/bixolon-worker" in build_script
+    assert "build_openvino_worker.ps1" in build_script
+    assert "build_n100_gpu_test.ps1" not in build_script
     assert "requirements-windows-openvino.lock" in build_script
     assert "onnxruntime_providers_openvino.dll" in build_script
     assert "openvino_intel_cpu_plugin.dll" in build_script
@@ -28,23 +32,16 @@ def test_windows_installer_uses_cpu_detector_gpu_embedder_payload_and_profile() 
     assert "cuda_runtime_included = $false" in build_script
     assert "onnxruntime_providers_(cuda|tensorrt|dml)" in build_script
     assert "installer-payload-manifest.json" in build_script
-    assert "hardware-reference-result.json" in build_script
     assert "deployment-provenance.json" in build_script
-    assert '"REFERENCE_MEASURED_DIAGNOSTIC"' in build_script
-    assert "if ($hasN100Diagnostic)" in build_script
-    assert "Required hardware device matrix is missing" in build_script
-    assert "reference_product_version = $diagnosticVersion" in build_script
-    assert "config.runtime.path" in build_script
-    assert "config.catalog.path" in build_script
-    assert "n100_latency_target_applied = $true" in build_script
-    assert "reference_measurement_only = $diagnosticVersion -ne $Version" in build_script
-    assert "hardware.target_cpu_detected" in build_script
-    assert "hardware.target_intel_gpu_detected" in build_script
-    assert "objectPresenceContractSafe" in build_script
-    assert '"OpenVINOExecutionProvider:GPU"' in build_script
+    assert "DeviceMatrixPath" not in build_script
+    assert "hardware-reference-result.json" not in build_script
+    assert "n100_device_matrix_sha256" not in build_script
+    assert "REFERENCE_MEASURED_DIAGNOSTIC" not in build_script
+    assert "$recommendedDetectorWorkers = 1" in build_script
+    assert "$recommendedDetectorThreads = 4" in build_script
+    assert "$recommendedEmbedderThreads = 0" in build_script
     assert '"not_configured"' in build_script
-    assert "parity.semantic_mismatch_count" in build_script
-    assert "operational_diagnostic_target_ms = 1000" in build_script
+    assert 'processor_profile = "OpenVINO CPU detector + Intel GPU embedder"' in build_script
     assert "BixolonBakeryAIScanner-$Version-Worker" in build_script
     assert 'target = "windows-x64-openvino-cpu-detector-gpu-embedder"' in build_script
     assert "worker-manifest.json" in build_script
@@ -52,6 +49,10 @@ def test_windows_installer_uses_cpu_detector_gpu_embedder_payload_and_profile() 
     assert "$recommendedDetectorWorkers" in build_script
     assert "$renderedLauncher" in build_script
     assert "Get-FileHash -Algorithm SHA256" in build_script
+    assert "openvino-gpu-worker-build" in worker_builder
+    assert "IncludeOpenVinoGpu" in worker_builder
+    assert "N100-GPU-BENCHMARK" not in worker_builder
+    assert "n100" not in version_config.lower()
 
     assert 'BIXOLON_PROVIDER = "openvino"' in launcher
     assert 'BIXOLON_EMBEDDER_PROVIDER = "openvino_gpu"' in launcher
@@ -84,17 +85,19 @@ def test_windows_installer_documents_target_requirements_and_limits() -> None:
     assert "count verifier와 object_presence verifier는 구성하지 않음" in guide
     assert "classifier를 CPU로 명시적으로 fallback" in guide
     assert "p95는" in guide
-    assert "실제 N100 추가 효과는 직접 측정하지" in guide
+    assert "실제 N100에서 직접 측정하지" in guide
     assert "지연시간 또는 SLA를 보장하지 않습니다" in guide
     assert "Authenticode 서명은 없습니다" in guide
 
 
 def test_windows_packaging_scripts_support_windows_powershell_51() -> None:
     for relative_path in (
+        "scripts/build_openvino_worker.ps1",
         "scripts/build_n100_test_candidate.ps1",
         "scripts/build_windows_installer.ps1",
         "scripts/build_worker_handoff.ps1",
     ):
         source = (ROOT / relative_path).read_text(encoding="utf-8")
         assert "[System.IO.Path]::GetRelativePath" not in source
-        assert "Get-RelativePackagePath" in source
+        if relative_path != "scripts/build_openvino_worker.ps1":
+            assert "Get-RelativePackagePath" in source

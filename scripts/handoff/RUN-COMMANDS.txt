@@ -1,4 +1,4 @@
-BIXOLON Worker 0.1.12 실행 명령어
+BIXOLON Worker 0.1.14 실행 명령어
 ================================
 
 먼저 ZIP 압축을 완전히 풉니다.
@@ -9,7 +9,7 @@ BIXOLON Worker 0.1.12 실행 명령어
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\start-worker.ps1"
 
-실행 창에 "BIXOLON Worker 0.1.12 OpenVINO CPU"가 표시되면 창을 닫지 마십시오.
+실행 창에 "BIXOLON Worker 0.1.14 OpenVINO CPU"가 표시되면 창을 닫지 마십시오.
 API 문서는 브라우저에서 http://127.0.0.1:8000/docs 로 확인합니다.
 
 [N100 벤치마크]
@@ -26,6 +26,6 @@ powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\benchmark-n100.ps1" -
 
 압축을 풀기 전 ZIP과 .sha256 파일이 있는 폴더에서 실행합니다.
 
-powershell.exe -NoProfile -Command "(Get-FileHash -Algorithm SHA256 '.\bixolon-worker-0.1.12-windows-x64-openvino.zip').Hash.ToLowerInvariant()"
+powershell.exe -NoProfile -Command "(Get-FileHash -Algorithm SHA256 '.\bixolon-worker-0.1.14-windows-x64-openvino.zip').Hash.ToLowerInvariant()"
 
-출력값이 bixolon-worker-0.1.12-windows-x64-openvino.zip.sha256 안의 값과 같아야 합니다.
+출력값이 bixolon-worker-0.1.14-windows-x64-openvino.zip.sha256 안의 값과 같아야 합니다.

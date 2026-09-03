@@ -1,4 +1,4 @@
-BIXOLON Bakery AI Scanner 0.1.12 - Windows OpenVINO Worker ZIP
+BIXOLON Bakery AI Scanner 0.1.14 - Windows OpenVINO Worker ZIP
 ================================================
 
 실행 방법
@@ -8,7 +8,7 @@ BIXOLON Bakery AI Scanner 0.1.12 - Windows OpenVINO Worker ZIP
 4. 종료하려면 Worker 창에서 Ctrl+C를 누릅니다.
 
 실행 구성
-- class-aware SSDLite320 Detector: OpenVINOExecutionProvider CPU
+- 1-class SSDLite320 Detector: OpenVINOExecutionProvider CPU
 - 주 Embedder, 180도 Embedder, 독립 Verifier: OpenVINOExecutionProvider Intel GPU
 - count verifier와 object_presence verifier는 구성하지 않음
 - Intel GPU graph를 초기화할 수 없으면 경고를 남기고 classifier를 CPU로 재시작
@@ -24,12 +24,11 @@ BIXOLON Bakery AI Scanner 0.1.12 - Windows OpenVINO Worker ZIP
 무결성
 - ZIP 옆의 .sha256 파일로 ZIP을 검증할 수 있습니다.
 - worker-manifest.json에는 ZIP 내부 파일별 SHA-256이 기록됩니다.
-- hardware-reference-result.json은 동일 모델·정책의 N100 참조 측정 원문입니다.
-- deployment-provenance.json은 Runtime·Catalog와 측정 원문의 SHA-256을 기록합니다.
+- deployment-provenance.json은 Runtime·Catalog, 실행 provider와 패키징 변환을 기록합니다.
 
 제한
 - Intel N100 v41 100장 측정에서 GPU classifier 구성 평균/p95는 336.946/488.413ms,
   semantic mismatch와 ERROR는 0건이었습니다.
-- v42 선택 ROI Worker 변경의 N100 추가 효과는 직접 측정하지 않았습니다.
-- 장비 한 대의 참조 결과이며 SLA 또는 인증이 아닙니다.
+- 0.1.14 설치·번들 생성에는 N100 실측 결과가 필요하지 않습니다.
+- 위 값은 실행 프로필 선택 근거이며 SLA 또는 인증이 아닙니다.
 - 배포 파일에는 Authenticode 서명이 없습니다.

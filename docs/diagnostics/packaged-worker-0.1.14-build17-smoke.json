@@ -1,0 +1,89 @@
+{
+  "schema_version": "1.0",
+  "product_name": "BIXOLON Bakery AI Scanner",
+  "product_version": "0.1.14",
+  "app_build": 17,
+  "target": "windows-x64-packaged-smoke",
+  "passes": true,
+  "cases": {
+    "ready": {
+      "http_status": 200,
+      "status": "ready",
+      "resolved_provider": "cpu",
+      "all_non_null_versions": "0.1.14"
+    },
+    "openvino_gpu_startup_fallback": {
+      "gpu_warmup_attempted": true,
+      "gpu_warmup_result": "CL_INVALID_VALUE",
+      "fallback_provider": "openvino",
+      "ready_http_status": 200,
+      "valid_scan_http_status": 200,
+      "valid_scan_status": "SEGMENTATION"
+    },
+    "valid_scan": {
+      "http_status": 200,
+      "status": "SEGMENTATION",
+      "worker_version": "0.1.14",
+      "catalog_version": "0.1.14"
+    },
+    "corrupt_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": [
+        "CORRUPT_IMAGE"
+      ]
+    },
+    "missing_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": [
+        "MISSING_IMAGE_FIELD"
+      ]
+    },
+    "unsupported_image": {
+      "http_status": 415,
+      "status": "ERROR",
+      "reason_codes": [
+        "UNSUPPORTED_IMAGE_FORMAT"
+      ]
+    },
+    "manifests": {
+      "bundle_verify": true,
+      "bundle_file_count": 202,
+      "worker_file_count": 183,
+      "installer_payload_file_count": 180,
+      "prohibited_runtime_module_path_count": 0,
+      "unlocked_bundled_distribution_count": 0,
+      "setup_sha256_file_matches": true,
+      "worker_zip_sha256_file_matches": true,
+      "hardware_measurement_required": false
+    },
+    "windows_version": {
+      "product_version": "0.1.14",
+      "file_version": "0.1.14+17"
+    }
+  },
+  "artifacts": {
+    "version_config_sha256": "97160fa78246ac49d0d51a821de67250bd5aaa3a063b37eee0da56966861a325",
+    "bundle_manifest_sha256": "aaefbbaff8d3252f92cc0d9697bcaa5c0d35141978a107a87f7bcac985f9c1d9",
+    "product_executable_sha256": "04b5d08dce62675590d32ff214d0103bc45831654eb8a95b7a2eb81e6fe42eb0",
+    "worker_executable_sha256": "27f17e1cf0586775547ce2b7735f060168a66a7701d9f57655810456483705b3",
+    "packaged_smoke_sha256": "10e28e10da92c75b57f16fa615bdae89af4a24562b160cb37a6a27c98eeb66b5",
+    "installer_manifest_sha256": "6f4f78087a3e69458d50f35e866309a96e5c280d447efd00e5eb72ea23558e1d",
+    "payload_manifest_sha256": "09cf08f66451218cd813fe774eb27ccf73ec771820328223aae544a1b3f4d576",
+    "setup_sha256": "302625154060cae056455ce5a8554adfcf7fd03d1f31849ce74226d90686a1e6",
+    "worker_zip_sha256": "aba04ef6c82fa2514f6eca8655404fe971a7a6430c7636859abcf4136def2400"
+  },
+  "authenticode": "UNSIGNED",
+  "privacy": {
+    "image_paths_recorded": false,
+    "image_bytes_recorded": false
+  },
+  "limitations": [
+    "The packaged CPU smoke passed on the current development PC.",
+    "The OpenVINO GPU session initialized but warm-up failed on this PC, and explicit OpenVINO CPU fallback was verified with readiness and a valid scan.",
+    "GPU-success readiness is covered by the runtime contract test; N100 field measurement is not required for the 0.1.14 bundle.",
+    "The 415- and 69-image evaluations overlap development data and are not independent generalization or SLA evidence.",
+    "SHA-256 checksums detect corruption or file changes but do not authenticate the publisher. The bundle is unsigned."
+  ]
+}

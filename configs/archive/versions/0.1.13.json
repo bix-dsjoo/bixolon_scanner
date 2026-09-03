@@ -1,0 +1,69 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.13",
+  "app_build": 16,
+  "source_date_epoch": 1788307200,
+  "source_candidate": "ssdlite320-consistent-evidence-v1",
+  "runtime": {
+    "path": "artifacts/experiments/consistent-evidence-0.1.13/runtime-source",
+    "manifest_sha256": "b4df35e975541485845b196521e44cb540814e47002191ed728bd2171615dc48"
+  },
+  "catalog": {
+    "path": "artifacts/catalogs/bread-store-0.1.5-consensus",
+    "manifest_sha256": "085612ddd781a1879ae3bb2867c32c2174247ff8703e1641367d8c37226888b7",
+    "store_id": "bread-dev"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/runtime/cuda-13.0-cudnn-9.13.1-win-x64",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/experiments/consistent-evidence-0.1.13/runtime-source-build.json",
+      "sha256": "2b87e91dc79755cce6e615678368aec5d609336ba0e2cc18662080a2a1b7a166"
+    },
+    {
+      "path": "artifacts/experiments/consistent-evidence-0.1.13/scanner415-cpu.json",
+      "sha256": "253e04066a416a10084034be397232e59100fca662b7d8dcbaaaa099bc2a3849"
+    },
+    {
+      "path": "artifacts/experiments/consistent-evidence-0.1.13/operational69-cpu.json",
+      "sha256": "0c3d1614acd88788f2e10f3ec6a6ef28b8d34d77808edf5ac15d25cfcae1f76f"
+    },
+    {
+      "path": "artifacts/experiments/consistent-evidence-0.1.13/scanner415-all-approval-disagreement-cpu.json",
+      "sha256": "83084d57399b3551c8c0ee8c7b369c820f52507f90c16fd10c518f2eb563192f"
+    },
+    {
+      "path": "artifacts/experiments/class-agnostic-detector-0.1.11/v6-multi300-cpu.json",
+      "sha256": "b949ffc6e73e48942194e3680a13c23b97257643128de16c1e056e065761f2cc"
+    },
+    {
+      "path": "artifacts/experiments/class-agnostic-detector-0.1.11/v6-scanner415-cpu-cuda-parity.json",
+      "sha256": "2607d3402121b30b601a6557e85afc0376a595e385a4d18480e8e0a0366385a3"
+    },
+    {
+      "path": "docs/diagnostics/n100-0.1.11-openvino-device-matrix.json",
+      "sha256": "12d18653cccc4c89fac09f359aabafc498718d49b7d5e894c6895ba8a348f314"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}

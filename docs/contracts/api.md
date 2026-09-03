@@ -1,7 +1,7 @@
 # Worker API 계약
 
-제품 `0.1.12` 외부 개발자용 빵 목록과 요청·응답 예시는
-[Worker 연동 명세](worker-integration-0.1.12.md)를 참조하십시오.
+제품 `0.1.14` 외부 개발자용 빵 목록과 요청·응답 예시는
+[Worker 연동 명세](worker-integration-0.1.14.md)를 참조하십시오.
 
 ## Endpoint
 
@@ -27,13 +27,10 @@
 
 1. 입력을 검증하고 decode합니다.
 2. Detector가 모든 segmentation 위치와 프레임 품질을 판단합니다.
-3. detector hard gate가 실패하면 classifier를 호출하지 않고 `IMAGE_RECAPTURE`와 공개 공통 reason `IMAGE_RECAPTURE_REQUIRED`를 반환합니다. `0.1.12`는 프레임 품질과 raw query의 근접·중복, 보강 증거가 있는 큰 제안을 이 단계에서 검사합니다. 큰 제안의 크기만으로는 재촬영하지 않습니다. 구체적인 detector 진단은 구조화 로그에만 남깁니다.
-4. Runtime이 `detector_primary_classifier_routing`을 활성화한 class-aware package는 명시된
-   class, 최소 detector score, 프레임 내 class 유일성 조건을 모두 만족한 ROI를 Detector 결과로
-   직접 승인합니다. 목록에 없는 신규 class, 저신뢰와 동일 class 중복 ROI는 기본적으로 Classifier에
-   전달합니다. 직접 승인 `confidence`는 classifier 점수가 아니라 detector score입니다. 활성
-   `0.1.12` 배포 Runtime이 이 옵션을 사용합니다.
-5. 나머지 정상 ROI와 `classifier_confidence` 경계 ROI를 한 batch로 분류합니다. Runtime이
+3. detector hard gate가 실패하면 classifier를 호출하지 않고 `IMAGE_RECAPTURE`와 공개 공통 reason `IMAGE_RECAPTURE_REQUIRED`를 반환합니다. `0.1.14`는 프레임 품질과 raw query의 근접·중복, 보강 증거가 있는 큰 제안을 이 단계에서 검사합니다. 큰 제안의 크기만으로는 재촬영하지 않습니다. 구체적인 detector 진단은 구조화 로그에만 남깁니다.
+4. 활성 `0.1.14`의 class-agnostic Detector는 SKU를 직접 승인하지 않습니다. 정상 ROI와
+   `classifier_confidence` 경계 ROI 전체를 DINOv3 ConvNeXt-Tiny 192에 한 batch로 전달합니다.
+5. Runtime이
    `classifier_resolution_fallback`을 활성화하면 안전 경계 밖 ROI만 고해상도로 다시 분류하며,
    `selective_roi_only=true`이면 나머지 ROI의 결과를 보존합니다. 선택 crop도 전체 detection 문맥을
    사용하므로 neighbor-mask 의미는 바뀌지 않습니다. 선택 규칙은 객체 수뿐 아니라
@@ -42,22 +39,17 @@
    떨어진 ROI를 `UNKNOWN`으로 낮춥니다. `fuse_unapproved_top3=true`이면 이 ROI의 Top-3 순위는 두
    해상도의 class-agnostic 후보 점수를 결합하며, `minimum_fallback_approval_score` 미만의 승인
    경계는 provider와 관계없이 `BELOW_APPROVAL_THRESHOLD`로 정규화합니다.
-6. 실험 metadata에서 adaptive `UNKNOWN` detector refinement를 활성화한 경우에만, 큰 이미지의 초기 분류가 승인되지 않았고 품질 재촬영도 아닌 ROI를 전체 detector ensemble로 한 번 재검출한 뒤 다시 한 batch로 분류합니다. 이 단계는 detector hard gate를 우회하거나 `ERROR`를 판정 상태로 바꾸지 않습니다. 활성 `0.1.12` Runtime은 이 옵션을 사용하지 않습니다.
-7. 활성화된 detector corroboration은 metadata의 전역 confidence 조건을 만족하고 detector class가 원래 classifier Ridge Top-2 안에 있을 때만 두 후보의 순위를 교정합니다. 클래스·상품쌍·객체수·난이도별 예외는 적용하지 않습니다.
-8. class-aware detector consensus를 활성화한 package는 전역 detector score 조건을 만족할 때만
-   classifier와 detector를 조정합니다. 낮은 classifier score의 승인 불일치는 `UNKNOWN`으로 낮추고,
-   안전한 `UNKNOWN`은 detector class가 classifier Top-3 안에 있을 때만 `APPROVED`로 바꿉니다.
-   classifier 품질 재촬영 후보는 detector class와 classifier probability Top-1이 같을 때만
-   `APPROVED`로 바꿀 수 있습니다. 남은 `UNKNOWN`에는 detector class를 Top-3 안에 보존합니다.
-   활성 `0.1.12` Runtime이 이 옵션을 사용합니다.
-9. consensus 뒤에 남은 classifier 품질 클래스는 해당 ROI를 `SEGMENT_RECAPTURE`로 만들고 공개 공통
+6. 전역 ambiguity 범위에 든 경계 승인 후보만 Frozen DINOv3 ViT-B/16 160 verifier로 검증합니다.
+   활성 Runtime은 승인 후보 전수 검증과 단일 verifier 품질 거부 재촬영을 사용하지 않습니다.
+7. 실험 metadata에서 adaptive `UNKNOWN` detector refinement를 활성화한 경우에만, 큰 이미지의 초기 분류가 승인되지 않았고 품질 재촬영도 아닌 ROI를 전체 detector ensemble로 한 번 재검출한 뒤 다시 한 batch로 분류합니다. 이 단계는 detector hard gate를 우회하거나 `ERROR`를 판정 상태로 바꾸지 않습니다. 활성 `0.1.14` Runtime은 이 옵션을 사용하지 않습니다.
+8. classifier 품질 클래스는 해당 ROI를 `SEGMENT_RECAPTURE`로 만들고 공개 공통
    reason `SEGMENT_RECAPTURE_REQUIRED`를 사용합니다.
-10. 경계 ROI의 Top-1 신뢰도가 승인 임계값 미만이면 해당 ROI를 `SEGMENT_RECAPTURE`로 만들고 같은 공통 reason을 사용합니다.
-11. 패키지에서 포함 중복 검토 정책을 활성화한 경우, 거의 완전히 포함되고 같은 Top-1을 가진 ROI 쌍에서 detector 점수가 낮은 고신뢰 ROI는 `DETECTOR_CONTAINED_DUPLICATE` `UNKNOWN`과 Top-3입니다. ROI를 삭제하거나 재촬영으로 바꾸지 않습니다.
-12. 나머지 segmentation은 승인 임계값 이상이면 `APPROVED`입니다.
-13. 승인 임계값 미만이고 활성화된 선택적 분류 정책이 안전한 Top-3를 보장하지 못하면 공통 reason의 `SEGMENT_RECAPTURE`입니다.
-14. 그 밖의 승인 임계값 미만 segmentation은 `BELOW_APPROVAL_THRESHOLD` `UNKNOWN`과 점수 내림차순 Top-3입니다.
-15. 하나 이상의 segmentation이 있으면 이미지 상태는 `SEGMENTATION`입니다. 포함 중복 `UNKNOWN`이 있으면 최상위 reason code에 `SEGMENT_DUPLICATE_REVIEW_REQUIRED`를 포함합니다.
+9. 경계 ROI의 Top-1 신뢰도가 승인 임계값 미만이면 해당 ROI를 `SEGMENT_RECAPTURE`로 만들고 같은 공통 reason을 사용합니다.
+10. 패키지에서 포함 중복 검토 정책을 활성화한 경우, 거의 완전히 포함되고 같은 Top-1을 가진 ROI 쌍에서 detector 점수가 낮은 고신뢰 ROI는 `DETECTOR_CONTAINED_DUPLICATE` `UNKNOWN`과 Top-3입니다. ROI를 삭제하거나 재촬영으로 바꾸지 않습니다.
+11. 나머지 segmentation은 승인 임계값 이상이면 `APPROVED`입니다.
+12. 승인 임계값 미만이고 활성화된 선택적 분류 정책이 안전한 Top-3를 보장하지 못하면 공통 reason의 `SEGMENT_RECAPTURE`입니다.
+13. 그 밖의 승인 임계값 미만 segmentation은 `BELOW_APPROVAL_THRESHOLD` `UNKNOWN`과 점수 내림차순 Top-3입니다.
+14. 하나 이상의 segmentation이 있으면 이미지 상태는 `SEGMENTATION`입니다. 포함 중복 `UNKNOWN`이 있으면 최상위 reason code에 `SEGMENT_DUPLICATE_REVIEW_REQUIRED`를 포함합니다.
 
 Detector hard gate 조기 종료는 실행하지 않은 `classifier_version`, `embedder_version`,
 `classifier_policy_version`, `catalog_version`을 `null`로 표시합니다. Detector policy는 실행됐으므로
@@ -72,10 +64,21 @@ Catalog/Classifier 확장으로 처리하고, 새 SKU도 기존 `bread/object` �
 재학습을 요구하지 않습니다. 빵이 아닌 새 객체 종류나 촬영 분포가 추가돼 objectness recall이
 변하는 경우에는 별도 Detector 재검증이 필요합니다.
 
+`classifier_verification.verify_all_approved_candidates`는 기본값이 `false`입니다. `true`이면 승인
+후보 전체를 verifier 대상으로 만들지만 활성 `0.1.14`은 415장 진단에서 정답 승인율과 지연이
+악화돼 사용하지 않습니다. 이 옵션은 공개 schema나 상태 종류를 바꾸지 않습니다.
+
 `classifier_verification.unknown_recapture_on_dual_verifier_rejection`은 기본값이 `false`인 Runtime
 metadata 옵션입니다. 활성화된 후보에서만 primary 승인 차단 ROI의 회전·독립 verifier가 모두
 품질 실패를 반환하면 12번의 기존 공통 `SEGMENT_RECAPTURE` 경로를 사용합니다. 공개 reason code나
 응답 schema는 추가하지 않습니다.
+
+`classifier_verification.unknown_recapture_on_any_verifier_rejection`도 기본값이 `false`입니다.
+활성화하면 primary가 `UNKNOWN`이거나 verifier 불일치로 승인이 차단된 ROI에서 회전·독립
+verifier 중 하나만 품질 실패를 반환해도 `CLASSIFIER_TOP3_UNSAFE`
+`SEGMENT_RECAPTURE`로 반환합니다. dual 옵션과 any 옵션을 동시에 활성화하지 않으며,
+두 옵션 모두 활성 `0.1.14`의 판정 결과를 바꾸지 않습니다. 공개 reason code와 응답 schema는
+변경되지 않습니다.
 
 ## 오류와 보안
 

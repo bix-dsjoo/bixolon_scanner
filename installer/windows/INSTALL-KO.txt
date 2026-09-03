@@ -1,4 +1,4 @@
-BIXOLON Bakery AI Scanner 0.1.12 - Windows OpenVINO 설치 안내
+BIXOLON Bakery AI Scanner 0.1.14 - Windows OpenVINO 설치 안내
 =====================================================
 
 지원 환경
@@ -15,19 +15,20 @@ BIXOLON Bakery AI Scanner 0.1.12 - Windows OpenVINO 설치 안내
 3. 앱이 준비되면 카메라로 촬영하거나 이미지 파일을 선택합니다.
 
 Windows 기본 실행 구성
-- class-aware SSDLite320 Detector: OpenVINOExecutionProvider CPU, 1 worker x 4 threads
+- 1-class SSDLite320 Detector: OpenVINOExecutionProvider CPU, 1 worker x 4 threads
 - 주 Embedder, 180도 Embedder, 독립 Verifier: OpenVINOExecutionProvider Intel GPU
 - count verifier와 object_presence verifier는 구성하지 않음
 - Intel GPU 초기화 실패 시 경고 로그를 남기고 classifier를 CPU로 명시적으로 fallback
 - Worker 주소 http://127.0.0.1:8000
 
 진단 범위와 주의
-- 같은 모델·정책 v41의 Intel N100 100장 실측에서 GPU classifier 구성의 client 평균/p95는
+- 과거 동일 모델 계열의 Intel N100 100장 참조 실측에서 GPU classifier 구성의 client 평균/p95는
   336.946/488.413ms, CPU-only는 418.587/681.696ms였습니다.
 - 최종 상태, bbox, class rank 불일치와 ERROR는 0건이었습니다.
 - confidence 최대 차이는 0.0137197375로 provider 허용치 0.02 안이며 bit-exact 결과는 아닙니다.
-- v42 선택 ROI Worker 변경은 개발 PC 전수에서 검증했지만 실제 N100 추가 효과는 직접 측정하지
-  않았습니다. 위 결과는 장비 한 대의 참조 진단이며 지연시간 또는 SLA를 보장하지 않습니다.
+- 0.1.14의 class-agnostic 192→선택 224→선택 ViT 정책은 실제 N100에서 직접 측정하지 않았습니다.
+  설치·번들 생성에는 N100 실측이 필요하지 않습니다. 위 결과는 과거 장비 한 대의 실행 프로필 선택
+  근거이며 현재 지연시간 또는 SLA를 보장하지 않습니다.
 - fallback 사용 여부는 /health/ready의 provider로 확인합니다. GPU 사용 시
   openvino+openvino_gpu, CPU fallback 시 openvino입니다.
 - ERROR는 촬영 재시도 판정이 아니라 입력, 구성, 모델 또는 시스템 오류입니다.
@@ -40,5 +41,5 @@ Windows 기본 실행 구성
 - 기록은 현재 Windows 사용자 Application Support 아래 ProductScanner 폴더에 남습니다.
 
 버전
-- 제품, 앱 표시, Worker, Runtime, Catalog: 0.1.12
-- Flutter 내부 build: 0.1.12+15
+- 제품, 앱 표시, Worker, Runtime, Catalog: 0.1.14
+- Flutter 내부 build: 0.1.14+17

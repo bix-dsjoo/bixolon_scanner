@@ -40,6 +40,6 @@ DINOv3 192 batch로 분류하고 필요한 ROI만 224로 재분류합니다. 직
 `UNKNOWN`+Top-3 또는 `SEGMENT_RECAPTURE`가 됩니다. 공개 reason code와 schema는 이전 계약과
 같습니다.
 
-정식 필드와 enum은 [API 계약](api.md), JSON Schema는
-[scan-response.schema.json](../../schemas/scan-response.schema.json), 상태별 payload는
+정식 필드와 enum은 [API 계약](../../contracts/api.md), JSON Schema는
+[scan-response.schema.json](../../../schemas/scan-response.schema.json), 상태별 payload는
 [0.1.12 예시](examples/0.1.12/)를 참조하십시오. 빵 식별에는 표시명 대신 `class_id`를 사용합니다.

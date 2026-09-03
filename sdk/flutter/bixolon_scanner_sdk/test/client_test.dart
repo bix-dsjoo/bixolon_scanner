@@ -7,13 +7,13 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 const _versions = <String, dynamic>{
-  'worker_version': '0.1.12',
-  'detector_version': '0.1.12',
-  'classifier_version': '0.1.12',
-  'embedder_version': '0.1.12',
-  'detector_policy_version': '0.1.12',
-  'classifier_policy_version': '0.1.12',
-  'catalog_version': '0.1.12',
+  'worker_version': '0.1.14',
+  'detector_version': '0.1.14',
+  'classifier_version': '0.1.14',
+  'embedder_version': '0.1.14',
+  'detector_policy_version': '0.1.14',
+  'classifier_policy_version': '0.1.14',
+  'catalog_version': '0.1.14',
 };
 
 void main() {
@@ -21,7 +21,7 @@ void main() {
     'connects to an already running Worker without process control',
     () async {
       final client = BixolonScannerClient(
-        expectedModelVersion: '0.1.12',
+        expectedModelVersion: '0.1.14',
         httpClient: MockClient((request) async {
           expect(request.url.path, '/health/ready');
           return http.Response(
@@ -102,7 +102,7 @@ void main() {
             'status': 'ready',
             'provider': 'openvino',
             ..._versions,
-            'catalog_version': '0.1.13',
+            'catalog_version': '0.1.12',
           }),
           200,
         ),

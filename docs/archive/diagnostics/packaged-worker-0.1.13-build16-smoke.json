@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "product_name": "BIXOLON Bakery AI Scanner",
+  "product_version": "0.1.13",
+  "app_build": 16,
+  "target": "windows-x64-cpu-smoke",
+  "passes": true,
+  "cases": {
+    "ready": {
+      "http_status": 200,
+      "status": "ready",
+      "resolved_provider": "cpu",
+      "all_non_null_versions": "0.1.13"
+    },
+    "valid_scan": {
+      "http_status": 200,
+      "status": "SEGMENTATION",
+      "worker_version": "0.1.13",
+      "catalog_version": "0.1.13"
+    },
+    "corrupt_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": [
+        "CORRUPT_IMAGE"
+      ]
+    },
+    "missing_image": {
+      "http_status": 422,
+      "status": "ERROR",
+      "reason_codes": [
+        "MISSING_IMAGE_FIELD"
+      ]
+    },
+    "unsupported_image": {
+      "http_status": 415,
+      "status": "ERROR",
+      "reason_codes": [
+        "UNSUPPORTED_IMAGE_FORMAT"
+      ]
+    },
+    "manifests": {
+      "bundle_verify": true,
+      "bundle_file_count": 202,
+      "worker_file_count": 183,
+      "prohibited_runtime_module_path_count": 0,
+      "unlocked_bundled_distribution_count": 0,
+      "setup_sha256_file_matches": true,
+      "worker_zip_sha256_file_matches": true
+    },
+    "windows_version": {
+      "product_version": "0.1.13",
+      "file_version": "0.1.13+16"
+    }
+  },
+  "artifacts": {
+    "version_config_sha256": "6651d8d5cf7d1d0d9f86d8325061d4267227dbed82ca881f55b0100b7003a3f7",
+    "bundle_manifest_sha256": "47af523b83863c03fdf8eb962095bf7c0f7aad691fde32c514aab938fe697fcd",
+    "product_executable_sha256": "0449bde7870507aa9e3aebde017a407a120c7700632d3857fa5f763511f9f7b7",
+    "worker_executable_sha256": "dbb63d9aedf22833257f00830ed60fc12b2b1a675f25982e6f802dda537157b6",
+    "packaged_smoke_sha256": "188ec7f12300eb5f93edf1fe60ab08afdc1368211e69c48ba9713894d29c9b05",
+    "installer_manifest_sha256": "32fc52f1c49f2088b294d18f571576f7ff665490980cd68c75bccfecf2bad7a7",
+    "payload_manifest_sha256": "04ae284abfece9bd5eeaa7e839bc1b64b6727d8f2d2efd464d741e707b8b0181",
+    "setup_sha256": "37d111153ca77a8d7e15fba1cf520eb5074e17e5feb8593459fa60c6703d52a6",
+    "worker_zip_sha256": "f4ae0326c7216eeeb39531fb541a8a2477661c70f9ece94cd8161661e484c561"
+  },
+  "authenticode": "UNSIGNED",
+  "privacy": {
+    "image_paths_recorded": false,
+    "image_bytes_recorded": false
+  },
+  "limitations": [
+    "The packaged smoke exercised the CPU path on the current development PC; OpenVINO Intel GPU and CUDA were not remeasured for 0.1.13.",
+    "The 415- and 69-image evaluations overlap development data and are not independent generalization or SLA evidence.",
+    "SHA-256 checksums detect corruption or file changes but do not authenticate the publisher. The bundle is unsigned."
+  ]
+}

@@ -463,7 +463,7 @@ def main() -> None:
     parser.add_argument("--base-dataset-root", type=Path, required=True)
     parser.add_argument("--dataset-root", type=Path, required=True)
     parser.add_argument(
-        "--operational-subdir", type=Path, default=Path("bixolon_operational_0.1.12")
+        "--operational-subdir", type=Path, default=Path("bixolon_operational_0.1.14")
     )
     parser.add_argument("--manifest-dir", type=Path, required=True)
     parser.add_argument("--review-dir", type=Path, required=True)

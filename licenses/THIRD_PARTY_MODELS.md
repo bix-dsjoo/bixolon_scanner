@@ -1,6 +1,6 @@
 # Third-party model notices
 
-이 파일은 BIXOLON Bakery AI Scanner `0.1.12` Runtime에 포함되는 모델 계열의 출처와 재배포 고지를
+이 파일은 BIXOLON Bakery AI Scanner `0.1.14` Runtime에 포함되는 모델 계열의 출처와 재배포 고지를
 기록한다.
 
 ## torchvision SSDLite320 MobileNetV3-Large
@@ -10,9 +10,9 @@
 - Architecture/revision: SSDLite320 MobileNetV3-Large, torchvision `v0.28.0`
 - License: BSD 3-Clause
 - Weight source: 외부 pretrained weight 없이 프로젝트 데이터로 random initialization부터 학습
-- Use: 20개 빵 class-aware Detector ONNX
+- Use: 빵/상품 objectness를 검출하는 1-class Detector ONNX
 
-`TORCHVISION-LICENSE.txt`를 Runtime과 함께 배포한다. `0.1.12` Runtime은 YOLO 코드·weight를
+`TORCHVISION-LICENSE.txt`를 Runtime과 함께 배포한다. `0.1.14` Runtime은 YOLO 코드·weight를
 포함하지 않으며 detector에 AGPL 의존성이 없다.
 
 ## DINOv3

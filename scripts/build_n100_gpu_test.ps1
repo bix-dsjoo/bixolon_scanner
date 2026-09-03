@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.12",
+    [string]$Version = "0.1.14",
     [string]$Python311Executable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$ReuseBuildEnvironment,
@@ -133,10 +133,14 @@ if (
     $null -ne $runtimeMetadata.count_verifier -or
     [string]$runtimeMetadata.sources.detector.architecture -notmatch "SSDLite320" -or
     -not [bool]$runtimeMetadata.classifier_resolution_fallback.selective_roi_only -or
-    $null -eq $runtimeMetadata.detector_primary_classifier_routing -or
-    [double]$runtimeMetadata.detector_primary_classifier_routing.minimum_detector_score -ne 0.98
+    [string]$runtimeMetadata.detector_class_mode -ne "class_agnostic" -or
+    $null -ne $runtimeMetadata.detector_primary_classifier_routing -or
+    [int]$runtimeMetadata.embedder.input_size[0] -ne 192 -or
+    [int]$runtimeMetadata.classifier_resolution_fallback.embedder.input_size[0] -ne 224 -or
+    [int]$runtimeMetadata.classifier_verification.independent_embedder.input_size[0] -ne 160 -or
+    [bool]$runtimeMetadata.classifier_verification.verify_all_approved_candidates
 ) {
-    throw "OpenVINO GPU test requires the final detector-primary Runtime."
+    throw "OpenVINO GPU test requires the final class-agnostic consistent-evidence Runtime."
 }
 
 Invoke-Native -FailureMessage "Python 3.11 validation failed" -Command {

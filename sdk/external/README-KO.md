@@ -41,7 +41,7 @@ metadata/checksum/Catalog가 불일치하므로 반드시 전체 Store Model Bun
   active-bundle.json
   bundles/
     bread-dev/
-      0.1.12/
+      0.1.14/
         model-package/...
         store-catalog/...
         store-bundle.json

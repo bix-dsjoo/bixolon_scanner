@@ -1,9 +1,9 @@
-BIXOLON Bakery AI Scanner 0.1.12 N100 OpenVINO CPU/GPU classifier 비교
+BIXOLON Bakery AI Scanner 0.1.14 N100 OpenVINO CPU/GPU classifier 비교
 ===========================================================
 
 목적
 ----
-- 0.1.12 Detector-first SSDLite Runtime, Catalog와 판정 정책을 변경하지 않습니다.
+- 0.1.14 Detector-first SSDLite Runtime, Catalog와 판정 정책을 변경하지 않습니다.
 - 같은 이미지로 OpenVINO CPU-only와 CPU Detector + Intel GPU classifier를 비교합니다.
 - Detector는 양쪽 모두 OpenVINO CPU 1 worker x 4 threads입니다.
 - count verifier와 object_presence verifier는 구성하지 않습니다.
@@ -16,7 +16,7 @@ BIXOLON Bakery AI Scanner 0.1.12 N100 OpenVINO CPU/GPU classifier 비교
 2. C:\easy 폴더에 실제 촬영 JPEG/PNG 이미지 30장 이상을 넣습니다.
    정상 SEGMENTATION 결과가 나오는 이미지가 10장 이상 필요합니다.
 3. RUN-N100-GPU-TEST.cmd를 더블클릭합니다.
-4. 완료 후 n100-0.1.12-openvino-device-matrix.json을 가져옵니다.
+4. 완료 후 n100-0.1.14-openvino-device-matrix.json을 가져옵니다.
 
 이미지가 다른 폴더에 있으면 그 폴더를 RUN-N100-GPU-TEST.cmd 위로 끌어다 놓아도 됩니다.
 

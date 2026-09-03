@@ -1,9 +1,24 @@
 # 버전 이력
 
-이 문서는 현재 단일 제품 버전 `0.1.12` 외의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
+이 문서는 현재 단일 제품 버전 `0.1.14` 외의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
 archive 인덱스입니다. 아래의 `production`, promotion, waiver, certification, release lock 표현은
 당시 기록의 용어이며 현재 빌드 수명주기나 활성 기본값이 아닙니다. Git 밖의 실험·평가 결과는
 보존하되 재생성 가능한 과거 전달물과 캐시는 정리할 수 있습니다.
+
+## Scanner 0.1.13
+
+`0.1.13` 앱 build 16은 1-class SSDLite320으로 위치와 촬영 품질을 판단하고, 모든 정상 ROI를
+ConvNeXt-Tiny 192에 전달한 뒤 전역 위험 ROI만 224 detail과 ViT-B/16 160 verifier로 선택
+검증했습니다. `0.1.14`는 이 모델·판정 계약을 유지하면서 정식 Windows 빌드에서 N100 device
+matrix 필수 의존을 제거했습니다. 당시 [설정](../../configs/archive/versions/0.1.13.json),
+[아키텍처](architecture/scanner-0.1.13.md), [API 연동 명세](contracts/worker-integration-0.1.13.md)를
+보존합니다.
+
+## Scanner 0.1.12
+
+`0.1.12` 앱 build 15는 검증된 Detector class를 직접 승인에 사용했으나, 여러 매장·상품에 같은
+판정 흐름을 적용하기 위해 `0.1.13`에서 class-agnostic 분류 흐름으로 대체했습니다. 당시 설정과
+계약은 archive에 보존합니다.
 
 ## Scanner 0.1.11
 

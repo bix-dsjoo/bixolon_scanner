@@ -1,6 +1,6 @@
 # BIXOLON Scanner Flutter SDK
 
-Windows용 BIXOLON Scanner Worker `0.1.12`의 HTTP 계약과 선택적 프로세스 제어를 제공하는
+Windows용 BIXOLON Scanner Worker `0.1.14`의 HTTP 계약과 선택적 프로세스 제어를 제공하는
 Flutter package입니다. SDK가 앱 구조나 Worker 실행 시점을 강제하지 않습니다.
 
 ## 설치
@@ -32,7 +32,7 @@ final session = await BixolonScannerSession.connect(
 ```dart
 final layout = BixolonRuntimeLayout.discover(
   runtimeRoot: r'C:\Program Files\MyApp\bixolon_runtime',
-  storeBundleRoot: r'C:\ProgramData\MyCompany\Scanner\bundles\bread-dev\0.1.12',
+  storeBundleRoot: r'C:\ProgramData\MyCompany\Scanner\bundles\bread-dev\0.1.14',
 );
 final controller = BixolonWorkerController();
 await controller.start(
@@ -82,7 +82,7 @@ SDK는 응답의 `status`, `reason_codes`, `class_id`를 그대로 전달합니�
 처리하고 Flutter를 다시 빌드하지 않습니다.
 
 `expectedModelVersion`은 생략해도 SDK가 응답의 모든 non-null 구성요소 version이 서로 같은지
-검증합니다. 모델 번들만 업데이트할 제품은 Flutter 소스에 `0.1.12` 같은 모델 version을 상수로
+검증합니다. 모델 번들만 업데이트할 제품은 Flutter 소스에 `0.1.14` 같은 모델 version을 상수로
 넣지 마십시오. 특정 version 고정이 운영상 필요하다면 앱 재빌드 없이 바꿀 수 있는 설치 설정이나
 서버 설정에서 `expectedModelVersion`을 주입하십시오. 현재 Scanner 제품 version은
 `session.readiness.versions.worker`로 표시할 수 있습니다.

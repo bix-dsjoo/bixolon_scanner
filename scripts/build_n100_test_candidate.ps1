@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.12",
+    [string]$Version = "0.1.14",
     [string]$Stamp = "20260824",
     [string]$OutputRoot = "artifacts/handoff",
     [switch]$Force
@@ -106,7 +106,7 @@ if (
     [string]$metadata.detector.filename -ne "detector.onnx" -or
     [int]$metadata.detector.input_size[0] -ne 320 -or
     [int]$metadata.detector.input_size[1] -ne 320 -or
-    [double]$metadata.detector.score_threshold -ne 0.735 -or
+    [double]$metadata.detector.score_threshold -ne 0.98 -or
     $null -ne $metadata.count_verifier -or
     [string]$metadata.embedder.embedder_id -ne "dinov3-convnext-tiny" -or
     $null -eq $metadata.classifier_verification -or
@@ -114,11 +114,14 @@ if (
     [int]$metadata.classifier_verification.independent_embedder.fixed_batch_size -ne 1 -or
     $null -eq $metadata.classifier_resolution_fallback -or
     -not [bool]$metadata.classifier_resolution_fallback.selective_roi_only -or
-    $null -eq $metadata.detector_primary_classifier_routing -or
-    [double]$metadata.detector_primary_classifier_routing.minimum_detector_score -ne 0.98 -or
-    -not [bool]$metadata.detector_primary_classifier_routing.require_unique_class_per_image
+    [string]$metadata.detector_class_mode -ne "class_agnostic" -or
+    $null -ne $metadata.detector_primary_classifier_routing -or
+    [int]$metadata.embedder.input_size[0] -ne 192 -or
+    [int]$metadata.classifier_resolution_fallback.embedder.input_size[0] -ne 224 -or
+    [int]$metadata.classifier_verification.independent_embedder.input_size[0] -ne 160 -or
+    [bool]$metadata.classifier_verification.verify_all_approved_candidates
 ) {
-    throw "The N100 candidate does not match the selected detector-primary Runtime."
+    throw "The N100 candidate does not match the selected consistent-evidence Runtime."
 }
 
 [System.IO.Directory]::CreateDirectory($resolvedOutputRoot) | Out-Null

@@ -17,7 +17,7 @@ param(
     [double]$MaximumMemoryIncreaseRatio = 1.35,
     [ValidateRange(1.0, 60000.0)]
     [double]$MaximumFullPathLatencyMs = 1000.0,
-    [string]$ExpectedVersion = "0.1.12",
+    [string]$ExpectedVersion = "0.1.14",
     [ValidateSet("object_presence", "exact_count")]
     [string]$ExpectedCountComparisonMode = "object_presence",
     [ValidateRange(0.0, 1.0)]

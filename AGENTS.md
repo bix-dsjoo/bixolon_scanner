@@ -47,9 +47,9 @@ Flutter canonical 코드는 `apps/product_scanner/lib`의 `core/design_system`, 
 ## 단일 제품 버전
 
 배포 가능한 앱·Worker·Runtime·Catalog 조합은 하나의 semantic version으로 식별합니다. 현재
-기준은 `configs/versions/0.1.12.json`이며 Python, Worker, Detector, Embedder, Detector policy,
-Classifier policy, Catalog와 사용자 표시 버전은 모두 `0.1.12`입니다. Flutter 내부 빌드만
-`0.1.12+15`를 사용합니다.
+기준은 `configs/versions/0.1.14.json`이며 Python, Worker, Detector, Embedder, Detector policy,
+Classifier policy, Catalog와 사용자 표시 버전은 모두 `0.1.14`입니다. Flutter 내부 빌드만
+`0.1.14+17`를 사용합니다.
 
 - development, demo, production 환경 버전을 만들지 않습니다.
 - 활성 설정과 CLI에 promotion, waiver, certification 또는 release-lock 수명주기를 추가하지
@@ -89,18 +89,22 @@ Runtime, Catalog, CUDA와 Flutter를 자체 포함 번들로 구성합니다.
 1. 입력 이미지를 검증하고 디코딩합니다.
 2. Detector가 모든 객체 위치와 프레임 전체 촬영 품질을 판단합니다.
 3. hard 품질 조건이 재촬영을 요구하면 classifier를 호출하지 않고 `IMAGE_RECAPTURE`를 반환합니다.
-4. `detector_primary_classifier_routing`이 활성화된 class-aware Runtime은 검증 class·최소 detector
-   score·프레임 내 class 유일성 조건을 모두 만족한 ROI를 Detector 결과로 직접 판정하고,
-   혼동·신규·저신뢰·동일 class 중복 ROI만 한 batch로 classifier에 전달합니다. 이 옵션이 없으면
-   정상 ROI와 `classifier_confidence` 경계 ROI 전체를 한 batch로 classifier에 전달합니다.
-5. Classifier 품질 클래스는 해당 segmentation을 `SEGMENT_RECAPTURE`로 만듭니다.
-6. 경계 접촉 ROI의 Top-1이 승인 임계값 미만이면 `DETECTOR_BORDER_CLIPPED`
+4. 활성 `0.1.14` Runtime은 class-agnostic Detector의 정상 ROI 전체를 DINOv3 ConvNeXt-Tiny 192
+   primary에 한 batch로 전달합니다. Detector class를 SKU 승인에 사용하지 않습니다.
+5. primary `UNKNOWN`, unsafe, dense scene 저신뢰, 긴 ROI 저신뢰의 전역 조건에 해당하는 ROI만
+   DINOv3 ConvNeXt-Tiny 224 detail path로 전달하고 Top-3 증거를 병합합니다. 매장별 또는 SKU별
+   routing 예외를 만들지 않습니다.
+6. 전역 ambiguity 조건에 해당하는 경계 승인 후보는 Frozen DINOv3 ViT-B/16 160 verifier로
+   검증합니다. 단일 verifier 품질 거부만으로 재촬영을 만들지 않으며, 구성된 합의 정책의 class
+   불일치는 승인을 차단합니다. 전수 verifier는 정답 승인율을 훼손하므로 활성화하지 않습니다.
+7. Classifier 품질 클래스는 해당 segmentation을 `SEGMENT_RECAPTURE`로 만듭니다.
+8. 경계 접촉 ROI의 Top-1이 승인 임계값 미만이면 `DETECTOR_BORDER_CLIPPED`
    `SEGMENT_RECAPTURE`로 반환합니다.
-7. 포함 중복 검토 정책이 활성화된 경우 거의 완전히 포함되고 같은 Top-1인 ROI 쌍에서 detector
+9. 포함 중복 검토 정책이 활성화된 경우 거의 완전히 포함되고 같은 Top-1인 ROI 쌍에서 detector
    점수가 낮은 고신뢰 ROI를 삭제하거나 재촬영하지 않고 `DETECTOR_CONTAINED_DUPLICATE`
    `UNKNOWN`+Top-3로 반환합니다.
-8. 나머지 객체가 승인 임계값 이상이면 `APPROVED`입니다.
-9. 임계값 미만은 `BELOW_APPROVAL_THRESHOLD` `UNKNOWN`과 점수 내림차순 Top-3입니다. 하나 이상의
+10. 나머지 객체가 승인 임계값 이상이면 `APPROVED`입니다.
+11. 임계값 미만은 `BELOW_APPROVAL_THRESHOLD` `UNKNOWN`과 점수 내림차순 Top-3입니다. 하나 이상의
    segmentation이 있으면 최상위 상태는 `SEGMENTATION`입니다.
 
 순서, 우선순위 또는 조기 종료를 바꾸면 README·API 계약·관련 테스트를 함께 갱신하십시오. 조용한
@@ -139,7 +143,7 @@ fallback이나 임의의 기본 승인 결과를 추가하지 마십시오.
 - p50, p95, p99와 표본 수를 함께 기록하고 detector 조기 종료와 full-path를 구분합니다.
 
 과거 KPI, 평가 결과, 예외와 제한은 `docs/archive/version-history.md` 및 그 링크 문서에 남아
-있습니다. 현재 `0.1.12`를 독립 일반화 성능, 인증 또는 SLA 달성으로 표현하지 마십시오.
+있습니다. 현재 `0.1.14`를 독립 일반화 성능, 인증 또는 SLA 달성으로 표현하지 마십시오.
 
 ## 테스트 요구사항
 

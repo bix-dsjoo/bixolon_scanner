@@ -40,4 +40,4 @@ binary payload를 바꾸지 않은 채 실행 구성요소 version만 `0.1.12`�
 license 파일을 포함합니다.
 
 API와 null 규칙은 [Worker 연동 명세](../contracts/worker-integration-0.1.12.md), 평가 범위와 한계는
-[Detector-first 선택 DINO 실험](../experiments/detector-primary-selective-dino-0.1.11.md)을 따릅니다.
+[Detector-first 선택 DINO 실험](../../experiments/detector-primary-selective-dino-0.1.11.md)을 따릅니다.
