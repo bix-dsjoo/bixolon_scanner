@@ -248,10 +248,6 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
 
     if not torch.cuda.is_available():
         raise RuntimeError("SSDLite experiment requires CUDA")
-    if args.fixed_epochs_no_selection and args.initial_checkpoint is not None:
-        raise ValueError("fixed-epoch source-only training forbids --initial-checkpoint")
-    if args.fixed_epochs_no_selection and args.operational_repeat:
-        raise ValueError("fixed-epoch source-only training forbids operational training records")
     operational_args = (
         args.operational_manifest,
         args.operational_root,
@@ -261,6 +257,14 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
         raise ValueError(
             "operational manifest, root, and cache are required unless "
             "--fixed-epochs-no-selection is enabled"
+        )
+    if (
+        args.fixed_epochs_no_selection
+        and args.operational_repeat
+        and any(value is None for value in operational_args)
+    ):
+        raise ValueError(
+            "fixed-epoch operational training requires operational manifest, root, and cache"
         )
     _seed_everything(args.seed)
     if (
@@ -278,6 +282,7 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
         args.real_cache,
         training=True,
         class_aware=args.class_aware,
+        quarter_turn_augmentation=args.quarter_turn_augmentation,
     )
     synthetic_train = CachedObjectnessDataset(
         args.synthetic_manifest,
@@ -285,6 +290,7 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
         args.synthetic_cache,
         training=True,
         class_aware=args.class_aware,
+        quarter_turn_augmentation=args.quarter_turn_augmentation,
     )
     real_evaluation = None
     operational_evaluation = None
@@ -305,6 +311,16 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
             args.operational_cache,
             training=True,
             class_aware=args.class_aware,
+            quarter_turn_augmentation=args.quarter_turn_augmentation,
+        )
+    elif args.operational_repeat:
+        operational_train = CachedObjectnessDataset(
+            args.operational_manifest,
+            args.operational_root,
+            args.operational_cache,
+            training=True,
+            class_aware=args.class_aware,
+            quarter_turn_augmentation=args.quarter_turn_augmentation,
         )
     negative_sources = [real_train]
     negative_records = list(real_train.records)
@@ -332,6 +348,8 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
     )
     model = build_ssdlite_objectness(
         foreground_class_count=20 if args.class_aware else 1,
+        pretrained_backbone=args.pretrained_backbone,
+        pretrained_detector_transfer=args.pretrained_detector_transfer,
         device="cuda",
     )
     transferred_parameter_count = None
@@ -452,12 +470,31 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
         args.output_dir / "detector.onnx",
         detector_class_count=20 if args.class_aware else 1,
     )
+    if args.initial_checkpoint is not None:
+        initialization = "continued_checkpoint"
+    elif args.pretrained_detector_transfer:
+        initialization = "torchvision_coco_detector_transfer"
+    elif args.pretrained_backbone:
+        initialization = "torchvision_imagenet_backbone"
+    else:
+        initialization = "random"
+    pretrained_weights_used = initialization != "random"
     report = {
-        "experiment": "ssdlite320_mobilenet_v3_objectness_from_random_initialization",
+        "experiment": f"ssdlite320_mobilenet_v3_objectness_{initialization}",
         "license_boundary": {
             "architecture_implementation": "torchvision BSD-3-Clause",
-            "pretrained_weights_used": False,
-            "training_data": "project-owned real and generated synthetic data",
+            "pretrained_weights_used": pretrained_weights_used,
+            "initialization": initialization,
+            "foundation_weight_source": (
+                "torchvision SSDLite320 MobileNetV3 COCO default weights"
+                if args.pretrained_detector_transfer
+                else (
+                    "torchvision MobileNetV3-Large ImageNet-1K V2 weights"
+                    if args.pretrained_backbone
+                    else None
+                )
+            ),
+            "bread_specific_training_data": "project-owned real and generated synthetic data",
         },
         "settings": {
             "seed": args.seed,
@@ -469,6 +506,9 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
             "hard_negative_repeat": args.hard_negative_repeat,
             "minimum_empty_negatives": args.minimum_empty_negatives,
             "class_aware": args.class_aware,
+            "pretrained_backbone": args.pretrained_backbone,
+            "pretrained_detector_transfer": args.pretrained_detector_transfer,
+            "quarter_turn_augmentation": args.quarter_turn_augmentation,
             "minimum_epochs": args.minimum_epochs,
             "transferred_parameter_count": transferred_parameter_count,
             "learning_rate": args.learning_rate,
@@ -514,9 +554,7 @@ def _train(args: argparse.Namespace) -> dict[str, Any]:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(
-        description="Train a YOLO-free SSDLite objectness detector from random initialization"
-    )
+    parser = argparse.ArgumentParser(description="Train a YOLO-free SSDLite objectness detector")
     parser.add_argument("--real-manifest", type=Path, required=True)
     parser.add_argument("--real-root", type=Path, required=True)
     parser.add_argument("--real-cache", type=Path, required=True)
@@ -532,7 +570,7 @@ def main() -> None:
         "--fixed-epochs-no-selection",
         action="store_true",
         help=(
-            "train exactly --epochs from random initialization without development "
+            "train exactly --epochs without development "
             "evaluation, early stopping, or checkpoint selection"
         ),
     )
@@ -545,6 +583,9 @@ def main() -> None:
     parser.add_argument("--hard-negative-repeat", type=int, default=0)
     parser.add_argument("--minimum-empty-negatives", type=int, default=0)
     parser.add_argument("--class-aware", action="store_true")
+    parser.add_argument("--pretrained-backbone", action="store_true")
+    parser.add_argument("--pretrained-detector-transfer", action="store_true")
+    parser.add_argument("--quarter-turn-augmentation", action="store_true")
     parser.add_argument("--minimum-epochs", type=int, default=1)
     parser.add_argument("--learning-rate", type=float, default=0.001)
     parser.add_argument("--weight-decay", type=float, default=0.0001)

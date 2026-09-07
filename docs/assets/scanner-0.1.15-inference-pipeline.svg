@@ -1,0 +1,109 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1800" height="720" viewBox="0 0 1800 720" role="img" aria-labelledby="title desc">
+  <title id="title">BIXOLON Bakery AI Scanner 0.1.15 안전 승인 파이프라인</title>
+  <desc id="desc">이미지를 1-class SSDLite로 검출하고, 모든 ROI를 ConvNeXt-Tiny 192로 분류한다. 전역 위험 조건에 해당하는 ROI만 224로 상세 재검사하며, 경계 승인 후보는 Frozen ViT-B/16 160으로 독립 검증한다. 단일 Safety Arbiter가 승인, 미확인 Top-3, 재촬영을 결정한다.</desc>
+  <defs>
+    <style>
+      .bg { fill: #f8fafc; }
+      .stage { fill: #ffffff; stroke: #64748b; stroke-width: 2; }
+      .model { fill: #eff6ff; stroke: #2563eb; stroke-width: 2.5; }
+      .guard { fill: #fff7ed; stroke: #c2410c; stroke-width: 2.5; }
+      .result { fill: #ffffff; stroke: #334155; stroke-width: 2; }
+      .title { font: 700 30px "Segoe UI", "Noto Sans KR", sans-serif; fill: #0f172a; }
+      .subtitle { font: 400 16px "Segoe UI", "Noto Sans KR", sans-serif; fill: #475569; }
+      .step { font: 700 14px "Segoe UI", "Noto Sans KR", sans-serif; letter-spacing: .08em; fill: #2563eb; }
+      .label { font: 700 20px "Segoe UI", "Noto Sans KR", sans-serif; fill: #0f172a; }
+      .result-small { font: 700 17px "Segoe UI", "Noto Sans KR", sans-serif; fill: #0f172a; }
+      .body { font: 400 15px "Segoe UI", "Noto Sans KR", sans-serif; fill: #475569; }
+      .small { font: 600 13px "Segoe UI", "Noto Sans KR", sans-serif; fill: #475569; }
+      .arrow { fill: none; stroke: #334155; stroke-width: 3; marker-end: url(#arrow); }
+      .guard-arrow { fill: none; stroke: #c2410c; stroke-width: 3; marker-end: url(#arrow-guard); }
+      .lane { fill: none; stroke: #94a3b8; stroke-width: 1.5; stroke-dasharray: 6 7; }
+    </style>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#334155"/>
+    </marker>
+    <marker id="arrow-guard" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#c2410c"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" width="1800" height="720" rx="20"/>
+  <text class="title" x="70" y="65">0.1.15 안전 승인 파이프라인</text>
+  <text class="subtitle" x="70" y="96">모든 매장·상품에 동일한 모델 순서와 전역 정책 적용 · 매장별/SKU별 예외 없음</text>
+
+  <rect class="stage" x="70" y="190" width="180" height="132" rx="14"/>
+  <text class="step" x="94" y="220">INPUT</text>
+  <text class="label" x="94" y="255">이미지</text>
+  <text class="body" x="94" y="282">JPEG / PNG</text>
+  <text class="body" x="94" y="304">검증 · RGB decode</text>
+
+  <rect class="model" x="320" y="178" width="230" height="156" rx="14"/>
+  <text class="step" x="346" y="210">01 · DETECT</text>
+  <text class="label" x="346" y="246">1-class SSDLite</text>
+  <text class="body" x="346" y="275">모든 객체 ROI</text>
+  <text class="body" x="346" y="300">프레임 촬영 품질</text>
+  <text class="small" x="346" y="323">SKU 분류에는 사용하지 않음</text>
+
+  <rect class="model" x="620" y="178" width="250" height="156" rx="14"/>
+  <text class="step" x="646" y="210">02 · CLASSIFY ALL</text>
+  <text class="label" x="646" y="246">ConvNeXt-Tiny 192</text>
+  <text class="body" x="646" y="275">정상 ROI 전체를 1 batch</text>
+  <text class="body" x="646" y="300">주 분류 · Top-3 증거</text>
+  <text class="small" x="646" y="323">항상 같은 입력·Catalog</text>
+
+  <path class="guard" d="M 1006 178 L 1126 256 L 1006 334 L 886 256 Z"/>
+  <text class="step" x="950" y="229">GLOBAL RULE</text>
+  <text class="label" x="940" y="260">추가 증거?</text>
+  <text class="small" x="929" y="286">UNKNOWN · unsafe</text>
+  <text class="small" x="934" y="306">dense · elongated</text>
+
+  <rect class="model" x="930" y="432" width="250" height="148" rx="14"/>
+  <text class="step" x="956" y="464">03 · DETAIL SELECTED</text>
+  <text class="label" x="956" y="500">ConvNeXt-Tiny 224</text>
+  <text class="body" x="956" y="529">선택 ROI만 재분류</text>
+  <text class="small" x="956" y="553">전역 기준 · Top-3 융합</text>
+
+  <rect class="model" x="1190" y="178" width="260" height="156" rx="14"/>
+  <text class="step" x="1216" y="210">04 · VERIFY RISK</text>
+  <text class="label" x="1216" y="246">Frozen ViT-B/16 160</text>
+  <text class="body" x="1216" y="275">경계 승인만 독립 검증</text>
+  <text class="body" x="1216" y="300">불일치·OOD는 승인 차단</text>
+  <text class="small" x="1216" y="323">학습되지 않은 frozen backbone</text>
+
+  <rect class="guard" x="1510" y="178" width="220" height="156" rx="14"/>
+  <text class="step" x="1536" y="210">05 · ONE ARBITER</text>
+  <text class="label" x="1536" y="246">Safety Arbiter</text>
+  <text class="body" x="1536" y="275">모든 증거를 한곳에서</text>
+  <text class="body" x="1536" y="300">최종 상태로 변환</text>
+
+  <path class="arrow" d="M 250 256 H 320"/>
+  <path class="arrow" d="M 550 256 H 620"/>
+  <path class="arrow" d="M 870 256 H 886"/>
+  <path class="arrow" d="M 1126 256 H 1190"/>
+  <text class="small" x="1138" y="241">경계 승인</text>
+  <path class="arrow" d="M 1006 178 V 144 H 1620 V 178"/>
+  <text class="small" x="1120" y="133">안정 증거 · 추가 모델 미실행</text>
+  <path class="arrow" d="M 1006 334 V 432"/>
+  <text class="small" x="1024" y="390">224 필요 · 선택 ROI</text>
+  <path class="arrow" d="M 1180 506 H 1320 V 334"/>
+  <text class="small" x="1198" y="493">승인 후보</text>
+  <path class="arrow" d="M 1450 256 H 1510"/>
+  <path class="arrow" d="M 1180 548 H 1465 V 314 H 1510"/>
+  <text class="small" x="1230" y="569">미승인 증거는 직접 Arbiter로</text>
+
+  <path class="guard-arrow" d="M 435 334 V 646 H 1510"/>
+  <text class="small" x="457" y="371">hard 품질 실패</text>
+  <rect class="guard" x="1510" y="612" width="220" height="68" rx="14"/>
+  <text class="label" x="1544" y="654">IMAGE_RECAPTURE</text>
+
+  <line class="lane" x1="70" y1="602" x2="1450" y2="602"/>
+  <text class="small" x="70" y="591">Detector hard gate: classifier 호출 전 조기 종료</text>
+
+  <rect class="result" x="1510" y="390" width="220" height="60" rx="12"/>
+  <text class="label" x="1560" y="428">APPROVED</text>
+  <rect class="result" x="1510" y="468" width="220" height="60" rx="12"/>
+  <text class="label" x="1535" y="506">UNKNOWN + Top-3</text>
+  <rect class="result" x="1510" y="546" width="220" height="60" rx="12"/>
+  <text class="result-small" x="1530" y="583">SEGMENT_RECAPTURE</text>
+  <path class="arrow" d="M 1620 334 V 390"/>
+</svg>

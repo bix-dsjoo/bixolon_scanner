@@ -1,0 +1,22 @@
+{
+  "schema_version": "1.0",
+  "source_image_set_sha256": "9149ff156aa58b03a7d2d28c9059124f62633b03577d9c69673b572cffecba2f",
+  "overrides": [
+    {"image_id": 42, "original_image_sha256": "d7c8db287ebdf7dc5f7b590922f355e89aab19499d6473b2a9d982dab97399ad", "point_xy": [1140, 150], "box_xyxy": [1000, 50, 1270, 260]},
+    {"image_id": 52, "original_image_sha256": "a0f946760067b508b2323c1a83c68b672cd5cc5bc4e8b8050f77b8d6c8555a8e", "point_xy": [1200, 150], "box_xyxy": [1080, 20, 1280, 285]},
+    {"image_id": 58, "original_image_sha256": "a47ccd8770791f5c0fe8cacab858a518c687c902a732de975777cdddf83e02a2", "point_xy": [1080, 140], "box_xyxy": [900, 30, 1250, 240]},
+    {"image_id": 88, "original_image_sha256": "c2ff6a235b7817088a334c2c75b43891a227871faee6743d7d2936cf3a8dd8fe", "point_xy": [230, 120], "box_xyxy": [130, 20, 330, 230]},
+    {"image_id": 89, "original_image_sha256": "594425c8527994118525509fb9559e4c67fe06413f24ed7c2814f3a726953d70", "point_xy": [135, 830], "box_xyxy": [10, 700, 260, 960]},
+    {"image_id": 103, "original_image_sha256": "22414907ae905410ce20d515e8281b3ce08960485e148e64934bf863a714f423", "point_xy": [1140, 150], "box_xyxy": [1020, 40, 1260, 260]},
+    {"image_id": 105, "original_image_sha256": "1957f1ad8070fb1b3a5c58c5aa813eebc192d00b3b4a1a3ae37a26324da27191", "point_xy": [1100, 800], "box_xyxy": [940, 640, 1250, 950]},
+    {"image_id": 112, "original_image_sha256": "36bf34e11d1a807192af728b9f84e1c4a3e2837b3d2d01bd5597f3657c7c6dc0", "point_xy": [1150, 115], "box_xyxy": [1030, 20, 1260, 210]},
+    {"image_id": 113, "original_image_sha256": "82abf86640393bb7daec2cd74e0f06ba89765b86f63d7ced7c1cd04e10dc83b7", "point_xy": [200, 140], "box_xyxy": [100, 50, 305, 230]},
+    {"image_id": 122, "original_image_sha256": "c5d70e648d1e4c1f90ec919a05d1d232c63ef849068bc7e5d135ccf68e0a0aba", "point_xy": [1150, 150], "box_xyxy": [1030, 40, 1270, 250]},
+    {"image_id": 130, "original_image_sha256": "12d44656722023f6ef3bacbabcc10e94182ac338a5cc3db198eb2e9bc3a8d8d5", "point_xy": [1100, 820], "box_xyxy": [940, 675, 1250, 960]},
+    {"image_id": 132, "original_image_sha256": "8dc27616fadd987959ec5a1d9fd6211213b2e8d48a42439883fe01088cef5967", "point_xy": [250, 175], "box_xyxy": [120, 60, 380, 300]},
+    {"image_id": 140, "original_image_sha256": "21d0634f1a1379dd00af7c1bec72f52c15fcdb4fbaab9200d916ec98e779ea52", "point_xy": [1100, 155], "box_xyxy": [980, 30, 1250, 285]},
+    {"image_id": 172, "original_image_sha256": "7bd160d5f72df2b73e23e7750f31cdf70fc5f032b945e0d93153c70ca275a213", "point_xy": [1160, 150], "box_xyxy": [1040, 20, 1270, 290]},
+    {"image_id": 188, "original_image_sha256": "dccd2e761bcd50752aa27c67ca1450c356858e4204ad1ca3d5fa9d72309c742a", "point_xy": [1135, 230], "box_xyxy": [980, 50, 1270, 440]},
+    {"image_id": 193, "original_image_sha256": "e47d03230559cb41b1c6a06fcefdd83115ba425190a2f4060ec01e7739b5541b", "point_xy": [1060, 210], "box_xyxy": [850, 80, 1240, 360]}
+  ]
+}

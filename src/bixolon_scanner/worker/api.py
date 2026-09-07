@@ -55,6 +55,22 @@ def create_app(
     worker_settings = settings or WorkerSettings()
     injected_pipeline = pipeline
 
+    def decode_and_scan(data: bytes, request_id: str, deadline: float):
+        decode_started = time.perf_counter()
+        decoded = decode_image(
+            data,
+            max_bytes=worker_settings.max_upload_bytes,
+            max_pixels=worker_settings.max_image_pixels,
+            jpeg_draft_size=app.state.jpeg_draft_size,
+        )
+        try:
+            decode_ms = (time.perf_counter() - decode_started) * 1000.0
+            if time.perf_counter() >= deadline:
+                raise ModelExecutionError
+            return app.state.pipeline.scan(decoded, request_id), decode_ms
+        finally:
+            decoded.close()
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         inference_executor = ThreadPoolExecutor(
@@ -84,6 +100,14 @@ def create_app(
     app = FastAPI(title="Bixolon Image Decision Worker", version=__version__, lifespan=lifespan)
     app.state.ready = False
     app.state.semaphore = asyncio.Semaphore(1)
+    app.state.inference_deadline = None
+
+    def inference_finished(future):
+        app.state.inference_deadline = None
+        app.state.semaphore.release()
+        # Retrieve failures even when the HTTP request has already timed out.
+        if not future.cancelled():
+            future.exception()
 
     @app.middleware("http")
     async def request_context(request: Request, call_next):
@@ -122,7 +146,7 @@ def create_app(
     @app.exception_handler(Exception)
     async def unhandled_error_handler(request: Request, exc: Exception):
         elapsed = (time.perf_counter() - request.state.started) * 1000.0
-        LOGGER.exception(
+        LOGGER.error(
             "request_failed",
             extra={"request_id": _request_id(request), "exception_type": type(exc).__name__},
         )
@@ -140,7 +164,11 @@ def create_app(
 
     @app.get("/health/ready")
     async def ready():
-        if not app.state.ready:
+        overdue = (
+            app.state.inference_deadline is not None
+            and time.perf_counter() >= app.state.inference_deadline
+        )
+        if not app.state.ready or overdue:
             return JSONResponse(status_code=503, content={"status": "not_ready"})
         versions = app.state.pipeline.versions
         payload = {
@@ -163,31 +191,30 @@ def create_app(
 
     @app.post("/v1/scan", response_model=ScanResponse)
     async def scan(request: Request, image: UploadFile = File(...)):
-        data = await image.read(worker_settings.max_upload_bytes + 1)
-        decode_started = time.perf_counter()
-        decoded = decode_image(
-            data,
-            max_bytes=worker_settings.max_upload_bytes,
-            max_pixels=worker_settings.max_image_pixels,
-            jpeg_draft_size=app.state.jpeg_draft_size,
-        )
-        decode_ms = (time.perf_counter() - decode_started) * 1000.0
+        deadline = request.state.started + worker_settings.request_timeout_seconds
+        queue_started = time.perf_counter()
         try:
-            async with asyncio.timeout(worker_settings.request_timeout_seconds):
+            remaining = max(0.0, deadline - time.perf_counter())
+            async with asyncio.timeout(remaining):
                 await app.state.semaphore.acquire()
+                queue_wait_ms = (time.perf_counter() - queue_started) * 1000.0
                 try:
+                    data = await image.read(worker_settings.max_upload_bytes + 1)
                     loop = asyncio.get_running_loop()
+                    app.state.inference_deadline = deadline
                     inference = loop.run_in_executor(
                         app.state.inference_executor,
-                        app.state.pipeline.scan,
-                        decoded,
+                        decode_and_scan,
+                        data,
                         _request_id(request),
+                        deadline,
                     )
                 except BaseException:
+                    app.state.inference_deadline = None
                     app.state.semaphore.release()
                     raise
-                inference.add_done_callback(lambda _: app.state.semaphore.release())
-                response = await asyncio.shield(inference)
+                inference.add_done_callback(inference_finished)
+                response, decode_ms = await asyncio.shield(inference)
                 total_ms = (time.perf_counter() - request.state.started) * 1000.0
                 completed = response.model_copy(update={"processing_time_ms": total_ms})
                 segment_status_counts = {
@@ -205,6 +232,7 @@ def create_app(
                         "unknown_count": segment_status_counts["UNKNOWN"],
                         "segment_recapture_count": segment_status_counts["SEGMENT_RECAPTURE"],
                         "decode_ms": round(decode_ms, 3),
+                        "queue_wait_ms": round(queue_wait_ms, 3),
                         "processing_time_ms": round(total_ms, 3),
                         "worker_version": completed.worker_version,
                         "detector_version": completed.detector_version,

@@ -1,25 +1,17 @@
 $ErrorActionPreference = "Stop"
 
 $productExecutable = Join-Path $PSScriptRoot "product_scanner.exe"
-$gpuPlugin = Join-Path $PSScriptRoot "worker/_internal/openvino_intel_gpu_plugin.dll"
 $metadataPath = Join-Path $PSScriptRoot "worker/model-package/metadata.json"
-foreach ($requiredPath in @($productExecutable, $gpuPlugin, $metadataPath)) {
+foreach ($requiredPath in @($productExecutable, $metadataPath)) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
-        throw "BIXOLON Bakery AI Scanner hybrid runtime file is missing: $requiredPath"
+        throw "BIXOLON Bakery AI Scanner runtime file is missing: $requiredPath"
     }
 }
-$metadata = Get-Content -Raw -LiteralPath $metadataPath | ConvertFrom-Json
-$cacheRoot = Join-Path (
-    [Environment]::GetFolderPath("LocalApplicationData")
-) "BIXOLON Bakery AI Scanner/openvino-cache/$($metadata.worker_version)"
-
-$env:BIXOLON_PROVIDER = "openvino"
-$env:BIXOLON_EMBEDDER_PROVIDER = "openvino_gpu"
-$env:BIXOLON_EMBEDDER_FALLBACK_PROVIDER = "same"
+$env:BIXOLON_PROVIDER = "cpu"
+$env:BIXOLON_EMBEDDER_PROVIDER = "same"
+$env:BIXOLON_EMBEDDER_FALLBACK_PROVIDER = "none"
 $env:BIXOLON_REQUEST_TIMEOUT_SECONDS = "60"
 $env:BIXOLON_CPU_DETECTOR_WORKERS = "1"
 $env:BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS = "4"
-$env:BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS = "0"
-$env:BIXOLON_OPENVINO_CACHE_DIR = $cacheRoot
-
+$env:BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS = "4"
 Start-Process -FilePath $productExecutable -WorkingDirectory $PSScriptRoot

@@ -41,15 +41,26 @@ Flutter canonical 코드는 `apps/product_scanner/lib`의 `core/design_system`, 
 `features/scanner`, `features/activity`에 둡니다. feature가 다른 feature의 화면 구현을 직접 참조하지
 않고 공용 계약은 `shared`, 재사용 UI는 `core/design_system`이 소유합니다. 과거 Python·Flutter
 경로의 re-export는 호환 계층이며 새 구현을 추가하지 마십시오.
+별도 제품 Scanner Lite의 canonical 경로는 `apps/bakery_scanner_lite/lib`입니다. 기존 앱의
+화면·기능을 가져오지 않고 디자인 자산만 공유합니다. Lite에는 카메라/파일 입력, 읽기 전용
+판정, 메타데이터 자동 로그·내보내기를 구현합니다. 사용자 요청으로 읽기 전용 검출 박스와
+상단 20% 제거·중앙 정사각형 crop·2048×2048 변환·좌우 반전 촬영과 같은 미리보기를 허용합니다.
+추가 사용자 요청에 따라 Top-3 이름은 읽기 전용으로 표시하고 박스와 함께 로그에 저장합니다.
+실행 로그의 이미지 복원을 위해 입력 이미지를 별도 파일로 30일 보관하며 시작·로그 접근 시
+만료 이미지를 정리합니다. 메타데이터는 유지하고 ZIP 내보내기는 보관 중인 이미지를 포함합니다.
+이 명시적 Lite 이미지 보관은 아래 기본 로그의 이미지 제외 규칙에 대한 예외입니다.
+confidence·후보 선택·피드백·학습·모델 관리 API 또는 설정을 추가하지 마십시오.
+재촬영 상태는 빨간색으로 표시하며 Worker 0.1.16은 변경 없이 포함합니다.
+
 `experiments/archive`는 소스에서 재현 테스트를 위해 보존하지만 runtime wheel에는 포함하지 않습니다.
 활성 설정을 읽는 코드는 직접 `json.loads(path.read_text(...))`하지 않고 `load_json_config`를 사용합니다.
 
 ## 단일 제품 버전
 
 배포 가능한 앱·Worker·Runtime·Catalog 조합은 하나의 semantic version으로 식별합니다. 현재
-기준은 `configs/versions/0.1.14.json`이며 Python, Worker, Detector, Embedder, Detector policy,
-Classifier policy, Catalog와 사용자 표시 버전은 모두 `0.1.14`입니다. Flutter 내부 빌드만
-`0.1.14+17`를 사용합니다.
+기준은 `configs/versions/0.1.16.json`이며 Python, Worker, Detector, Embedder, Detector policy,
+Classifier policy, Catalog와 사용자 표시 버전은 모두 `0.1.16`입니다. Flutter 내부 빌드만
+`0.1.16+19`를 사용합니다.
 
 - development, demo, production 환경 버전을 만들지 않습니다.
 - 활성 설정과 CLI에 promotion, waiver, certification 또는 release-lock 수명주기를 추가하지
@@ -89,7 +100,7 @@ Runtime, Catalog, CUDA와 Flutter를 자체 포함 번들로 구성합니다.
 1. 입력 이미지를 검증하고 디코딩합니다.
 2. Detector가 모든 객체 위치와 프레임 전체 촬영 품질을 판단합니다.
 3. hard 품질 조건이 재촬영을 요구하면 classifier를 호출하지 않고 `IMAGE_RECAPTURE`를 반환합니다.
-4. 활성 `0.1.14` Runtime은 class-agnostic Detector의 정상 ROI 전체를 DINOv3 ConvNeXt-Tiny 192
+4. 활성 `0.1.16` Runtime은 class-agnostic Detector의 정상 ROI 전체를 DINOv3 ConvNeXt-Tiny 192
    primary에 한 batch로 전달합니다. Detector class를 SKU 승인에 사용하지 않습니다.
 5. primary `UNKNOWN`, unsafe, dense scene 저신뢰, 긴 ROI 저신뢰의 전역 조건에 해당하는 ROI만
    DINOv3 ConvNeXt-Tiny 224 detail path로 전달하고 Top-3 증거를 병합합니다. 매장별 또는 SKU별
@@ -143,7 +154,7 @@ fallback이나 임의의 기본 승인 결과를 추가하지 마십시오.
 - p50, p95, p99와 표본 수를 함께 기록하고 detector 조기 종료와 full-path를 구분합니다.
 
 과거 KPI, 평가 결과, 예외와 제한은 `docs/archive/version-history.md` 및 그 링크 문서에 남아
-있습니다. 현재 `0.1.14`를 독립 일반화 성능, 인증 또는 SLA 달성으로 표현하지 마십시오.
+있습니다. 현재 `0.1.16`를 독립 일반화 성능, 인증 또는 SLA 달성으로 표현하지 마십시오.
 
 ## 테스트 요구사항
 

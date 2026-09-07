@@ -1,0 +1,73 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.15",
+  "app_build": 18,
+  "source_date_epoch": 1788480000,
+  "source_candidate": "ssdlite320-v11-conservative-cosine-v1",
+  "runtime": {
+    "path": "artifacts/retraining/next/runtime-selected-cuda-final-0.1.15",
+    "manifest_sha256": "ed3bd8a5abf9b2971e9d02af055856ec7e9d534d7f138154a94416b45f463b5c"
+  },
+  "catalog": {
+    "path": "artifacts/retraining/next/catalog-0.1.15",
+    "manifest_sha256": "487339750ea518e75a75a53db0515dbe69c7d5db7991f42041a17f5147104143",
+    "store_id": "bread-dev"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/runtime/cuda-13.0-cudnn-9.13.1-win-x64",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/retraining/next/checkpoints/detector-all-scenes-v11/report.json",
+      "sha256": "9bbbc7a655e4f35547f2324f40c1f776871b22f76710e904f109cbf9fa76c7b7"
+    },
+    {
+      "path": "artifacts/retraining/next/checkpoints/classifier-all-scenes-v4b/report.json",
+      "sha256": "c65b2a6c8055c1b2fdd4e4588f085930a2e4ac6980c59a5e51430e443692d523"
+    },
+    {
+      "path": "artifacts/retraining/next/evaluations/runtime-selected-final-bix20-cpu-v2.json",
+      "sha256": "fc9e639a154a913458fb8e61e6fc931193703deb9a1e16e9f6e5cd0c2205e847"
+    },
+    {
+      "path": "artifacts/retraining/next/evaluations/runtime-selected-final-op27-cpu.json",
+      "sha256": "0677d0968b20406083cd2a1d5e66c4390ff3c0fcb1db18e105509c9afadf2428"
+    },
+    {
+      "path": "artifacts/retraining/next/evaluations/runtime-selected-final-op28-cpu.json",
+      "sha256": "091d9185e02b2f8d7fa178c03be59bcb78cdbe79559edc391ec488c6e3ed9b09"
+    },
+    {
+      "path": "artifacts/retraining/next/evaluations/runtime-selected-final-fixed300-cpu.json",
+      "sha256": "f6b20ad966887e263c9af0f95abcc125761fa31648a0087f9ec7fdfdcf18b40d"
+    },
+    {
+      "path": "artifacts/retraining/next/evaluations/runtime-selected-final-bix20-cuda.json",
+      "sha256": "50d061133adc08f4f21175bf764500656e3718083041f76ddcd16fa70ec1e574"
+    },
+    {
+      "path": "artifacts/retraining/next/evaluations/runtime-selected-final-bix20-cpu-cuda-parity.json",
+      "sha256": "bd3602c83b62a4b08158bb8b3d0d2673fcbdd3a91b0b52d9e9987c3f0bfbfe37"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}

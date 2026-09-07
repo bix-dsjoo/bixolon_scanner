@@ -220,6 +220,14 @@ class OnnxDetector:
     ) -> tuple[DetectionResult, list[Detection], int, int]:
         logits = np.asarray(logits)
         boxes = np.asarray(boxes)
+        if (
+            logits.ndim not in {1, 2}
+            or (logits.ndim == 2 and logits.shape[1] == 0)
+            or boxes.shape != (len(logits), 4)
+            or not np.isfinite(logits).all()
+            or not np.isfinite(boxes).all()
+        ):
+            raise ModelExecutionError
         if logits.ndim == 1:
             scores = _sigmoid(logits)
         else:

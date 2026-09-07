@@ -1,0 +1,90 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="1740" viewBox="0 0 1200 1740" role="img" aria-labelledby="title desc">
+  <title id="title">BIXOLON 상품 인식 운영 아키텍처</title>
+  <desc id="desc">상품관리 웹, 중앙 서버, 학습용 GPU PC, KIOSK/POS 로컬 Worker의 학습, 배포, 추론 흐름과 초기 및 증분 학습의 차이를 설명한다.</desc>
+  <defs>
+    <linearGradient id="background" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#07111f"/><stop offset="1" stop-color="#101a2e"/>
+    </linearGradient>
+    <linearGradient id="server" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#192641"/><stop offset="1" stop-color="#111b30"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="8" stdDeviation="10" flood-color="#000" flood-opacity=".28"/>
+    </filter>
+    <marker id="cyanArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#5eead4"/></marker>
+    <marker id="orangeArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#fbbf24"/></marker>
+    <marker id="purpleArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#c4b5fd"/></marker>
+    <marker id="greenArrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto"><path d="M0 0L10 5 0 10Z" fill="#6ee7b7"/></marker>
+    <style>
+      text{font-family:Pretendard,"Noto Sans KR","Segoe UI",sans-serif;fill:#eef4ff}.title{font-size:32px;font-weight:700}.subtitle{font-size:16px;fill:#aebdd3}.kicker{font-size:13px;font-weight:700;letter-spacing:1.8px}.section{font-size:22px;font-weight:700}.node{font-size:18px;font-weight:700}.body{font-size:14px;fill:#d7e1ef}.small{font-size:12px;fill:#aebdd3}.tiny{font-size:11px;fill:#91a2ba}.mono{font-family:"Cascadia Mono",Consolas,monospace;font-size:12px}.panel{fill:#111a2c;stroke:#31415d;stroke-width:1.5}.server{fill:url(#server);stroke:#46617f;stroke-width:1.5}.inner{fill:#0d1729;stroke:#30425f;stroke-width:1.2}.chip{fill:#1b2940;stroke:#3b506e}.divider{stroke:#2a3b55}.cyan{fill:#5eead4}.orange{fill:#fbbf24}.purple{fill:#c4b5fd}.green{fill:#6ee7b7}.red{fill:#fda4af}.flow{fill:none;stroke:#5eead4;stroke-width:2.2;marker-end:url(#cyanArrow)}.train{fill:none;stroke:#fbbf24;stroke-width:2.2;marker-end:url(#orangeArrow)}.deploy{fill:none;stroke:#c4b5fd;stroke-width:2.2;marker-end:url(#purpleArrow)}.infer{fill:none;stroke:#6ee7b7;stroke-width:2.5;marker-end:url(#greenArrow)}.optional{stroke-dasharray:8 6}
+    </style>
+  </defs>
+  <rect width="1200" height="1740" fill="url(#background)"/>
+  <circle cx="1100" cy="20" r="190" fill="#155e75" opacity=".12"/><circle cx="40" cy="1640" r="230" fill="#5b21b6" opacity=".1"/>
+  <text x="42" y="52" class="title">BIXOLON 상품 인식 운영 아키텍처</text>
+  <text x="42" y="80" class="subtitle">중앙에서 학습·배포하고, 매장에서는 마지막 정상 버전으로 로컬 추론한다</text>
+
+  <!-- Training control plane -->
+  <text x="42" y="126" class="kicker orange">01 · 학습 CONTROL PLANE</text>
+  <text x="42" y="155" class="section">상품 등록부터 검증된 Store Catalog 발행까지</text>
+  <rect x="42" y="184" width="250" height="270" rx="18" class="panel" filter="url(#shadow)"/>
+  <rect x="58" y="201" width="52" height="28" rx="8" class="chip"/><text x="84" y="220" text-anchor="middle" class="small orange">WEB</text>
+  <text x="58" y="260" class="node">상품관리 웹서비스</text><text x="58" y="284" class="small">매장 관리자 · HTTPS</text><line x1="58" y1="304" x2="276" y2="304" class="divider"/>
+  <text x="58" y="333" class="body">① 매장 로그인</text><text x="58" y="360" class="body">② 상품·class_id 관리</text><text x="58" y="387" class="body">③ 상품별 촬영 이미지 10장 등록</text><text x="58" y="414" class="body">④ 학습 요청·진행 상태 확인</text><text x="58" y="438" class="small">원본은 서버 Object Storage에 저장</text>
+
+  <rect x="342" y="174" width="500" height="300" rx="18" class="server" filter="url(#shadow)"/>
+  <rect x="360" y="191" width="74" height="28" rx="8" class="chip"/><text x="397" y="210" text-anchor="middle" class="small cyan">SERVER</text>
+  <text x="360" y="250" class="node">상품·이미지·배포 중앙 서버</text><text x="360" y="274" class="small">인증과 운영 상태의 source of truth</text>
+  <rect x="360" y="296" width="220" height="68" rx="12" class="inner"/><text x="376" y="320" class="body">Product API + DB</text><text x="376" y="343" class="small">store_id · class_id · 표시/판매 정보</text>
+  <rect x="600" y="296" width="224" height="68" rx="12" class="inner"/><text x="616" y="320" class="body">Image Object Storage</text><text x="616" y="343" class="small">원본 SHA-256 · 촬영 provenance</text>
+  <rect x="360" y="382" width="220" height="68" rx="12" class="inner"/><text x="376" y="406" class="body">Training Job Queue</text><text x="376" y="429" class="small">immutable dataset manifest</text>
+  <rect x="600" y="382" width="224" height="68" rx="12" class="inner"/><text x="616" y="406" class="body">Artifact / Release Registry</text><text x="616" y="429" class="small">bundle · evidence · hash · rollback</text>
+
+  <rect x="892" y="184" width="266" height="270" rx="18" class="panel" filter="url(#shadow)"/>
+  <rect x="908" y="201" width="88" height="28" rx="8" class="chip"/><text x="952" y="220" text-anchor="middle" class="small orange">GPU AGENT</text>
+  <text x="908" y="260" class="node">학습용 PC</text><text x="908" y="284" class="small">서버를 outbound polling</text><line x1="908" y1="304" x2="1142" y2="304" class="divider"/>
+  <text x="908" y="333" class="body">⑤ Job + manifest 가져오기</text><text x="908" y="360" class="body">⑥ 데이터 검증·학습·calibration</text><text x="908" y="387" class="body">⑦ 평가·ONNX/Catalog package</text><text x="908" y="414" class="body">⑧ artifact·evidence 업로드</text><text x="908" y="438" class="small">학습 PC에 inbound port를 열지 않음</text>
+  <path d="M292 320H332" class="flow"/><text x="312" y="307" text-anchor="middle" class="tiny cyan">HTTPS</text>
+  <path d="M842 318H882" class="train"/><text x="862" y="301" text-anchor="middle" class="tiny orange">PULL JOB</text>
+  <path d="M892 414H852" class="train"/><text x="872" y="441" text-anchor="middle" class="tiny orange">PUSH RESULT</text>
+
+  <!-- Deployment and inference -->
+  <text x="42" y="525" class="kicker purple">02 · 배포 + 매장 INFERENCE PLANE</text>
+  <text x="42" y="554" class="section">업데이트는 비동기, 스캔은 서버 없이 로컬에서</text>
+  <rect x="42" y="584" width="340" height="330" rx="18" class="server" filter="url(#shadow)"/>
+  <text x="62" y="620" class="node">Deployment API / Storage</text><text x="62" y="644" class="small">매장별 최신 승인 release 제공</text>
+  <rect x="62" y="670" width="300" height="84" rx="12" class="inner"/><text x="78" y="695" class="body">Release manifest</text><text x="78" y="718" class="mono purple">store_id · product_version · bundle_sha256</text><text x="78" y="740" class="small">Runtime + Store Catalog + UI 상품 snapshot</text>
+  <rect x="62" y="772" width="300" height="112" rx="12" class="inner"/><text x="78" y="797" class="body">Optional telemetry</text><text x="78" y="821" class="small">상태·reason code·버전·처리시간만</text><text x="78" y="845" class="small">이미지 bytes·로컬 경로는 기본 미전송</text><text x="78" y="869" class="small">추론 성공과 분리된 비동기 전송</text>
+
+  <rect x="466" y="574" width="692" height="350" rx="18" class="panel" filter="url(#shadow)"/>
+  <rect x="484" y="591" width="112" height="28" rx="8" class="chip"/><text x="540" y="610" text-anchor="middle" class="small green">KIOSK / POS</text>
+  <text x="484" y="649" class="node">매장 단말</text><text x="484" y="674" class="small">한 단말 안에서 프로세스 두 개를 sidecar로 운영</text>
+  <rect x="486" y="702" width="270" height="126" rx="12" class="inner"/><text x="504" y="729" class="body">Flutter KIOSK/POS 앱</text><text x="504" y="754" class="small">카메라 · UI · 상품 표시 · 수동 검수</text><text x="504" y="778" class="small">Worker lifecycle + update manager</text><text x="504" y="802" class="mono green">class_id를 공통 키로 사용</text>
+  <rect x="852" y="702" width="286" height="126" rx="12" class="inner"/><text x="870" y="729" class="body">Local Python Worker</text><text x="870" y="754" class="small">ONNX Runtime · 요청 직렬 실행</text><text x="870" y="778" class="mono green">127.0.0.1:{port}/v1/scan</text><text x="870" y="802" class="small">외부 서버에 직접 의존하지 않음</text>
+  <rect x="486" y="850" width="652" height="54" rx="12" class="inner"/><text x="504" y="874" class="body">Last-known-good release</text><text x="690" y="874" class="small">staging → hash/호환성 검증 → atomic activate → 재시작 → readiness → rollback</text><text x="504" y="895" class="tiny red">실행 중 파일 덮어쓰기와 스캔 직전 강제 업데이트는 금지</text>
+  <path d="M382 720H456V866H476" class="deploy"/><text x="422" y="704" text-anchor="middle" class="tiny purple">HTTPS manifest + bundle</text>
+  <path d="M756 764H842" class="infer"/><text x="799" y="743" text-anchor="middle" class="tiny green">JPEG/PNG</text><text x="799" y="789" text-anchor="middle" class="tiny green">결과 JSON</text>
+  <path d="M486 812H428V838H392" class="flow optional"/><text x="432" y="829" text-anchor="middle" class="tiny cyan">비동기 telemetry</text>
+  <path d="M995 828V840" class="infer"/>
+  <rect x="608" y="932" width="550" height="48" rx="12" fill="#123029" stroke="#2a6a57"/><text x="628" y="961" class="body green">핵심 원칙 · 네트워크가 끊겨도 현재 release로 스캔은 계속된다</text>
+
+  <!-- Training strategy -->
+  <text x="42" y="1032" class="kicker orange">03 · 초기 학습과 이후 학습</text>
+  <text x="42" y="1061" class="section">10장은 backbone 재학습보다 Store Catalog 등록에 사용</text>
+  <rect x="42" y="1092" width="344" height="282" rx="18" class="panel"/><text x="62" y="1128" class="node">A. 플랫폼 초기 학습 · 드물게</text><text x="62" y="1152" class="small">ML팀이 다매장·다환경 데이터로 수행</text><line x1="62" y1="1171" x2="366" y2="1171" class="divider"/>
+  <text x="62" y="1200" class="body">• bread/object Detector 학습·검증</text><text x="62" y="1227" class="body">• DINOv3 embedding 정책 확정</text><text x="62" y="1254" class="body">• 전처리·threshold·parity 고정</text><text x="62" y="1281" class="body">• 공통 Runtime ONNX 발행</text><rect x="62" y="1310" width="304" height="42" rx="8" class="chip"/><text x="214" y="1337" text-anchor="middle" class="small orange">새 도메인·심한 drift가 아니면 반복하지 않음</text>
+  <rect x="428" y="1092" width="344" height="282" rx="18" class="panel"/><text x="448" y="1128" class="node">B. 매장 최초 등록 · 매장당 1회</text><text x="448" y="1152" class="small">매장 전체 SKU snapshot을 기준으로 생성</text><line x1="448" y1="1171" x2="752" y2="1171" class="divider"/>
+  <text x="448" y="1200" class="body">• 상품별 10장 품질·중복 검사</text><text x="448" y="1227" class="body">• frozen DINO embedding 생성</text><text x="448" y="1254" class="body">• supports · prototypes · Ridge adapter</text><text x="448" y="1281" class="body">• validation으로 threshold calibration</text><rect x="448" y="1310" width="304" height="42" rx="8" class="chip"/><text x="600" y="1337" text-anchor="middle" class="small green">공통 Runtime + 매장별 Store Catalog</text>
+  <rect x="814" y="1092" width="344" height="282" rx="18" class="panel"/><text x="834" y="1128" class="node">C. 상품 추가·변경 · 수시</text><text x="834" y="1152" class="small">증분 Catalog build + 전체 SKU 회귀</text><line x1="834" y1="1171" x2="1138" y2="1171" class="divider"/>
+  <text x="834" y="1200" class="body">• 변경 SKU support만 새로 계산</text><text x="834" y="1227" class="body">• 모든 SKU와 Top-2 충돌 재평가</text><text x="834" y="1254" class="body">• threshold는 validation으로 선택</text><text x="834" y="1281" class="body">• 새 release 발행·이전 release 유지</text><rect x="834" y="1310" width="304" height="42" rx="8" class="chip"/><text x="986" y="1337" text-anchor="middle" class="small purple">Runtime 유지 기본 · 필요할 때만 전체 재학습</text>
+  <path d="M386 1232H418" class="train"/><path d="M772 1232H804" class="train"/>
+
+  <!-- Distribution contract -->
+  <text x="42" y="1425" class="kicker cyan">04 · KIOSK/POS 개발자에게 주는 단위</text>
+  <text x="42" y="1454" class="section">Worker를 라이브러리가 아니라 로컬 sidecar SDK로 배포</text>
+  <rect x="42" y="1486" width="1116" height="204" rx="18" class="server" filter="url(#shadow)"/>
+  <rect x="62" y="1510" width="328" height="154" rx="12" class="inner"/><text x="80" y="1538" class="body">제공 패키지</text><text x="80" y="1564" class="mono">bixolon-worker.exe</text><text x="80" y="1587" class="mono">runtime/ + store-catalog/</text><text x="80" y="1610" class="mono">API.md + JSON Schema + samples</text><text x="80" y="1633" class="mono">launcher sample + manifest + SHA-256</text><text x="80" y="1652" class="tiny">선택: update-manager reference SDK</text>
+  <rect x="414" y="1510" width="350" height="154" rx="12" class="inner"/><text x="432" y="1538" class="body">앱 개발자 책임</text><text x="432" y="1564" class="small">1. Worker 자식 프로세스 시작·종료</text><text x="432" y="1587" class="small">2. /health/ready 및 버전 일치 확인</text><text x="432" y="1610" class="small">3. 요청 직렬화·timeout·오류 UI</text><text x="432" y="1633" class="small">4. release 다운로드·검증·rollback</text><text x="432" y="1652" class="tiny">한 단말 한 Worker · loopback only</text>
+  <rect x="788" y="1510" width="350" height="154" rx="12" class="inner"/><text x="806" y="1538" class="body">Worker 책임</text><text x="806" y="1564" class="small">1. decode·모델 실행·단일 판정</text><text x="806" y="1587" class="small">2. SEGMENTATION / IMAGE_RECAPTURE / ERROR</text><text x="806" y="1610" class="small">3. Runtime/Catalog checksum·호환성 검증</text><text x="806" y="1633" class="small">4. 이미지·경로·raw logits 비노출</text><text x="806" y="1652" class="tiny">서버 통신·업데이트 책임은 갖지 않음</text>
+  <text x="42" y="1720" class="small">권장 경계: 서버는 학습·배포 control plane, Flutter는 수명주기·UX, Worker는 로컬 추론 data plane만 소유</text>
+</svg>

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import platform
@@ -19,6 +20,15 @@ from ..runtime.catalog import build_catalog_classifier
 from ..runtime.detector_v2 import build_detector_v2
 from ..runtime.imaging import decode_image
 from ..runtime.onnx import box_iou
+
+
+def inference_source_fingerprint() -> str:
+    root = Path(__file__).resolve().parents[1]
+    digest = hashlib.sha256()
+    for path in sorted(root.rglob("*.py")):
+        digest.update(path.relative_to(root).as_posix().encode("utf-8") + b"\0")
+        digest.update(bytes.fromhex(sha256_file(path)))
+    return digest.hexdigest()
 
 
 def _resolve_image_path(dataset_root: Path, value: str) -> Path:
@@ -131,6 +141,15 @@ def _latency(values: list[float]) -> dict:
         "p95_ms": float(np.percentile(array, 95)),
         "p99_ms": float(np.percentile(array, 99)),
     }
+
+
+def _approved_false_positive_count(segmentations, matches: dict[int, int]) -> int:
+    """Count unmatched detector outputs that reached the public APPROVED state."""
+
+    return sum(
+        index not in matches and segmentation.status is ItemStatus.APPROVED
+        for index, segmentation in enumerate(segmentations)
+    )
 
 
 class RecordingDetector:
@@ -326,6 +345,7 @@ class Counts:
     false_negative_image_count: int = 0
     false_positive_image_count: int = 0
     approved_count: int = 0
+    approved_false_positive_count: int = 0
     approved_misrecognition_count: int = 0
     unknown_count: int = 0
     unknown_candidate_out_count: int = 0
@@ -474,6 +494,10 @@ def evaluate(args: argparse.Namespace) -> dict:
         counts.false_positive_count += false_positive_count
         counts.false_negative_image_count += bool(missed)
         counts.false_positive_image_count += false_positive_count > 0
+        counts.approved_false_positive_count += _approved_false_positive_count(
+            response.segmentations,
+            matches,
+        )
         status_counts = {status.value: 0 for status in ItemStatus}
         item_diagnostics = []
         ranking = (
@@ -597,8 +621,16 @@ def evaluate(args: argparse.Namespace) -> dict:
             counts.false_positive_image_count, segmentation_images
         ),
         "approved_object_misrecognition_rate": _rate(counts.approved_misrecognition_count, gt),
+        "approved_output_false_positive_rate": _rate(
+            counts.approved_false_positive_count,
+            counts.approved_count + counts.approved_false_positive_count,
+        ),
         "approved_output_misrecognition_rate": _rate(
             counts.approved_misrecognition_count, counts.approved_count
+        ),
+        "approved_output_error_rate": _rate(
+            counts.approved_misrecognition_count + counts.approved_false_positive_count,
+            counts.approved_count + counts.approved_false_positive_count,
         ),
         "correct_approved_rate": _rate(
             counts.approved_count - counts.approved_misrecognition_count, gt
@@ -610,10 +642,12 @@ def evaluate(args: argparse.Namespace) -> dict:
         "minimum_correct_approved_rate": 0.99,
         "maximum_false_negative_count": 0,
         "maximum_false_positive_count": 0,
+        "maximum_approved_false_positive_count": 0,
         "maximum_approved_misrecognition_count": 0,
         "maximum_unknown_candidate_out_count": 0,
         "maximum_mean_ms": args.maximum_mean_ms,
         "maximum_p95_ms": args.maximum_p95_ms,
+        "maximum_p99_ms": args.maximum_p99_ms,
     }
     performance = _latency(counts.latencies_ms)
     full_path_performance = _latency(counts.full_path_latencies_ms)
@@ -630,6 +664,9 @@ def evaluate(args: argparse.Namespace) -> dict:
         "false_positive_count": (
             counts.false_positive_count <= limits["maximum_false_positive_count"]
         ),
+        "approved_false_positive_count": (
+            counts.approved_false_positive_count <= limits["maximum_approved_false_positive_count"]
+        ),
         "approved_misrecognition_count": (
             counts.approved_misrecognition_count <= limits["maximum_approved_misrecognition_count"]
         ),
@@ -639,6 +676,7 @@ def evaluate(args: argparse.Namespace) -> dict:
         "full_path_performance": (
             full_path_performance["mean_ms"] <= limits["maximum_mean_ms"]
             and full_path_performance["p95_ms"] <= limits["maximum_p95_ms"]
+            and full_path_performance["p99_ms"] <= limits["maximum_p99_ms"]
         ),
     }
     args.trace_output.parent.mkdir(parents=True, exist_ok=True)
@@ -664,6 +702,12 @@ def evaluate(args: argparse.Namespace) -> dict:
             "embedder": runtime.metadata.embedder.version,
             "classifier_policy": runtime.metadata.classifier_policy.version,
             "catalog": catalog.metadata.catalog_version,
+        },
+        "artifacts": {
+            "runtime_metadata_sha256": sha256_file(args.runtime / "metadata.json"),
+            "catalog_metadata_sha256": sha256_file(args.catalog / "catalog.json"),
+            "source_tree_sha256": inference_source_fingerprint(),
+            "source_fingerprint_scope": "src/bixolon_scanner/**/*.py",
         },
         "counts": {
             key: value for key, value in vars(counts).items() if not key.endswith("latencies_ms")

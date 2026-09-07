@@ -9,30 +9,63 @@ import 'package:product_scanner/features/capture_library/data/bread_capture_repo
 import 'package:product_scanner/features/capture_library/domain/bread_capture_models.dart';
 import 'package:product_scanner/features/capture_library/presentation/bread_capture_screen.dart';
 import 'package:product_scanner/shared/input/image_input.dart';
+import 'package:product_scanner/shared/input/square_camera_preview.dart';
 
 void main() {
-  test('가로 카메라 종횡비를 뒤집지 않는다', () {
-    const cameraAspectRatio = 16 / 9;
-
-    expect(
-      breadCaptureViewportAspectRatio(cameraAspectRatio),
-      closeTo(cameraAspectRatio, 1e-9),
-    );
-  });
-
-  testWidgets('Windows 미러 미리보기를 저장 사진 방향으로 보정한다', (tester) async {
+  testWidgets('카메라를 왜곡 없이 중앙 1080 정사각형으로 자르고 미러를 보정한다', (tester) async {
+    final camera = _TestCameraController();
     await tester.pumpWidget(
-      Directionality(
-        textDirection: TextDirection.ltr,
-        child: breadCaptureUnmirroredPreview(
-          const SizedBox(key: ValueKey('camera-texture')),
+      MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 400,
+            height: 400,
+            child: SquareCameraPreview(controller: camera),
+          ),
         ),
       ),
     );
 
-    final correction = tester.widget<Transform>(find.byType(Transform));
+    final viewport = tester.widget<AspectRatio>(find.byType(AspectRatio).first);
+    expect(viewport.aspectRatio, 1);
+    final crop = tester.widget<Transform>(
+      find.byKey(const ValueKey('square-camera-center-crop')),
+    );
+    expect(crop.transform.storage[0], closeTo(1, 1e-9));
+    expect(crop.alignment, Alignment.center);
+    final fitted = tester.widget<FittedBox>(find.byType(FittedBox));
+    expect(fitted.fit, BoxFit.cover);
+    expect(fitted.alignment, Alignment.center);
+    final correction = tester.widget<Transform>(
+      find.byKey(const ValueKey('camera-preview-mirror')),
+    );
     expect(correction.transform.storage[0], -1);
-    expect(find.byKey(const ValueKey('camera-texture')), findsOneWidget);
+    expect(find.byKey(const ValueKey('test-camera-preview')), findsOneWidget);
+    await camera.dispose();
+  });
+
+  testWidgets('8MP 미리보기에서도 중앙의 원본 1080px 영역만 표시한다', (tester) async {
+    final camera = _TestCameraController();
+    camera.value = camera.value.copyWith(previewSize: const Size(3264, 2448));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 400,
+            height: 400,
+            child: SquareCameraPreview(controller: camera),
+          ),
+        ),
+      ),
+    );
+    final crop = tester.widget<Transform>(
+      find.byKey(const ValueKey('square-camera-center-crop')),
+    );
+    expect(crop.transform.storage[0], closeTo(2448 / 1080, 1e-9));
+    expect(crop.alignment, Alignment.center);
+    final fitted = tester.widget<FittedBox>(find.byType(FittedBox));
+    expect(fitted.alignment, Alignment.center);
+    await camera.dispose();
   });
 
   testWidgets('빵 목록·카메라 가이드·10장 콘택트 시트를 한 화면에 표시한다', (tester) async {
@@ -82,6 +115,31 @@ void main() {
     await tester.pump();
     expect(tester.takeException(), isNull);
   });
+}
+
+class _TestCameraController extends CameraController {
+  _TestCameraController()
+    : super(
+        const CameraDescription(
+          name: 'test-camera',
+          lensDirection: CameraLensDirection.back,
+          sensorOrientation: 0,
+        ),
+        ResolutionPreset.veryHigh,
+        enableAudio: false,
+        fps: 30,
+      ) {
+    value = value.copyWith(
+      isInitialized: true,
+      previewSize: const Size(1920, 1080),
+    );
+  }
+
+  @override
+  Widget buildPreview() => const ColoredBox(
+    key: ValueKey('test-camera-preview'),
+    color: Color(0xFF242424),
+  );
 }
 
 class _UnavailableCameraGateway implements CameraGateway {

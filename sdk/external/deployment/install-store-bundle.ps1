@@ -53,10 +53,17 @@ try {
     $manifest = Get-Content -Raw -LiteralPath (Join-Path $bundleRoot "bundle-manifest.json") |
         ConvertFrom-Json
 
+    $identitySchema = [string]$identity.schema_version
+    $modelVersion = if ($identitySchema -eq "1.1") {
+        [string]$identity.model_version
+    } else {
+        [string]$identity.product_version
+    }
     if (
-        [string]$identity.schema_version -ne "1.0" -or
+        $identitySchema -notin @("1.0", "1.1") -or
         [string]$identity.bundle_kind -ne "BIXOLON_STORE_MODEL" -or
-        [string]$identity.provider -ne "openvino"
+        [string]$identity.provider -ne "cpu" -or
+        [string]::IsNullOrWhiteSpace($modelVersion)
     ) {
         throw "Unsupported Store Model Bundle identity or provider."
     }
@@ -102,7 +109,7 @@ try {
     }
 
     $destination = Join-Path $resolvedDataRoot (
-        "bundles/{0}/{1}" -f [string]$identity.store_id, [string]$identity.product_version
+        "bundles/{0}/{1}" -f [string]$identity.store_id, $modelVersion
     )
     Assert-SafeChildPath -Path $destination -Parent $resolvedDataRoot
     if (Test-Path -LiteralPath $destination) {
@@ -115,9 +122,9 @@ try {
         $pointerPath = Join-Path $resolvedDataRoot "active-bundle.json"
         $temporaryPointer = "$pointerPath.$([Guid]::NewGuid().ToString('N')).tmp"
         $pointer = [ordered]@{
-            schema_version = "1.0"
+            schema_version = "1.1"
             store_id = [string]$identity.store_id
-            product_version = [string]$identity.product_version
+            model_version = $modelVersion
             bundle_path = $destination
         }
         $pointerJson = $pointer | ConvertTo-Json -Depth 4

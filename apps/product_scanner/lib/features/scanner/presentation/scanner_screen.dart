@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:camera/camera.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -11,6 +10,7 @@ import '../../../core/design_system/copy.dart';
 import '../../../core/design_system/theme.dart';
 import '../../../core/design_system/tokens.dart';
 import '../../../shared/models/scan_models.dart';
+import '../../../shared/input/square_camera_preview.dart';
 import '../application/scanner_controller.dart';
 import '../data/scanner_api.dart';
 import 'segment_review_presentation.dart';

@@ -5,10 +5,10 @@ param(
     [string]$StoreBundleRoot,
     [string]$HostAddress = "127.0.0.1",
     [int]$Port = 8000,
-    [ValidateSet("same", "openvino_gpu")]
-    [string]$EmbedderProvider = "openvino_gpu",
-    [ValidateSet("none", "same")]
-    [string]$EmbedderFallbackProvider = "same",
+    [ValidateSet("same")]
+    [string]$EmbedderProvider = "same",
+    [ValidateSet("none")]
+    [string]$EmbedderFallbackProvider = "none",
     [switch]$WaitUntilReady
 )
 
@@ -37,7 +37,7 @@ $startInfo.UseShellExecute = $false
 $startInfo.CreateNoWindow = $true
 $startInfo.Environment["BIXOLON_PACKAGE_DIR"] = $modelPackage
 $startInfo.Environment["BIXOLON_CATALOG_DIR"] = $storeCatalog
-$startInfo.Environment["BIXOLON_PROVIDER"] = "openvino"
+$startInfo.Environment["BIXOLON_PROVIDER"] = "cpu"
 $startInfo.Environment["BIXOLON_EMBEDDER_PROVIDER"] = $EmbedderProvider
 $startInfo.Environment["BIXOLON_EMBEDDER_FALLBACK_PROVIDER"] = $EmbedderFallbackProvider
 $startInfo.Environment["BIXOLON_HOST"] = $HostAddress

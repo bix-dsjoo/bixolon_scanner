@@ -1,48 +1,28 @@
 # 현재 버전
 
-기준일: 2026-09-03
+기준일: 2026-09-07. 현재 제품은 **BIXOLON Bakery AI Scanner `0.1.16`**이며 Flutter 내부 빌드는
+`0.1.16+19`다. Python·Worker·Detector·Embedder·판정 정책·Catalog의 공개 버전은 모두 같다.
 
-현재 실행 조합은 `0.1.14` 하나이며 별도의 development, demo, production 상태를 두지 않습니다.
-공식 제품명은 `BIXOLON Bakery AI Scanner`, Flutter 내부 빌드는 `0.1.14+17`입니다.
+- source candidate: `limited220-surfaces`
+- 원본: 단일 200장 + 고정 멀티 20장. 같은 실물을 반복 촬영한 자료.
+- Detector: class-agnostic SSDLite320. 절차적 배경 합성으로 고정 4 epoch 추가 학습.
+- Classifier: DINOv3 ConvNeXt-Tiny 192 primary / 224 detail, Frozen ViT-B/16 160 선택 검증.
+- 승인 margin: 0.80 유지. 매장·SKU별 우회 없음.
+- 모델·Catalog bundle: `CHECKSUM-SHA256`. 발행자 진위 인증을 제공하지 않음.
+- CUDA 앱 bundle과 범용 CPU 설치본은 같은 모델·metadata·판정 정책을 사용.
 
-| 구성 | 값 |
-|---|---|
-| 제품·Python·Worker | `0.1.14` |
-| Detector·Embedder·Detector policy·Classifier policy | `0.1.14` |
-| Store Catalog | `0.1.14`, `CHECKSUM-SHA256` |
-| Detector | 1-class SSDLite320 MobileNetV3-Large, torchvision BSD-3-Clause |
-| 주 분류 | DINOv3 ConvNeXt-Tiny 192, 정상 ROI 전체 batch |
-| 선택 상세 | 같은 ConvNeXt-Tiny 224, 전역 위험 ROI만 |
-| 선택 검증 | Frozen DINOv3 ViT-B/16 160, 전역 ambiguity ROI만 |
-| source candidate | `ssdlite320-consistent-evidence-v1` |
-| Runtime source manifest | `b4df35e975541485845b196521e44cb540814e47002191ed728bd2171615dc48` |
-| Catalog source manifest | `085612ddd781a1879ae3bb2867c32c2174247ff8703e1641367d8c37226888b7` |
+원본 멀티 20장에서는 정답 승인 135/136, 오승인·검출 누락·Top-3 누락 0이다. 운영 115장에서는
+정답 승인 465/504, 오승인·검출 누락·배경 추가 검출 0이다. 실제 UNKNOWN 38개는 모두 Top-3에
+정답을 포함하며 하단 경계 저신뢰 객체 1개는 재촬영이다. 빈 이미지 4장은 전체 재촬영이다.
 
-## 0.1.14 변경
+provider별 3회 반복 full-path p95 중앙값은 CPU 341.67ms, CUDA 71.26ms다. CPU/CUDA 상태·class
+rank parity를 통과했다. 독립 일반화 성능·인증·SLA를 의미하지 않는다.
 
-0.1.13의 판정 구조, 모델, 전처리, threshold와 API를 그대로 유지합니다. Windows 기본 실행은
-OpenVINO CPU detector + Intel GPU classifier로 고정하며, GPU 초기화·warm-up 실패 시 전체
-classifier session을 OpenVINO CPU로 다시 만들고 시작합니다. 설치 빌드는 N100 device matrix를
-요구하지 않으며 요청 처리 중 provider 전환은 하지 않습니다.
+실제 EXE의 운영 115장 HTTP p95는 CUDA 83.86ms, CPU 384.31ms다. CPU 설치본은 Detector와
+Embedder를 각각 4 threads로 제한해 자동 스레드 설정의 p95 2,104.89ms를 개선했다. CPU HTTP
+p95 300ms 목표는 아직 미달이다. 전체 재촬영 4장은 full-path 지연 통계에서 제외했다.
 
-## 정확도·성능 진단
-
-| 표본 | 결과 |
-|---|---|
-| 개발 회귀 415장 | GT/prediction/matched `1,914/1,914/1,914`, FP/FN 0, 승인 `1,898/1,898` 정답, 오승인·Top-3 누락·ERROR 0 |
-| 운영 촬영 69장 | GT/prediction/matched `138/138/138`, 승인 138 정답, FP/FN·오승인·Top-3 누락·ERROR 0 |
-| 동일 정책 multi-object 300장 | GT/prediction/matched `1,410/1,410/1,410`, 승인 1,398 정답, UNKNOWN 8·Top-3 누락 0, SEGMENT_RECAPTURE 4, FP/FN·오승인·ERROR 0 |
-| 개발 PC CPU 415장 | full-path p95 `440.164ms`, p99 `574.080ms`, 411 samples |
-| 개발 PC CPU 운영 69장 | full-path p95 `354.287ms`, p99 `469.849ms`, 63 samples |
-| 개발 PC OpenVINO CPU 415장 | Worker full-path p95 `191.085ms`, HTTP p95 `211.098ms`, 411 samples |
-| 개발 PC OpenVINO CPU 운영 69장 | Worker full-path p95 `143.720ms`, HTTP p95 `167.376ms`, 63 samples |
-
-415장 정답 승인율은 `99.164%`, 운영 69장은 `100%`입니다. 전수 ViT 후보는 정답 승인율을
-`95.40%` 또는 `97.86%`로 낮추고 p95를 `894.7~1,122.7ms`로 늘려 기각했습니다. 선택 정책은
-목표 다섯 개를 현재 진단에서 만족하지만 학습·정책 선택과 겹치는 데이터이므로 독립 일반화 성능,
-인증 또는 SLA로 표현하지 않습니다.
-
-상세 구조와 새 매장 검증 계획은 [0.1.13 일관 추론 결정](../experiments/consistent-evidence-0.1.13.md),
-동일 판정을 유지한 provider·thread 비교는
-[0.1.12·0.1.13 운영 일관성 성능 최적화](../experiments/consistent-performance-0.1.13.md),
-공개 상태와 null 규칙은 [API 계약](../contracts/api.md)을 참조하십시오.
+[개선·비교와 제한](../experiments/next-worker-0.1.16.md),
+[배포 검증 기록](../diagnostics/scanner-0.1.16-final-verification.json),
+[API 계약](../contracts/api.md)을 참조한다. 과거 0.1.15의 결과는
+[보존 문서](../archive/status/0.1.15.md)에 있다.

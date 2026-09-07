@@ -1,18 +1,18 @@
 # BIXOLON Scanner 외부 개발 SDK
 
 이 배포물은 외부 Flutter 개발사가 저장소 접근 없이 Windows용 Scanner를 연동하기 위한 자료입니다.
-실행 provider는 **OpenVINO만** 지원합니다.
+실행 provider는 호환성을 우선한 **ONNX Runtime CPU**입니다.
 
 ## 제공 파일의 역할
 
 두 ZIP은 수명주기가 다릅니다.
 
-1. `BIXOLON-Scanner-External-SDK-<version>.zip`
+1. `BIXOLON-Scanner-SDK-Windows-x64-<sdk-version>.zip`
    - Flutter SDK 소스와 Windows plugin
-   - 공통 OpenVINO Worker 실행 파일
+   - 공통 ONNX Runtime CPU Worker 실행 파일
    - API 계약, 상태별 JSON, Mock Worker
    - 설치·수동 실행·매장 번들 활성화 예제
-2. `BIXOLON-Store-Model-<store>-<version>.zip`
+2. `BIXOLON-Store-Model-<store>-<model-version>.zip`
    - 해당 매장의 detector/embedder ONNX와 metadata
    - 상품 Catalog, prototype/support/adapter payload
    - 파일별 SHA-256 manifest
@@ -26,6 +26,18 @@ Worker를 재시작합니다. Flutter 앱과 installer를 다시 빌드하지 �
 metadata/checksum/Catalog가 불일치하므로 반드시 전체 Store Model Bundle 단위로 교체해야 합니다.
 외부 앱에 Scanner 제품 version을 상수로 넣지 말고 `/health/ready`에서 읽으십시오. 배포 version을
 고정해야 한다면 앱 재빌드 없이 바꿀 수 있는 외부 설정으로 주입합니다.
+
+SDK와 Store Model의 version은 독립적입니다. SDK `1.1.0`은 `worker_runtime_schema=2.0`과
+`catalog_schema=2.0`을 만족하는 Store Model `0.1.16`, `0.1.16` 등을 선택해서 실행할 수 있습니다.
+재학습·Catalog 변경은 Store Model version만 올리고, Flutter SDK·Worker 또는 API 호환성이 바뀔
+때만 SDK version을 올립니다. 숫자가 같은지를 호환 조건으로 사용하지 마십시오.
+
+기본 출력 경로는 다음처럼 분리됩니다.
+
+```text
+artifacts/external-sdk/1.1.0/BIXOLON-Scanner-SDK-Windows-x64-1.1.0.zip
+artifacts/store-models/bread-dev/0.1.16/BIXOLON-Store-Model-bread-dev-0.1.16.zip
+```
 
 ## 권장 설치 레이아웃
 
@@ -41,7 +53,7 @@ metadata/checksum/Catalog가 불일치하므로 반드시 전체 Store Model Bun
   active-bundle.json
   bundles/
     bread-dev/
-      0.1.14/
+      0.1.16/
         model-package/...
         store-catalog/...
         store-bundle.json
@@ -52,6 +64,19 @@ metadata/checksum/Catalog가 불일치하므로 반드시 전체 Store Model Bun
 바뀌는 매장 번들은 `%ProgramData%` 아래 version directory에 둡니다. 새 번들은 새 directory로
 검증·설치한 후 `active-bundle.json`만 원자적으로 교체합니다. 실행 중인 Worker는 기존 파일을 계속
 사용하므로 적용 시점은 앱 또는 운영 도구가 Worker를 재시작하는 시점입니다.
+
+여러 version을 설치한 경우 Flutter에서 선택한 directory를 명시할 수 있습니다.
+
+```dart
+final layout = BixolonRuntimeLayout.discover(
+  storeBundleRoot:
+      r'C:\ProgramData\BIXOLON\Scanner\bundles\bread-dev\0.1.16',
+);
+final session = await BixolonScannerSession.startLocal(layout: layout);
+```
+
+전역 기본값은 `install-store-bundle.ps1 -Activate`가 원자적으로 갱신하는
+`active-bundle.json`을 사용합니다.
 
 ## Flutter 연동 순서
 
@@ -77,7 +102,7 @@ cd mock-worker
 dart run bin/mock_worker.dart --status approved
 ```
 
-실제 OpenVINO Worker로 바꿀 때 client 코드는 그대로 두고 Worker 주소 또는 실행 정책만 변경합니다.
+실제 CPU Worker로 바꿀 때 client 코드는 그대로 두고 Worker 주소 또는 실행 정책만 변경합니다.
 
 ## 보안과 검증 한계
 

@@ -35,6 +35,22 @@ COMPATIBILITY_COMMANDS: dict[CommandPath, CommandTarget] = {
 }
 
 DIAGNOSTIC_COMMANDS: dict[CommandPath, CommandTarget] = {
+    ("evaluate", "limited220"): (
+        "bixolon_scanner.experiments.bread.limited220_diagnostics",
+        "main",
+    ),
+    ("experiment", "limited220"): (
+        "bixolon_scanner.experiments.bread.limited220",
+        "main",
+    ),
+    ("evaluate", "limited-source-review"): (
+        "bixolon_scanner.evaluation.limited_source_review",
+        "main",
+    ),
+    ("model", "assemble-limited220-runtime"): (
+        "bixolon_scanner.operations.limited_source_runtime",
+        "main",
+    ),
     ("data", "manifest"): ("bixolon_scanner.training.manifest", "main"),
     ("data", "ten-shot-manifest"): (
         "bixolon_scanner.training.ten_shot_manifest",

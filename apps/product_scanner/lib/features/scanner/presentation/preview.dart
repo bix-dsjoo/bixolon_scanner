@@ -273,12 +273,7 @@ class _LiveCamera extends StatelessWidget {
   Widget build(BuildContext context) {
     final camera = controller.cameraController;
     if (camera != null && camera.value.isInitialized) {
-      return Center(
-        child: AspectRatio(
-          aspectRatio: camera.value.aspectRatio,
-          child: Transform.flip(flipX: true, child: CameraPreview(camera)),
-        ),
-      );
+      return Center(child: SquareCameraPreview(controller: camera));
     }
     return Stack(
       children: [

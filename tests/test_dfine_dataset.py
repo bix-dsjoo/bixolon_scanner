@@ -1,6 +1,11 @@
 import json
 
-from bixolon_scanner.training.dfine_dataset import export_dfine_coco_splits
+import pytest
+
+from bixolon_scanner.training.dfine_dataset import (
+    export_dfine_coco_source_sets,
+    export_dfine_coco_splits,
+)
 
 
 def test_dfine_export_preserves_empty_images_and_separates_validation_fold(tmp_path):
@@ -78,3 +83,45 @@ def test_dfine_export_can_collapse_bread_labels_for_detection_only(tmp_path):
     assert training["annotations"][0]["category_id"] == 0
     assert validation["annotations"][0]["category_id"] == 0
     assert validation["categories"] == [{"id": 0, "name": "bread_object", "supercategory": "bread"}]
+
+
+def test_dfine_source_sets_resolve_images_under_workspace_and_reject_evaluation(tmp_path):
+    train_root = tmp_path / "train"
+    validation_root = tmp_path / "validation"
+    train_root.mkdir()
+    validation_root.mkdir()
+    base = {
+        "image_id": 1,
+        "image_path": "image.jpg",
+        "width": 64,
+        "height": 64,
+        "annotations": [{"category_id": 1, "bbox_xywh": [1, 2, 3, 4]}],
+    }
+    train_manifest = tmp_path / "train.jsonl"
+    validation_manifest = tmp_path / "validation.jsonl"
+    train_manifest.write_text(json.dumps(base), encoding="utf-8")
+    validation_manifest.write_text(json.dumps(base), encoding="utf-8")
+
+    report = export_dfine_coco_source_sets(
+        [(train_manifest, train_root)],
+        [(validation_manifest, validation_root)],
+        tmp_path / "coco",
+        workspace_root=tmp_path,
+    )
+    training = json.loads((tmp_path / "coco" / "instances_train.json").read_text())
+    validation = json.loads((tmp_path / "coco" / "instances_validation.json").read_text())
+
+    assert report["evaluation_images_used"] is False
+    assert training["images"][0]["file_name"] == "train/image.jpg"
+    assert validation["images"][0]["file_name"] == "validation/image.jpg"
+    assert training["images"][0]["id"] != validation["images"][0]["id"]
+
+    blocked = dict(base, training_allowed=False)
+    validation_manifest.write_text(json.dumps(blocked), encoding="utf-8")
+    with pytest.raises(ValueError, match="training-prohibited"):
+        export_dfine_coco_source_sets(
+            [(train_manifest, train_root)],
+            [(validation_manifest, validation_root)],
+            tmp_path / "blocked",
+            workspace_root=tmp_path,
+        )

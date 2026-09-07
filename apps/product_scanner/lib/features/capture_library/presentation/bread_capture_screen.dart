@@ -1,27 +1,13 @@
 import 'dart:io';
 
-import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
 import '../../../core/design_system/components.dart';
 import '../../../core/design_system/theme.dart';
 import '../../../core/design_system/tokens.dart';
+import '../../../shared/input/square_camera_preview.dart';
 import '../application/bread_capture_controller.dart';
 import '../domain/bread_capture_models.dart';
-
-@visibleForTesting
-double breadCaptureViewportAspectRatio(double cameraAspectRatio) {
-  if (!cameraAspectRatio.isFinite || cameraAspectRatio <= 0) return 1;
-  return cameraAspectRatio;
-}
-
-@visibleForTesting
-Widget breadCaptureUnmirroredPreview(Widget preview) {
-  // camera_windows mirrors only the texture preview; takePicture() keeps the
-  // sensor orientation. Correct the preview so review and saved coordinates
-  // remain identical.
-  return Transform.flip(flipX: true, child: preview);
-}
 
 class BreadCaptureScreen extends StatefulWidget {
   const BreadCaptureScreen({
@@ -648,18 +634,12 @@ class _LiveCameraSurface extends StatelessWidget {
     }
     return ClipRect(
       child: Center(
-        child: AspectRatio(
+        child: SquareCameraPreview(
           key: const ValueKey('bread-capture-live-viewport'),
-          aspectRatio: breadCaptureViewportAspectRatio(
-            camera.value.aspectRatio,
-          ),
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              breadCaptureUnmirroredPreview(CameraPreview(camera)),
-              if (guidePose case final pose?) _CaptureGuideFrame(pose: pose),
-            ],
-          ),
+          controller: camera,
+          foreground: guidePose == null
+              ? null
+              : _CaptureGuideFrame(pose: guidePose!),
         ),
       ),
     );

@@ -1,0 +1,67 @@
+{
+  "schema_version": "1.0",
+  "dataset_root": "datasets/bread_dataset",
+  "single_directory": "single_objects_2",
+  "multi_annotations": "annotations/multi_object_instances.json",
+  "class_count": 20,
+  "shots_per_class": 10,
+  "multi_count": 20,
+  "original_budget": 220,
+  "seed": 220202609,
+  "source_identity": "same_physical_items_confirmed_by_owner",
+  "product_version": "0.1.15",
+  "synthetic": {
+    "image_count": 1200,
+    "image_size": 640,
+    "maximum_objects": 8,
+    "empty_probability": 0.08,
+    "minimum_visible_fraction": 0.65,
+    "seed": 220202610
+  },
+  "training": {
+    "detector_epochs": 20,
+    "detector_batch_size": 32,
+    "detector_real_repeat": 20,
+    "detector_learning_rate": 0.0003,
+    "classifier_epochs": 8,
+    "classifier_views": 10,
+    "classifier_batch_size": 32,
+    "classifier_backbone_learning_rate": 0.000003,
+    "classifier_head_learning_rate": 0.001,
+    "resolution_consistency_weight": 0.2,
+    "workers": 2,
+    "checkpoint_selection": "fixed_last_epoch_without_evaluation"
+  },
+  "runtime_policy_candidates": {
+    "approval_margin": [0.8],
+    "verification_maximum_approval_score": [0.85, 0.9],
+    "detail_maximum_approval_score": [0.85, 0.9],
+    "jpeg_draft_size": [640, 1500],
+    "primary_size": 192,
+    "detail_size": 224,
+    "verifier_size": 160,
+    "verify_all": false,
+    "per_store_or_sku_rules": false,
+    "selection_requires_independent_validation": true
+  },
+  "diagnostic_targets": {
+    "maximum_approved_error_count": 0,
+    "maximum_false_negative_count": 0,
+    "maximum_unknown_top3_miss_count": 0,
+    "minimum_correct_approved_rate": 0.99,
+    "maximum_cuda_full_path_p95_ms": 70.0,
+    "maximum_cpu_full_path_p95_ms": 250.0
+  },
+  "iteration": {
+    "maximum_candidates": 6,
+    "maximum_consecutive_non_improvements": 2,
+    "selection_priority": [
+      "approved_error_count",
+      "false_negative_count",
+      "unknown_top3_miss_count",
+      "negative_correct_approved_rate",
+      "full_path_p95_ms"
+    ],
+    "automatic_threshold_selection_without_validation": false
+  }
+}

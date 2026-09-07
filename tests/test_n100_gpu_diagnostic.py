@@ -92,7 +92,7 @@ def test_n100_gpu_builder_preserves_models_and_packages_openvino_gpu() -> None:
     assert "$null -ne $runtimeMetadata.count_verifier" in build_script
     assert "classifier_resolution_fallback.selective_roi_only" in build_script
     assert "detector_primary_classifier_routing" in build_script
-    assert '[string]$Version = "0.1.14"' in build_script
+    assert '[string]$Version = "0.1.16"' in build_script
     assert 'candidate_primary_embedder = "OpenVINOExecutionProvider:GPU"' in build_script
     assert 'candidate_rotation_180_embedder = "OpenVINOExecutionProvider:GPU"' in build_script
     assert (

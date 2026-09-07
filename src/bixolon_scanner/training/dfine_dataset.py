@@ -10,6 +10,78 @@ def _read_manifest(path: Path) -> list[dict[str, Any]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
 
 
+def export_dfine_coco_source_sets(
+    training_sources: list[tuple[Path, Path]],
+    validation_sources: list[tuple[Path, Path]],
+    output_dir: Path,
+    *,
+    workspace_root: Path,
+    class_agnostic: bool = True,
+) -> dict[str, Any]:
+    """Export disjoint rooted JSONL manifests without copying their images."""
+
+    workspace_root = workspace_root.resolve()
+
+    def rooted_records(sources: list[tuple[Path, Path]]) -> list[dict[str, Any]]:
+        output = []
+        for manifest, dataset_root in sources:
+            dataset_root = dataset_root.resolve()
+            for record in _read_manifest(manifest):
+                if record.get("record_type", "detection") != "detection":
+                    continue
+                if record.get("training_allowed") is False:
+                    raise ValueError("training-prohibited records cannot be exported for D-FINE")
+                image_path = (dataset_root / record["image_path"]).resolve()
+                try:
+                    relative_path = image_path.relative_to(workspace_root)
+                except ValueError as exc:
+                    raise ValueError("D-FINE source image is outside the workspace") from exc
+                copied = dict(record)
+                copied["image_path"] = relative_path.as_posix()
+                output.append(copied)
+        return output
+
+    training = rooted_records(training_sources)
+    validation = rooted_records(validation_sources)
+    if not training or not validation:
+        raise ValueError("D-FINE source-set export requires train and validation records")
+    combined = training + validation
+    for image_id, record in enumerate(combined, start=1):
+        record["image_id"] = image_id
+    output_dir.mkdir(parents=True, exist_ok=True)
+    train_path = output_dir / "instances_train.json"
+    validation_path = output_dir / "instances_validation.json"
+    all_path = output_dir / "instances_all.json"
+    train_path.write_text(
+        json.dumps(_coco(training, class_agnostic=class_agnostic), separators=(",", ":")),
+        encoding="utf-8",
+    )
+    validation_path.write_text(
+        json.dumps(_coco(validation, class_agnostic=class_agnostic), separators=(",", ":")),
+        encoding="utf-8",
+    )
+    all_path.write_text(
+        json.dumps(_coco(combined, class_agnostic=class_agnostic), separators=(",", ":")),
+        encoding="utf-8",
+    )
+    report = {
+        "schema_version": "1.0",
+        "workspace_root": str(workspace_root),
+        "training_manifests": [str(path) for path, _ in training_sources],
+        "validation_manifests": [str(path) for path, _ in validation_sources],
+        "training_image_count": len(training),
+        "validation_image_count": len(validation),
+        "training_annotation_count": sum(len(row["annotations"]) for row in training),
+        "validation_annotation_count": sum(len(row["annotations"]) for row in validation),
+        "evaluation_images_used": False,
+        "class_agnostic": class_agnostic,
+    }
+    (output_dir / "provenance.json").write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return report
+
+
 def _coco(records: list[dict[str, Any]], *, class_agnostic: bool = False) -> dict[str, Any]:
     images = []
     annotations = []

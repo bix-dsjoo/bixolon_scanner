@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.14",
+    [string]$Version = "0.1.16",
     [string]$PythonExecutable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$InnoCompiler = "",
     [string]$VcRedistPath = "",
@@ -133,7 +133,7 @@ function Write-JsonFile {
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
 $sourceDirectory = Join-Path $repositoryRoot "src"
 $configPath = Join-Path $repositoryRoot "configs/versions/$Version.json"
-$openVinoLockPath = Join-Path $repositoryRoot "configs/runtime/requirements-windows-openvino.lock"
+$cpuLockPath = Join-Path $repositoryRoot "configs/runtime/requirements-windows-cpu.lock"
 $installerScript = Join-Path $repositoryRoot "installer/windows/BixolonBakeryAIScanner.iss"
 $installerReadme = Join-Path $repositoryRoot "installer/windows/INSTALL-KO.txt"
 $installerLauncher = Join-Path $repositoryRoot "installer/windows/start-bixolon-scanner.ps1"
@@ -154,7 +154,7 @@ $workerZipHashPath = "$workerZipPath.sha256"
 
 foreach ($requiredPath in @(
     $configPath,
-    $openVinoLockPath,
+    $cpuLockPath,
     $installerScript,
     $installerReadme,
     $installerLauncher,
@@ -174,31 +174,31 @@ if ([string]$config.version -ne $Version) {
 }
 $recommendedDetectorWorkers = 1
 $recommendedDetectorThreads = 4
-$recommendedEmbedderThreads = 0
+$recommendedEmbedderThreads = 4
 $launcherSource = Get-Content -Raw -LiteralPath $installerLauncher
 if (
-    $launcherSource -notmatch 'BIXOLON_PROVIDER = "openvino"' -or
-    $launcherSource -notmatch 'BIXOLON_EMBEDDER_PROVIDER = "openvino_gpu"' -or
-    $launcherSource -notmatch 'BIXOLON_EMBEDDER_FALLBACK_PROVIDER = "same"' -or
+    $launcherSource -notmatch 'BIXOLON_PROVIDER = "cpu"' -or
+    $launcherSource -notmatch 'BIXOLON_EMBEDDER_PROVIDER = "same"' -or
+    $launcherSource -notmatch 'BIXOLON_EMBEDDER_FALLBACK_PROVIDER = "none"' -or
     $launcherSource -notmatch 'BIXOLON_CPU_DETECTOR_WORKERS = "\d+"' -or
     $launcherSource -notmatch 'BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS = "\d+"' -or
     $launcherSource -notmatch 'BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS = "\d+"'
 ) {
-    throw "Windows launcher is missing the hybrid provider, fallback, or thread settings."
+    throw "Windows launcher is missing the CPU provider or thread settings."
 }
 if (
     $recommendedDetectorWorkers -ne 1 -or
     $recommendedDetectorThreads -ne 4 -or
-    $recommendedEmbedderThreads -ne 0
+    $recommendedEmbedderThreads -ne 4
 ) {
-    throw "Hybrid profile must use Detector 1x4 and GPU Embedder thread auto-selection."
+    throw "CPU profile must use Detector 1x4 and Embedder thread auto-selection."
 }
 $appBuild = [int]$config.app_build
 $versionRoot = [System.IO.Path]::GetFullPath(
     (Join-Path $repositoryRoot ([string]$config.output_root + "/" + $Version))
 )
 $canonicalBundle = Join-Path $versionRoot "bixolon-bakery-ai-scanner-$Version"
-$openVinoWorker = Join-Path $versionRoot "openvino-gpu-worker-build/bixolon-worker"
+$cpuWorker = Join-Path $versionRoot "cpu-worker-build/bixolon-worker"
 
 if (-not (Test-Path -LiteralPath $canonicalBundle -PathType Container)) {
     throw (
@@ -206,10 +206,10 @@ if (-not (Test-Path -LiteralPath $canonicalBundle -PathType Container)) {
         "Run scripts/build_app.ps1 -Version $Version first."
     )
 }
-if (-not (Test-Path -LiteralPath $openVinoWorker -PathType Container)) {
+if (-not (Test-Path -LiteralPath $cpuWorker -PathType Container)) {
     throw (
-        "OpenVINO Worker build is missing: $openVinoWorker. " +
-        "Run scripts/build_openvino_worker.ps1 -Version $Version first."
+        "CPU Worker build is missing: $cpuWorker. " +
+        "Run scripts/build_worker.ps1 with requirements-windows-cpu.lock first."
     )
 }
 
@@ -226,26 +226,22 @@ finally {
     $env:PYTHONPATH = $previousPythonPath
 }
 
-$requiredOpenVinoFiles = @(
-    (Join-Path $openVinoWorker "bixolon-worker.exe"),
-    (Join-Path $openVinoWorker "_internal/onnxruntime/capi/onnxruntime.dll"),
-    (Join-Path $openVinoWorker "_internal/onnxruntime/capi/onnxruntime_providers_shared.dll"),
-    (Join-Path $openVinoWorker "_internal/onnxruntime/capi/onnxruntime_providers_openvino.dll"),
-    (Join-Path $openVinoWorker "_internal/openvino_intel_cpu_plugin.dll"),
-    (Join-Path $openVinoWorker "_internal/openvino_intel_gpu_plugin.dll"),
-    (Join-Path $openVinoWorker "_internal/openvino_onnx_frontend.dll")
+$requiredCpuFiles = @(
+    (Join-Path $cpuWorker "bixolon-worker.exe"),
+    (Join-Path $cpuWorker "_internal/onnxruntime/capi/onnxruntime.dll"),
+    (Join-Path $cpuWorker "_internal/onnxruntime/capi/onnxruntime_providers_shared.dll")
 )
-foreach ($requiredPath in $requiredOpenVinoFiles) {
+foreach ($requiredPath in $requiredCpuFiles) {
     if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
-        throw "OpenVINO Worker file is missing: $requiredPath"
+        throw "CPU Worker file is missing: $requiredPath"
     }
 }
-$forbiddenOpenVinoFiles = Get-ChildItem -LiteralPath $openVinoWorker -File -Recurse | Where-Object {
-    $_.Name -match "(?i)^(onnxruntime_providers_(cuda|tensorrt|dml)\.dll|cudnn.*\.dll|cublas.*\.dll|cudart.*\.dll|cufft.*\.dll|nvrtc.*\.dll|nvjitlink.*\.dll)$"
+$forbiddenCpuFiles = Get-ChildItem -LiteralPath $cpuWorker -File -Recurse | Where-Object {
+    $_.Name -match "(?i)^(onnxruntime_providers_(cuda|tensorrt|dml|openvino)\.dll|openvino.*\.dll|cudnn.*\.dll|cublas.*\.dll|cudart.*\.dll|cufft.*\.dll|nvrtc.*\.dll|nvjitlink.*\.dll)$"
 }
-if ($forbiddenOpenVinoFiles) {
-    $paths = ($forbiddenOpenVinoFiles | ForEach-Object { $_.FullName }) -join ", "
-    throw "OpenVINO hybrid Worker contains a forbidden provider or CUDA runtime: $paths"
+if ($forbiddenCpuFiles) {
+    $paths = ($forbiddenCpuFiles | ForEach-Object { $_.FullName }) -join ", "
+    throw "CPU Worker contains a non-CPU provider runtime: $paths"
 }
 
 if (-not $InnoCompiler) {
@@ -257,6 +253,7 @@ if (-not (Test-Path -LiteralPath $InnoCompiler -PathType Leaf)) {
 if (-not $VcRedistPath) {
     $VcRedistPath = Find-VcRedist
 }
+$VcRedistPath = [System.IO.Path]::GetFullPath($VcRedistPath)
 if (-not (Test-Path -LiteralPath $VcRedistPath -PathType Leaf)) {
     throw "Visual C++ Redistributable is missing: $VcRedistPath"
 }
@@ -292,9 +289,9 @@ try {
     }
 
     $workerTarget = Join-Path $temporaryPayload "worker"
-    Copy-Item -LiteralPath $openVinoWorker -Destination $workerTarget -Recurse
+    Copy-Item -LiteralPath $cpuWorker -Destination $workerTarget -Recurse
     Assert-DirectoryCopyMatches `
-        -Source $openVinoWorker `
+        -Source $cpuWorker `
         -Target $workerTarget
     Copy-Item -LiteralPath (Join-Path $canonicalBundle "worker/model-package") `
         -Destination (Join-Path $workerTarget "model-package") -Recurse
@@ -344,12 +341,12 @@ try {
         app_build = $appBuild
         target = [ordered]@{
             platform = "windows-x64"
-            processor_profile = "OpenVINO CPU detector + Intel GPU embedder"
-            detector_provider = "OpenVINOExecutionProvider:CPU"
+            processor_profile = "ONNX Runtime CPU"
+            detector_provider = "CPUExecutionProvider"
             object_presence_verifier_provider = "not_configured"
             object_presence_execution = "not_configured"
-            embedder_provider = "OpenVINOExecutionProvider:GPU"
-            embedder_fallback_provider = "OpenVINOExecutionProvider:CPU"
+            embedder_provider = "CPUExecutionProvider"
+            embedder_fallback_provider = "not_required"
             python_required_on_target = $false
             flutter_required_on_target = $false
             cuda_required_on_target = $false
@@ -358,15 +355,15 @@ try {
             detector_workers = $recommendedDetectorWorkers
             detector_intra_op_threads = $recommendedDetectorThreads
             embedder_intra_op_threads = $recommendedEmbedderThreads
-            provider_selection = "gpu_embedder_then_explicit_cpu_fallback"
+            provider_selection = "cpu_only"
             request_timeout_seconds = 60
         }
         source = [ordered]@{
             canonical_bundle_manifest_sha256 = (
                 Get-FileHash -Algorithm SHA256 -LiteralPath $canonicalManifest
             ).Hash.ToLowerInvariant()
-            openvino_dependency_lock_sha256 = (
-                Get-FileHash -Algorithm SHA256 -LiteralPath $openVinoLockPath
+            cpu_dependency_lock_sha256 = (
+                Get-FileHash -Algorithm SHA256 -LiteralPath $cpuLockPath
             ).Hash.ToLowerInvariant()
             vc_redist_sha256 = (
                 Get-FileHash -Algorithm SHA256 -LiteralPath $VcRedistPath
@@ -377,8 +374,8 @@ try {
             decision_policy_changed = $false
             runtime_or_catalog_payload_changed = $false
             cuda_runtime_included = $false
-            openvino_gpu_plugin_included = $true
-            hybrid_worker_substituted = $true
+            openvino_runtime_included = $false
+            cpu_worker_substituted = $true
         }
         distribution = [ordered]@{
             payload_integrity = "SHA-256"
@@ -394,7 +391,7 @@ try {
         schema_version = "1.0"
         version = $Version
         app_build = $appBuild
-        target = "windows-x64-openvino-cpu-detector-gpu-embedder"
+        target = "windows-x64-cpu"
         file_count = $payloadRecords.Count
         files = $payloadRecords
     }
@@ -435,7 +432,7 @@ try {
         -Destination (Join-Path $temporaryWorkerPackage "start-bixolon-worker.ps1")
     Copy-Item -LiteralPath $workerCommand -Destination $temporaryWorkerPackage
     Copy-Item -LiteralPath $workerReadme -Destination $temporaryWorkerPackage
-    Copy-Item -LiteralPath $openVinoLockPath -Destination $temporaryWorkerPackage
+    Copy-Item -LiteralPath $cpuLockPath -Destination $temporaryWorkerPackage
     Copy-Item -LiteralPath $VcRedistPath `
         -Destination (Join-Path $temporaryWorkerPackage "vc_redist.x64.exe")
     Copy-Item -LiteralPath (Join-Path $payloadRoot "version.json") `
@@ -452,14 +449,14 @@ try {
     $workerManifest = [ordered]@{
         schema_version = "1.0"
         product_version = $Version
-        target = "windows-x64-openvino-cpu-detector-gpu-embedder"
+        target = "windows-x64-cpu"
         default_provider = [ordered]@{
-            detector = "OpenVINOExecutionProvider:CPU"
+            detector = "CPUExecutionProvider"
             object_presence_verifier = "not_configured"
             object_presence_execution = "not_configured"
-            embedder = "OpenVINOExecutionProvider:GPU"
+            embedder = "CPUExecutionProvider"
             object_presence_fallback = "not_configured"
-            embedder_fallback = "OpenVINOExecutionProvider:CPU"
+            embedder_fallback = "not_required"
         }
         file_count = $workerRecords.Count
         files = $workerRecords
@@ -513,7 +510,7 @@ $setupHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $setupPath).Hash.ToLow
 $installerManifest = [ordered]@{
     schema_version = "1.0"
     version = $Version
-    target = "windows-x64-openvino-cpu-detector-gpu-embedder"
+    target = "windows-x64-cpu"
     setup = [ordered]@{
         filename = $setupFile.Name
         size_bytes = $setupFile.Length
@@ -539,5 +536,5 @@ Write-Host "Windows installer: $setupPath"
 Write-Host "Installer SHA-256: $setupHash"
 Write-Host "SHA-256 file: $setupHashPath"
 Write-Host "Installer manifest: $installerManifestPath"
-Write-Host "Windows OpenVINO Worker ZIP: $workerZipPath"
+Write-Host "Windows CPU Worker ZIP: $workerZipPath"
 Write-Host "Worker ZIP SHA-256: $workerZipHash"

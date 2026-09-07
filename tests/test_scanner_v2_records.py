@@ -1,11 +1,17 @@
 from __future__ import annotations
 
 import json
+from types import SimpleNamespace
 
 import numpy as np
 import pytest
 
-from bixolon_scanner.evaluation.scanner_v2 import RecordingClassifier, _records
+from bixolon_scanner.contracts import ItemStatus
+from bixolon_scanner.evaluation.scanner_v2 import (
+    RecordingClassifier,
+    _approved_false_positive_count,
+    _records,
+)
 from bixolon_scanner.pipeline.ports import ClassificationResult
 
 
@@ -109,3 +115,13 @@ def test_records_resolves_coco_path_relative_to_annotation(tmp_path) -> None:
 
     assert rows[0]["image_path"] == "images/one.jpg"
     assert rows[0]["resolved_path"] == image
+
+
+def test_approved_false_positive_count_only_counts_unmatched_approvals() -> None:
+    segmentations = [
+        SimpleNamespace(status=ItemStatus.APPROVED),
+        SimpleNamespace(status=ItemStatus.UNKNOWN),
+        SimpleNamespace(status=ItemStatus.APPROVED),
+    ]
+
+    assert _approved_false_positive_count(segmentations, {0: 2}) == 1

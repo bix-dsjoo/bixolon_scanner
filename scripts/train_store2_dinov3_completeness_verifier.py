@@ -113,21 +113,24 @@ def _make_samples(
         if record_split != split:
             continue
         image_id = int(record["image_id"])
-        boxes = [_xyxy(row) for row in record["annotations"]]
-        for box in boxes:
+        annotations = record["annotations"]
+        boxes = [_xyxy(row) for row in annotations]
+        for annotation, box in zip(annotations, boxes, strict=True):
             width = box[2] - box[0]
             height = box[3] - box[1]
             elongated = max(width / max(height, 1e-6), height / max(width, 1e-6)) >= 2.0
-            repeat = elongated_repeat if elongated and split == "train" else 1
-            for _ in range(repeat):
-                positive.append(
-                    (
-                        image_id,
-                        box,
-                        1,
-                        "complete_elongated_gt" if elongated else "complete_gt",
+            visible_fraction = float(annotation.get("visible_fraction", 1.0))
+            if visible_fraction >= 0.85:
+                repeat = elongated_repeat if elongated and split == "train" else 1
+                for _ in range(repeat):
+                    positive.append(
+                        (
+                            image_id,
+                            box,
+                            1,
+                            "complete_elongated_gt" if elongated else "complete_gt",
+                        )
                     )
-                )
                 negative.append(
                     (
                         image_id,
@@ -136,6 +139,8 @@ def _make_samples(
                         "elongated_fragment" if elongated else "partial_object",
                     )
                 )
+            elif visible_fraction <= 0.60:
+                negative.append((image_id, box, 0, "occluded_gt"))
         union = _union_box(boxes, rng)
         if union is not None:
             negative.append((image_id, union, 0, "multi_object_union"))
@@ -235,6 +240,10 @@ class _CropDataset:
         metadata = json.loads((cache / "index.json").read_text(encoding="utf-8"))
         self.images = np.load(cache / metadata["array_filename"], mmap_mode="r")
         self.index = {int(key): int(value) for key, value in metadata["index"].items()}
+        self.source_shapes = {
+            int(key): tuple(int(value) for value in shape)
+            for key, shape in metadata["source_shapes"].items()
+        }
         self.samples = samples
         self.training = training
 
@@ -247,6 +256,11 @@ class _CropDataset:
         array = np.asarray(self.images[self.index[image_id]])
         image = Image.fromarray(array, mode="RGB")
         left, top, right, bottom = box
+        source_height, source_width = self.source_shapes[image_id]
+        scale_x = image.width / source_width
+        scale_y = image.height / source_height
+        left, right = left * scale_x, right * scale_x
+        top, bottom = top * scale_y, bottom * scale_y
         crop = image.crop(
             (
                 max(0, math.floor(left)),
@@ -483,7 +497,12 @@ def main() -> None:
     report = {
         "schema_version": "1.0",
         "experiment": "store2_source_only_dinov3_completeness_verifier",
-        "training_source_policy": "single_objects_4-derived-synthetic-only",
+        "training_source_policy": "manifest-derived-synthetic-only",
+        "training_manifest": {
+            "path": str(args.manifest.resolve()),
+            "sha256": _sha256(args.manifest),
+            "source_datasets": sorted({str(record.get("source_dataset")) for record in records}),
+        },
         "evaluation_data_used_for_fitting": False,
         "initial_checkpoint": None,
         "official_weights_sha256": actual_sha256,

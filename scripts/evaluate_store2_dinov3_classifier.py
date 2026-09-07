@@ -42,6 +42,33 @@ def _tensor(image: Image.Image, size: int) -> np.ndarray:
     return (values - MEAN) / STD
 
 
+def _support_tensor(image: Image.Image, size: int, crop_mode: str) -> np.ndarray:
+    if crop_mode == "box_resize":
+        return _tensor(image, size)
+    rgb = image.convert("RGB")
+    pixels = np.asarray(rgb)
+    border = np.concatenate((pixels[0], pixels[-1], pixels[1:-1, 0], pixels[1:-1, -1]))
+    fill = tuple(int(value) for value in np.median(border, axis=0))
+    squared = ImageOps.pad(
+        rgb,
+        (max(rgb.width, rgb.height),) * 2,
+        method=Image.Resampling.BICUBIC,
+        color=fill,
+    )
+    return _tensor(squared, size)
+
+
+def _color_constancy(image: Image.Image) -> Image.Image:
+    rgb = np.asarray(image.convert("RGB"), dtype=np.float32)
+    border = np.concatenate((rgb[0], rgb[-1], rgb[1:-1, 0], rgb[1:-1, -1]), axis=0)
+    background = np.median(border, axis=0).clip(min=16.0)
+    neutral = float(background.mean())
+    channel_gain = np.clip(neutral / background, 0.7, 1.4)
+    exposure_gain = float(np.clip(200.0 / neutral, 0.7, 1.5))
+    corrected = np.clip(rgb * channel_gain * exposure_gain, 0.0, 255.0).astype(np.uint8)
+    return Image.fromarray(corrected, mode="RGB")
+
+
 def _expanded_crop(image: Image.Image, bbox: list[float], margin: float) -> Image.Image:
     x, y, width, height = bbox
     margin_x = width * margin
@@ -61,6 +88,7 @@ def _features(
     *,
     batch_size: int,
     rotation_ensemble: int,
+    exposure_ensemble: int,
 ) -> np.ndarray:
     torch = require_torch()
     output = []
@@ -73,15 +101,153 @@ def _features(
                 if rotation_ensemble == 1
                 else ((0, 2) if rotation_ensemble == 2 else (0, 1, 2, 3))
             )
+            exposure_gains = (
+                (1.0,)
+                if exposure_ensemble == 1
+                else ((0.8, 1.0, 1.2) if exposure_ensemble == 3 else (0.7, 0.85, 1.0, 1.15, 1.3))
+            )
+            mean = torch.tensor(MEAN[:, 0, 0], device=batch.device)[None, :, None, None]
+            std = torch.tensor(STD[:, 0, 0], device=batch.device)[None, :, None, None]
             values = torch.stack(
                 [
-                    model.extract_features(torch.rot90(batch, turns, dims=(-2, -1))).float()
+                    model.extract_features(
+                        torch.rot90(
+                            (((batch * std + mean) * gain).clamp(0.0, 1.0) - mean) / std,
+                            turns,
+                            dims=(-2, -1),
+                        )
+                    ).float()
                     for turns in rotations
+                    for gain in exposure_gains
                 ],
                 dim=0,
             ).mean(dim=0)
             values = torch.nn.functional.normalize(values, dim=-1)
             output.append(values.cpu().numpy())
+    return np.concatenate(output, axis=0).astype(np.float32)
+
+
+def _rotation_head_scores(model, head, tensors: list[np.ndarray], *, batch_size: int) -> np.ndarray:
+    torch = require_torch()
+    output = []
+    model.eval()
+    head.eval()
+    with torch.inference_mode():
+        for start in range(0, len(tensors), batch_size):
+            batch = torch.from_numpy(np.asarray(tensors[start : start + batch_size])).cuda()
+            scores = torch.stack(
+                [
+                    head(model.extract_features(torch.rot90(batch, turns, dims=(-2, -1)))).float()
+                    for turns in range(4)
+                ],
+                dim=1,
+            )
+            output.append(scores.cpu().numpy())
+    return np.concatenate(output, axis=0).astype(np.float32)
+
+
+def _patch_features(model, tensors: list[np.ndarray], *, batch_size: int) -> np.ndarray:
+    torch = require_torch()
+    output = []
+    model.eval()
+    with torch.inference_mode():
+        for start in range(0, len(tensors), batch_size):
+            batch = torch.from_numpy(np.asarray(tensors[start : start + batch_size])).cuda()
+            values = model.extract_patch_features(batch).float()
+            values = torch.nn.functional.normalize(values, dim=-1)
+            output.append(values.cpu().numpy().astype(np.float16))
+    return np.concatenate(output, axis=0)
+
+
+def _local_patch_scores(
+    support: np.ndarray,
+    support_labels: np.ndarray,
+    evaluation: np.ndarray,
+    *,
+    visible_fraction: float,
+    batch_size: int,
+) -> np.ndarray:
+    torch = require_torch()
+    class_banks = [
+        torch.from_numpy(support[support_labels == class_id].reshape(-1, support.shape[-1]))
+        .cuda()
+        .half()
+        for class_id in range(20)
+    ]
+    visible_count = max(1, round(evaluation.shape[1] * visible_fraction))
+    output = []
+    with torch.inference_mode():
+        for start in range(0, len(evaluation), batch_size):
+            query = torch.from_numpy(evaluation[start : start + batch_size]).cuda().half()
+            class_scores = []
+            for bank in class_banks:
+                best_per_query_patch = torch.matmul(query, bank.transpose(0, 1)).amax(dim=-1)
+                class_scores.append(
+                    best_per_query_patch.topk(visible_count, dim=-1).values.mean(dim=-1)
+                )
+            output.append(torch.stack(class_scores, dim=-1).float().cpu().numpy())
+    return np.concatenate(output, axis=0).astype(np.float32)
+
+
+def _local_patch_exemplar_scores(
+    support: np.ndarray,
+    support_labels: np.ndarray,
+    evaluation: np.ndarray,
+    *,
+    visible_fraction: float,
+    batch_size: int,
+) -> np.ndarray:
+    """Match query patches coherently to individual support views before class pooling."""
+    torch = require_torch()
+    class_banks = [
+        torch.from_numpy(support[support_labels == class_id]).cuda().half()
+        for class_id in range(20)
+    ]
+    visible_count = max(1, round(evaluation.shape[1] * visible_fraction))
+    output = []
+    with torch.inference_mode():
+        for start in range(0, len(evaluation), batch_size):
+            query = torch.from_numpy(evaluation[start : start + batch_size]).cuda().half()
+            class_scores = []
+            for bank in class_banks:
+                similarities = torch.einsum("bqd,epd->bqep", query, bank)
+                query_scores = similarities.amax(dim=-1)
+                exemplar_scores = query_scores.topk(visible_count, dim=1).values.mean(dim=1)
+                exemplar_count = min(3, exemplar_scores.shape[1])
+                class_scores.append(exemplar_scores.topk(exemplar_count, dim=1).values.mean(dim=1))
+            output.append(torch.stack(class_scores, dim=-1).float().cpu().numpy())
+    return np.concatenate(output, axis=0).astype(np.float32)
+
+
+def _local_patch_symmetric_scores(
+    support: np.ndarray,
+    support_labels: np.ndarray,
+    evaluation: np.ndarray,
+    *,
+    visible_fraction: float,
+    batch_size: int,
+) -> np.ndarray:
+    """Require both query coverage and complete-support structural coverage."""
+    torch = require_torch()
+    class_banks = [
+        torch.from_numpy(support[support_labels == class_id]).cuda().half()
+        for class_id in range(20)
+    ]
+    visible_count = max(1, round(evaluation.shape[1] * visible_fraction))
+    output = []
+    with torch.inference_mode():
+        for start in range(0, len(evaluation), batch_size):
+            query = torch.from_numpy(evaluation[start : start + batch_size]).cuda().half()
+            class_scores = []
+            for bank in class_banks:
+                similarities = torch.einsum("bqd,epd->bqep", query, bank)
+                query_to_support = similarities.amax(dim=-1)
+                query_to_support = query_to_support.topk(visible_count, dim=1).values.mean(dim=1)
+                support_to_query = similarities.amax(dim=1).mean(dim=-1)
+                symmetric = 0.5 * (query_to_support + support_to_query)
+                exemplar_count = min(3, symmetric.shape[1])
+                class_scores.append(symmetric.topk(exemplar_count, dim=1).values.mean(dim=1))
+            output.append(torch.stack(class_scores, dim=-1).float().cpu().numpy())
     return np.concatenate(output, axis=0).astype(np.float32)
 
 
@@ -145,8 +311,17 @@ def main() -> None:
     parser = argparse.ArgumentParser(description="Diagnose fresh DINOv3 classifier on GT ROIs")
     parser.add_argument("--support-manifest", type=Path, required=True)
     parser.add_argument("--support-root", type=Path, required=True)
+    parser.add_argument("--additional-support-manifest", type=Path)
+    parser.add_argument("--additional-support-root", type=Path)
+    parser.add_argument("--support-repeat", type=int, default=1)
+    parser.add_argument("--additional-support-repeat", type=int, default=1)
     parser.add_argument("--evaluation-manifest", type=Path, required=True)
     parser.add_argument("--evaluation-root", type=Path, required=True)
+    parser.add_argument(
+        "--maximum-evaluation-records",
+        type=int,
+        help="Deterministically subsample large source diagnostics before tensor loading",
+    )
     parser.add_argument("--weights", type=Path, required=True)
     parser.add_argument("--classifier-checkpoint", type=Path)
     parser.add_argument(
@@ -159,21 +334,84 @@ def main() -> None:
         default="dinov3_convnext_tiny",
     )
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--scores-output",
+        type=Path,
+        help="Optional per-object score bundle for source-independent cascade analysis",
+    )
+    parser.add_argument(
+        "--features-output",
+        type=Path,
+        help="Optional normalized support and evaluation feature bundle for adapter research",
+    )
+    parser.add_argument(
+        "--rotation-head-scores-output",
+        type=Path,
+        help="Optional per-rotation trained-head logits for source-calibrated consistency analysis",
+    )
     parser.add_argument("--image-size", type=int, default=224)
     parser.add_argument("--batch-size", type=int, default=64)
     parser.add_argument("--margin", type=float, default=0.05)
+    parser.add_argument(
+        "--crop-mode", choices=("box_resize", "square_context"), default="box_resize"
+    )
     parser.add_argument("--neighbor-mask", action="store_true")
+    parser.add_argument("--neighbor-context-scale", type=float, default=0.0)
+    parser.add_argument("--color-constancy", action="store_true")
     parser.add_argument("--neighbor-distance-bias", type=float, default=-0.1)
     parser.add_argument("--augmented-views", type=int, default=0)
     parser.add_argument("--handcrafted", action="store_true")
+    parser.add_argument(
+        "--handcrafted-weight",
+        type=float,
+        help="Force a handcrafted feature weight selected on separate source validation",
+    )
     parser.add_argument("--rotation-ensemble", type=int, choices=(1, 2, 4), default=1)
+    parser.add_argument("--exposure-ensemble", type=int, choices=(1, 3, 5), default=1)
+    parser.add_argument("--local-patch-retrieval", action="store_true")
+    parser.add_argument("--local-visible-fraction", type=float, default=0.5)
+    parser.add_argument(
+        "--local-patch-mode",
+        choices=("class_bank", "exemplar", "symmetric"),
+        default="class_bank",
+    )
+    parser.add_argument(
+        "--decision-head",
+        help=(
+            "Force a decision head selected on a separate validation set; by default this "
+            "diagnostic selects the most accurate head on the evaluated manifest"
+        ),
+    )
     args = parser.parse_args()
+    if (args.additional_support_manifest is None) != (args.additional_support_root is None):
+        parser.error(
+            "--additional-support-manifest and --additional-support-root must be provided together"
+        )
+    if args.support_repeat < 1 or args.additional_support_repeat < 1:
+        parser.error("support repeat values must be positive")
+    if not 0.0 <= args.neighbor_context_scale <= 1.0:
+        parser.error("neighbor context scale must be in [0, 1]")
     if args.augmented_views and args.handcrafted:
         parser.error("augmented views and handcrafted fusion are separate diagnostics")
-    if args.classifier_checkpoint is not None and args.variant == "dinov3_vitb16":
-        parser.error("classifier checkpoints are only supported for ConvNeXt variants")
-
-    support_records = _records(args.support_manifest)
+    if args.handcrafted_weight is not None and not args.handcrafted:
+        parser.error("--handcrafted-weight requires --handcrafted")
+    if args.handcrafted_weight is not None and args.handcrafted_weight <= 0.0:
+        parser.error("--handcrafted-weight must be positive")
+    support_sources = [(args.support_manifest, args.support_root, args.support_repeat)]
+    if args.additional_support_manifest is not None:
+        support_sources.append(
+            (
+                args.additional_support_manifest,
+                args.additional_support_root,
+                args.additional_support_repeat,
+            )
+        )
+    support_records = [
+        (record, root)
+        for manifest, root, repeat in support_sources
+        for _ in range(repeat)
+        for record in _records(manifest)
+    ]
     support_tensors = []
     support_labels = []
     augmented_support_tensors = []
@@ -198,10 +436,12 @@ def main() -> None:
         procedural_gradient=True,
         procedural_shadow=True,
     )
-    for support_index, record in enumerate(support_records):
-        with Image.open(args.support_root / record["image_path"]) as source:
+    for support_index, (record, support_root) in enumerate(support_records):
+        with Image.open(support_root / record["image_path"]) as source:
             oriented = ImageOps.exif_transpose(source).convert("RGB")
-            support_tensors.append(_tensor(oriented, args.image_size))
+            if args.color_constancy:
+                oriented = _color_constancy(oriented)
+            support_tensors.append(_support_tensor(oriented, args.image_size, args.crop_mode))
             if args.augmented_views:
                 cutout = prepare_direct_roi_source(oriented, recipe)
                 for view_index in range(args.augmented_views):
@@ -217,10 +457,24 @@ def main() -> None:
                     augmented_support_labels.append(int(record["category_id"]) - 1)
         support_labels.append(int(record["category_id"]) - 1)
 
+    evaluation_records = _records(args.evaluation_manifest)
+    if args.maximum_evaluation_records is not None:
+        if args.maximum_evaluation_records < 1:
+            parser.error("--maximum-evaluation-records must be positive")
+        if len(evaluation_records) > args.maximum_evaluation_records:
+            generator = np.random.default_rng(20261118)
+            selected = np.sort(
+                generator.choice(
+                    len(evaluation_records),
+                    args.maximum_evaluation_records,
+                    replace=False,
+                )
+            )
+            evaluation_records = [evaluation_records[int(index)] for index in selected]
     evaluation_tensors = []
     evaluation_labels = []
     evaluation_ids = []
-    for record in _records(args.evaluation_manifest):
+    for record in evaluation_records:
         with Image.open(args.evaluation_root / record["image_path"]) as source:
             image = ImageOps.exif_transpose(source).convert("RGB")
             detections = []
@@ -234,10 +488,13 @@ def main() -> None:
                         image.width,
                         image.height,
                         margin_ratio=args.margin,
-                        crop_mode="box_resize",
+                        crop_mode=args.crop_mode,
                     )
+                    crop = image.crop(crop_box)
+                    if args.color_constancy:
+                        crop = _color_constancy(crop)
                     tensor = prepare_rgb(
-                        image.crop(crop_box),
+                        crop,
                         (args.image_size, args.image_size),
                         tuple(float(value) for value in MEAN[:, 0, 0]),
                         tuple(float(value) for value in STD[:, 0, 0]),
@@ -253,11 +510,15 @@ def main() -> None:
                         distance_bias=args.neighbor_distance_bias,
                         shared_scale=False,
                     )
+                    masked_tensor = apply_classifier_background_masks(tensor[None], mask[None])[0]
                     evaluation_tensors.append(
-                        apply_classifier_background_masks(tensor[None], mask[None])[0]
+                        args.neighbor_context_scale * tensor
+                        + (1.0 - args.neighbor_context_scale) * masked_tensor
                     )
                 else:
                     crop = _expanded_crop(image, annotation["bbox_xywh"], args.margin)
+                    if args.color_constancy:
+                        crop = _color_constancy(crop)
                     evaluation_tensors.append(_tensor(crop, args.image_size))
                 evaluation_labels.append(int(annotation["category_id"]) - 1)
                 evaluation_ids.append(
@@ -268,21 +529,34 @@ def main() -> None:
                 )
 
     classifier_head = None
+    classifier_output_count = 20
+    classifier_checkpoint_state = None
+    if args.classifier_checkpoint is not None:
+        classifier_checkpoint_state = require_torch().load(
+            args.classifier_checkpoint,
+            map_location="cpu",
+            weights_only=True,
+        )
+        classifier_weight = classifier_checkpoint_state.get("classifier.weight")
+        if classifier_weight is None or classifier_weight.ndim != 2:
+            raise ValueError("classifier checkpoint is missing classifier.weight")
+        classifier_output_count = int(classifier_weight.shape[0])
+        if classifier_output_count not in (2, 20, 21):
+            raise ValueError(
+                "classifier checkpoint must contain 2 quality outputs or 20 identity outputs "
+                "with optional quality"
+            )
     if args.variant.startswith("dinov3_convnext_tiny"):
         base_model = build_dino_classifier(
             "dinov3_convnext_tiny",
-            20,
+            classifier_output_count,
             weights_path=args.weights,
             feature_l2_normalize=True,
             classifier_head_kind=("cosine" if args.classifier_checkpoint is not None else "linear"),
         )
         if args.classifier_checkpoint is not None:
             base_model.load_state_dict(
-                require_torch().load(
-                    args.classifier_checkpoint,
-                    map_location="cpu",
-                    weights_only=True,
-                ),
+                classifier_checkpoint_state,
                 strict=True,
             )
             if args.variant == "dinov3_convnext_tiny":
@@ -310,6 +584,20 @@ def main() -> None:
                     return torch.nn.functional.normalize(torch.cat(pooled, dim=-1), dim=-1)
 
             model = _ConvNextMultiscaleWrapper(base_model.backbone).cuda()
+    elif args.classifier_checkpoint is not None:
+        base_model = build_dino_classifier(
+            "dinov3_vitb16",
+            classifier_output_count,
+            weights_path=args.weights,
+            feature_l2_normalize=True,
+            classifier_head_kind="cosine",
+        )
+        base_model.load_state_dict(
+            classifier_checkpoint_state,
+            strict=True,
+        )
+        classifier_head = base_model.classifier
+        model = base_model.cuda()
     else:
         torch = require_torch()
         backbone = torch.hub.load(
@@ -333,12 +621,16 @@ def main() -> None:
             def extract_features(self, pixel_values):
                 return self.wrapped.forward_features(pixel_values, masks=None)["x_norm_clstoken"]
 
+            def extract_patch_features(self, pixel_values):
+                return self.wrapped.forward_features(pixel_values, masks=None)["x_norm_patchtokens"]
+
         model = _VitB16Wrapper(backbone).cuda()
     support_features = _features(
         model,
         support_tensors,
         batch_size=args.batch_size,
         rotation_ensemble=args.rotation_ensemble,
+        exposure_ensemble=args.exposure_ensemble,
     )
     if augmented_support_tensors:
         augmented_support_features = _features(
@@ -346,6 +638,7 @@ def main() -> None:
             augmented_support_tensors,
             batch_size=args.batch_size,
             rotation_ensemble=args.rotation_ensemble,
+            exposure_ensemble=args.exposure_ensemble,
         )
     else:
         augmented_support_features = np.empty((0, support_features.shape[1]), dtype=np.float32)
@@ -354,9 +647,42 @@ def main() -> None:
         evaluation_tensors,
         batch_size=args.batch_size,
         rotation_ensemble=args.rotation_ensemble,
+        exposure_ensemble=args.exposure_ensemble,
     )
     support_labels_array = np.asarray(support_labels, dtype=np.int64)
     labels = np.asarray(evaluation_labels, dtype=np.int64)
+    local_patch_scores = None
+    if args.local_patch_retrieval:
+        if args.variant != "dinov3_vitb16":
+            parser.error("local patch retrieval requires dinov3_vitb16")
+        support_patch_features = _patch_features(model, support_tensors, batch_size=args.batch_size)
+        evaluation_patch_features = _patch_features(
+            model, evaluation_tensors, batch_size=args.batch_size
+        )
+        if args.local_patch_mode == "exemplar":
+            local_patch_scores = _local_patch_exemplar_scores(
+                support_patch_features,
+                support_labels_array,
+                evaluation_patch_features,
+                visible_fraction=args.local_visible_fraction,
+                batch_size=min(args.batch_size, 16),
+            )
+        elif args.local_patch_mode == "symmetric":
+            local_patch_scores = _local_patch_symmetric_scores(
+                support_patch_features,
+                support_labels_array,
+                evaluation_patch_features,
+                visible_fraction=args.local_visible_fraction,
+                batch_size=min(args.batch_size, 16),
+            )
+        else:
+            local_patch_scores = _local_patch_scores(
+                support_patch_features,
+                support_labels_array,
+                evaluation_patch_features,
+                visible_fraction=args.local_visible_fraction,
+                batch_size=min(args.batch_size, 32),
+            )
     handcrafted_sweep = None
     selected_handcrafted_weight = 0.0
     if args.handcrafted:
@@ -376,7 +702,12 @@ def main() -> None:
         original_evaluation = evaluation_features
         handcrafted_sweep = []
         best_accuracy = -1.0
-        for weight in (0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0, 1.5, 2.0):
+        handcrafted_weights = (
+            (args.handcrafted_weight,)
+            if args.handcrafted_weight is not None
+            else (0.05, 0.1, 0.2, 0.35, 0.5, 0.75, 1.0, 1.5, 2.0)
+        )
+        for weight in handcrafted_weights:
             candidate_support = np.concatenate(
                 (original_support, support_handcrafted * weight), axis=1
             )
@@ -464,19 +795,54 @@ def main() -> None:
     lda_accuracy = float((lda_scores.argmax(axis=1) == labels).mean())
     classifier_head_accuracy = None
     classifier_head_scores = None
+    classifier_quality_scores = None
     classifier_ensemble_sweep = None
     if classifier_head is not None and not args.handcrafted:
         torch = require_torch()
         with torch.inference_mode():
-            classifier_head_scores = (
+            classifier_head_outputs = (
                 classifier_head(torch.from_numpy(evaluation_features).cuda()).float().cpu().numpy()
             )
-        classifier_head_accuracy = float((classifier_head_scores.argmax(axis=1) == labels).mean())
+        if classifier_head_outputs.shape[1] == 2:
+            shifted_quality_outputs = classifier_head_outputs - classifier_head_outputs.max(
+                axis=1, keepdims=True
+            )
+            classifier_probabilities = np.exp(shifted_quality_outputs)
+            classifier_probabilities /= classifier_probabilities.sum(axis=1, keepdims=True)
+            classifier_quality_scores = classifier_probabilities[:, 1]
+        elif classifier_head_outputs.shape[1] == 21:
+            shifted_quality_outputs = classifier_head_outputs - classifier_head_outputs.max(
+                axis=1, keepdims=True
+            )
+            classifier_probabilities = np.exp(shifted_quality_outputs)
+            classifier_probabilities /= classifier_probabilities.sum(axis=1, keepdims=True)
+            classifier_quality_scores = classifier_probabilities[:, 20]
+            classifier_head_scores = classifier_head_outputs[:, :20]
+        else:
+            classifier_head_scores = classifier_head_outputs
+        if classifier_head_scores is not None:
+            classifier_head_accuracy = float(
+                (classifier_head_scores.argmax(axis=1) == labels).mean()
+            )
     candidates = [
         (hybrid_accuracy, "prototype_knn_hybrid", hybrid_scores),
         (ridge_accuracy, "ridge_adapter", ridge_scores),
         (lda_accuracy, "diagonal_lda_adapter", lda_scores),
     ]
+    local_patch_accuracy = None
+    local_patch_ensemble_sweep = None
+    if local_patch_scores is not None:
+        local_patch_accuracy = float((local_patch_scores.argmax(axis=1) == labels).mean())
+        local_patch_name = f"local_patch_{args.local_patch_mode}"
+        candidates.append((local_patch_accuracy, local_patch_name, local_patch_scores))
+        local_patch_ensemble_sweep = []
+        for local_weight in (0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.75, 0.9):
+            ensemble_scores = (
+                1.0 - local_weight
+            ) * hybrid_scores + local_weight * local_patch_scores
+            accuracy = float((ensemble_scores.argmax(axis=1) == labels).mean())
+            local_patch_ensemble_sweep.append({"local_weight": local_weight, "accuracy": accuracy})
+            candidates.append((accuracy, f"global_local_patch_w{local_weight:g}", ensemble_scores))
     if classifier_head_scores is not None and classifier_head_accuracy is not None:
         candidates.append((classifier_head_accuracy, "trained_cosine_head", classifier_head_scores))
         classifier_ensemble_sweep = []
@@ -502,7 +868,16 @@ def main() -> None:
                     }
                 )
                 candidates.append((ensemble_accuracy, name, ensemble_scores))
-    _, decision_head, scores = max(candidates, key=lambda item: item[0])
+    if args.decision_head is None:
+        _, decision_head, scores = max(candidates, key=lambda item: item[0])
+        decision_head_selection = "evaluated_manifest_diagnostic"
+    else:
+        matches = [item for item in candidates if item[1] == args.decision_head]
+        if not matches:
+            available = ", ".join(item[1] for item in candidates)
+            parser.error(f"unknown --decision-head {args.decision_head!r}; available: {available}")
+        _, decision_head, scores = matches[0]
+        decision_head_selection = "forced_from_separate_validation"
     predictions = scores.argmax(axis=1)
     order = np.argsort(scores, axis=1)[:, ::-1]
     top1 = scores[np.arange(len(labels)), order[:, 0]]
@@ -514,7 +889,7 @@ def main() -> None:
         per_class[str(class_id + 1)] = {
             "count": int(selected.sum()),
             "correct": int(correct[selected].sum()),
-            "accuracy": float(correct[selected].mean()),
+            "accuracy": float(correct[selected].mean()) if selected.any() else None,
         }
     errors = []
     for index in np.flatnonzero(~correct):
@@ -531,8 +906,11 @@ def main() -> None:
     report = {
         "schema_version": "1.0",
         "mode": "evaluation_gt_roi_diagnostic_only",
-        "evaluation_used_for_fitting": False,
+        "development_evaluation_used_for_head_selection": args.decision_head is None,
+        "decision_head_selection": decision_head_selection,
         "support_count": len(support_records),
+        "support_repeat": args.support_repeat,
+        "additional_support_repeat": args.additional_support_repeat,
         "augmented_support_count": len(augmented_support_labels),
         "augmentation_recipe": asdict(recipe) if args.augmented_views else None,
         "handcrafted_feature_fusion": args.handcrafted,
@@ -546,11 +924,19 @@ def main() -> None:
         "diagonal_lda_adapter_accuracy": lda_accuracy,
         "trained_classifier_head_accuracy": classifier_head_accuracy,
         "classifier_ensemble_sweep": classifier_ensemble_sweep,
+        "local_patch_retrieval_accuracy": local_patch_accuracy,
+        "local_patch_mode": args.local_patch_mode,
+        "local_patch_ensemble_sweep": local_patch_ensemble_sweep,
+        "local_visible_fraction": args.local_visible_fraction,
         "image_size": args.image_size,
         "crop_margin": args.margin,
+        "crop_mode": args.crop_mode,
         "neighbor_mask": args.neighbor_mask,
+        "neighbor_context_scale": args.neighbor_context_scale,
+        "color_constancy": args.color_constancy,
         "neighbor_distance_bias": args.neighbor_distance_bias,
         "internal_rotation_ensemble": args.rotation_ensemble,
+        "internal_exposure_ensemble": args.exposure_ensemble,
         "correct_count": int(correct.sum()),
         "error_count": int((~correct).sum()),
         "accuracy": float(correct.mean()),
@@ -568,6 +954,71 @@ def main() -> None:
     args.output.write_text(
         json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
+    if args.scores_output is not None:
+        args.scores_output.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            args.scores_output,
+            labels=labels,
+            image_ids=np.asarray([row["image_id"] for row in evaluation_ids], dtype=np.int64),
+            annotation_ids=np.asarray(
+                [row["annotation_id"] for row in evaluation_ids], dtype=np.int64
+            ),
+            prototype_scores=prototype_scores.astype(np.float32),
+            hybrid_scores=hybrid_scores.astype(np.float32),
+            ridge_scores=ridge_scores.astype(np.float32),
+            lda_scores=lda_scores.astype(np.float32),
+            classifier_head_scores=(
+                np.empty((0, 20), dtype=np.float32)
+                if classifier_head_scores is None
+                else classifier_head_scores.astype(np.float32)
+            ),
+            selected_scores=scores.astype(np.float32),
+            selected_decision_head=np.asarray(decision_head),
+            local_patch_scores=(
+                np.empty((0, 20), dtype=np.float32)
+                if local_patch_scores is None
+                else local_patch_scores.astype(np.float32)
+            ),
+            quality_scores=(
+                np.empty((0,), dtype=np.float32)
+                if classifier_quality_scores is None
+                else classifier_quality_scores.astype(np.float32)
+            ),
+        )
+    if args.features_output is not None:
+        args.features_output.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            args.features_output,
+            support_features=support_features.astype(np.float32),
+            support_labels=support_labels_array,
+            augmented_support_features=augmented_support_features.astype(np.float32),
+            augmented_support_labels=np.asarray(augmented_support_labels, dtype=np.int64),
+            evaluation_features=evaluation_features.astype(np.float32),
+            evaluation_labels=labels,
+            image_ids=np.asarray([row["image_id"] for row in evaluation_ids], dtype=np.int64),
+            annotation_ids=np.asarray(
+                [row["annotation_id"] for row in evaluation_ids], dtype=np.int64
+            ),
+        )
+    if args.rotation_head_scores_output is not None:
+        if classifier_head is None:
+            parser.error("rotation head scores require --classifier-checkpoint")
+        rotation_scores = _rotation_head_scores(
+            model,
+            classifier_head,
+            evaluation_tensors,
+            batch_size=args.batch_size,
+        )
+        args.rotation_head_scores_output.parent.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            args.rotation_head_scores_output,
+            labels=labels,
+            image_ids=np.asarray([row["image_id"] for row in evaluation_ids], dtype=np.int64),
+            annotation_ids=np.asarray(
+                [row["annotation_id"] for row in evaluation_ids], dtype=np.int64
+            ),
+            rotation_head_scores=rotation_scores,
+        )
     print(json.dumps({key: value for key, value in report.items() if key != "errors"}, indent=2))
 
 

@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
+from ..contracts.errors import ModelExecutionError
 from ..contracts.model_package import ClassifierMetadata
 from .ports import ClassificationResult
 
@@ -124,6 +125,31 @@ def normalize_classification(
         approval_blocked = None
 
     expected_shape = (detection_count, len(metadata.labels))
+    for values in (
+        logits,
+        ranking_logits,
+        classification.retrieval_logits
+        if isinstance(classification, ClassificationResult)
+        else None,
+    ):
+        if values is None or np.isfinite(values).all():
+            continue
+        # Append-only consensus masks ineligible classes with -inf and an
+        # explicit zero ranking score. This is policy data, not a model tensor.
+        masked = (
+            isinstance(classification, ClassificationResult)
+            and approval_scores is not None
+            and ranking_scores is not None
+            and values.shape == expected_shape
+            and ranking_scores.shape == expected_shape
+            and np.all(np.isfinite(values) | (np.isneginf(values) & (ranking_scores == 0)))
+            and np.all(np.isfinite(values).any(axis=1))
+        )
+        if not masked:
+            raise ModelExecutionError
+    for values in (approval_scores, top3_safety_scores, ranking_scores):
+        if values is not None and not np.isfinite(values).all():
+            raise ModelExecutionError
     if logits.shape != expected_shape:
         raise ValueError("classifier output shape does not match package labels")
     if ranking_logits.shape != expected_shape:

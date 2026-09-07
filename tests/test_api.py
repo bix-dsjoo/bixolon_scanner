@@ -180,7 +180,7 @@ def test_v2_runtime_warms_models_before_readiness(
     monkeypatch.setattr(
         worker_runtime, "load_store_catalog_package", lambda *args, **kwargs: catalog
     )
-    monkeypatch.setattr(worker_runtime, "select_provider", lambda _: "cpu")
+    monkeypatch.setattr(worker_runtime, "select_provider", lambda *_: "cpu")
     monkeypatch.setattr(
         worker_runtime,
         "build_detector_v2",
@@ -279,7 +279,7 @@ def test_v2_runtime_falls_back_to_detector_provider_when_gpu_embedder_fails(
     monkeypatch.setattr(
         worker_runtime, "load_store_catalog_package", lambda *args, **kwargs: catalog
     )
-    monkeypatch.setattr(worker_runtime, "select_provider", lambda value: value)
+    monkeypatch.setattr(worker_runtime, "select_provider", lambda value, *_: value)
     monkeypatch.setattr(worker_runtime, "build_detector_v2", build_detector)
     monkeypatch.setattr(worker_runtime, "build_catalog_classifier", build_classifier)
 
@@ -365,7 +365,7 @@ def test_v2_runtime_runs_gpu_presence_in_parallel_after_gpu_embedder_warmup(
     monkeypatch.setattr(
         worker_runtime, "load_store_catalog_package", lambda *args, **kwargs: catalog
     )
-    monkeypatch.setattr(worker_runtime, "select_provider", lambda value: value)
+    monkeypatch.setattr(worker_runtime, "select_provider", lambda value, *_: value)
     monkeypatch.setattr(worker_runtime, "build_detector_v2", build_detector)
     monkeypatch.setattr(worker_runtime, "replace_count_verifier_v2", replace_count_verifier)
     monkeypatch.setattr(

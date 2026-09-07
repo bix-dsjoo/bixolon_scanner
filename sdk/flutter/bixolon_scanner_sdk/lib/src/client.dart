@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
@@ -66,6 +67,22 @@ class BixolonScannerClient {
     Uint8List imageBytes, {
     required String filename,
   }) => _serial(() => _scanBytes(imageBytes, filename: filename));
+
+  Future<ScanResponse> scanFile(String imagePath) async {
+    final file = File(imagePath);
+    try {
+      return scanBytes(
+        await file.readAsBytes(),
+        filename: file.uri.pathSegments.last,
+      );
+    } on FileSystemException catch (error) {
+      throw BixolonTransportException(
+        'Could not read the scan image.',
+        code: 'SCAN_IMAGE_READ_FAILED',
+        cause: error,
+      );
+    }
+  }
 
   Future<ScanResponse> _scanBytes(
     Uint8List imageBytes, {

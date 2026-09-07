@@ -6,10 +6,32 @@ import numpy as np
 import pytest
 
 from bixolon_scanner.evaluation.onnx_detector import (
+    _fuse_rotation_predictions,
     detector_classification_metrics,
     load_records,
     raw_outputs_to_prediction,
 )
+
+
+def test_rotation_fusion_preserves_support_uncertainty() -> None:
+    prediction = {
+        "boxes_xyxy": [[0.0, 0.0, 10.0, 10.0], [1.0, 0.0, 11.0, 10.0]],
+        "scores": [0.9, 0.7],
+        "class_ids": [0, 0],
+    }
+
+    fused = _fuse_rotation_predictions(
+        prediction,
+        [0, 1],
+        view_count=2,
+        minimum_support=2,
+        iou_threshold=0.5,
+        score_mode="mean",
+    )
+
+    assert fused["rotation_support_count"] == [2]
+    assert fused["rotation_score_standard_deviation"][0] == pytest.approx(0.1)
+    assert fused["rotation_box_dispersion"][0] > 0.0
 
 
 def test_explicit_annotation_path_keeps_images_under_dataset_root(tmp_path: Path):

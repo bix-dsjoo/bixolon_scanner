@@ -8,7 +8,7 @@ import pytest
 from bixolon_scanner.contracts.api import ItemStatus, ScanResponse, Status
 
 ROOT = Path(__file__).resolve().parents[1]
-EXAMPLES = ROOT / "docs" / "contracts" / "examples" / "0.1.14"
+EXAMPLES = ROOT / "docs" / "contracts" / "examples" / "0.1.16"
 
 
 @pytest.mark.parametrize(
@@ -29,9 +29,9 @@ def test_handoff_examples_follow_python_contract(
     response = ScanResponse.model_validate_json((EXAMPLES / name).read_text(encoding="utf-8"))
 
     assert response.status is status
-    assert response.worker_version == "0.1.14"
+    assert response.worker_version == "0.1.16"
     assert all(
-        value == "0.1.14"
+        value == "0.1.16"
         for value in (
             response.detector_version,
             response.classifier_version,

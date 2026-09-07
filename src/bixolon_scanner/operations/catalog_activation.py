@@ -206,6 +206,20 @@ def fit_diagonal_lda_adapter(
     return weight.astype(np.float32), bias.astype(np.float32)
 
 
+def preserve_classifier_logits_adapter(
+    *, embedding_dimension: int, class_count: int
+) -> tuple[np.ndarray, np.ndarray]:
+    """Return an identity adapter for an embedder that already emits class logits."""
+    if embedding_dimension != class_count:
+        raise ValueError(
+            "classifier-logit preservation requires embedding dimension to equal class count"
+        )
+    return (
+        np.eye(class_count, dtype=np.float32),
+        np.zeros(class_count, dtype=np.float32),
+    )
+
+
 def _adapter_features(
     embedder: OnnxEmbedder,
     images: list[Image.Image],
@@ -371,6 +385,11 @@ def build_catalog(
             adapter_labels,
             class_count=len(class_ids),
         )
+    elif decision_head == "classifier_logits":
+        weight, bias = preserve_classifier_logits_adapter(
+            embedding_dimension=int(supports.shape[1]),
+            class_count=len(class_ids),
+        )
     else:
         raise ValueError("unsupported Catalog decision head")
     similarities = prototypes @ prototypes.T
@@ -442,7 +461,7 @@ def build_catalog(
         support_count=len(records),
         labels=labels,
         source_manifest_sha256=sha256_file(source_manifest_path),
-        decision_head=decision_head,
+        decision_head="ridge_adapter" if decision_head == "classifier_logits" else decision_head,
         adapter_filename="adapter.bin",
         append_only_base_class_count=append_only_base_class_count,
     )
@@ -554,7 +573,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--cuda-dll-dir", type=Path)
     parser.add_argument(
         "--decision-head",
-        choices=("ridge_adapter", "diagonal_lda"),
+        choices=("ridge_adapter", "diagonal_lda", "classifier_logits"),
         default="ridge_adapter",
     )
     parser.add_argument("--append-only-base-catalog", type=Path)

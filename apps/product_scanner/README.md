@@ -25,7 +25,7 @@ lib/
 
 ## 실행
 
-기본 Worker 주소는 `http://127.0.0.1:8000`입니다. Windows 앱을 실행하면 Worker도 숨김 자식 프로세스로 자동 실행됩니다. 앱은 카메라 초기화와 동시에 readiness를 확인해 첫 촬영 전에 모델 warm-up을 끝냅니다. 앱이 직접 시작한 Worker는 앱 종료 시 함께 종료됩니다. 이미 같은 주소에 Worker가 실행 중이면 `/health/ready`의 모든 non-null 구성요소 버전이 앱 계약 `0.1.14`와 일치할 때만 사용하고, 다른 버전 Worker에는 스캔을 전송하지 않습니다.
+기본 Worker 주소는 `http://127.0.0.1:8000`입니다. Windows 앱을 실행하면 Worker도 숨김 자식 프로세스로 자동 실행됩니다. 앱은 카메라 초기화와 동시에 readiness를 확인해 첫 촬영 전에 모델 warm-up을 끝냅니다. 앱이 직접 시작한 Worker는 앱 종료 시 함께 종료됩니다. 이미 같은 주소에 Worker가 실행 중이면 `/health/ready`의 모든 non-null 구성요소 버전이 앱 계약 `0.1.16`와 일치할 때만 사용하고, 다른 버전 Worker에는 스캔을 전송하지 않습니다.
 
 ```powershell
 cd apps\product_scanner
@@ -54,12 +54,12 @@ flutter run -d windows --dart-define=SCANNER_API_BASE_URL=http://192.168.0.20:80
 flutter analyze
 flutter test
 cd ..\..
-.\scripts\build_app.ps1 -Version 0.1.14
+.\scripts\build_app.ps1 -Version 0.1.16
 ```
 
-단일 명령은 `configs\versions\0.1.14.json`의 고정 해시를 확인하고 Runtime/Catalog metadata를
-`0.1.14`로 변환한 뒤 Worker, CUDA 13·cuDNN 9 DLL과 Flutter `0.1.14+17`를 자체 포함 Windows
-번들로 만듭니다. 결과는 `artifacts\versions\0.1.14\bixolon-bakery-ai-scanner-0.1.14`입니다. 설치 PC의
+단일 명령은 `configs\versions\0.1.16.json`의 고정 해시를 확인하고 Runtime/Catalog metadata를
+`0.1.16`로 변환한 뒤 Worker, CUDA 13·cuDNN 9 DLL과 Flutter `0.1.16+19`를 자체 포함 Windows
+번들로 만듭니다. 결과는 `artifacts\versions\0.1.16\bixolon-bakery-ai-scanner-0.1.16`입니다. 설치 PC의
 Python, 전역 Worker, signing key 또는 관련 환경 변수에 의존하지 않습니다.
 
 번들은 `worker\bixolon-worker.exe`, `worker\model-package`, `worker\store-catalog`,
@@ -68,13 +68,12 @@ Catalog는 무키 `CHECKSUM-SHA256`이며 `signature.json`을 넣지 않습니�
 Runtime/Catalog checksum이 일치하지 않으면 readiness를 열지 않고 CPU로 조용히 전환하지 않습니다.
 
 일반 Windows 배포는 `scripts\build_windows_installer.ps1`로 Setup EXE와 Worker ZIP을 만듭니다.
-이 구성은 Detector를 OpenVINO CPU에, verifier와 모든 Embedder를 Intel GPU에 배치하고 GPU 초기화
-실패 시 경고 로그 후 CPU로 fallback합니다. CUDA 파일은 포함하지 않으며 대상 PC에는 Python·
-Flutter·CUDA가 필요 없습니다. N100은 제품명이 아니라 이 provider 구성을 확인한 기준 장비명이며
-측정값은 성능 보장이나 SLA가 아닙니다. 자세한 생성·검증 방법은 저장소 루트 README를 따릅니다.
+KIOSK/POS 호환 설치본은 Detector·Embedder·Verifier를 ONNX Runtime CPU로 실행하고 CUDA/OpenVINO
+파일을 포함하지 않습니다. 대상 PC에는 Python·Flutter·CUDA가 필요 없습니다. 고성능 앱 bundle은
+동일 ONNX·판정 정책을 CUDA로 실행합니다. 자세한 생성·검증 방법은 저장소 루트 README를 따릅니다.
 
-앱 `0.1.14+17`는 `/health/ready`에서 Worker·Detector·Embedder·Detector policy·Classifier
-policy·Catalog의 non-null 버전이 모두 `0.1.14`인지 확인합니다. 대표 상태는 `test/goldens`로도
+앱 `0.1.16+19`는 `/health/ready`에서 Worker·Detector·Embedder·Detector policy·Classifier
+policy·Catalog의 non-null 버전이 모두 `0.1.16`인지 확인합니다. 대표 상태는 `test/goldens`로도
 회귀 검증하며 골든은 시각 비평 후 의도한 변경에서만 갱신합니다. 모델 바이너리는 Git에 커밋하지
 않습니다.
 
@@ -94,7 +93,9 @@ Scan Log v5는 Worker 상태·reason code·원본 detection을 덮어쓰지 않�
 
 상품 결과 헤더에는 `n/n개 확인 · 분석 72.1 ms`, `RECAPTURE` 헤더에는 `분석 72.1 ms` 형식으로 Worker 응답의 `processing_time_ms`를 표시합니다. 이 값은 클라이언트 왕복시간이 아니라 Worker 요청 수신부터 응답 조립까지의 처리시간이며 multipart·업로드 읽기·이미지 디코딩·실행 대기·전처리·detector·필요한 classifier·후처리를 포함합니다. 선택적 `stage_timings_ms`가 같은 구간을 세분화합니다. 응답이 없는 `ERROR`에는 시간을 임의로 만들지 않습니다. 이번 앱 변경은 `DETECTOR_UNCERTAIN_OBJECT` 가드나 모델 임계값을 완화하지 않으며, 수동 저장한 1~4개 실제 장면을 라벨링·평가한 뒤 별도 모델 버전과 KPI 검증으로 보정합니다.
 
-Windows 카메라는 Flutter의 `camera_windows` 구현을 사용합니다. 플러그인의 미러 프리뷰만 수평 보정하고 저장 이미지와 Bounding Box는 원본 좌표를 유지합니다. 카메라가 없거나 권한이 거부되어도 이미지 파일 분석은 계속 사용할 수 있습니다.
+Windows 카메라는 Flutter의 `camera_windows` Media Foundation 구현을 사용하며 `veryHigh` 미리보기·30fps를 요청합니다. 촬영 이미지는 가로·세로 중앙의 `1080×1080` 원본 픽셀을 확대·축소 없이 잘라 분석 또는 빵 촬영 저장에 사용합니다. 1920×1080 원본은 좌우 각각 420px을 제거하고 높이는 모두 유지하며, 3264×2448 원본은 좌우 각각 1092px과 위아래 각각 684px을 제거합니다. 짧은 변이 1080px 미만이면 확대하지 않고 가능한 최대 중앙 정사각형을 사용합니다.
+
+라이브 프리뷰도 수신 미리보기 해상도 기준 중앙 1080px 정사각형을 표시합니다. 플러그인은 미리보기와 정지사진 해상도를 별도로 선택하므로 두 스트림의 해상도나 화각이 다르면 실제 촬영 범위는 달라질 수 있습니다. 촬영 후 표시되는 이미지와 분석 Bounding Box는 실제 크롭 이미지 기준입니다. 플러그인의 미러 프리뷰만 수평 보정하고 저장 이미지는 원본 방향을 유지합니다. 파일 입력에는 카메라 크롭을 적용하지 않으며, 카메라가 없거나 권한이 거부되어도 이미지 파일 분석은 계속 사용할 수 있습니다.
 
 UI는 번들된 Pretendard Variable을 사용합니다. 글꼴은 `assets/fonts/OFL.txt`의 SIL Open Font License 1.1 조건을 따릅니다.
 

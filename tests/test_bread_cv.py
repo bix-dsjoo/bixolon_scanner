@@ -1,3 +1,4 @@
+import json
 from pathlib import Path
 
 import pytest
@@ -7,6 +8,7 @@ from bixolon_scanner.training.bread_cv import (
     build_bread_cross_validation_registry,
     hamming_distance,
     write_bread_cross_validation_registry,
+    write_bread_operational_evaluation_manifest,
 )
 
 DATASET_ROOT = Path(__file__).parents[1] / "datasets" / "bread_dataset"
@@ -111,6 +113,32 @@ def test_registry_rejects_detector_collection_outside_operational_root(tmp_path)
         build_bread_cross_validation_registry(
             DATASET_ROOT,
             detector_operational_collection=tmp_path,
+        )
+
+
+def test_operational_evaluation_manifest_is_temporally_isolated(tmp_path):
+    version = write_bread_operational_evaluation_manifest(
+        DATASET_ROOT,
+        "2026-08-28",
+        tmp_path,
+    )
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "manifest.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+
+    assert version.startswith("bread-operational-2026-08-28-")
+    assert len(rows) == 10
+    assert sum(len(row["annotations"]) for row in rows) == 62
+    assert all(row["split"] == "temporal_evaluation" for row in rows)
+    assert all(row["exclude_from_detector_training"] is True for row in rows)
+    assert all(row["training_allowed"] is False for row in rows)
+
+    with pytest.raises(FileExistsError):
+        write_bread_operational_evaluation_manifest(
+            DATASET_ROOT,
+            "2026-08-28",
+            tmp_path,
         )
 
 

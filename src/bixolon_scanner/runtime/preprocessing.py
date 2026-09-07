@@ -53,29 +53,23 @@ def classifier_neighbor_ownership_mask(
     target_height = target.y2 - target.y1
     if target_width <= 0.0 or target_height <= 0.0:
         raise ValueError("target detection box is empty")
-    if crop_mode == "square_context":
-        crop_x1, crop_y1, crop_x2, crop_y2 = classifier_crop_box(
-            target,
-            image_width,
-            image_height,
-            margin_ratio=margin_ratio,
-            crop_mode=crop_mode,
-        )
-    elif crop_mode == "box_resize":
-        crop_x1 = max(0.0, target.x1 - target_width * margin_ratio)
-        crop_y1 = max(0.0, target.y1 - target_height * margin_ratio)
-        crop_x2 = min(float(image_width), target.x2 + target_width * margin_ratio)
-        crop_y2 = min(float(image_height), target.y2 + target_height * margin_ratio)
-    else:
-        raise ValueError(f"unsupported classifier crop mode: {crop_mode}")
+    # The image crop uses integer pixel boundaries. Use the same grid for masks;
+    # a separate fractional grid can amplify tiny provider differences into a
+    # different masked pixel and a materially different classifier score.
+    crop_x1, crop_y1, crop_x2, crop_y2 = classifier_crop_box(
+        target,
+        image_width,
+        image_height,
+        margin_ratio=margin_ratio,
+        crop_mode=crop_mode,
+    )
     x = crop_x1 + (np.arange(output_size) + 0.5) * (crop_x2 - crop_x1) / output_size
     y = crop_y1 + (np.arange(output_size) + 0.5) * (crop_y2 - crop_y1) / output_size
-    grid_x, grid_y = np.meshgrid(x, y)
     target_center_x = (target.x1 + target.x2) / 2.0
     target_center_y = (target.y1 + target.y2) / 2.0
-    target_distance = ((grid_x - target_center_x) / max(target_width / 2.0, 1e-12)) ** 2 + (
-        (grid_y - target_center_y) / max(target_height / 2.0, 1e-12)
-    ) ** 2
+    target_distance = (((x - target_center_x) / max(target_width / 2.0, 1e-12)) ** 2)[None, :] + (
+        ((y - target_center_y) / max(target_height / 2.0, 1e-12)) ** 2
+    )[:, None]
     mask = np.zeros((output_size, output_size), dtype=bool)
     for index, other in enumerate(detections):
         if index == target_index:
@@ -84,17 +78,14 @@ def classifier_neighbor_ownership_mask(
         other_height = other.y2 - other.y1
         if other_width <= 0.0 or other_height <= 0.0:
             continue
-        inside = (
-            (grid_x >= other.x1)
-            & (grid_x <= other.x2)
-            & (grid_y >= other.y1)
-            & (grid_y <= other.y2)
-        )
+        inside = ((x >= other.x1) & (x <= other.x2))[None, :] & ((y >= other.y1) & (y <= other.y2))[
+            :, None
+        ]
         width_scale = target_width if shared_scale else other_width
         height_scale = target_height if shared_scale else other_height
-        other_distance = (
-            (grid_x - (other.x1 + other.x2) / 2.0) / max(width_scale / 2.0, 1e-12)
-        ) ** 2 + ((grid_y - (other.y1 + other.y2) / 2.0) / max(height_scale / 2.0, 1e-12)) ** 2
+        other_distance = (((x - (other.x1 + other.x2) / 2.0) / max(width_scale / 2.0, 1e-12)) ** 2)[
+            None, :
+        ] + (((y - (other.y1 + other.y2) / 2.0) / max(height_scale / 2.0, 1e-12)) ** 2)[:, None]
         mask |= inside & (other_distance + distance_bias < target_distance)
     return mask
 

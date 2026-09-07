@@ -87,6 +87,33 @@ class BixolonWorkerLaunchConfiguration {
     this.terminateWithApp = true,
   });
 
+  factory BixolonWorkerLaunchConfiguration.cpu({
+    required BixolonRuntimeLayout layout,
+    String host = '127.0.0.1',
+    int port = 8000,
+    bool terminateWithApp = true,
+    Map<String, String> extraEnvironment = const {},
+  }) {
+    layout.validate();
+    return BixolonWorkerLaunchConfiguration(
+      executable: layout.workerExecutable,
+      workingDirectory: File(layout.workerExecutable).parent.path,
+      terminateWithApp: terminateWithApp,
+      environment: <String, String>{
+        'BIXOLON_PACKAGE_DIR': layout.modelPackageDirectory,
+        'BIXOLON_CATALOG_DIR': layout.storeCatalogDirectory,
+        'BIXOLON_PROVIDER': 'cpu',
+        'BIXOLON_EMBEDDER_PROVIDER': 'same',
+        'BIXOLON_EMBEDDER_FALLBACK_PROVIDER': 'none',
+        'BIXOLON_HOST': host,
+        'BIXOLON_PORT': '$port',
+        'BIXOLON_REQUEST_TIMEOUT_SECONDS': '60',
+        'BIXOLON_LOG_TO_STDERR': '0',
+        ...extraEnvironment,
+      },
+    );
+  }
+
   factory BixolonWorkerLaunchConfiguration.openVino({
     required BixolonRuntimeLayout layout,
     String host = '127.0.0.1',
@@ -206,7 +233,7 @@ class BixolonScannerSession {
     final resolvedLayout = layout ?? BixolonRuntimeLayout.discover();
     final configuration =
         launchConfiguration ??
-        BixolonWorkerLaunchConfiguration.openVino(layout: resolvedLayout);
+        BixolonWorkerLaunchConfiguration.cpu(layout: resolvedLayout);
     await workerController.start(configuration);
 
     final client = BixolonScannerClient(
@@ -227,4 +254,11 @@ class BixolonScannerSession {
   }
 
   void close() => client.close();
+
+  Future<void> shutdown({bool stopLocalWorker = true}) async {
+    client.close();
+    if (stopLocalWorker) {
+      await workerController?.stop();
+    }
+  }
 }

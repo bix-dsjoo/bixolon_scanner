@@ -19,6 +19,8 @@ from bixolon_scanner.configuration import load_json_config
 from .ten_shot_manifest import inspect_image
 
 SOURCE_DIRECTORY = "single_objects_4"
+BIX_DATASET_DIRECTORY = "bix_bakery_dataset"
+BIX_SINGLE_DIRECTORY = "single_object"
 EXPECTED_CLASS_COUNT = 20
 EXPECTED_SHOTS_PER_CLASS = 10
 EXPECTED_BACKGROUND_COUNT = 10
@@ -37,10 +39,24 @@ def _sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
-def _labels(root: Path) -> list[dict[str, Any]]:
+def _labels(root: Path, class_directories: list[Path]) -> list[dict[str, Any]]:
     annotation = root.parent / "annotations" / "multi_object_instances.json"
-    payload = json.loads(annotation.read_text(encoding="utf-8-sig"))
-    categories = sorted(payload["categories"], key=lambda row: int(row["id"]))
+    if annotation.is_file():
+        payload = json.loads(annotation.read_text(encoding="utf-8-sig"))
+        categories = sorted(payload["categories"], key=lambda row: int(row["id"]))
+    else:
+        categories = []
+        for directory in class_directories:
+            match = CLASS_DIRECTORY_PATTERN.fullmatch(directory.name)
+            if match is None:
+                continue
+            categories.append(
+                {
+                    "id": int(match.group("category")),
+                    "name": match.group("slug").replace("_", " ").title(),
+                }
+            )
+        categories.sort(key=lambda row: int(row["id"]))
     if [int(row["id"]) for row in categories] != list(range(1, EXPECTED_CLASS_COUNT + 1)):
         raise ValueError("bread labels must be contiguous from 1 through 20")
     return [
@@ -55,22 +71,43 @@ def _labels(root: Path) -> list[dict[str, Any]]:
 
 def audit_store2_source(source_root: Path) -> tuple[list[dict[str, Any]], dict[str, Any]]:
     root = source_root.resolve()
-    if not root.is_dir() or root.name != SOURCE_DIRECTORY:
-        raise ValueError(f"source root must be a directory named {SOURCE_DIRECTORY}")
-    labels = _labels(root)
-    labels_by_id = {int(row["category_id"]): row for row in labels}
-    directories = sorted(path for path in root.iterdir() if path.is_dir())
-    expected_names = {"background"} | {
-        path.name for path in directories if CLASS_DIRECTORY_PATTERN.fullmatch(path.name)
-    }
-    actual_names = {path.name for path in directories}
-    if expected_names != actual_names or "background" not in actual_names:
-        raise ValueError("single_objects_4 may contain only 20 bread directories and background")
+    if not root.is_dir():
+        raise ValueError("source root must be a directory")
+    if root.name == SOURCE_DIRECTORY:
+        class_root = root
+        background_root = root / "background"
+        source_directory = SOURCE_DIRECTORY
+        source_name = "bread_store2"
+        source_namespace = "store2"
+        directories = sorted(path for path in class_root.iterdir() if path.is_dir())
+        expected_names = {"background"} | {
+            path.name for path in directories if CLASS_DIRECTORY_PATTERN.fullmatch(path.name)
+        }
+        actual_names = {path.name for path in directories}
+        if expected_names != actual_names or "background" not in actual_names:
+            raise ValueError(
+                "single_objects_4 may contain only 20 bread directories and background"
+            )
+    elif root.name == BIX_DATASET_DIRECTORY:
+        class_root = root / BIX_SINGLE_DIRECTORY
+        background_root = root / "background"
+        source_directory = BIX_DATASET_DIRECTORY
+        source_name = "bix_bakery"
+        source_namespace = "bix_bakery"
+        if not class_root.is_dir() or not background_root.is_dir():
+            raise ValueError("bix_bakery_dataset requires single_object and background directories")
+        directories = sorted(path for path in class_root.iterdir() if path.is_dir())
+        if any(not CLASS_DIRECTORY_PATTERN.fullmatch(path.name) for path in directories):
+            raise ValueError("single_object may contain only bread class directories")
+    else:
+        raise ValueError(f"source root must be named {SOURCE_DIRECTORY} or {BIX_DATASET_DIRECTORY}")
     class_directories = [
         path for path in directories if CLASS_DIRECTORY_PATTERN.fullmatch(path.name)
     ]
     if len(class_directories) != EXPECTED_CLASS_COUNT:
-        raise ValueError("single_objects_4 requires exactly 20 class directories")
+        raise ValueError("source requires exactly 20 class directories")
+    labels = _labels(root, class_directories)
+    labels_by_id = {int(row["category_id"]): row for row in labels}
 
     records: list[dict[str, Any]] = []
     seen_hashes: set[str] = set()
@@ -81,12 +118,14 @@ def audit_store2_source(source_root: Path) -> tuple[list[dict[str, Any]], dict[s
         label = labels_by_id.get(category_id)
         if label is None:
             raise ValueError(f"class directory has no label: {directory.name}")
-        files = sorted(path for path in directory.iterdir() if path.is_file())
+        files = sorted(
+            path
+            for path in directory.iterdir()
+            if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg"}
+        )
         if len(files) != EXPECTED_SHOTS_PER_CLASS:
             raise ValueError(f"{directory.name} must contain exactly 10 JPEG images")
         for capture_index, path in enumerate(files):
-            if path.suffix.lower() not in {".jpg", ".jpeg"}:
-                raise ValueError(f"unsupported source image: {path.name}")
             inspected = inspect_image(path)
             if inspected.mode not in {"RGB", "RGBA"}:
                 raise ValueError(f"source image must decode as RGB: {path.name}")
@@ -96,16 +135,16 @@ def audit_store2_source(source_root: Path) -> tuple[list[dict[str, Any]], dict[s
             records.append(
                 {
                     "record_type": "classification",
-                    "source": "bread_store2_single_original",
-                    "source_dataset": SOURCE_DIRECTORY,
+                    "source": f"{source_name}_single_original",
+                    "source_dataset": source_directory,
                     "image_path": path.relative_to(root).as_posix(),
                     "image_sha256": inspected.sha256,
                     "category_id": category_id,
                     "class_id": label["class_id"],
                     "class_name": label["class_name"],
-                    "capture_session_id": f"bread_{category_id:02d}:single_objects_4:session",
-                    "physical_item_id": f"bread_{category_id:02d}:store2:item",
-                    "source_group": f"bread_{category_id:02d}:store2:item",
+                    "capture_session_id": f"bread_{category_id:02d}:{source_namespace}:session",
+                    "physical_item_id": f"bread_{category_id:02d}:{source_namespace}:item",
+                    "source_group": f"bread_{category_id:02d}:{source_namespace}:item",
                     "capture_index": capture_index,
                     "width": inspected.width,
                     "height": inspected.height,
@@ -115,13 +154,13 @@ def audit_store2_source(source_root: Path) -> tuple[list[dict[str, Any]], dict[s
     if sorted({int(row["category_id"]) for row in records}) != list(
         range(1, EXPECTED_CLASS_COUNT + 1)
     ):
-        raise ValueError("single_objects_4 classes must be contiguous")
+        raise ValueError("source classes must be contiguous")
     counts = Counter(int(row["category_id"]) for row in records)
     if set(counts.values()) != {EXPECTED_SHOTS_PER_CLASS}:
-        raise ValueError("single_objects_4 must contain 10 images per class")
+        raise ValueError("source must contain 10 images per class")
 
     background_records = []
-    for capture_index, path in enumerate(sorted((root / "background").iterdir())):
+    for capture_index, path in enumerate(sorted(background_root.iterdir())):
         if not path.is_file() or path.suffix.lower() not in {".jpg", ".jpeg"}:
             raise ValueError("background must contain JPEG files only")
         inspected = inspect_image(path)
@@ -131,20 +170,20 @@ def audit_store2_source(source_root: Path) -> tuple[list[dict[str, Any]], dict[s
         background_records.append(
             {
                 "record_type": "background_negative",
-                "source": "bread_store2_empty_tray",
-                "source_dataset": SOURCE_DIRECTORY,
+                "source": f"{source_name}_empty_tray",
+                "source_dataset": source_directory,
                 "image_path": path.relative_to(root).as_posix(),
                 "image_sha256": inspected.sha256,
-                "capture_session_id": "background:single_objects_4:session",
+                "capture_session_id": f"background:{source_namespace}:session",
                 "physical_item_id": None,
-                "source_group": f"background:store2:{capture_index:02d}",
+                "source_group": f"background:{source_namespace}:{capture_index:02d}",
                 "capture_index": capture_index,
                 "width": inspected.width,
                 "height": inspected.height,
             }
         )
     if len(background_records) != EXPECTED_BACKGROUND_COUNT:
-        raise ValueError("single_objects_4 requires exactly 10 background images")
+        raise ValueError("source requires exactly 10 background images")
     all_records = [*records, *background_records]
     digest = hashlib.sha256(
         _canonical_json(
@@ -160,8 +199,10 @@ def audit_store2_source(source_root: Path) -> tuple[list[dict[str, Any]], dict[s
     ).hexdigest()
     metadata = {
         "schema_version": "1.0",
-        "dataset_version": f"bread-store2-{digest[:12]}",
-        "source_directory": SOURCE_DIRECTORY,
+        "dataset_version": f"bread-{source_namespace.replace('_', '-')}-{digest[:12]}",
+        "source_directory": source_directory,
+        "single_object_directory": class_root.relative_to(root).as_posix() or ".",
+        "background_directory": background_root.relative_to(root).as_posix(),
         "source_image_set_sha256": digest,
         "class_count": EXPECTED_CLASS_COUNT,
         "shots_per_class": EXPECTED_SHOTS_PER_CLASS,
@@ -179,6 +220,7 @@ class ForegroundRecipe:
     alignment_width: int = 640
     weak_difference: float = 18.0
     strong_difference: float = 32.0
+    maximum_weak_difference: float = 55.0
     minimum_area_ratio: float = 0.0015
     maximum_area_ratio: float = 0.22
     bbox_margin_ratio: float = 0.06
@@ -336,7 +378,10 @@ def _foreground(
     roi = _capture_roi((height, width), capture_index) & _tray_roi(aligned)
     residual_values = distance[border & ~roi]
     residual = float(np.percentile(residual_values, 99)) if residual_values.size else 0.0
-    weak_threshold = max(recipe.weak_difference, residual + 5.0)
+    weak_threshold = max(
+        recipe.weak_difference,
+        min(recipe.maximum_weak_difference, residual + 5.0),
+    )
     strong_threshold = max(recipe.strong_difference, weak_threshold + 10.0)
     weak = (distance >= weak_threshold) & roi
     saturation = cv2.cvtColor(source, cv2.COLOR_RGB2HSV)[..., 1].astype(np.float32) / 255.0
@@ -362,10 +407,26 @@ def _foreground(
         center_distance = float(np.linalg.norm((centroid - center) / [height, width]))
         mean_saturation = float(saturation[component].mean())
         score = area * (0.35 + mean_saturation) * math.exp(-6.0 * center_distance * center_distance)
-        candidates.append((score, component))
+        component_y, component_x = coordinates[:, 0], coordinates[:, 1]
+        touches_frame = bool(
+            component_y.min() == 0
+            or component_y.max() == height - 1
+            or component_x.min() == 0
+            or component_x.max() == width - 1
+        )
+        top_edge_artifact = bool(
+            component_y.min() <= round(height * 0.015) and centroid[0] <= height * 0.06
+        )
+        candidates.append((score, touches_frame or top_edge_artifact, component))
     if not candidates:
         raise ValueError("foreground extraction found no valid centered component")
-    seed = max(candidates, key=lambda row: row[0])[1]
+    # The capture surface is assembled from overlapping paper sheets.  Their exposed
+    # edges and the scene above them occasionally form a large, saturated component
+    # along the top of the image.
+    # Every source frame contains exactly one object, so prefer an interior component
+    # whenever one exists while retaining real partially clipped objects as a fallback.
+    interior_candidates = [row for row in candidates if not row[1]]
+    seed = max(interior_candidates or candidates, key=lambda row: row[0])[2]
     seed_y, seed_x = np.nonzero(seed)
     seed_left = int(seed_x.min())
     seed_top = int(seed_y.min())
@@ -489,7 +550,6 @@ class _SamAnnotationRefiner:
         point_x = float(seed_statistics["prompt_x"])
         point_y = float(seed_statistics["prompt_y"])
         height, width = source.shape[:2]
-        half_extent = round(min(width, height) * 0.35)
         manual_box = all(
             name in seed_statistics
             for name in (
@@ -511,10 +571,10 @@ class _SamAnnotationRefiner:
             )
             if manual_box
             else (
-                max(0, round(point_x) - half_extent),
-                max(0, round(point_y) - half_extent),
-                min(width, round(point_x) + half_extent),
-                min(height, round(point_y) + half_extent),
+                max(0, round(seed_statistics["prompt_left"])),
+                max(0, round(seed_statistics["prompt_top"])),
+                min(width, round(seed_statistics["prompt_right"])),
+                min(height, round(seed_statistics["prompt_bottom"])),
             )
         )
         inputs = self._processor(
@@ -549,11 +609,22 @@ class _SamAnnotationRefiner:
             if not recipe.minimum_area_ratio * 0.5 <= area_ratio <= recipe.maximum_area_ratio:
                 continue
             predicted_iou = float(scores[candidate_index])
-            candidates.append((predicted_iou, -candidate_index, component, candidate_index))
+            candidates.append(
+                (predicted_iou, -candidate_index, area_ratio, component, candidate_index)
+            )
         if not candidates:
             raise ValueError("SAM annotation refinement found no valid prompt component")
-        predicted_iou, _order, component, candidate_index = max(
-            candidates, key=lambda row: (row[0], row[1])
+        reference_area = max(
+            recipe.minimum_area_ratio,
+            float(seed_statistics["foreground_area_ratio"]),
+        )
+        predicted_iou, _order, area_ratio, component, candidate_index = min(
+            candidates,
+            key=lambda row: (
+                abs(math.log(max(row[2], 1e-9) / reference_area)),
+                -row[0],
+                -row[1],
+            ),
         )
         component = ndimage.binary_closing(component, structure=np.ones((3, 3)), iterations=1)
         ys, xs = np.nonzero(component)
@@ -576,7 +647,8 @@ class _SamAnnotationRefiner:
             **seed_statistics,
             "sam_candidate_index": float(candidate_index),
             "sam_predicted_iou": predicted_iou,
-            "sam_foreground_area_ratio": float(component.mean()),
+            "sam_foreground_area_ratio": area_ratio,
+            "sam_seed_area_ratio": reference_area,
             "sam_prompt_box_left": float(prompt_box[0]),
             "sam_prompt_box_top": float(prompt_box[1]),
             "sam_prompt_box_right": float(prompt_box[2]),
@@ -685,7 +757,28 @@ def prepare_store2_source(
                     }
                 )
         if annotation_refiner is not None:
-            alpha, bbox, statistics = annotation_refiner.refine(source, statistics, recipe)
+            left, top, right, bottom = bbox
+            touches_frame = (
+                left == 0 or top == 0 or right == source.shape[1] or bottom == source.shape[0]
+            )
+            # A reviewed manual box is deliberately tighter than the automatic
+            # background-difference proposal.  It is therefore safe to run SAM
+            # even when the rejected automatic proposal touched the image frame.
+            # This recovers valid edge-position captures without allowing SAM to
+            # segment a large paper/background component.
+            has_manual_box = all(
+                key in statistics
+                for key in (
+                    "manual_prompt_left",
+                    "manual_prompt_top",
+                    "manual_prompt_right",
+                    "manual_prompt_bottom",
+                )
+            )
+            if touches_frame and not has_manual_box:
+                statistics = {**statistics, "sam_skipped_border_object": 1.0}
+            else:
+                alpha, bbox, statistics = annotation_refiner.refine(source, statistics, recipe)
         left, top, right, bottom = bbox
         class_directory = f"bread_{int(record['category_id']):02d}"
         crop_directory = crop_root / class_directory
@@ -721,7 +814,9 @@ def prepare_store2_source(
                 "image_sha256": derived_sha256,
                 "original_image_path": record["image_path"],
                 "original_image_sha256": record["image_sha256"],
-                "perceptual_group_id": f"store2:{record['image_sha256'][:16]}",
+                "perceptual_group_id": (
+                    f"{metadata['source_directory']}:{record['image_sha256'][:16]}"
+                ),
                 "fold": None,
                 "split": "train_support",
                 "width": right - left,
@@ -731,7 +826,7 @@ def prepare_store2_source(
         detection_rows.append(
             {
                 "record_type": "detection",
-                "source": "bread_store2_single_original",
+                "source": record["source"],
                 "source_dataset": metadata["dataset_version"],
                 "image_id": image_id,
                 "image_path": record["image_path"],
@@ -770,7 +865,7 @@ def prepare_store2_source(
         detection_rows.append(
             {
                 "record_type": "detection",
-                "source": "bread_store2_empty_tray",
+                "source": row["source"],
                 "source_dataset": metadata["dataset_version"],
                 "image_id": len(records) + offset,
                 "image_path": row["image_path"],
@@ -946,6 +1041,99 @@ def _validated_annotation_review(prepared_root: Path, metadata: dict[str, Any]) 
     return review
 
 
+def partition_complete_classifier_support(
+    classifier_records: list[dict[str, Any]],
+    detector_records: list[dict[str, Any]],
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Split complete SKU support from source captures clipped by the image border.
+
+    A tight annotation that touches the source frame cannot prove that the complete
+    physical item was observed.  Such crops remain valid detector/border-quality
+    evidence, but treating them as ordinary classifier support teaches the model to
+    approve incomplete objects.
+    """
+
+    detections_by_path = {
+        str(record["image_path"]): record
+        for record in detector_records
+        if len(record.get("annotations", [])) == 1
+    }
+    complete: list[dict[str, Any]] = []
+    clipped: list[dict[str, Any]] = []
+    for record in classifier_records:
+        original_path = str(record["original_image_path"])
+        detection = detections_by_path.get(original_path)
+        if detection is None:
+            raise ValueError(f"classifier support has no detector annotation: {original_path}")
+        x, y, width, height = detection["annotations"][0]["bbox_xywh"]
+        touches_border = (
+            float(x) <= 0
+            or float(y) <= 0
+            or float(x) + float(width) >= float(detection["width"])
+            or float(y) + float(height) >= float(detection["height"])
+        )
+        destination = clipped if touches_border else complete
+        destination.append(record)
+    return complete, clipped
+
+
+def export_complete_classifier_support(
+    prepared_root: Path,
+    output_manifest: Path,
+    output_report: Path,
+) -> dict[str, Any]:
+    """Export source-only classifier support after removing border-clipped captures."""
+
+    metadata = load_json_config(prepared_root / "metadata.json")
+    review = _validated_annotation_review(prepared_root, metadata)
+    classifier_records = [
+        json.loads(line)
+        for line in (prepared_root / "classifier-manifest.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line
+    ]
+    detector_records = [
+        json.loads(line)
+        for line in (prepared_root / "detector-real-manifest.jsonl")
+        .read_text(encoding="utf-8")
+        .splitlines()
+        if line
+    ]
+    complete, clipped = partition_complete_classifier_support(classifier_records, detector_records)
+    present = sorted({int(record["category_id"]) for record in complete})
+    if present != list(range(1, EXPECTED_CLASS_COUNT + 1)):
+        raise ValueError("complete classifier support must retain every bread class")
+    body = "".join(_canonical_json(record) + "\n" for record in complete)
+    output_manifest.parent.mkdir(parents=True, exist_ok=True)
+    output_manifest.write_text(body, encoding="utf-8", newline="\n")
+    clipped_counts = Counter(int(record["category_id"]) for record in clipped)
+    report = {
+        "schema_version": "1.0",
+        "source_policy": "bix_bakery_source_only_complete_classifier_support",
+        "selection_rule": "exclude_bbox_touching_source_frame",
+        "source_image_set_sha256": metadata["source_image_set_sha256"],
+        "annotation_review_sha256": _sha256(prepared_root / "annotation-review.json"),
+        "input_classifier_manifest_sha256": _sha256(prepared_root / "classifier-manifest.jsonl"),
+        "complete_count": len(complete),
+        "border_clipped_count": len(clipped),
+        "complete_count_by_class": dict(
+            sorted(Counter(int(record["category_id"]) for record in complete).items())
+        ),
+        "border_clipped_count_by_class": dict(sorted(clipped_counts.items())),
+        "border_clipped_original_paths": sorted(
+            str(record["original_image_path"]) for record in clipped
+        ),
+        "output_manifest_sha256": hashlib.sha256(body.encode()).hexdigest(),
+        "review_status": review["status"],
+    }
+    output_report.parent.mkdir(parents=True, exist_ok=True)
+    output_report.write_text(
+        json.dumps(report, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+    return report
+
+
 @dataclass(frozen=True)
 class Store2SyntheticRecipe:
     image_count: int = 6000
@@ -968,6 +1156,7 @@ class Store2SyntheticRecipe:
     side_view_minimum_compression: float = 0.30
     side_view_maximum_compression: float = 0.58
     placement_margin_ratio: float = 0.07
+    minimum_visibility_fraction: float = 0.10
     qa_image_count: int = 100
     seed: int = 20260901
 
@@ -994,6 +1183,7 @@ def generate_store2_synthetic_dataset(
         ("hard_maximum_overlap", recipe.hard_maximum_overlap),
         ("hard_cluster_probability", recipe.hard_cluster_probability),
         ("side_view_probability", recipe.side_view_probability),
+        ("minimum_visibility_fraction", recipe.minimum_visibility_fraction),
     ):
         if not 0 <= value <= 1:
             raise ValueError(f"synthetic {name} must be between zero and one")
@@ -1016,11 +1206,32 @@ def generate_store2_synthetic_dataset(
     provenance_by_original = {row["original_image_sha256"]: row for row in provenance}
     cutouts: list[tuple[Image.Image, dict[str, Any], dict[str, Any]]] = []
     cutouts_by_category: dict[int, list[int]] = {}
+    excluded_border_cutouts = 0
+    excluded_manual_override_cutouts = 0
     for record in records:
         row = provenance_by_original[record["original_image_sha256"]]
+        if bool(row.get("statistics", {}).get("manual_prompt_override")):
+            # Manual boxes repair detector/classifier annotations, but are excluded
+            # from pixel-level copy/paste because a reviewed box does not guarantee
+            # that every boundary pixel in the SAM mask is background-free.
+            excluded_manual_override_cutouts += 1
+            continue
+        with Image.open(source_root / record["original_image_path"]) as original:
+            original_width, original_height = original.size
+        left, top, right, bottom = (int(value) for value in row["bbox_xyxy"])
+        if left == 0 or top == 0 or right == original_width or bottom == original_height:
+            excluded_border_cutouts += 1
+            continue
         with Image.open(prepared_root / row["cutout_path"]) as opened:
             cutouts.append((opened.convert("RGBA").copy(), record, row))
         cutouts_by_category.setdefault(int(record["category_id"]), []).append(len(cutouts) - 1)
+    missing_cutout_categories = [
+        category_id
+        for category_id in range(1, EXPECTED_CLASS_COUNT + 1)
+        if category_id not in cutouts_by_category
+    ]
+    if missing_cutout_categories:
+        raise ValueError(f"no interior cutout remains for categories: {missing_cutout_categories}")
     backgrounds = []
     for row in metadata["background_records"]:
         with Image.open(source_root / row["image_path"]) as opened:
@@ -1072,6 +1283,8 @@ def generate_store2_synthetic_dataset(
         boxes = []
         annotations = []
         sources = []
+        in_frame_masks: list[np.ndarray] = []
+        full_foreground_areas: list[int] = []
         for source_index in selected:
             source, record, source_provenance = cutouts[int(source_index)]
             transformed = source.copy()
@@ -1253,6 +1466,30 @@ def generate_store2_synthetic_dataset(
                 canvas.paste(shadow, shadow_offset, shadow_alpha)
             canvas.paste(transformed.convert("RGB"), (paste_left, paste_top), alpha)
             boxes.append(selected_box)
+            alpha_values = np.asarray(alpha) >= 4
+            full_foreground_areas.append(int(np.count_nonzero(alpha_values)))
+            in_frame_mask = np.zeros((recipe.image_size, recipe.image_size), dtype=bool)
+            source_left = max(0, -paste_left)
+            source_top = max(0, -paste_top)
+            destination_left = max(0, paste_left)
+            destination_top = max(0, paste_top)
+            copy_width = min(
+                transformed.width - source_left,
+                recipe.image_size - destination_left,
+            )
+            copy_height = min(
+                transformed.height - source_top,
+                recipe.image_size - destination_top,
+            )
+            if copy_width > 0 and copy_height > 0:
+                in_frame_mask[
+                    destination_top : destination_top + copy_height,
+                    destination_left : destination_left + copy_width,
+                ] = alpha_values[
+                    source_top : source_top + copy_height,
+                    source_left : source_left + copy_width,
+                ]
+            in_frame_masks.append(in_frame_mask)
             annotations.append(
                 {
                     "annotation_id": annotation_id,
@@ -1277,6 +1514,56 @@ def generate_store2_synthetic_dataset(
             annotation_id += 1
         if object_count and not annotations:
             raise RuntimeError("synthetic frame lost every selected object")
+        occluders = np.zeros((recipe.image_size, recipe.image_size), dtype=bool)
+        visible_masks: list[np.ndarray] = []
+        for mask in reversed(in_frame_masks):
+            visible_masks.append(mask & ~occluders)
+            occluders |= mask
+        visible_masks.reverse()
+        visible_annotations = []
+        visible_sources = []
+        visible_boxes = []
+        for annotation, source_row, mask, visible_mask, full_area in zip(
+            annotations,
+            sources,
+            in_frame_masks,
+            visible_masks,
+            full_foreground_areas,
+            strict=True,
+        ):
+            visible_y, visible_x = np.nonzero(visible_mask)
+            visible_area = len(visible_x)
+            total_visibility = visible_area / max(1, full_area)
+            if total_visibility < recipe.minimum_visibility_fraction:
+                continue
+            left = int(visible_x.min())
+            top = int(visible_y.min())
+            right = int(visible_x.max()) + 1
+            bottom = int(visible_y.max()) + 1
+            in_frame_area = int(np.count_nonzero(mask))
+            updated_annotation = {
+                **annotation,
+                "bbox_xywh": [left, top, right - left, bottom - top],
+                "area": visible_area,
+                "visible_fraction": total_visibility,
+                "frame_visibility_fraction": in_frame_area / max(1, full_area),
+                "occlusion_fraction": 1.0 - visible_area / max(1, in_frame_area),
+            }
+            visible_annotations.append(updated_annotation)
+            visible_boxes.append((left, top, right, bottom))
+            visible_sources.append(
+                {
+                    **source_row,
+                    "visible_fraction": total_visibility,
+                    "frame_visibility_fraction": in_frame_area / max(1, full_area),
+                    "occlusion_fraction": 1.0 - visible_area / max(1, in_frame_area),
+                }
+            )
+        annotations = visible_annotations
+        sources = visible_sources
+        boxes = visible_boxes
+        if object_count and not annotations:
+            raise RuntimeError("synthetic frame lost every visible object")
         if rng.random() < 0.20:
             canvas = canvas.filter(ImageFilter.GaussianBlur(float(rng.uniform(0.2, 1.1))))
         path = image_root / f"synthetic_{index + 1:05d}.jpg"
@@ -1293,14 +1580,17 @@ def generate_store2_synthetic_dataset(
         manifest_rows.append(
             {
                 "record_type": "detection",
-                "source": "bread_store2_source_only_composite",
+                "source": f"{metadata['source_directory']}_source_only_composite",
                 "source_dataset": metadata["dataset_version"],
                 "image_id": index + 1,
                 "image_path": path.relative_to(output_root).as_posix(),
                 "image_sha256": digest,
                 "capture_session_id": f"synthetic:{index // 3:05d}",
                 "physical_item_ids": sorted(
-                    {f"bread_{row['category_id']:02d}:store2:item" for row in sources}
+                    {
+                        f"bread_{row['category_id']:02d}:{metadata['source_directory']}:item"
+                        for row in sources
+                    }
                 ),
                 "split": "train",
                 "fold": None,
@@ -1331,11 +1621,14 @@ def generate_store2_synthetic_dataset(
     result = {
         "schema_version": "1.0",
         "dataset_version": metadata["dataset_version"],
-        "training_source_policy": "single_objects_4-only",
+        "training_source_policy": f"{metadata['source_directory']}-only",
         "source_original_count": 210,
         "synthetic_image_count": len(manifest_rows),
         "synthetic_annotation_count": sum(len(row["annotations"]) for row in manifest_rows),
         "synthetic_empty_image_count": sum(not row["annotations"] for row in manifest_rows),
+        "eligible_interior_cutout_count": len(cutouts),
+        "excluded_border_cutout_count": excluded_border_cutouts,
+        "excluded_manual_override_cutout_count": excluded_manual_override_cutouts,
         "scene_tier_counts": dict(Counter(row["scene_tier"] for row in provenance_rows)),
         "object_count_distribution": dict(
             Counter(str(len(row["annotations"])) for row in manifest_rows)

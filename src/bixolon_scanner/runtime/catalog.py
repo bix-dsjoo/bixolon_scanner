@@ -7,6 +7,7 @@ import numpy as np
 from PIL import Image
 
 from ..contracts.catalog import StoreCatalogPackage, load_store_catalog_package
+from ..contracts.errors import ModelExecutionError
 from ..contracts.model_package import (
     ClassifierMetadata,
     ClassLabel,
@@ -199,6 +200,8 @@ class OnnxEmbedder:
             raw = np.concatenate(chunks, axis=0)
         if raw.shape != (len(batch), self.metadata.embedding_dimension):
             raise ValueError("embedder output shape does not match runtime metadata")
+        if not np.isfinite(raw).all():
+            raise ModelExecutionError
         return raw
 
     def _run_view_averaged_tensors(self, batch: np.ndarray) -> np.ndarray:
@@ -982,9 +985,6 @@ class ConsensusCatalogClassifier:
             else np.asarray(result.approval_blocked, dtype=bool).copy()
         )
         recapture_reasons = result.segment_recapture_reasons or (None,) * len(detections)
-        approved_candidates = (
-            result.approval_scores >= self.metadata.approval_threshold
-        ) & ~approval_blocked
         configured_thresholds = self.metadata.approval_thresholds
         primary_top1_all = self._top1(result)
         decision_thresholds = (
@@ -1005,6 +1005,7 @@ class ConsensusCatalogClassifier:
             )
         )
         primary_unknown = (result.approval_scores < decision_thresholds) | approval_blocked
+        approved_candidates = ~primary_unknown
         verify_unknown_recapture = (
             self.unknown_recapture_on_dual_verifier_rejection
             or self.unknown_recapture_on_any_verifier_rejection

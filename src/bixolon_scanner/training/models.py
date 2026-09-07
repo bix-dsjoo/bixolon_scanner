@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 DINO_V3_CONVNEXT_TINY = "dinov3_convnext_tiny"
+DINO_V3_VITB16 = "dinov3_vitb16"
 DINO_V3_HUB_REPOSITORY = "facebookresearch/dinov3:6876159a11b4df116f30f667f8c9888617df0751"
 
 
@@ -126,6 +127,31 @@ def build_dino_classifier(
         # The official pretrained ConvNeXt head is Identity and returns a
         # normalized 768-dimensional representation.
         return DinoClassifier(backbone, 768, backbone_kind)
+    if backbone_kind == DINO_V3_VITB16:
+        if weights_path is None:
+            raise ValueError("DINOv3 ViT-B/16 requires an explicit weights path")
+        backbone = torch.hub.load(
+            hub_repository,
+            DINO_V3_VITB16,
+            source="github",
+            trust_repo=True,
+            verbose=False,
+            pretrained=False,
+        )
+        backbone.load_state_dict(
+            torch.load(weights_path, map_location="cpu", weights_only=True),
+            strict=True,
+        )
+
+        class VitClassToken(torch.nn.Module):
+            def __init__(self, wrapped):
+                super().__init__()
+                self.wrapped = wrapped
+
+            def forward(self, pixel_values):
+                return self.wrapped.forward_features(pixel_values, masks=None)["x_norm_clstoken"]
+
+        return DinoClassifier(VitClassToken(backbone), 768, backbone_kind)
     raise ValueError(f"unsupported classifier backbone: {backbone_kind}")
 
 

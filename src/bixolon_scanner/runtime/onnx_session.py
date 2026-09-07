@@ -268,12 +268,20 @@ class OrtRunner:
 
 def select_provider(
     mode: Literal["auto", "cuda", "cpu", "directml", "openvino", "openvino_gpu"],
+    cuda_dll_dir: Path | None = None,
 ) -> ExecutionProvider:
     """Resolve the requested provider without silently downgrading explicit acceleration."""
 
     if mode == "cpu":
         return "cpu"
+    dll_directory = None
     try:
+        if mode in {"auto", "cuda"} and cuda_dll_dir is not None and os.name == "nt":
+            resolved_cuda_dir = cuda_dll_dir.resolve()
+            if not resolved_cuda_dir.is_dir():
+                raise ProviderInitializationError
+            if hasattr(os, "add_dll_directory"):
+                dll_directory = os.add_dll_directory(str(resolved_cuda_dir))
         import onnxruntime as ort
 
         available = ort.get_available_providers()
@@ -282,6 +290,9 @@ def select_provider(
         has_openvino = "OpenVINOExecutionProvider" in available
     except Exception as exc:
         raise ProviderInitializationError from exc
+    finally:
+        if dll_directory is not None:
+            dll_directory.close()
     if mode == "cuda" and not has_cuda:
         raise ProviderInitializationError
     if mode == "directml" and not has_directml:

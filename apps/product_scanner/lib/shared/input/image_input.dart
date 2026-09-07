@@ -1,7 +1,38 @@
-import 'dart:typed_data';
-
 import 'package:camera/camera.dart';
 import 'package:file_selector/file_selector.dart';
+import 'package:flutter/foundation.dart';
+import 'package:image/image.dart' as imaging;
+
+const cameraSquareOutputSize = 1080;
+
+@visibleForTesting
+Uint8List centerCropCameraJpeg(Uint8List sourceBytes) {
+  if (sourceBytes.isEmpty) {
+    throw const FormatException('카메라 이미지가 비어 있습니다.');
+  }
+  final decoded = imaging.decodeImage(sourceBytes);
+  if (decoded == null) {
+    throw const FormatException('카메라 JPEG를 디코딩하지 못했습니다.');
+  }
+
+  final oriented = imaging.bakeOrientation(decoded);
+  // Crop native pixels around the center of both axes; never resize.
+  // A 1920x1080 frame uses x=420, y=0 and retains the full height.
+  final shortestSide = oriented.width < oriented.height
+      ? oriented.width
+      : oriented.height;
+  final cropSize = shortestSide < cameraSquareOutputSize
+      ? shortestSide
+      : cameraSquareOutputSize;
+  final cropped = imaging.copyCrop(
+    oriented,
+    x: (oriented.width - cropSize) ~/ 2,
+    y: (oriented.height - cropSize) ~/ 2,
+    width: cropSize,
+    height: cropSize,
+  );
+  return Uint8List.fromList(imaging.encodeJpg(cropped, quality: 100));
+}
 
 class InputImage {
   const InputImage({
@@ -46,8 +77,9 @@ class WindowsCameraGateway implements CameraGateway {
     }
     final controller = CameraController(
       cameras.first,
-      ResolutionPreset.max,
+      ResolutionPreset.veryHigh,
       enableAudio: false,
+      fps: 30,
     );
     try {
       await controller.initialize();
@@ -68,7 +100,8 @@ class WindowsCameraGateway implements CameraGateway {
     final image = await active.takePicture();
     capture.stop();
     final fileRead = Stopwatch()..start();
-    final bytes = await image.readAsBytes();
+    final sourceBytes = await image.readAsBytes();
+    final bytes = await compute(centerCropCameraJpeg, sourceBytes);
     fileRead.stop();
     return InputImage(
       bytes: bytes,

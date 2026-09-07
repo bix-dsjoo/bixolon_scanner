@@ -1,0 +1,81 @@
+{
+  "schema_version": "1.0",
+  "product_version": "0.1.15",
+  "diagnostic_name": "scanner-0.1.15-speed-precision",
+  "priority": [
+    "approved_output_safety",
+    "latency",
+    "correct_approved_coverage"
+  ],
+  "datasets": [
+    {
+      "name": "multi_object_scenes",
+      "root": "datasets/bread_dataset",
+      "manifest": "datasets/bread_dataset/annotations/multi_object_instances.json",
+      "image_count": 300,
+      "ground_truth_object_count": 1410
+    },
+    {
+      "name": "operational_collections/2026-08-18",
+      "root": "datasets/bread_dataset/operational_collections/2026-08-18",
+      "manifest": "datasets/bread_dataset/operational_collections/2026-08-18/annotations/instances.json",
+      "image_count": 115,
+      "ground_truth_object_count": 504
+    },
+    {
+      "name": "operational_collections/2026-08-27",
+      "root": "datasets/bread_dataset/operational_collections/2026-08-27",
+      "manifest": "datasets/bread_dataset/operational_collections/2026-08-27/annotations/instances.json",
+      "image_count": 69,
+      "ground_truth_object_count": 138
+    },
+    {
+      "name": "operational_collections/2026-08-28",
+      "root": "datasets/bread_dataset/operational_collections/2026-08-28",
+      "manifest": "datasets/bread_dataset/operational_collections/2026-08-28/annotations/instances.json",
+      "image_count": 10,
+      "ground_truth_object_count": 62
+    }
+  ],
+  "candidate": {
+    "source_runtime": "artifacts/retraining/next/runtime-selected-cuda-final-0.1.15",
+    "jpeg_draft_size": 640,
+    "model_graphs_unchanged": true,
+    "catalog_unchanged": true,
+    "decision_thresholds_unchanged": true
+  },
+  "targets": {
+    "safety": {
+      "maximum_approved_false_positive_count": 0,
+      "maximum_approved_misrecognition_count": 0,
+      "maximum_approved_output_error_rate": 0.0,
+      "maximum_unknown_top3_candidate_out_count": 0,
+      "maximum_false_negative_count": 1,
+      "minimum_correct_approved_rate": 0.985,
+      "minimum_correct_approved_rate_delta": 0.0
+    },
+    "cuda_rtx_5080": {
+      "multi_object_scenes_repetitions": 3,
+      "maximum_worst_run_mean_ms": 50.0,
+      "maximum_worst_run_p95_ms": 65.0,
+      "maximum_worst_run_p99_ms": 70.0,
+      "maximum_operational_collection_p95_ms": 60.0,
+      "maximum_operational_collection_p99_ms": 70.0
+    },
+    "cpu": {
+      "minimum_weighted_mean_improvement_ratio": 0.1,
+      "maximum_per_collection_p95_regression_ratio": 0.1
+    },
+    "provider_parity": {
+      "maximum_decision_mismatch_image_count": 0,
+      "minimum_bbox_iou": 0.995,
+      "maximum_confidence_error": 0.005
+    }
+  },
+  "interpretation": {
+    "held_out_independent_test": false,
+    "generalization_certified": false,
+    "sla_certified": false,
+    "selection_note": "The same development and operational diagnostic sets were used to select jpeg_draft_size. Reconfirm with a new capture session before release claims."
+  }
+}

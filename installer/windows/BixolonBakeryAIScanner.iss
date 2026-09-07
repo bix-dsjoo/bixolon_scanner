@@ -44,7 +44,7 @@ RestartApplications=no
 WizardStyle=modern
 VersionInfoVersion={#AppVersion}
 VersionInfoCompany={#AppPublisher}
-VersionInfoDescription={#AppName} Windows OpenVINO Installer
+VersionInfoDescription={#AppName} Windows CPU Installer
 VersionInfoProductName={#AppName}
 VersionInfoProductVersion={#AppVersion}
 VersionInfoTextVersion={#AppVersion}
@@ -61,9 +61,9 @@ Source: "{#PayloadDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 Source: "{#VcRedistPath}"; DestDir: "{tmp}"; DestName: "vc_redist.x64.exe"; Flags: deleteafterinstall
 
 [Icons]
-Name: "{autoprograms}\BIXOLON Bakery AI Scanner"; Filename: "{#PowerShellPath}"; Parameters: "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\start-bixolon-scanner.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "BIXOLON Bakery AI Scanner OpenVINO"
+Name: "{autoprograms}\BIXOLON Bakery AI Scanner"; Filename: "{#PowerShellPath}"; Parameters: "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\start-bixolon-scanner.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "BIXOLON Bakery AI Scanner CPU"
 Name: "{autoprograms}\BIXOLON Bakery AI Scanner 설치 안내"; Filename: "{sys}\notepad.exe"; Parameters: """{app}\INSTALL-KO.txt"""; WorkingDir: "{app}"
-Name: "{autodesktop}\BIXOLON Bakery AI Scanner"; Filename: "{#PowerShellPath}"; Parameters: "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\start-bixolon-scanner.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "BIXOLON Bakery AI Scanner OpenVINO"; Tasks: desktopicon
+Name: "{autodesktop}\BIXOLON Bakery AI Scanner"; Filename: "{#PowerShellPath}"; Parameters: "-NoLogo -NoProfile -NonInteractive -ExecutionPolicy Bypass -WindowStyle Hidden -File ""{app}\start-bixolon-scanner.ps1"""; WorkingDir: "{app}"; IconFilename: "{app}\{#AppExeName}"; Comment: "BIXOLON Bakery AI Scanner CPU"; Tasks: desktopicon
 
 [Run]
 Filename: "{tmp}\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Microsoft Visual C++ Runtime을 설치하는 중입니다..."; Flags: runhidden waituntilterminated

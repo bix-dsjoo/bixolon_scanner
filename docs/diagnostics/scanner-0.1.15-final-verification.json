@@ -1,0 +1,61 @@
+{
+  "schema_version": "1.0",
+  "product_version": "0.1.15",
+  "external_sdk_version": "1.1.0",
+  "app_build": 18,
+  "source_candidate": "ssdlite320-v11-conservative-cosine-v1",
+  "validation": {
+      "python_tests": {
+      "passed": 1021,
+      "failed": 0
+    },
+    "flutter_app_tests": {
+      "passed": 188,
+      "failed": 0,
+      "analyze_passed": true
+    },
+    "flutter_sdk_tests": {
+      "passed": 6,
+      "failed": 0,
+      "analyze_passed": true
+    },
+    "ruff_check_passed": true,
+    "ruff_format_check_passed": true,
+    "git_diff_check_passed": true,
+    "bundle_verify_passed": true,
+    "packaged_cuda_smoke_passed": true,
+    "packaged_cuda_http_passed": true,
+    "external_sdk_cpu_smoke_passed": true,
+    "installer_payload_cpu_smoke_passed": true,
+    "cpu_cuda_parity_passed": true
+  },
+  "artifacts": {
+    "bundle_manifest": {
+      "path": "artifacts/versions/0.1.15/bixolon-bakery-ai-scanner-0.1.15/bundle-manifest.json",
+      "sha256": "57af9ed1ba711dff1d90691f7df12a956ca6ef6eb82ba77e20c183d430b3ec93"
+    },
+    "setup": {
+      "path": "artifacts/installers/0.1.15/BixolonBakeryAIScanner-0.1.15-Setup.exe",
+      "sha256": "513723032f398719a523f18ef68449a5f5532068575901a2ddd44ab843ff1b34",
+      "authenticode": "UNSIGNED"
+    },
+    "worker_zip": {
+      "path": "artifacts/installers/0.1.15/BixolonBakeryAIScanner-0.1.15-Worker.zip",
+      "sha256": "a0f6f4cbe2388f10a7c3932836a61f08ca4ec752385b5e9944998c65d587b81c"
+    },
+    "external_sdk_zip": {
+      "path": "artifacts/external-sdk/1.1.0/BIXOLON-Scanner-SDK-Windows-x64-1.1.0.zip",
+      "sha256": "3bb054bb2220ac9763dd4e363946c4f822e51409afd74789c9b2197900f425e1"
+    },
+    "store_model_zip": {
+      "path": "artifacts/store-models/bread-dev/0.1.15/BIXOLON-Store-Model-bread-dev-0.1.15.zip",
+      "sha256": "b333c31a214e74abac500661b630736c053f88e01193c605101b594453cc49a6"
+    }
+  },
+  "limitations": {
+    "held_out_independent_test": false,
+    "generalization_certified": false,
+    "sla_certified": false,
+    "checksum_authenticates_publisher": false
+  }
+}

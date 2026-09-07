@@ -14,6 +14,7 @@ from typing import Any
 
 import numpy as np
 
+from .. import __version__
 from ..contracts.artifact import directory_content_manifest
 from ..contracts.catalog import sha256_file
 
@@ -137,6 +138,10 @@ def evaluate(args: argparse.Namespace) -> dict[str, Any]:
             "BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS": str(args.cpu_embedder_intra_op_threads),
         }
     )
+    if args.provider == "cuda":
+        if args.cuda_dll_dir is None or not args.cuda_dll_dir.is_dir():
+            raise ValueError("CUDA packaged HTTP evaluation requires --cuda-dll-dir")
+        environment["BIXOLON_CUDA_DLL_DIR"] = str(args.cuda_dll_dir.resolve())
     creationflags = subprocess.CREATE_NO_WINDOW if os.name == "nt" else 0
     process = subprocess.Popen(
         [str(executable)],
@@ -330,7 +335,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--trace-output", type=Path)
     parser.add_argument("--store-id", required=True)
-    parser.add_argument("--provider", choices=("cpu", "openvino"), default="openvino")
+    parser.add_argument("--provider", choices=("cpu", "cuda", "openvino"), default="openvino")
+    parser.add_argument("--cuda-dll-dir", type=Path)
     parser.add_argument(
         "--embedder-provider",
         choices=("same", "openvino_gpu"),
@@ -339,7 +345,7 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--cpu-detector-workers", type=int, default=1)
     parser.add_argument("--cpu-detector-intra-op-threads", type=int, default=0)
     parser.add_argument("--cpu-embedder-intra-op-threads", type=int, default=0)
-    parser.add_argument("--expected-version", default="0.1.14")
+    parser.add_argument("--expected-version", default=__version__)
     parser.add_argument("--expected-image-count", type=int, default=415)
     parser.add_argument("--expected-full-path-count", type=int, default=411)
     parser.add_argument("--warmup-count", type=int, default=10)

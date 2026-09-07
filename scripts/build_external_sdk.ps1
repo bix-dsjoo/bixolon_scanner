@@ -1,6 +1,11 @@
 param(
-    [string]$Version = "0.1.14",
-    [string]$OutputRoot = "artifacts/external-sdk",
+    [Alias("Version")]
+    [string]$ModelVersion = "0.1.16",
+    [string]$SdkVersion = "1.1.0",
+    [string]$SdkOutputRoot = "artifacts/external-sdk",
+    [string]$StoreModelOutputRoot = "artifacts/store-models",
+    [ValidateSet("All", "Sdk", "StoreModel")]
+    [string]$Package = "All",
     [switch]$Force
 )
 
@@ -119,32 +124,39 @@ function Write-ZipHash {
 }
 
 $repositoryRoot = Split-Path -Parent $PSScriptRoot
-$configPath = Join-Path $repositoryRoot "configs/versions/$Version.json"
+$configPath = Join-Path $repositoryRoot "configs/versions/$ModelVersion.json"
 if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
     throw "Version config is missing: $configPath"
 }
 $config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
-if ([string]$config.version -ne $Version) {
+if ([string]$config.version -ne $ModelVersion) {
     throw "Version config identity mismatch: $configPath"
 }
 
 $storeId = [string]$config.catalog.store_id
-$versionRoot = Join-Path $repositoryRoot "artifacts/versions/$Version"
+$versionRoot = Join-Path $repositoryRoot "artifacts/versions/$ModelVersion"
 $runtimeSource = Join-Path $versionRoot "staging/runtime"
 $catalogSource = Join-Path $versionRoot "staging/catalog"
-$workerSource = Join-Path $versionRoot "openvino-gpu-worker-build/bixolon-worker"
+$workerSource = Join-Path $versionRoot "cpu-worker-build/bixolon-worker"
 $flutterSdkSource = Join-Path $repositoryRoot "sdk/flutter/bixolon_scanner_sdk"
 $mockWorkerSource = Join-Path $repositoryRoot "sdk/mock_worker"
 $externalDocsSource = Join-Path $repositoryRoot "sdk/external"
+$buildSdk = $Package -in @("All", "Sdk")
+$buildStoreModel = $Package -in @("All", "StoreModel")
 
-foreach ($requiredDirectory in @(
+$requiredDirectories = @(
     $runtimeSource,
-    $catalogSource,
-    $workerSource,
-    $flutterSdkSource,
-    $mockWorkerSource,
-    $externalDocsSource
-)) {
+    $catalogSource
+)
+if ($buildSdk) {
+    $requiredDirectories += @(
+        $workerSource,
+        $flutterSdkSource,
+        $mockWorkerSource,
+        $externalDocsSource
+    )
+}
+foreach ($requiredDirectory in $requiredDirectories) {
     if (-not (Test-Path -LiteralPath $requiredDirectory -PathType Container)) {
         throw "Required source directory is missing: $requiredDirectory"
     }
@@ -157,8 +169,8 @@ $catalogMetadata = Get-Content -Raw -LiteralPath (Join-Path $catalogSource "cata
 if (
     [string]$runtimeMetadata.schema_version -ne "2.0" -or
     [string]$catalogMetadata.schema_version -ne "2.0" -or
-    [string]$runtimeMetadata.worker_version -ne $Version -or
-    [string]$catalogMetadata.catalog_version -ne $Version -or
+    [string]$runtimeMetadata.worker_version -ne $ModelVersion -or
+    [string]$catalogMetadata.catalog_version -ne $ModelVersion -or
     [string]$catalogMetadata.store_id -ne $storeId
 ) {
     throw "Runtime/Catalog identity or schema is inconsistent with the version config."
@@ -170,201 +182,240 @@ if (Test-Path -LiteralPath (Join-Path $catalogSource "signature.json")) {
     throw "signature.json must not be included in an active Catalog."
 }
 
-$resolvedOutputRoot = [System.IO.Path]::GetFullPath((Join-Path $repositoryRoot $OutputRoot))
-$outputVersionRoot = Join-Path $resolvedOutputRoot $Version
-if (Test-Path -LiteralPath $outputVersionRoot) {
-    if (-not $Force) {
-        throw "Output already exists. Pass -Force to replace it: $outputVersionRoot"
-    }
-    Assert-SafeChildPath -Path $outputVersionRoot -Parent $resolvedOutputRoot
-    Remove-Item -LiteralPath $outputVersionRoot -Recurse -Force
-}
-[System.IO.Directory]::CreateDirectory($outputVersionRoot) | Out-Null
-
-$integrationName = "BIXOLON-Scanner-External-SDK-$Version"
-$integrationRoot = Join-Path $outputVersionRoot $integrationName
-$storeName = "BIXOLON-Store-Model-$storeId-$Version"
-$storeRoot = Join-Path $outputVersionRoot $storeName
-[System.IO.Directory]::CreateDirectory($integrationRoot) | Out-Null
-[System.IO.Directory]::CreateDirectory($storeRoot) | Out-Null
-
-Copy-Item -LiteralPath (Join-Path $externalDocsSource "README-KO.md") `
-    -Destination (Join-Path $integrationRoot "README-KO.md")
-Copy-DirectoryExact -Source $flutterSdkSource `
-    -Destination (Join-Path $integrationRoot "flutter-sdk/bixolon_scanner_sdk")
-Copy-DirectoryExact -Source $mockWorkerSource `
-    -Destination (Join-Path $integrationRoot "mock-worker")
-Remove-DevelopmentState -Root (Join-Path $integrationRoot "flutter-sdk/bixolon_scanner_sdk")
-Remove-DevelopmentState -Root (Join-Path $integrationRoot "mock-worker")
-Copy-DirectoryExact -Source (Join-Path $externalDocsSource "deployment") `
-    -Destination (Join-Path $integrationRoot "deployment")
-
-$contractsRoot = Join-Path $integrationRoot "contracts"
-$contractExamples = Join-Path $contractsRoot "examples/$Version"
-[System.IO.Directory]::CreateDirectory($contractExamples) | Out-Null
-Copy-Item -LiteralPath (Join-Path $repositoryRoot "docs/contracts/api.md") `
-    -Destination (Join-Path $contractsRoot "api.md")
-Copy-Item -LiteralPath (Join-Path $repositoryRoot "docs/contracts/worker-integration-$Version.md") `
-    -Destination (Join-Path $contractsRoot "worker-integration-$Version.md")
-Copy-Item -LiteralPath (Join-Path $repositoryRoot "schemas/scan-response.schema.json") `
-    -Destination (Join-Path $contractsRoot "scan-response.schema.json")
-Copy-DirectoryExact -Source (Join-Path $repositoryRoot "docs/contracts/examples/$Version") `
-    -Destination $contractExamples
-
-$integrationLicenses = Join-Path $integrationRoot "licenses"
-[System.IO.Directory]::CreateDirectory($integrationLicenses) | Out-Null
-Copy-Item -LiteralPath (Join-Path $repositoryRoot "licenses/APACHE-2.0.txt") `
-    -Destination (Join-Path $integrationLicenses "APACHE-2.0.txt")
-Copy-Item -LiteralPath (Join-Path $repositoryRoot "licenses/DINOV3-LICENSE.md") `
-    -Destination (Join-Path $integrationLicenses "DINOV3-LICENSE.md")
-
-$runtimePayloadRoot = Join-Path $integrationRoot "runtime-payload/bixolon_runtime"
-$workerDestination = Join-Path $runtimePayloadRoot "worker"
-Copy-DirectoryExact -Source $workerSource -Destination $workerDestination
-Assert-DirectoryCopyMatches -Source $workerSource -Destination $workerDestination
-
-$forbiddenRuntimeFiles = @(
-    Get-ChildItem -LiteralPath $runtimePayloadRoot -File -Recurse |
-        Where-Object {
-            $_.Name -match "(?i)(cuda|cudnn|cublas|cufft|nvrtc|tensorrt|directml)"
-        }
+$resolvedSdkOutputRoot = [System.IO.Path]::GetFullPath(
+    (Join-Path $repositoryRoot $SdkOutputRoot)
 )
-if ($forbiddenRuntimeFiles.Count -gt 0) {
-    throw "Non-OpenVINO provider payload found: $($forbiddenRuntimeFiles[0].FullName)"
+$resolvedStoreModelOutputRoot = [System.IO.Path]::GetFullPath(
+    (Join-Path $repositoryRoot $StoreModelOutputRoot)
+)
+$sdkVersionRoot = Join-Path $resolvedSdkOutputRoot $SdkVersion
+$storeVersionRoot = Join-Path $resolvedStoreModelOutputRoot "$storeId/$ModelVersion"
+
+foreach ($target in @(
+    [pscustomobject]@{ Enabled = $buildSdk; Path = $sdkVersionRoot; Parent = $resolvedSdkOutputRoot },
+    [pscustomobject]@{ Enabled = $buildStoreModel; Path = $storeVersionRoot; Parent = $resolvedStoreModelOutputRoot }
+)) {
+    if (-not $target.Enabled) {
+        continue
+    }
+    if (Test-Path -LiteralPath $target.Path) {
+        if (-not $Force) {
+            throw "Output already exists. Pass -Force to replace it: $($target.Path)"
+        }
+        Assert-SafeChildPath -Path $target.Path -Parent $target.Parent
+        Remove-Item -LiteralPath $target.Path -Recurse -Force
+    }
+    [System.IO.Directory]::CreateDirectory($target.Path) | Out-Null
 }
 
-$runtimeManifestPath = Join-Path $integrationRoot "runtime-payload/runtime-manifest.json"
-$runtimeEntries = Get-FileEntries -Root $runtimePayloadRoot
-Write-JsonFile -Path $runtimeManifestPath -Value ([ordered]@{
-    schema_version = "1.0"
-    product_version = $Version
-    platform = "windows-x64"
-    provider = "openvino"
-    worker_entrypoint = "bixolon_runtime/worker/bixolon-worker.exe"
-    file_count = $runtimeEntries.Count
-    files = $runtimeEntries
-})
+$integrationName = "BIXOLON-Scanner-SDK-Windows-x64-$SdkVersion"
+$integrationRoot = Join-Path $sdkVersionRoot $integrationName
+$storeName = "BIXOLON-Store-Model-$storeId-$ModelVersion"
+$storeRoot = Join-Path $storeVersionRoot $storeName
+if ($buildSdk) {
+    [System.IO.Directory]::CreateDirectory($integrationRoot) | Out-Null
+}
+if ($buildStoreModel) {
+    [System.IO.Directory]::CreateDirectory($storeRoot) | Out-Null
+}
 
-Copy-DirectoryExact -Source $runtimeSource -Destination (Join-Path $storeRoot "model-package")
-Copy-DirectoryExact -Source $catalogSource -Destination (Join-Path $storeRoot "store-catalog")
-Assert-DirectoryCopyMatches -Source $runtimeSource -Destination (Join-Path $storeRoot "model-package")
-Assert-DirectoryCopyMatches -Source $catalogSource -Destination (Join-Path $storeRoot "store-catalog")
+if ($buildSdk) {
+    Copy-Item -LiteralPath (Join-Path $externalDocsSource "README-KO.md") `
+        -Destination (Join-Path $integrationRoot "README-KO.md")
+    Copy-DirectoryExact -Source $flutterSdkSource `
+        -Destination (Join-Path $integrationRoot "flutter-sdk/bixolon_scanner_sdk")
+    Copy-DirectoryExact -Source $mockWorkerSource `
+        -Destination (Join-Path $integrationRoot "mock-worker")
+    Remove-DevelopmentState -Root (Join-Path $integrationRoot "flutter-sdk/bixolon_scanner_sdk")
+    Remove-DevelopmentState -Root (Join-Path $integrationRoot "mock-worker")
+    Copy-DirectoryExact -Source (Join-Path $externalDocsSource "deployment") `
+        -Destination (Join-Path $integrationRoot "deployment")
 
-$storeLicenses = Join-Path $storeRoot "licenses"
-[System.IO.Directory]::CreateDirectory($storeLicenses) | Out-Null
-Copy-Item -LiteralPath (Join-Path $repositoryRoot "licenses/APACHE-2.0.txt") `
-    -Destination (Join-Path $storeLicenses "APACHE-2.0.txt")
-Copy-Item -LiteralPath (Join-Path $repositoryRoot "licenses/DINOV3-LICENSE.md") `
-    -Destination (Join-Path $storeLicenses "DINOV3-LICENSE.md")
+    $contractsRoot = Join-Path $integrationRoot "contracts"
+    $contractExamples = Join-Path $contractsRoot "examples/$ModelVersion"
+    [System.IO.Directory]::CreateDirectory($contractExamples) | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot "docs/contracts/api.md") `
+        -Destination (Join-Path $contractsRoot "api.md")
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot "docs/contracts/worker-integration-$ModelVersion.md") `
+        -Destination (Join-Path $contractsRoot "worker-integration-$ModelVersion.md")
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot "schemas/scan-response.schema.json") `
+        -Destination (Join-Path $contractsRoot "scan-response.schema.json")
+    Copy-DirectoryExact -Source (Join-Path $repositoryRoot "docs/contracts/examples/$ModelVersion") `
+        -Destination $contractExamples
 
-Write-JsonFile -Path (Join-Path $storeRoot "version.json") -Value ([ordered]@{
-    schema_version = "1.0"
-    version = $Version
-    store_id = $storeId
-})
-Write-JsonFile -Path (Join-Path $storeRoot "provenance.json") -Value ([ordered]@{
-    schema_version = "1.0"
-    version = $Version
-    store_id = $storeId
-    source_candidate = [string]$config.source_candidate
-    source_artifacts = [ordered]@{
-        runtime = [ordered]@{
-            path = [string]$config.runtime.path
-            manifest_sha256 = [string]$config.runtime.manifest_sha256
-        }
-        catalog = [ordered]@{
-            path = [string]$config.catalog.path
-            manifest_sha256 = [string]$config.catalog.manifest_sha256
-        }
+    $integrationLicenses = Join-Path $integrationRoot "licenses"
+    [System.IO.Directory]::CreateDirectory($integrationLicenses) | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot "licenses/APACHE-2.0.txt") `
+        -Destination (Join-Path $integrationLicenses "APACHE-2.0.txt")
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot "licenses/DINOV3-LICENSE.md") `
+        -Destination (Join-Path $integrationLicenses "DINOV3-LICENSE.md")
+
+    $runtimePayloadRoot = Join-Path $integrationRoot "runtime-payload/bixolon_runtime"
+    $workerDestination = Join-Path $runtimePayloadRoot "worker"
+    Copy-DirectoryExact -Source $workerSource -Destination $workerDestination
+    Assert-DirectoryCopyMatches -Source $workerSource -Destination $workerDestination
+
+    $forbiddenRuntimeFiles = @(
+        Get-ChildItem -LiteralPath $runtimePayloadRoot -File -Recurse |
+            Where-Object {
+                $_.Name -match "(?i)(cuda|cudnn|cublas|cufft|nvrtc|tensorrt|directml|openvino)"
+            }
+    )
+    if ($forbiddenRuntimeFiles.Count -gt 0) {
+        throw "Non-CPU provider payload found: $($forbiddenRuntimeFiles[0].FullName)"
     }
-    evaluation_evidence = @($config.evaluation_evidence)
-    transformation = [ordered]@{
-        model_graph_or_weight_changed = $false
-        catalog_authentication = "CHECKSUM-SHA256"
-        lifecycle_fields_emitted = $false
-    }
-})
-Write-JsonFile -Path (Join-Path $storeRoot "store-bundle.json") -Value ([ordered]@{
-    schema_version = "1.0"
-    bundle_kind = "BIXOLON_STORE_MODEL"
-    store_id = $storeId
-    product_version = $Version
-    worker_runtime_schema = [string]$runtimeMetadata.schema_version
-    catalog_schema = [string]$catalogMetadata.schema_version
-    provider = "openvino"
-    model_package_directory = "model-package"
-    store_catalog_directory = "store-catalog"
-    update_unit = "atomic_directory"
-})
 
-$storeManifestPath = Join-Path $storeRoot "bundle-manifest.json"
-$storeEntries = Get-FileEntries -Root $storeRoot -ExcludeRelativePaths @("bundle-manifest.json")
-Write-JsonFile -Path $storeManifestPath -Value ([ordered]@{
-    schema_version = "1.0"
-    bundle_kind = "BIXOLON_STORE_MODEL"
-    product_version = $Version
-    store_id = $storeId
-    authentication = "CHECKSUM-SHA256"
-    manifest_excludes = @("bundle-manifest.json")
-    file_count = $storeEntries.Count
-    files = $storeEntries
-})
+    $runtimeManifestPath = Join-Path $integrationRoot "runtime-payload/runtime-manifest.json"
+    $runtimeEntries = Get-FileEntries -Root $runtimePayloadRoot
+    Write-JsonFile -Path $runtimeManifestPath -Value ([ordered]@{
+        schema_version = "1.1"
+        sdk_version = $SdkVersion
+        runtime_build_version = $ModelVersion
+        supported_worker_runtime_schemas = @([string]$runtimeMetadata.schema_version)
+        supported_catalog_schemas = @([string]$catalogMetadata.schema_version)
+        platform = "windows-x64"
+        provider = "cpu"
+        worker_entrypoint = "bixolon_runtime/worker/bixolon-worker.exe"
+        file_count = $runtimeEntries.Count
+        files = $runtimeEntries
+    })
+}
 
-$integrationManifestPath = Join-Path $integrationRoot "integration-manifest.json"
-$integrationEntries = Get-FileEntries -Root $integrationRoot `
-    -ExcludeRelativePaths @("integration-manifest.json")
-Write-JsonFile -Path $integrationManifestPath -Value ([ordered]@{
-    schema_version = "1.0"
-    distribution = "BIXOLON_SCANNER_EXTERNAL_SDK"
-    product_version = $Version
-    sdk_version = "1.0.0"
-    platform = "windows-x64"
-    provider = "openvino"
-    manifest_excludes = @("integration-manifest.json")
-    file_count = $integrationEntries.Count
-    files = $integrationEntries
-})
+if ($buildStoreModel) {
+    Copy-DirectoryExact -Source $runtimeSource -Destination (Join-Path $storeRoot "model-package")
+    Copy-DirectoryExact -Source $catalogSource -Destination (Join-Path $storeRoot "store-catalog")
+    Assert-DirectoryCopyMatches -Source $runtimeSource -Destination (Join-Path $storeRoot "model-package")
+    Assert-DirectoryCopyMatches -Source $catalogSource -Destination (Join-Path $storeRoot "store-catalog")
+
+    $storeLicenses = Join-Path $storeRoot "licenses"
+    [System.IO.Directory]::CreateDirectory($storeLicenses) | Out-Null
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot "licenses/APACHE-2.0.txt") `
+        -Destination (Join-Path $storeLicenses "APACHE-2.0.txt")
+    Copy-Item -LiteralPath (Join-Path $repositoryRoot "licenses/DINOV3-LICENSE.md") `
+        -Destination (Join-Path $storeLicenses "DINOV3-LICENSE.md")
+
+    Write-JsonFile -Path (Join-Path $storeRoot "version.json") -Value ([ordered]@{
+        schema_version = "1.1"
+        component = "store_model"
+        model_version = $ModelVersion
+        store_id = $storeId
+    })
+    Write-JsonFile -Path (Join-Path $storeRoot "provenance.json") -Value ([ordered]@{
+        schema_version = "1.1"
+        model_version = $ModelVersion
+        store_id = $storeId
+        source_candidate = [string]$config.source_candidate
+        source_artifacts = [ordered]@{
+            runtime = [ordered]@{
+                path = [string]$config.runtime.path
+                manifest_sha256 = [string]$config.runtime.manifest_sha256
+            }
+            catalog = [ordered]@{
+                path = [string]$config.catalog.path
+                manifest_sha256 = [string]$config.catalog.manifest_sha256
+            }
+        }
+        evaluation_evidence = @($config.evaluation_evidence)
+        transformation = [ordered]@{
+            model_graph_or_weight_changed = $false
+            catalog_authentication = "CHECKSUM-SHA256"
+            lifecycle_fields_emitted = $false
+        }
+    })
+    Write-JsonFile -Path (Join-Path $storeRoot "store-bundle.json") -Value ([ordered]@{
+        schema_version = "1.1"
+        bundle_kind = "BIXOLON_STORE_MODEL"
+        store_id = $storeId
+        model_version = $ModelVersion
+        worker_runtime_schema = [string]$runtimeMetadata.schema_version
+        catalog_schema = [string]$catalogMetadata.schema_version
+        provider = "cpu"
+        model_package_directory = "model-package"
+        store_catalog_directory = "store-catalog"
+        update_unit = "atomic_directory"
+    })
+
+    $storeManifestPath = Join-Path $storeRoot "bundle-manifest.json"
+    $storeEntries = Get-FileEntries -Root $storeRoot -ExcludeRelativePaths @("bundle-manifest.json")
+    Write-JsonFile -Path $storeManifestPath -Value ([ordered]@{
+        schema_version = "1.1"
+        bundle_kind = "BIXOLON_STORE_MODEL"
+        model_version = $ModelVersion
+        store_id = $storeId
+        authentication = "CHECKSUM-SHA256"
+        manifest_excludes = @("bundle-manifest.json")
+        file_count = $storeEntries.Count
+        files = $storeEntries
+    })
+}
+
+if ($buildSdk) {
+    $integrationManifestPath = Join-Path $integrationRoot "integration-manifest.json"
+    $integrationEntries = Get-FileEntries -Root $integrationRoot `
+        -ExcludeRelativePaths @("integration-manifest.json")
+    Write-JsonFile -Path $integrationManifestPath -Value ([ordered]@{
+        schema_version = "1.1"
+        distribution = "BIXOLON_SCANNER_SDK"
+        sdk_version = $SdkVersion
+        runtime_build_version = $ModelVersion
+        supported_worker_runtime_schemas = @([string]$runtimeMetadata.schema_version)
+        supported_catalog_schemas = @([string]$catalogMetadata.schema_version)
+        platform = "windows-x64"
+        provider = "cpu"
+        manifest_excludes = @("integration-manifest.json")
+        file_count = $integrationEntries.Count
+        files = $integrationEntries
+    })
+}
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
-$integrationZip = Join-Path $outputVersionRoot "$integrationName.zip"
-$storeZip = Join-Path $outputVersionRoot "$storeName.zip"
-[System.IO.Compression.ZipFile]::CreateFromDirectory(
-    $integrationRoot,
-    $integrationZip,
-    [System.IO.Compression.CompressionLevel]::Optimal,
-    $true
-)
-[System.IO.Compression.ZipFile]::CreateFromDirectory(
-    $storeRoot,
-    $storeZip,
-    [System.IO.Compression.CompressionLevel]::Optimal,
-    $true
-)
-$integrationZipHash = Write-ZipHash -ZipPath $integrationZip
-$storeZipHash = Write-ZipHash -ZipPath $storeZip
-
-$summaryPath = Join-Path $outputVersionRoot "build-summary.json"
-Write-JsonFile -Path $summaryPath -Value ([ordered]@{
-    schema_version = "1.0"
-    product_version = $Version
-    provider = "openvino"
-    store_id = $storeId
-    artifacts = @(
-        [ordered]@{
-            kind = "external_sdk"
+if ($buildSdk) {
+    $integrationZip = Join-Path $sdkVersionRoot "$integrationName.zip"
+    [System.IO.Compression.ZipFile]::CreateFromDirectory(
+        $integrationRoot,
+        $integrationZip,
+        [System.IO.Compression.CompressionLevel]::Optimal,
+        $true
+    )
+    $integrationZipHash = Write-ZipHash -ZipPath $integrationZip
+    $sdkSummaryPath = Join-Path $sdkVersionRoot "build-summary.json"
+    Write-JsonFile -Path $sdkSummaryPath -Value ([ordered]@{
+        schema_version = "1.1"
+        sdk_version = $SdkVersion
+        runtime_build_version = $ModelVersion
+        provider = "cpu"
+        artifact = [ordered]@{
+            kind = "scanner_sdk"
             path = [System.IO.Path]::GetFileName($integrationZip)
             size_bytes = (Get-Item -LiteralPath $integrationZip).Length
             sha256 = $integrationZipHash
-        },
-        [ordered]@{
+        }
+    })
+    Write-Host "Scanner SDK ZIP: $integrationZip"
+    Write-Host "SDK summary: $sdkSummaryPath"
+}
+if ($buildStoreModel) {
+    $storeZip = Join-Path $storeVersionRoot "$storeName.zip"
+    [System.IO.Compression.ZipFile]::CreateFromDirectory(
+        $storeRoot,
+        $storeZip,
+        [System.IO.Compression.CompressionLevel]::Optimal,
+        $true
+    )
+    $storeZipHash = Write-ZipHash -ZipPath $storeZip
+    $storeSummaryPath = Join-Path $storeVersionRoot "build-summary.json"
+    Write-JsonFile -Path $storeSummaryPath -Value ([ordered]@{
+        schema_version = "1.1"
+        model_version = $ModelVersion
+        provider = "cpu"
+        store_id = $storeId
+        artifact = [ordered]@{
             kind = "store_model_bundle"
             path = [System.IO.Path]::GetFileName($storeZip)
             size_bytes = (Get-Item -LiteralPath $storeZip).Length
             sha256 = $storeZipHash
         }
-    )
-})
-
-Write-Host "External SDK ZIP: $integrationZip"
-Write-Host "Store Model ZIP: $storeZip"
-Write-Host "Summary: $summaryPath"
+    })
+    Write-Host "Store Model ZIP: $storeZip"
+    Write-Host "Store Model summary: $storeSummaryPath"
+}

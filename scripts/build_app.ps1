@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.14",
+    [string]$Version = "0.1.16",
     [string]$FlutterExecutable = "C:/Users/OMEN/development/flutter/bin/flutter.bat",
     [string]$PythonExecutable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [switch]$Force
@@ -15,6 +15,32 @@ if (-not (Test-Path -LiteralPath $configPath -PathType Leaf)) {
 $config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
 if ([string]$config.version -ne $Version) {
     throw "Version config identity mismatch: $configPath"
+}
+$cudaLockPath = Join-Path $repositoryRoot "configs/runtime/requirements-windows-cuda.lock"
+$expectedOnnxRuntimeGpu = (
+    Get-Content -LiteralPath $cudaLockPath |
+        Where-Object { $_ -match '^onnxruntime-gpu==' } |
+        Select-Object -First 1
+) -replace '^onnxruntime-gpu==', ''
+$providerJson = & $PythonExecutable -c (
+    "import json, onnxruntime as ort; print(json.dumps(ort.get_available_providers()))"
+)
+if ($LASTEXITCODE -ne 0 -or $providerJson -notmatch 'CUDAExecutionProvider') {
+    throw (
+        "build_app requires a Python environment with CUDAExecutionProvider. " +
+        "Install configs/runtime/requirements-windows-cuda.lock in an isolated environment " +
+        "and pass its Python with -PythonExecutable."
+    )
+}
+$onnxRuntimeGpuVersion = & $PythonExecutable -c (
+    "import importlib.metadata as m; print(m.version('onnxruntime-gpu'))"
+)
+if (
+    $LASTEXITCODE -ne 0 -or
+    [string]::IsNullOrWhiteSpace($expectedOnnxRuntimeGpu) -or
+    $onnxRuntimeGpuVersion.Trim() -ne $expectedOnnxRuntimeGpu.Trim()
+) {
+    throw "build_app Python does not match requirements-windows-cuda.lock."
 }
 $appBuild = [int]$config.app_build
 $sourceDateEpoch = [long]$config.source_date_epoch

@@ -243,6 +243,60 @@ def _detection_records(
     return rows
 
 
+def write_bread_operational_evaluation_manifest(
+    dataset_root: Path,
+    collection_name: str,
+    output_dir: Path,
+) -> str:
+    """Write one immutable operational collection as a GT-ROI evaluation manifest."""
+
+    root = dataset_root.resolve()
+    operational_root = (root / "operational_collections").resolve()
+    collection_root = (operational_root / collection_name).resolve()
+    try:
+        relative_collection = collection_root.relative_to(operational_root).as_posix()
+    except ValueError as error:
+        raise ValueError(
+            "operational collection must stay below operational_collections"
+        ) from error
+    if relative_collection != collection_name.replace("\\", "/"):
+        raise ValueError("operational collection name must resolve exactly")
+    annotation_path = collection_root / "annotations" / "instances.json"
+    rows = _detection_records(
+        root,
+        annotation_path,
+        evaluation_set=f"operational_collections/{relative_collection}",
+        image_id_offset=1_000_000,
+    )
+    for row in rows:
+        row["split"] = "temporal_evaluation"
+        row["exclude_from_detector_training"] = True
+        row["training_allowed"] = False
+    manifest = _manifest_text(rows)
+    manifest_sha256 = hashlib.sha256(manifest.encode("utf-8")).hexdigest()
+    metadata = {
+        "schema_version": SCHEMA_VERSION,
+        "dataset_version": f"bread-operational-{relative_collection}-{manifest_sha256[:12]}",
+        "collection": relative_collection,
+        "source_annotation": annotation_path.relative_to(root).as_posix(),
+        "image_count": len(rows),
+        "annotation_count": sum(len(row["annotations"]) for row in rows),
+        "manifest_sha256": manifest_sha256,
+        "split": "temporal_evaluation",
+        "training_allowed": False,
+    }
+    if output_dir.exists() and any(output_dir.iterdir()):
+        raise FileExistsError(output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    (output_dir / "manifest.jsonl").write_text(manifest, encoding="utf-8", newline="\n")
+    (output_dir / "metadata.json").write_text(
+        json.dumps(metadata, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+    return str(metadata["dataset_version"])
+
+
 def _classifier_records(
     dataset_root: Path,
     *,

@@ -1,0 +1,255 @@
+{
+  "product_version": "0.1.16",
+  "app_build": 19,
+  "source_candidate": "limited220-surfaces",
+  "build_status": "complete",
+  "tests_status": "passed",
+  "checks": {
+    "python_tests": {
+      "passed": 1066,
+      "log": "artifacts/retraining/python-0116-tests-final.log",
+      "duration_seconds": 120.444,
+      "junit": "artifacts/versions/0.1.16/python-tests.xml"
+    },
+    "flutter_tests": {
+      "passed": 188,
+      "log": "artifacts/retraining/flutter-0116-tests-final.log"
+    },
+    "flutter_analyze": "passed",
+    "ruff_check": "passed",
+    "ruff_format_check": "passed",
+    "git_diff_check": "passed",
+    "post_installer_change_documentation_and_installer_tests": 14,
+    "packaged_cuda_smoke": true,
+    "packaged_cpu_smoke": true,
+    "worker_zip_verified_files": 173,
+    "setup_and_zip_sha256_sidecars_match": true,
+    "shipped_cpu_profile": {
+      "detector_workers": 1,
+      "detector_intra_op_threads": 4,
+      "embedder_intra_op_threads": 4,
+      "provider_selection": "cpu_only",
+      "request_timeout_seconds": 60
+    },
+    "binary_and_checksum_checks": {
+      "binary_payloads_identical": true,
+      "verified_files": [
+        {
+          "path": "runtime/classifier-verifier-160.onnx",
+          "sha256": "c0ca7a5559d768e8fcc9b80d939540e42fda7fbc47753e91ebf97d973c18b063"
+        },
+        {
+          "path": "runtime/detector.onnx",
+          "sha256": "83269e92d58bb04b7fd23fff5d96ec17c62c8822f320cbde09b99c592bac8b8e"
+        },
+        {
+          "path": "runtime/embedder-detail-224.onnx",
+          "sha256": "3c5857b81853d12cab5de9c107269b4b5d6e6eb3204be24b6b73037299096dab"
+        },
+        {
+          "path": "runtime/embedder-primary-192.onnx",
+          "sha256": "08fe33435546affc624dd3929f998f36250966ffbf35490b6f18a0c413c95680"
+        },
+        {
+          "path": "runtime/licenses/DINOV3-LICENSE.md",
+          "sha256": "25d122eb8f5b880fd23c736fb6ea8018ee45c12237e00b8a86d14c653904999e"
+        },
+        {
+          "path": "runtime/licenses/THIRD_PARTY_MODELS.md",
+          "sha256": "970c1c315c0c62a83fa8e5ca85d4ec099b1f3a227c6b1c6655cbfa0fa3e72c6c"
+        },
+        {
+          "path": "runtime/licenses/TORCHVISION-LICENSE.txt",
+          "sha256": "895712cce043a7dd0a38ce8a1b5e9ac098291b478a8a117be554f4e0189d0ca9"
+        },
+        {
+          "path": "catalog/adapter.bin",
+          "sha256": "cc0b6eca18a29b778bf03d37046d101ad4b7eca0f5925439cfaeea229473918a"
+        },
+        {
+          "path": "catalog/prototypes.bin",
+          "sha256": "d5ece1518f1cae936432c253bdfab9e819f10a25007b2a62e1b19093538e2fb5"
+        },
+        {
+          "path": "catalog/source-manifest.jsonl",
+          "sha256": "79ba67bbebce208252e3c13d651d6d2bcd468e11b128f02752cf890d30554159"
+        },
+        {
+          "path": "catalog/supports.bin",
+          "sha256": "6264d803427c66731da0cf1bda984c1e151f4d3fb3d6923500f4af751f31f91a"
+        },
+        {
+          "path": "catalog/independent-verifier/adapter.bin",
+          "sha256": "845b7d57f904f87396eb33282fca68ad8fc6760fdbc8e335df8d1f83cb64b570"
+        },
+        {
+          "path": "catalog/independent-verifier/prototypes.bin",
+          "sha256": "eceddf0bc89f1d8c12e433fc4c5bab348476e2b2fb9e269c2d913abcba734b5c"
+        },
+        {
+          "path": "catalog/independent-verifier/source-manifest.jsonl",
+          "sha256": "79ba67bbebce208252e3c13d651d6d2bcd468e11b128f02752cf890d30554159"
+        },
+        {
+          "path": "catalog/independent-verifier/supports.bin",
+          "sha256": "4fc828c0a97ad6155d942c7730049d0e40b0013f2544c8892bc2563def7498fb"
+        },
+        {
+          "path": "catalog/rotation-verifier/adapter.bin",
+          "sha256": "cc0b6eca18a29b778bf03d37046d101ad4b7eca0f5925439cfaeea229473918a"
+        },
+        {
+          "path": "catalog/rotation-verifier/prototypes.bin",
+          "sha256": "f11aaff17d2697c18b2ab68fc59ce3eef0c353f44d71e7c9dde8d211c26a3676"
+        },
+        {
+          "path": "catalog/rotation-verifier/source-manifest.jsonl",
+          "sha256": "79ba67bbebce208252e3c13d651d6d2bcd468e11b128f02752cf890d30554159"
+        },
+        {
+          "path": "catalog/rotation-verifier/supports.bin",
+          "sha256": "acfa1f172e33fe0e3550d751ce939dbb634ebc177d9a0105b40e490b224b02d0"
+        }
+      ],
+      "checksum_mismatch_startup_rejected": true,
+      "checksum_mismatch_process_exit_code": 3,
+      "original_runtime_unchanged": true
+    },
+    "bundle": {
+      "version": "0.1.16",
+      "staging_path": "C:/workspace/bixolon_scanner/artifacts/versions/0.1.16/staging",
+      "passed": true,
+      "bundle_path": "C:/workspace/bixolon_scanner/artifacts/versions/0.1.16/bixolon-bakery-ai-scanner-0.1.16",
+      "bundle_manifest_sha256": "3a0e1f94b0dea90bd13133965482446d1334af0c92b0008eb5c1d7c2a3aa3432"
+    }
+  },
+  "operational115_accuracy": {
+    "image_count": 115,
+    "empty_image_count": 4,
+    "nonempty_image_count": 111,
+    "empty_image_recapture_count": 4,
+    "nonempty_image_recapture_count": 0,
+    "ground_truth_count": 504,
+    "prediction_count": 504,
+    "matched_count": 504,
+    "false_negative_count": 0,
+    "false_positive_count": 0,
+    "approved_count": 465,
+    "approved_correct_count": 465,
+    "approved_wrong_count": 0,
+    "unknown_count": 38,
+    "unknown_top3_hit_count": 38,
+    "unknown_top3_miss_count": 0,
+    "segment_recapture_count": 1
+  },
+  "packaged_cpu_cuda_parity": {
+    "schema_version": "1.0",
+    "evaluation": "bread_1_1_runtime_cpu_cuda_parity",
+    "image_count": 115,
+    "segmentation_count": 504,
+    "decision_mismatch_image_count": 0,
+    "decision_mismatch_image_ids": [],
+    "bbox_mismatch_image_count": 0,
+    "bbox_mismatch_image_ids": [],
+    "minimum_observed_bbox_iou": 1.0,
+    "minimum_bbox_iou_tolerance": 0.999,
+    "maximum_observed_confidence_error": 0.00015914440155029297,
+    "maximum_confidence_error_tolerance": 0.005,
+    "final_status_class_rank_parity_exact": true,
+    "passes": true
+  },
+  "performance": {
+    "cuda": {
+      "scope": "multipart HTTP round trip; IMAGE_RECAPTURE early exits excluded",
+      "warmup_count": 10,
+      "http_round_trip": {
+        "sample_count": 111,
+        "mean_ms": 52.09363423423424,
+        "p50_ms": 47.969,
+        "p95_ms": 83.862,
+        "p99_ms": 104.547
+      },
+      "worker_processing_time": {
+        "sample_count": 111,
+        "mean_ms": 41.81955045042979,
+        "p50_ms": 40.895,
+        "p95_ms": 72.786,
+        "p99_ms": 93.479
+      }
+    },
+    "cpu_4threads": {
+      "scope": "multipart HTTP round trip; IMAGE_RECAPTURE early exits excluded",
+      "warmup_count": 10,
+      "http_round_trip": {
+        "sample_count": 111,
+        "mean_ms": 186.0475153153153,
+        "p50_ms": 166.874,
+        "p95_ms": 384.306,
+        "p99_ms": 458.278
+      },
+      "worker_processing_time": {
+        "sample_count": 111,
+        "mean_ms": 170.6162540531541,
+        "p50_ms": 151.852,
+        "p95_ms": 366.734,
+        "p99_ms": 441.445
+      }
+    },
+    "cpu_auto_threads": {
+      "scope": "multipart HTTP round trip; IMAGE_RECAPTURE early exits excluded",
+      "warmup_count": 10,
+      "http_round_trip": {
+        "sample_count": 111,
+        "mean_ms": 922.3849558558559,
+        "p50_ms": 810.157,
+        "p95_ms": 2104.887,
+        "p99_ms": 2653.038
+      },
+      "worker_processing_time": {
+        "sample_count": 111,
+        "mean_ms": 905.2479414414585,
+        "p50_ms": 794.204,
+        "p95_ms": 2088.368,
+        "p99_ms": 2629.173
+      }
+    },
+    "cpu_http_p95_300ms_target_met": false
+  },
+  "artifacts": {
+    "schema_version": "1.0",
+    "version": "0.1.16",
+    "target": "windows-x64-cpu",
+    "setup": {
+      "filename": "BixolonBakeryAIScanner-0.1.16-Setup.exe",
+      "size_bytes": 596374643,
+      "sha256": "9d311bf33f9e93f903f223966f85271d401dc091bbadf1cc24fc618c7908c9ff",
+      "authenticode": "UNSIGNED"
+    },
+    "worker_zip": {
+      "filename": "BixolonBakeryAIScanner-0.1.16-Worker.zip",
+      "size_bytes": 604977260,
+      "sha256": "9360ac6f6faf2f9e29b39b9799b99dfb4f8bfeff326e2ace7f2d33bd738edfd5"
+    },
+    "payload_manifest_sha256": "dc53a556e25f0dd0d4b7b4daeb5fda2906b684253058f03b2be11cc85eef7a9b",
+    "vc_redist_sha256": "cc0ff0eb1dc3f5188ae6300faef32bf5beeba4bdd6e8e445a9184072096b713b"
+  },
+  "evidence": {
+    "artifacts/versions/0.1.16/packaged-cuda-smoke.json": "5d84f2db3f9f2b1a774e04a8d50883c01a9d84417c30a20bc9b53a8b948278ac",
+    "artifacts/versions/0.1.16/packaged-cpu-smoke.json": "0c462cfbe401b058cfaad874a13662d7fb1b002bafb053f18094f0f08d3fb26c",
+    "artifacts/versions/0.1.16/packaged-cuda-http115.json": "8c1be6f3a5066d968a5e70fc66c03f4821d3eae52c2f8e654661ccadadb93e3f",
+    "artifacts/versions/0.1.16/packaged-cpu-http115-threads4.json": "4c5bbba0b88ed14b88aefe0cdfb7f1201fed6f2424f74e10fe254fd6835025b8",
+    "artifacts/versions/0.1.16/packaged-http115-parity.json": "4157ff0c3161a5aa556c588829f2af81d6ccce4d8f21aa86ff016a9593e2db32",
+    "artifacts/versions/0.1.16/payload-verification.json": "f628d7fe473cfa42dfb5566a20e33f9c9b2253f5fe1ae7be55cf50efabdf1170",
+    "artifacts/installers/0.1.16/installer-manifest.json": "97ebcf290dbcf66c7b2e56369d90508f4b661673f81c163597d60a6991f1aa5a",
+    "configs/versions/0.1.16.json": "b0c3b67fdcd939430cdc297454e93ffd274f0613cab34c99a958e74ecfb0cff9"
+  },
+  "limitations": [
+    "Same physical objects in training; operational115 was observed before improvement and is regression data, not an independent test.",
+    "CPU HTTP p95 300ms target not met; diagnostic passes=false is preserved.",
+    "One low-confidence border object requires SEGMENT_RECAPTURE.",
+    "Native permanent-hang supervisor not added.",
+    "Installer is Authenticode unsigned.",
+    "Installer wizard and camera were not interactively exercised; built payload EXEs, manifests and ZIP contents were tested."
+  ],
+  "independent_generalization_claim": false
+}

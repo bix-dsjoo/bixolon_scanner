@@ -30,6 +30,7 @@ from bixolon_scanner.operations.catalog_activation import (
     fit_append_only_ridge_adapter,
     fit_diagonal_lda_adapter,
     fit_ridge_adapter,
+    preserve_classifier_logits_adapter,
 )
 from bixolon_scanner.pipeline.ports import Detection
 from bixolon_scanner.runtime.catalog import OnnxCatalogClassifier
@@ -212,6 +213,18 @@ def test_catalog_ridge_adapter_is_deterministic_and_fits_support_labels() -> Non
     assert np.array_equal(first[1], second[1])
     logits = features @ first[0] + first[1]
     assert np.array_equal(np.argmax(logits, axis=1), labels)
+
+
+def test_classifier_logits_adapter_is_identity_and_requires_one_logit_per_class() -> None:
+    weight, bias = preserve_classifier_logits_adapter(
+        embedding_dimension=3,
+        class_count=3,
+    )
+
+    np.testing.assert_array_equal(weight, np.eye(3, dtype=np.float32))
+    np.testing.assert_array_equal(bias, np.zeros(3, dtype=np.float32))
+    with pytest.raises(ValueError, match="embedding dimension"):
+        preserve_classifier_logits_adapter(embedding_dimension=4, class_count=3)
 
 
 def test_append_only_ridge_preserves_base_coefficients_bit_for_bit() -> None:

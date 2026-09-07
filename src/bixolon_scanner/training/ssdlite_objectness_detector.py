@@ -23,15 +23,25 @@ def build_ssdlite_objectness(
     detections_per_image: int = 300,
     topk_candidates: int = 1000,
     foreground_class_count: int = 1,
+    pretrained_backbone: bool = False,
+    pretrained_detector_transfer: bool = False,
     device: str = "cpu",
 ):
     if image_size != 320:
         raise ValueError("the torchvision SSDLite architecture requires a 320px input")
-    from torchvision.models.detection import ssdlite320_mobilenet_v3_large
+    from torchvision.models import MobileNet_V3_Large_Weights
+    from torchvision.models.detection import (
+        SSDLite320_MobileNet_V3_Large_Weights,
+        ssdlite320_mobilenet_v3_large,
+    )
 
     model = ssdlite320_mobilenet_v3_large(
         weights=None,
-        weights_backbone=None,
+        weights_backbone=(
+            MobileNet_V3_Large_Weights.IMAGENET1K_V2
+            if pretrained_backbone and not pretrained_detector_transfer
+            else None
+        ),
         num_classes=foreground_class_count + 1,
         score_thresh=score_threshold,
         nms_thresh=nms_threshold,
@@ -41,6 +51,17 @@ def build_ssdlite_objectness(
         image_mean=list(SSDLITE_MEAN),
         image_std=list(SSDLITE_STD),
     )
+    if pretrained_detector_transfer:
+        source = ssdlite320_mobilenet_v3_large(
+            weights=SSDLite320_MobileNet_V3_Large_Weights.DEFAULT
+        )
+        current = model.state_dict()
+        transferable = {
+            name: value
+            for name, value in source.state_dict().items()
+            if name in current and current[name].shape == value.shape
+        }
+        model.load_state_dict(transferable, strict=False)
     return model.to(device)
 
 
@@ -134,6 +155,7 @@ class CachedObjectnessDataset:
         *,
         training: bool,
         class_aware: bool = False,
+        quarter_turn_augmentation: bool = False,
     ) -> None:
         self.records = []
         for line in manifest.read_text(encoding="utf-8").splitlines():
@@ -145,6 +167,7 @@ class CachedObjectnessDataset:
         self.dataset_root = dataset_root.resolve()
         self.training = training
         self.class_aware = class_aware
+        self.quarter_turn_augmentation = quarter_turn_augmentation
         metadata = json.loads((cache_dir / "index.json").read_text(encoding="utf-8"))
         self.cache_index = {str(key): int(value) for key, value in metadata["index"].items()}
         self.cache_array_path = (cache_dir / metadata["array_filename"]).resolve()
@@ -199,6 +222,17 @@ class CachedObjectnessDataset:
                 ]
             )
         boxes_array = np.asarray(boxes, dtype=np.float32).reshape(-1, 4)
+        if self.training and self.quarter_turn_augmentation:
+            turns = random.randrange(4)
+            if turns:
+                image = image.rotate(90 * turns)
+                for _ in range(turns):
+                    if len(boxes_array):
+                        previous = boxes_array.copy()
+                        boxes_array[:, 0] = previous[:, 1]
+                        boxes_array[:, 1] = self.image_size - previous[:, 2]
+                        boxes_array[:, 2] = previous[:, 3]
+                        boxes_array[:, 3] = self.image_size - previous[:, 0]
         if self.training and random.random() < 0.5:
             image = image.transpose(Image.Transpose.FLIP_LEFT_RIGHT)
             if len(boxes_array):

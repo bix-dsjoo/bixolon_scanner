@@ -1,6 +1,6 @@
 {
-  "schema_version": "1.0",
+  "schema_version": "1.1",
   "store_id": "bread-dev",
-  "product_version": "0.1.14",
-  "bundle_path": "C:\\ProgramData\\BIXOLON\\Scanner\\bundles\\bread-dev\\0.1.14"
+  "model_version": "0.1.16",
+  "bundle_path": "C:\\ProgramData\\BIXOLON\\Scanner\\bundles\\bread-dev\\0.1.16"
 }

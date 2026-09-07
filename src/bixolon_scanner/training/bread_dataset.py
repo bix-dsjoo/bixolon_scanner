@@ -211,7 +211,11 @@ def audit_bread_dataset(
         if label is None or _slug(str(label["class_name"])) != match.group("slug"):
             raise ValueError(f"class directory does not match category metadata: {directory.name}")
         seen_categories.add(category_id)
-        files = sorted(path for path in directory.iterdir() if path.is_file())
+        files = sorted(
+            path
+            for path in directory.iterdir()
+            if path.is_file() and path.suffix.lower() in {".jpg", ".jpeg"}
+        )
         if len(files) != shots_per_class:
             raise ValueError(
                 f"{directory.name} must contain exactly {shots_per_class} original JPEGs"

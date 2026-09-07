@@ -74,11 +74,11 @@ def _build_v2_runtime(settings: WorkerSettings) -> WorkerRuntime:
         expected_store_id=settings.catalog_store_id,
         expected_key_id=settings.catalog_key_id,
     )
-    provider = select_provider(settings.provider)
+    provider = select_provider(settings.provider, settings.cuda_dll_dir)
     embedder_provider = (
         provider
         if settings.embedder_provider == "same"
-        else select_provider(settings.embedder_provider)
+        else select_provider(settings.embedder_provider, settings.cuda_dll_dir)
     )
     detector = None
     classifier = None

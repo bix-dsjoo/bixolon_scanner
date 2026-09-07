@@ -133,6 +133,19 @@ def test_all_approved_policy_verifies_candidate_above_ambiguity_band() -> None:
     assert result.approval_blocked.tolist() == [True]
 
 
+def test_verifier_uses_the_same_per_class_threshold_as_final_decision() -> None:
+    classifier = _consensus(
+        _result(1, approval_score=0.7),
+        _result(1, approval_score=0.7, retrieval_top1=1),
+        primary_approval_score=0.2,
+        primary_threshold=0.8,
+    )
+    classifier.metadata.approval_thresholds = [0.1, None, None]
+    result = classifier.classify(None, [Detection(0, 0, 1, 1, 0.9)])
+    assert classifier.independent.embedder.selected_indices == (0,)
+    assert result.approval_blocked.tolist() == [True]
+
+
 def test_default_policy_skips_approved_candidate_above_ambiguity_band() -> None:
     classifier = _consensus(
         _result(1, approval_score=0.7),
