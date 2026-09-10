@@ -4,6 +4,7 @@
 평가 판단은 [archive](archive/version-history.md)에 보존합니다.
 
 - [현재 버전과 고정 해시](status/current.md)
+- [main 통합·작업 폴더 정리 기록](maintenance/workspace-consolidation-2026-09-10.md)
 - [아키텍처 개요](architecture/overview.md)
 - [Scanner 0.2.1 및 이전 버전 차이](architecture/scanner-0.2.1.md)
 - [Worker API 계약](contracts/api.md)

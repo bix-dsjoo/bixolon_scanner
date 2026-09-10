@@ -3,6 +3,10 @@
 여러 상품이 있는 JPEG/PNG 한 장을 판정하는 Windows 시스템입니다. ONNX Runtime Worker,
 PyTorch 학습·평가 도구와 Flutter 작업자 앱을 한 저장소에서 관리합니다.
 
+현재 제품은 **0.2.1 RepViT 구성**이며 소스는 main에 통합했습니다.
+[최종 구성](docs/architecture/scanner-0.2.1.md)과
+[소스 통합·폴더 정리 기록](docs/maintenance/workspace-consolidation-2026-09-10.md)을 참조하십시오.
+
 모델 구조를 비교하는 R4 실험은 [구조 실험 절차](docs/operations/n100-structural-experiments.md)에 기록합니다.
 새 primary와 기존 detail의 특징 공간이 다르면 `classifier_resolution_fallback.catalog_directory`와
 `catalog_checksums_sha256`로 별도 detail Catalog를 명시합니다. 모델·label·버전·checksum 불일치는

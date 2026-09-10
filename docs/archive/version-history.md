@@ -1,9 +1,24 @@
 # 버전 이력
 
-이 문서는 현재 단일 제품 버전 `0.1.16` 외의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
+이 문서는 현재 단일 제품 버전 `0.2.1` 외의 버전·평가·판단을 삭제하지 않고 찾을 수 있게 정리한
 archive 인덱스입니다. 아래의 `production`, promotion, waiver, certification, release lock 표현은
 당시 기록의 용어이며 현재 빌드 수명주기나 활성 기본값이 아닙니다. Git 밖의 실험·평가 결과는
 보존하되 재생성 가능한 과거 전달물과 캐시는 정리할 수 있습니다.
+
+## Scanner 0.1.16~0.2.1 통합
+
+2026-09-10에 별도 release 폴더의 미커밋 소스를 버전별로 main 이력에 보존했다.
+현재 구성은 [0.2.1 RepViT](../architecture/scanner-0.2.1.md)이며,
+[통합·보존·검증 기록](../maintenance/workspace-consolidation-2026-09-10.md)에 복원 방법을 남긴다.
+
+- [0.1.16 설정](../../configs/archive/versions/0.1.16.json) · [연동 명세](contracts/worker-integration-0.1.16.md)
+- [0.1.17 설정](../../configs/archive/versions/0.1.17.json) · [연동 명세](contracts/worker-integration-0.1.17.md)
+- [0.1.18 설정](../../configs/archive/versions/0.1.18.json) · [연동 명세](contracts/worker-integration-0.1.18.md)
+- [0.1.19 설정](../../configs/archive/versions/0.1.19.json): Git에 연결되지 않았던 부분 소스 폴더에서 보존
+- [0.2.0 설정](../../configs/archive/versions/0.2.0.json) · [연동 명세](contracts/worker-integration-0.2.0.md)
+- [0.2.1 RepViT 이전 구성](../../configs/archive/versions/0.2.1-before-repvit-final.json)
+
+과거 `bread-10shot-0.2.1` 실험은 현재 제품 0.2.1과 별개다.
 
 ## Scanner 0.1.15
 

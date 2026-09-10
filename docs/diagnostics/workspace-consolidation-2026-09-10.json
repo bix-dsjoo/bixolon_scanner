@@ -1,0 +1,85 @@
+{
+  "date": "2026-09-10",
+  "product_version": "0.2.1",
+  "flutter_build": 24,
+  "source_commits": [
+    {
+      "commit": "43061233910b3c119486d77959e4c16c9366a082",
+      "message": "feat(training): 세 매장 학습과 ROI 무결성 및 Lite 승인 표시 작업을 보존한다"
+    },
+    {
+      "commit": "0b79e69ffff67bd05871b763cb1b7602371b8483",
+      "message": "feat(release): 0.1.17 작업트리의 누적 소스와 배포 기록을 통합한다"
+    },
+    {
+      "commit": "06f7270ea914446acb5c2dcc0a01cd08b23122c3",
+      "message": "feat(release): 0.1.18 작업트리의 누적 소스와 배포 기록을 통합한다"
+    },
+    {
+      "commit": "1294298b57cd28fc6ead28b6f457b4f51c58c42e",
+      "message": "feat(release): 0.1.19 작업트리의 누적 소스와 배포 기록을 통합한다"
+    },
+    {
+      "commit": "8e037936fa1684e10f0a814e41b22c6d0dfa5f00",
+      "message": "feat(release): 0.2.0 작업트리의 누적 소스와 배포 기록을 통합한다"
+    },
+    {
+      "commit": "d263adfa8b5c53f3df630ea9a29b9843dbd1f218",
+      "message": "feat(release): 0.2.1 작업트리의 누적 소스와 배포 기록을 통합한다"
+    }
+  ],
+  "source_snapshot_sha256": {
+    "0_1_17-source.zip": "dbc6461003f12fe3e8d33badc9bb030281b97c9498bcbcd9f3fae1c07ae6450f",
+    "0_1_18-source.zip": "d3beeee5c719d403dacf40b678710d57d3cfa682511cc7e57f6029840d232899",
+    "0_1_19-source.zip": "0676b8f3429c6566c41cd0ffe183f2686b1165c23f809ece1e15107a3004ed1b",
+    "0_2_0-source.zip": "84b0aae1d967e45034f473a143f72eb9da170f828afd1afbce6f77ee32db1841",
+    "0_2_1-source.zip": "7fe6896ea9a638adb54c0d4f6ed9fae811096ad7a9efe0299b7662ef12448d96",
+    "main-source.zip": "0e78b966b0c568fb5293918d203096d2394bc73525760095fcee0e12f88dce60"
+  },
+  "local_evidence_root": "artifacts/workspace-consolidation/20260910",
+  "evidence_sha256": {
+    "pytest-final.xml": "476e2a966a74d5d00d18badcb98dd70cc8319fa93174730bf06769da115be419",
+    "bundle-verify.log": "221544d27eb13517fbc67c6f8c6d2cf714e9b2f67e7ecf4189743faa020ee5e2",
+    "packaged-smoke.json": "883801a4c2608e3937904287fa78e5fa46df526000da87a27c6e681d044c9625",
+    "packaged-n100-cpu-smoke.json": "d3f54cb42d5231c22dc0a019c57b906e9672f9ac9d67a0a59e705baf79606e32",
+    "flutter-results.json": "3a9c89d9ab92fabf1712cefdb447fdc65722ac67d167274aef6ba3c616bbdf88",
+    "apps-product_scanner-build.log": "f9b117fff1598d569ca637cc399d3f1b2d64f8784fbd5feba756560b0fb7245c",
+    "apps-bakery_scanner_lite-build.log": "b41ac3554cca80c02f442b8f7d5912ee436a7bbd8df7f555a01051b3b9f1e01c",
+    "inventory.json": "6b3fe1a0832f1a1894bb3c0ad0d6d0097c0ffae2a1b184e8317fee9f3bd412c1",
+    "artifact-audit.json": "8c1fe549bcf860f73f4ca4e6ffc719625746c00f0b6aa200b232fda247cef5c6"
+  },
+  "checks": {
+    "ruff_check": true,
+    "ruff_format_files": 782,
+    "python_passed": 1256,
+    "python_failed": 0,
+    "flutter_analyze_projects": 6,
+    "flutter_tests": {
+      "product": 193,
+      "lite": 28,
+      "sdk": 6,
+      "camera_overlay": 4
+    },
+    "windows_release_builds": [
+      "product_scanner",
+      "bakery_scanner_lite"
+    ],
+    "bundle_verify": true,
+    "final_n100_distribution_files_verified": 99,
+    "packaged_cpu_smoke": true,
+    "packaged_final_n100_cpu_smoke": true,
+    "git_diff_check": true
+  },
+  "artifact_migration": {
+    "release": "0.1.19",
+    "preserved_files": 558,
+    "preserved_bytes": 3549991522,
+    "duplicate_files": 58,
+    "duplicate_bytes": 2011865164
+  },
+  "limits": [
+    "No new N100 GPU hardware measurement",
+    "Existing final installer and Worker ZIP retained unchanged",
+    "Source snapshots and binary artifacts stay outside Git"
+  ]
+}
