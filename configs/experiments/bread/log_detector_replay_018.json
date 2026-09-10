@@ -1,0 +1,20 @@
+{
+  "schema_version": "1.0",
+  "study_config": "configs/experiments/bread/log_improvement_018.json",
+  "output": "artifacts/retraining/three-bakery-improvement-0.1.18/training/ssdlite-real-replay",
+  "base_model": "artifacts/retraining/three-bakery-revised300/models/ssdlite-dense-20260908",
+  "original_manifest": "artifacts/retraining/three-bakery-revised300/prepared/original_detection.jsonl",
+  "synthetic_manifest": "artifacts/retraining/three-bakery-revised300/prepared/dense-20260908/manifest.jsonl",
+  "epochs": 6,
+  "learning_rate": 0.00001,
+  "weight_decay": 0.0001,
+  "batch_size": 32,
+  "workers": 2,
+  "seed": 20260918,
+  "original_repeat": 16,
+  "synthetic_positive_count": 960,
+  "synthetic_empty_count": 240,
+  "image_size": 320,
+  "checkpoint_selection": "fixed_last_epoch",
+  "hypothesis": "Increase actual confirmed whole-instance bbox supervision relative to single-cutout synthetic scenes while replaying positive and empty synthetic images; keep classifier, approval thresholds and ROI integrity head unchanged. No log image or label is used by the trainer."
+}

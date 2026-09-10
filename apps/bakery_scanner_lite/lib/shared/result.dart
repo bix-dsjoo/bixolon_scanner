@@ -1,4 +1,4 @@
-const workerVersion = '0.1.17';
+const workerVersion = '0.1.18';
 
 const finalStates = {'SEGMENTATION', 'IMAGE_RECAPTURE', 'ERROR'};
 const objectStates = {'APPROVED', 'UNKNOWN', 'SEGMENT_RECAPTURE'};

@@ -1,0 +1,37 @@
+{
+  "schema_version": "1.0",
+  "work": "artifacts/retraining/three-bakery-improvement-0.1.18",
+  "dataset_root": "C:/workspace/bixolon_scanner/datasets/three_bakery",
+  "log_annotations": "log/annotations.jsonl",
+  "log_confirmation": "log/confirmation.json",
+  "expected_log_images": 132,
+  "expected_log_objects": 1096,
+  "original_manifest": "artifacts/retraining/three-bakery-revised300/prepared/original_detection.jsonl",
+  "expected_training_images": 302,
+  "expected_training_objects": 649,
+  "baseline_candidate": "artifacts/versions/0.1.17/staging",
+  "baseline_worker": "artifacts/installers/0.1.17/windows-payload/worker/bixolon-worker.exe",
+  "cpu_python": "artifacts/build-envs/worker-cpu-0.1.17-py311/Scripts/python.exe",
+  "cpu_profile": [8, 12],
+  "warmup": 10,
+  "repetitions": 3,
+  "match_iou": 0.5,
+  "input_isolation": {
+    "forbidden_roots": [
+      "C:/workspace/bixolon_scanner/datasets/three_bakery/log",
+      "C:/workspace/bixolon_scanner/artifacts/retraining/three-bakery-log-20260908",
+      "C:/workspace/bixolon_scanner/datasets/bread_dataset/multi_object_scenes"
+    ]
+  },
+  "data_policy": "All log images remain unconsumed by training. The complete same-physical-item group is used as an untrained-image development comparison, not independent generalization validation. Historical final300 is regression confirmation only after selection freeze.",
+  "selection_policy": {
+    "wrong_approvals_must_not_increase": true,
+    "correct_approvals_must_not_decrease": true,
+    "minimum_correct_approval_gain": 11,
+    "alternative_minimum_wrong_approval_reduction": 1,
+    "maximum_cpu_p95_ratio": 1.05,
+    "maximum_cpu_p95_ms_if_baseline_passes": 300,
+    "source_correct_approval_maximum_loss": 0,
+    "no_verified_improvement": "retain_baseline_model_and_policy"
+  }
+}

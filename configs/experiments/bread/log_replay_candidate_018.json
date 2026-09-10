@@ -1,0 +1,13 @@
+{
+  "schema_version": "1.0",
+  "study_config": "configs/experiments/bread/log_improvement_018.json",
+  "candidates": [
+    {
+      "id": "ssdlite-real-replay",
+      "source": "artifacts/versions/0.1.17/staging/runtime",
+      "detector_graph": "artifacts/retraining/three-bakery-improvement-0.1.18/training/ssdlite-real-replay/detector.onnx",
+      "training_report": "artifacts/retraining/three-bakery-improvement-0.1.18/training/ssdlite-real-replay/report.json",
+      "training_contract": "artifacts/retraining/three-bakery-improvement-0.1.18/training/ssdlite-real-replay/contract.json"
+    }
+  ]
+}

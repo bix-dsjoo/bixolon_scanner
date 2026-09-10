@@ -5,17 +5,17 @@ import 'package:product_scanner/shared/models/scan_models.dart';
 
 void main() {
   String sample(String name) =>
-      File('../../docs/contracts/examples/0.1.17/$name.json').readAsStringSync();
+      File('../../docs/contracts/examples/0.1.18/$name.json').readAsStringSync();
 
-  test('0.1.17 APPROVED sample parses', () {
+  test('0.1.18 APPROVED sample parses', () {
     final response = ScanResponse.fromBody(sample('approved'));
 
     expect(response.status, ScanStatus.approved);
     expect(response.items.single.status, ItemStatus.approved);
-    expect(response.modelVersions.worker, '0.1.17');
+    expect(response.modelVersions.worker, '0.1.18');
   });
 
-  test('0.1.17 UNKNOWN sample parses with ordered Top-3', () {
+  test('0.1.18 UNKNOWN sample parses with ordered Top-3', () {
     final response = ScanResponse.fromBody(sample('unknown'));
 
     expect(response.status, ScanStatus.unknown);
@@ -27,14 +27,14 @@ void main() {
     ]);
   });
 
-  test('0.1.17 SEGMENT_RECAPTURE sample parses', () {
+  test('0.1.18 SEGMENT_RECAPTURE sample parses', () {
     final response = ScanResponse.fromBody(sample('segment-recapture'));
 
     expect(response.status, ScanStatus.unknown);
     expect(response.items.single.status, ItemStatus.segmentRecapture);
   });
 
-  test('0.1.17 IMAGE_RECAPTURE sample parses separately from ERROR', () {
+  test('0.1.18 IMAGE_RECAPTURE sample parses separately from ERROR', () {
     final recapture = ScanResponse.fromBody(sample('image-recapture'));
     final error = ScanResponse.fromBody(sample('error'));
 

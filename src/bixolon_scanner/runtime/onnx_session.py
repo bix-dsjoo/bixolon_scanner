@@ -112,6 +112,11 @@ class OrtRunner:
             )
             options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
             options.inter_op_num_threads = 1
+            if provider == "cpu":
+                # The detector, primary, detail and verifier own separate pools.
+                # Let idle pools sleep while another stage uses the CPU.
+                options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+                options.add_session_config_entry("session.inter_op.allow_spinning", "0")
             if provider == "cpu" and cpu_intra_op_threads > 0:
                 options.intra_op_num_threads = cpu_intra_op_threads
             if provider == "directml":

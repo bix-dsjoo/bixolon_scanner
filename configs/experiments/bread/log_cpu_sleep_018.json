@@ -1,0 +1,15 @@
+{
+  "schema_version": "1.0",
+  "study_config": "configs/experiments/bread/log_improvement_018.json",
+  "change": "Disable CPU per-session intra/inter-op thread spinning; keep graph optimization, ONNX, Catalog, thresholds, CPU8/12 and CUDA behavior unchanged.",
+  "acceptance": {
+    "minimum_p95_reduction_ratio": 0.2,
+    "all_repetitions_required": true,
+    "status_class_rank_mismatches": 0,
+    "correct_approval_loss": 0,
+    "wrong_approval_increase": 0
+  },
+  "measurement": "actual source Worker HTTP, baseline packaged Worker HTTP; final packaged 0.1.18 measurement required before release",
+  "rationale": "The log baseline classifier stage p95 is 413ms versus detector33ms, with large variable latency even on all-APPROVED requests. Idle per-model thread pools may contend on the hybrid CPU.",
+  "reference": "https://onnxruntime.ai/docs/performance/tune-performance/threading.html"
+}

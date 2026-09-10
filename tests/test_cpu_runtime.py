@@ -75,6 +75,8 @@ def test_cpu_runner_applies_explicit_thread_contract(monkeypatch, tmp_path: Path
     assert options.execution_mode == "sequential"
     assert options.inter_op_num_threads == 1
     assert options.intra_op_num_threads == 4
+    assert options.config_entries["session.intra_op.allow_spinning"] == "0"
+    assert options.config_entries["session.inter_op.allow_spinning"] == "0"
     assert runner.cuda is False
 
 
@@ -90,6 +92,8 @@ def test_cuda_runner_does_not_apply_cpu_thread_contract(monkeypatch, tmp_path: P
 
     options = captured["session"].options
     assert not hasattr(options, "intra_op_num_threads")
+    assert "session.intra_op.allow_spinning" not in options.config_entries
+    assert "session.inter_op.allow_spinning" not in options.config_entries
     assert runner.cuda is True
     assert runner.accelerated is True
 

@@ -87,7 +87,7 @@ class _LiteWorkspaceState extends State<LiteWorkspace> {
                     ),
                     const SizedBox(width: 10),
                     const Text(
-                      '0.1.17',
+                      '0.1.18',
                       style: TextStyle(fontSize: 12, color: AppColors.muted),
                     ),
                   ],

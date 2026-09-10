@@ -50,7 +50,7 @@ Flutter canonical 코드는 `apps/product_scanner/lib`의 `core/design_system`, 
 만료 이미지를 정리합니다. 메타데이터는 유지하고 ZIP 내보내기는 보관 중인 이미지를 포함합니다.
 이 명시적 Lite 이미지 보관은 아래 기본 로그의 이미지 제외 규칙에 대한 예외입니다.
 confidence·후보 선택·피드백·학습·모델 관리 API 또는 설정을 추가하지 마십시오.
-재촬영 상태는 빨간색으로 표시하며 Worker 0.1.17은 변경 없이 포함합니다.
+재촬영 상태는 빨간색으로 표시하며 Worker 0.1.18은 변경 없이 포함합니다.
 
 `experiments/archive`는 소스에서 재현 테스트를 위해 보존하지만 runtime wheel에는 포함하지 않습니다.
 활성 설정을 읽는 코드는 직접 `json.loads(path.read_text(...))`하지 않고 `load_json_config`를 사용합니다.
@@ -58,9 +58,9 @@ confidence·후보 선택·피드백·학습·모델 관리 API 또는 설정을
 ## 단일 제품 버전
 
 배포 가능한 앱·Worker·Runtime·Catalog 조합은 하나의 semantic version으로 식별합니다. 현재
-기준은 `configs/versions/0.1.17.json`이며 Python, Worker, Detector, Embedder, Detector policy,
-Classifier policy, Catalog와 사용자 표시 버전은 모두 `0.1.17`입니다. Flutter 내부 빌드만
-`0.1.17+20`를 사용합니다.
+기준은 `configs/versions/0.1.18.json`이며 Python, Worker, Detector, Embedder, Detector policy,
+Classifier policy, Catalog와 사용자 표시 버전은 모두 `0.1.18`입니다. Flutter 내부 빌드만
+`0.1.18+21`를 사용합니다.
 
 - development, demo, production 환경 버전을 만들지 않습니다.
 - 활성 설정과 CLI에 promotion, waiver, certification 또는 release-lock 수명주기를 추가하지
@@ -100,7 +100,7 @@ Runtime, Catalog, CUDA와 Flutter를 자체 포함 번들로 구성합니다.
 1. 입력 이미지를 검증하고 디코딩합니다.
 2. Detector가 모든 객체 위치와 프레임 전체 촬영 품질을 판단합니다.
 3. hard 품질 조건이 재촬영을 요구하면 classifier를 호출하지 않고 `IMAGE_RECAPTURE`를 반환합니다.
-4. 활성 `0.1.17` Runtime은 class-agnostic Detector의 정상 ROI 전체를 DINOv3 ConvNeXt-Tiny 192
+4. 활성 `0.1.18` Runtime은 class-agnostic Detector의 정상 ROI 전체를 DINOv3 ConvNeXt-Tiny 192
    primary에 한 batch로 전달합니다. Detector class를 SKU 승인에 사용하지 않습니다.
 5. primary `UNKNOWN`, unsafe, dense scene 저신뢰, 긴 ROI 저신뢰의 전역 조건에 해당하는 ROI만
    DINOv3 ConvNeXt-Tiny 224 detail path로 전달하고 Top-3 증거를 병합합니다. 매장별 또는 SKU별
@@ -154,7 +154,7 @@ fallback이나 임의의 기본 승인 결과를 추가하지 마십시오.
 - p50, p95, p99와 표본 수를 함께 기록하고 detector 조기 종료와 full-path를 구분합니다.
 
 과거 KPI, 평가 결과, 예외와 제한은 `docs/archive/version-history.md` 및 그 링크 문서에 남아
-있습니다. 현재 `0.1.17`를 독립 일반화 성능, 인증 또는 SLA 달성으로 표현하지 마십시오.
+있습니다. 현재 `0.1.18`를 독립 일반화 성능, 인증 또는 SLA 달성으로 표현하지 마십시오.
 
 ## 테스트 요구사항
 

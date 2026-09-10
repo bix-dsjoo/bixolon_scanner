@@ -1,0 +1,18 @@
+{
+  "schema_version": "1.0",
+  "study_config": "configs/experiments/bread/log_improvement_018.json",
+  "candidates": [
+    {
+      "id": "dfine640-dense-detector",
+      "source": "artifacts/retraining/three-bakery-revised300-roi-integrity/candidates/dfine-margin-dense-20260908/runtime",
+      "training_report": "artifacts/retraining/three-bakery-revised300/models/dfine-dense-20260908/report.json",
+      "training_contract": "artifacts/retraining/three-bakery-revised300/models/dfine-dense-20260908/contract.json"
+    },
+    {
+      "id": "dfine640-basic-detector",
+      "source": "artifacts/retraining/three-bakery-revised300-roi-integrity/candidates/dfine-margin-basic-20260908/runtime",
+      "training_report": "artifacts/retraining/three-bakery-revised300/models/dfine-basic-20260908/report.json",
+      "training_contract": "artifacts/retraining/three-bakery-revised300/models/dfine-basic-20260908/contract.json"
+    }
+  ]
+}

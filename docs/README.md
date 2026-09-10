@@ -1,13 +1,13 @@
 # 문서 인덱스
 
-활성 문서는 현재 `0.1.17` 실행 조합과 변하지 않는 API·아키텍처 계약만 설명합니다. 과거 버전과
+활성 문서는 현재 `0.1.18` 실행 조합과 변하지 않는 API·아키텍처 계약만 설명합니다. 과거 버전과
 평가 판단은 [archive](archive/version-history.md)에 보존합니다.
 
 - [현재 버전과 고정 해시](status/current.md)
 - [아키텍처 개요](architecture/overview.md)
-- [Scanner 0.1.17 및 이전 버전 차이](architecture/scanner-0.1.17.md)
+- [Scanner 0.1.18 및 이전 버전 차이](architecture/scanner-0.1.18.md)
 - [Worker API 계약](contracts/api.md)
-- [Flutter 개발자용 Worker 연동 명세](contracts/worker-integration-0.1.17.md)
+- [Flutter 개발자용 Worker 연동 명세](contracts/worker-integration-0.1.18.md)
 - [0.1.16 데이터 재학습·안전 승인 최적화](experiments/next-worker-0.1.16.md)
 - [220장 학습·진단·반복 개선 설계](experiments/limited220-training.md)
 - [0.1.16 최종 검증 manifest](diagnostics/scanner-0.1.16-final-verification.json)

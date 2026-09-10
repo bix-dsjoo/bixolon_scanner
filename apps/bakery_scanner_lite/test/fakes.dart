@@ -22,9 +22,9 @@ Map<String, dynamic> response({
       ? ['IMAGE_RECAPTURE_REQUIRED']
       : [],
   'processing_time_ms': 42.5,
-  'worker_version': '0.1.17',
-  'detector_version': '0.1.17',
-  'classifier_version': status == 'IMAGE_RECAPTURE' ? null : '0.1.17',
+  'worker_version': '0.1.18',
+  'detector_version': '0.1.18',
+  'classifier_version': status == 'IMAGE_RECAPTURE' ? null : '0.1.18',
   'segmentations': status == 'SEGMENTATION'
       ? [
           {

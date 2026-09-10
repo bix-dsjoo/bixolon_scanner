@@ -2,7 +2,7 @@
 
 현재 1등인 `ssdlite-margin-dense-20260908`을 사용자가 지정해 배포한다.
 제품·Worker·Runtime·Catalog는 `0.1.17`, 두 Flutter 앱은 `0.1.17+20`이다.
-기준은 [버전 설정](../../configs/versions/0.1.17.json)이며, 실험 모델의 graph·weight·support는
+기준은 [버전 설정](../../configs/archive/versions/0.1.17.json)이며, 실험 모델의 graph·weight·support는
 수정하지 않고 실행 구성요소의 버전 metadata만 맞춘다.
 
 ## 0.1.16과의 차이

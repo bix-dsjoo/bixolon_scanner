@@ -48,21 +48,21 @@ def test_documented_versions_match_single_version_source() -> None:
     )
     root_readme = (ROOT / "README.md").read_text(encoding="utf-8")
     current_status = (ROOT / "docs" / "status" / "current.md").read_text(encoding="utf-8")
-    version_config = (ROOT / "configs" / "versions" / "0.1.17.json").read_text(encoding="utf-8")
+    version_config = (ROOT / "configs" / "versions" / "0.1.18.json").read_text(encoding="utf-8")
 
     assert f'__version__ = "{python_version}"' in package_init
-    assert python_version == "0.1.17"
-    assert '"version": "0.1.17"' in version_config
-    assert '"app_build": 20' in version_config
-    assert "version: 0.1.17+20" in flutter_pubspec
-    assert "`0.1.17+20`" in root_readme
-    assert "`0.1.17`" in current_status
+    assert python_version == "0.1.18"
+    assert '"version": "0.1.18"' in version_config
+    assert '"app_build": 21' in version_config
+    assert "version: 0.1.18+21" in flutter_pubspec
+    assert "`0.1.18+21`" in root_readme
+    assert "`0.1.18`" in current_status
     assert "BIXOLON Bakery AI Scanner" in root_readme
     assert "BIXOLON Bakery AI Scanner" in current_status
     assert "`ssdlite-margin-dense-20260908`" in current_status
 
 
-def test_only_0117_is_exposed_as_an_active_product_contract() -> None:
+def test_only_0118_is_exposed_as_an_active_product_contract() -> None:
     version_files = {path.name for path in (ROOT / "configs" / "versions").glob("*.json")}
     example_versions = {
         path.name
@@ -73,9 +73,9 @@ def test_only_0117_is_exposed_as_an_active_product_contract() -> None:
         path.name for path in (ROOT / "docs" / "contracts").glob("worker-integration-*.md")
     }
 
-    assert version_files == {"0.1.17.json"}
-    assert example_versions == {"0.1.17"}
-    assert integration_specs == {"worker-integration-0.1.17.md"}
+    assert version_files == {"0.1.18.json"}
+    assert example_versions == {"0.1.18"}
+    assert integration_specs == {"worker-integration-0.1.18.md"}
 
     active_surfaces = [
         ROOT / "README.md",
@@ -86,7 +86,7 @@ def test_only_0117_is_exposed_as_an_active_product_contract() -> None:
         ROOT / "apps" / "product_scanner" / "README.md",
     ]
     for path in active_surfaces:
-        assert "0.1.17" in path.read_text(encoding="utf-8"), path
+        assert "0.1.18" in path.read_text(encoding="utf-8"), path
 
 
 def test_013_build6_packaged_worker_smoke_is_preserved() -> None:
@@ -246,7 +246,7 @@ def test_windows_bundle_uses_single_version_root() -> None:
     normalized_cmake = cmake.replace("\\", "/")
 
     assert "SCANNER_VERSION_ROOT" in cmake
-    assert "artifacts/versions/0.1.17" in normalized_cmake
+    assert "artifacts/versions/0.1.18" in normalized_cmake
     assert "staging/runtime" in normalized_cmake
     assert "staging/catalog" in normalized_cmake
     assert "staging/cuda-runtime" in normalized_cmake
