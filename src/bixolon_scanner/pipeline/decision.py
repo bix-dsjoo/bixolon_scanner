@@ -12,6 +12,7 @@ from ..contracts import (
     ScanResponse,
     Status,
 )
+from ..contracts.errors import ModelExecutionError
 from ..contracts.model_package import (
     ClassifierMetadata,
     CountVerifierMetadata,
@@ -356,6 +357,19 @@ class DecisionPipeline:
             segment_recapture_reasons=tuple(recapture_reasons),
         )
 
+    def _apply_roi_integrity(self, batch: ClassifierBatch) -> ClassifierBatch:
+        threshold = self.quality_metadata.multi_object_recapture_threshold
+        if threshold is None:
+            return batch
+        if batch.multi_object_probabilities is None:
+            raise ModelExecutionError
+        rejected = batch.multi_object_probabilities >= threshold
+        approved = batch.approved & ~rejected
+        reasons = list(batch.segment_recapture_reasons or (None,) * len(approved))
+        for index in np.flatnonzero(rejected):
+            reasons[int(index)] = "CLASSIFIER_MULTIPLE_OBJECTS_IN_ROI"
+        return replace(batch, approved=approved, segment_recapture_reasons=tuple(reasons))
+
     def _classify_with_resolution_fallback(
         self,
         image: np.ndarray | Image.Image,
@@ -364,6 +378,7 @@ class DecisionPipeline:
         detector_supports: list[int],
     ) -> tuple[ClassifierBatch, bool]:
         batch = self._classify_primary(image, ordered, detector_classes)
+        batch = self._apply_roi_integrity(batch)
         fallback_policy = getattr(
             self.classifier,
             "resolution_fallback_metadata",
@@ -432,6 +447,9 @@ class DecisionPipeline:
                         maximum_approval_score_decreases[rule_indices],
                         maximum_decrease,
                     )
+        integrity_threshold = self.quality_metadata.multi_object_recapture_threshold
+        if integrity_threshold is not None:
+            fallback_indices &= batch.multi_object_probabilities < integrity_threshold
         selected_indices = np.flatnonzero(fallback_indices)
         if not len(selected_indices):
             return batch, False
@@ -744,6 +762,8 @@ class DecisionPipeline:
                     batch,
                     detector_classes,
                 )
+        # Later agreement paths cannot promote a structurally invalid ROI back to APPROVED.
+        batch = self._apply_roi_integrity(batch)
         classifier_ms = (time.perf_counter() - classifier_started) * 1000.0 - refinement_ms
         decision_indices = batch.decision_indices
         duplicate_review_indices = {

@@ -664,6 +664,7 @@ class QualityMetadata(BaseModel):
     border_margin_ratio: float = Field(default=0.002, ge=0.0, le=0.25)
     border_policy: Literal["always_recapture", "classifier_confidence"] = "always_recapture"
     duplicate_review_containment_threshold: float | None = Field(default=None, gt=0.0, le=1.0)
+    multi_object_recapture_threshold: float | None = Field(default=None, gt=0.0, le=1.0)
     min_sharpness: float | None = Field(default=None, ge=0.0)
     min_mean_luminance: float | None = Field(default=None, ge=0.0, le=255.0)
     max_mean_luminance: float | None = Field(default=None, ge=0.0, le=255.0)

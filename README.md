@@ -10,6 +10,7 @@ PyTorch 학습·평가 도구와 Flutter 작업자 앱을 한 저장소에서 �
 기존 앱의 화면이나 복잡한 기능을 숨겨 재사용하지 않는다. 디자인 token/theme·로고·폰트만 공유한다.
 Lite는 읽기 전용 검출 박스를 표시하고 카메라 상단 20%를 제거한 중앙 정사각형을 2048×2048로 변환하고 좌우 반전한다.
 사용자 요청에 따라 Top-3 이름을 읽기 전용으로 표시하고, 실행 로그에서도 이미지와 박스를 복원한다.
+`APPROVED`는 Worker의 `prediction`에서 승인 상품명을 표시하고 로그·내보내기에도 보존한다.
 입력 이미지는 별도 파일로 30일 보관하며 메타데이터·박스·후보 이름과 함께 ZIP으로 내보낸다.
 confidence는 표시하거나 기록하지 않으며 재촬영 상태는 빨간색으로 표시한다.
 `apps/bakery_scanner_lite`가 독립 구현의 canonical 경로이며 기존 앱과 설치 ID·폴더가 다르다.
@@ -54,6 +55,17 @@ ConvNeXt-Tiny 192로 분류합니다. 전역 위험 조건이 고른 ROI만 224 
 CPU를 사용하며 같은 ONNX·metadata·Catalog·상태 정책을 공유합니다.
 
 ## 판정 계약
+
+`three_bakery` 정정본 단일 200장·다중 100장·배경 2장을 사용하는 별도 학습·비교 실험은
+[three_bakery 실행 기록](docs/experiments/three-bakery-training.md)을 참조합니다.
+정정본 설정은 `configs/experiments/bread/three_bakery_revised300.json`이며, 기존 252장 실행은 보존합니다.
+최종 목표는 완전 정답 승인 이미지 297/300 이상·오승인 0건·CPU HTTP p95 300ms 이하이고,
+최종 데이터셋은 후보·CPU 설정 선택에 사용하지 않습니다. Frozen ViT-B/16의 선택적 검증은 유지합니다.
+`python -m bixolon_scanner.experiments.bread.three_bakery`의 `prepare`, `train`, `compare`,
+`export`, `evaluate` 단계로 실행합니다. ConvNeXt-Tiny 192 → 선택적 224 detail →
+선택적 Frozen ViT-B/16 160 검증을 유지하며 모든 학습 head·Catalog를 이번 원본으로 새로 만듭니다.
+최종 300장은 후보·정책 확정 후 Worker HTTP로 평가하고, 완전 정답 승인 이미지 297장 이상과
+전체 오승인 0건을 별도로 판정합니다. 이 실험은 배포 버전 `0.1.16`과 기존 EXE를 바꾸지 않습니다.
 
 Worker는 이미지마다 다음 중 정확히 하나를 반환합니다.
 
@@ -255,3 +267,19 @@ artifacts/, datasets/, runs/    Git 밖의 모델·데이터·빌드 산출물
 구현 경계와 변경 규칙은 [AGENTS.md](AGENTS.md), 문서 목록은
 [docs/README.md](docs/README.md), 로컬 산출물 보존 기준은
 [repository-layout.md](docs/maintenance/repository-layout.md)에서 확인할 수 있습니다.
+
+## ROI 다중 객체 재촬영 정책 추가 작업
+
+사용자의 2026-09-08 추가 요청에 따라, 기존 192 primary 특징을 공유하는 ROI 객체 수 head를
+추가한다. metadata에 함께 설정한 `embedder.multi_object_output_name`과
+`quality.multi_object_recapture_threshold`로 활성화한다. 해당 ROI의 다중 객체 확률이 임계값
+이상이면 품목 승인 신뢰도와 무관하게 `SEGMENT_RECAPTURE`이고, 다른 정상 ROI는 계속 판정한다.
+detail 또는 회전·ViT 합의로 이 재촬영을 다시 승인하지 않는다. 공개 응답은 기존
+`SEGMENT_RECAPTURE_REQUIRED`, `prediction=null`, 빈 `top3` 계약을 유지한다.
+설정으로 활성화한 head가 없거나 출력이 손상된 경우 모델 오류로 처리한다.
+별도 backbone이나 전수 ViT 검증은 추가하지 않는다. 제품 버전은 `0.1.16`을 유지한다.
+
+현재 작업과 이전 성적은 [실험 문서](docs/experiments/three-bakery-training.md)에 구분해 기록한다.
+현재 재학습의 사용자 목표는 전체 GT 객체 기준 정답 승인율 99% 이상·오승인 0건·CPU HTTP
+p95 300ms 이하다. 이미지 전체 성공률은 참고 진단이며, 누락·UNKNOWN·재촬영 객체도 GT 분모에
+남긴다. 목표 설정은 `configs/experiments/bread/three_bakery_objective.json`에 기록한다.

@@ -35,6 +35,10 @@ COMPATIBILITY_COMMANDS: dict[CommandPath, CommandTarget] = {
 }
 
 DIAGNOSTIC_COMMANDS: dict[CommandPath, CommandTarget] = {
+    ("experiment", "three-bakery"): (
+        "bixolon_scanner.experiments.bread.three_bakery",
+        "main",
+    ),
     ("evaluate", "limited220"): (
         "bixolon_scanner.experiments.bread.limited220_diagnostics",
         "main",

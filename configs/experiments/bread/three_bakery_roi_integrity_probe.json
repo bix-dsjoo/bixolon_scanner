@@ -1,0 +1,22 @@
+{
+  "schema_version": 1,
+  "product_version": "0.1.16",
+  "source_config": "configs/experiments/bread/three_bakery_revised300.json",
+  "source_work": "artifacts/retraining/three-bakery-revised300",
+  "seed": 20260911,
+  "samples_per_label": 3000,
+  "minimum_pair_iou": 0.02,
+  "maximum_pair_area_ratio": 4.0,
+  "maximum_union_aspect_ratio": 3.0,
+  "epochs": 50,
+  "learning_rate": 0.003,
+  "weight_decay": 0.0001,
+  "hidden_dimension": 128,
+  "dropout": 0.1,
+  "feature_batch_size": 64,
+  "head_batch_size": 128,
+  "multi_object_probability_threshold": 0.8,
+  "decision": "SEGMENT_RECAPTURE",
+  "training_role": "same_source_object_count_head_development; no final benchmark access",
+  "authorization": "User requested blocking confidently merged object ROIs with SEGMENT_RECAPTURE before final benchmark evaluation."
+}

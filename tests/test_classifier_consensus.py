@@ -160,6 +160,33 @@ def test_default_policy_skips_approved_candidate_above_ambiguity_band() -> None:
     assert result.approval_blocked.tolist() == [False]
 
 
+@pytest.mark.parametrize("multiplicity,verifier_called", [(0.7999, True), (0.8, False)])
+def test_merged_roi_skips_verifier_but_normal_boundary_candidate_is_verified(
+    multiplicity, verifier_called
+) -> None:
+    classifier = _consensus(
+        _result(0, approval_score=0.9),
+        _result(0, approval_score=0.9, retrieval_top1=0),
+        primary_approval_score=0.82,
+        primary_threshold=0.8,
+    )
+    classifier.ambiguity_maximum_approval_score = 0.85
+    embedder = classifier.primary.embedder
+    embedder.metadata = SimpleNamespace(multi_object_output_name="multiplicity")
+    embedder.embed_prepared_tensors_with_integrity = lambda tensors: (
+        embedder.embed_prepared_tensors_raw(tensors),
+        np.full(len(tensors), multiplicity, dtype=np.float32),
+    )
+    classifier.primary.runtime = SimpleNamespace(
+        metadata=SimpleNamespace(quality=SimpleNamespace(multi_object_recapture_threshold=0.8))
+    )
+
+    result = classifier.classify(None, [Detection(0, 0, 1, 1, 0.99)])
+
+    assert hasattr(classifier.independent.embedder, "selected_indices") is verifier_called
+    np.testing.assert_allclose(result.multi_object_probabilities, [multiplicity])
+
+
 def test_all_approved_policy_maps_any_verifier_quality_rejection_to_recapture() -> None:
     classifier = _consensus(
         _result(

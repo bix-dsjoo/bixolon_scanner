@@ -471,3 +471,26 @@ def test_runtime_package_v2_rejects_invalid_per_class_ridge_thresholds(
 
     with pytest.raises(ValidationError):
         RuntimePackageV2Metadata.model_validate(payload)
+
+
+@pytest.mark.parametrize(
+    "output,threshold,valid",
+    [
+        (None, None, True),
+        ("multi_object_probabilities", 0.8, True),
+        (None, 0.8, False),
+        ("multi_object_probabilities", None, False),
+        ("embeddings", 0.8, False),
+    ],
+)
+def test_roi_integrity_metadata_requires_matching_output_and_policy(
+    tmp_path, output, threshold, valid
+):
+    payload = _metadata(tmp_path)
+    payload["embedder"]["multi_object_output_name"] = output
+    payload["quality"]["multi_object_recapture_threshold"] = threshold
+    if valid:
+        RuntimePackageV2Metadata.model_validate(payload)
+    else:
+        with pytest.raises(ValidationError):
+            RuntimePackageV2Metadata.model_validate(payload)

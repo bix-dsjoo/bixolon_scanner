@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "accuracy_unit": "ground_truth_object",
+  "minimum_correct_approved_rate": 0.99,
+  "maximum_wrong_approved_count": 0,
+  "development_ground_truth_count": 649,
+  "final_ground_truth_count": 1410,
+  "selection_order": [
+    "development_object_accuracy_and_cpu_targets",
+    "wrong_approvals",
+    "source_correct_approved_objects",
+    "synthetic_correct_approved_objects",
+    "missed_objects",
+    "unknown_top3_misses",
+    "cpu_p95"
+  ],
+  "authorization": "User changed the 99% target to original GT object accuracy: 원본 객체 기준 99%라고 생각하면댐. Image completeness remains a diagnostic. False approvals zero and CPU p95 300ms remain unchanged."
+}

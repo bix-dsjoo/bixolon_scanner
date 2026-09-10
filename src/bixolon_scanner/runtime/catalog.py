@@ -121,11 +121,17 @@ class OnnxEmbedder:
         )
         for batch_size in batch_sizes:
             inference_batch_size = batch_size * self._view_count
-            self.runner.run(
-                [self.metadata.output_name],
+            output_names = [self.metadata.output_name]
+            integrity_output = getattr(self.metadata, "multi_object_output_name", None)
+            if integrity_output is not None:
+                output_names.append(integrity_output)
+            outputs = self.runner.run(
+                output_names,
                 self.metadata.input_name,
                 np.zeros((inference_batch_size, 3, height, width), dtype=np.float32),
             )
+            if integrity_output is not None:
+                self._validate_integrity_outputs(outputs, inference_batch_size)
 
     def close(self) -> None:
         self.runner.close()
@@ -169,6 +175,66 @@ class OnnxEmbedder:
         if values.ndim != 4 or values.shape[1:] != (3, height, width):
             raise ValueError("prepared embedder tensors do not match runtime metadata")
         return self._run_view_averaged_tensors(np.ascontiguousarray(values))
+
+    def _validate_integrity_outputs(self, outputs, count: int) -> tuple[np.ndarray, np.ndarray]:
+        if len(outputs) != 2:
+            raise ModelExecutionError
+        raw, scores = (np.asarray(value, dtype=np.float32) for value in outputs)
+        if (
+            raw.shape != (count, self.metadata.embedding_dimension)
+            or scores.shape != (count,)
+            or not np.isfinite(raw).all()
+            or not np.isfinite(scores).all()
+            or np.any((scores < 0.0) | (scores > 1.0))
+        ):
+            raise ModelExecutionError
+        return raw, scores
+
+    def embed_prepared_tensors_with_integrity(
+        self, batch: np.ndarray
+    ) -> tuple[np.ndarray, np.ndarray | None]:
+        """Return embeddings and ROI multiplicity from one shared-backbone invocation."""
+        output_name = getattr(self.metadata, "multi_object_output_name", None)
+        if output_name is None:
+            return self.embed_prepared_tensors_raw(batch), None
+        values = np.asarray(batch, dtype=np.float32)
+        height, width = self.metadata.input_size
+        if values.ndim != 4 or values.shape[1:] != (3, height, width):
+            raise ValueError("prepared embedder tensors do not match runtime metadata")
+        if not len(values):
+            return (
+                np.empty((0, self.metadata.embedding_dimension), dtype=np.float32),
+                np.empty(0, dtype=np.float32),
+            )
+        views = [values]
+        if self._horizontal_flip_tta:
+            views.append(values[:, :, :, ::-1])
+        if self._rotation_180_tta:
+            views.append(values[:, :, ::-1, ::-1])
+        combined = np.ascontiguousarray(np.concatenate(views))
+        chunk_size = self.metadata.fixed_batch_size or len(combined)
+        embeddings, probabilities = [], []
+        for start in range(0, len(combined), chunk_size):
+            chunk = combined[start : start + chunk_size]
+            valid = len(chunk)
+            if valid < chunk_size:
+                chunk = np.concatenate(
+                    [chunk, np.zeros((chunk_size - valid, *values.shape[1:]), dtype=np.float32)]
+                )
+            raw, scores = self._validate_integrity_outputs(
+                self.runner.run(
+                    [self.metadata.output_name, output_name],
+                    self.metadata.input_name,
+                    np.ascontiguousarray(chunk),
+                ),
+                len(chunk),
+            )
+            embeddings.append(raw[:valid])
+            probabilities.append(scores[:valid])
+        raw = np.concatenate(embeddings).reshape(len(views), len(values), -1).mean(axis=0)
+        # A second view cannot erase evidence of multiple objects from the first view.
+        scores = np.concatenate(probabilities).reshape(len(views), len(values)).max(axis=0)
+        return np.asarray(raw, dtype=np.float32), np.asarray(scores, dtype=np.float32)
 
     def _run_raw_tensors(self, batch: np.ndarray) -> np.ndarray:
         values = batch.astype(np.float32, copy=False)
@@ -316,6 +382,12 @@ def _load_array(path: Path) -> np.ndarray:
         return np.asarray(np.load(stream, allow_pickle=False), dtype=np.float32)
 
 
+def _embed_with_integrity(embedder, prepared: np.ndarray) -> tuple[np.ndarray, np.ndarray | None]:
+    if getattr(getattr(embedder, "metadata", None), "multi_object_output_name", None) is None:
+        return embedder.embed_prepared_tensors_raw(prepared), None
+    return embedder.embed_prepared_tensors_with_integrity(prepared)
+
+
 class OnnxCatalogClassifier:
     def __init__(
         self, runtime: RuntimePackageV2, catalog: StoreCatalogPackage, embedder: OnnxEmbedder
@@ -431,8 +503,18 @@ class OnnxCatalogClassifier:
     def classify(
         self, image: np.ndarray | Image.Image, detections: list[Detection]
     ) -> ClassificationResult:
-        raw_embeddings = self.embedder.embed_detections_raw(image, detections)
-        return self.classify_embeddings(raw_embeddings, detections)
+        if (
+            getattr(getattr(self.embedder, "metadata", None), "multi_object_output_name", None)
+            is None
+        ):
+            raw_embeddings = self.embedder.embed_detections_raw(image, detections)
+            return self.classify_embeddings(raw_embeddings, detections)
+        prepared = self.embedder.prepare_detection_tensors(image, detections)
+        raw_embeddings, probabilities = _embed_with_integrity(self.embedder, prepared)
+        return replace(
+            self.classify_embeddings(raw_embeddings, detections),
+            multi_object_probabilities=probabilities,
+        )
 
     def classify_selected(
         self,
@@ -442,9 +524,12 @@ class OnnxCatalogClassifier:
     ) -> ClassificationResult:
         indices = np.asarray(detection_indices, dtype=np.int64)
         prepared = self.embedder.prepare_selected_detection_tensors(image, detections, indices)
-        raw_embeddings = self.embedder.embed_prepared_tensors_raw(prepared)
+        raw_embeddings, probabilities = _embed_with_integrity(self.embedder, prepared)
         selected_detections = [detections[int(index)] for index in indices]
-        return self.classify_embeddings(raw_embeddings, selected_detections)
+        return replace(
+            self.classify_embeddings(raw_embeddings, selected_detections),
+            multi_object_probabilities=probabilities,
+        )
 
     def classify_single_views(
         self, image: np.ndarray | Image.Image, detections: list[Detection]
@@ -456,8 +541,11 @@ class OnnxCatalogClassifier:
             ],
             axis=0,
         )
-        raw_embeddings = self.embedder.embed_prepared_tensors_raw(prepared)
-        return self.classify_embeddings(raw_embeddings, detections)
+        raw_embeddings, probabilities = _embed_with_integrity(self.embedder, prepared)
+        return replace(
+            self.classify_embeddings(raw_embeddings, detections),
+            multi_object_probabilities=probabilities,
+        )
 
     def classify_embeddings(
         self,
@@ -700,6 +788,8 @@ def verification_runtime_package(package: RuntimePackageV2) -> RuntimePackageV2:
         raise ValueError("runtime does not contain an independent classifier verifier")
     payload = package.metadata.model_dump(mode="json")
     payload["embedder"] = verification.independent_embedder.model_dump(mode="json")
+    if payload["embedder"].get("multi_object_output_name") is None:
+        payload["quality"]["multi_object_recapture_threshold"] = None
     payload["metric_projection"] = verification.independent_metric_projection.model_dump(
         mode="json"
     )
@@ -726,6 +816,8 @@ def classifier_fallback_runtime_package(package: RuntimePackageV2) -> RuntimePac
         raise ValueError("runtime does not contain a classifier resolution fallback")
     payload = package.metadata.model_dump(mode="json")
     payload["embedder"] = fallback.embedder.model_dump(mode="json")
+    if payload["embedder"].get("multi_object_output_name") is None:
+        payload["quality"]["multi_object_recapture_threshold"] = None
     payload["classifier_resolution_fallback"] = None
     metadata = RuntimePackageV2Metadata.model_validate(payload)
     return RuntimePackageV2(
@@ -896,6 +988,9 @@ class ConsensusCatalogClassifier:
             approval_blocked=cls._merge_row_array(
                 base.approval_blocked, extended.approval_blocked, use_extended
             ),
+            multi_object_probabilities=cls._merge_row_array(
+                base.multi_object_probabilities, extended.multi_object_probabilities, use_extended
+            ),
         )
 
     def _apply_append_only_consensus(
@@ -1017,6 +1112,10 @@ class ConsensusCatalogClassifier:
             if self.verify_all_approved_candidates
             else approved_candidates & within_ambiguity_band
         ) | (unknown_candidates & within_ambiguity_band)
+        if result.multi_object_probabilities is not None:
+            threshold = self.primary.runtime.metadata.quality.multi_object_recapture_threshold
+            if threshold is not None:
+                verification_candidates &= result.multi_object_probabilities < threshold
         candidate_indices = np.flatnonzero(
             verification_candidates
             & np.asarray([reason is None for reason in recapture_reasons], dtype=bool)
@@ -1142,8 +1241,11 @@ class ConsensusCatalogClassifier:
         self, image: np.ndarray | Image.Image, detections: list[Detection]
     ) -> ClassificationResult:
         prepared = self.primary.embedder.prepare_detection_tensors(image, detections)
-        primary_raw = self.primary.embedder.embed_prepared_tensors_raw(prepared)
-        result = self.primary.classify_embeddings(primary_raw, detections)
+        primary_raw, probabilities = _embed_with_integrity(self.primary.embedder, prepared)
+        result = replace(
+            self.primary.classify_embeddings(primary_raw, detections),
+            multi_object_probabilities=probabilities,
+        )
         if self.append_only_base_class_count is not None:
             return self._apply_append_only_consensus(
                 image,
@@ -1172,9 +1274,12 @@ class ConsensusCatalogClassifier:
             detections,
             indices,
         )
-        primary_raw = self.primary.embedder.embed_prepared_tensors_raw(prepared)
+        primary_raw, probabilities = _embed_with_integrity(self.primary.embedder, prepared)
         selected_detections = [detections[int(index)] for index in indices]
-        result = self.primary.classify_embeddings(primary_raw, selected_detections)
+        result = replace(
+            self.primary.classify_embeddings(primary_raw, selected_detections),
+            multi_object_probabilities=probabilities,
+        )
         if self.append_only_base_class_count is not None:
             return self._apply_append_only_consensus(
                 image,

@@ -24,6 +24,7 @@ class ObjectResult {
     this.status,
     Iterable<String> reasons, {
     this.box,
+    this.prediction,
     Iterable<TopCandidate> top3 = const [],
   }) : reasons = List.unmodifiable(reasons),
        top3 = List.unmodifiable(top3);
@@ -31,11 +32,13 @@ class ObjectResult {
   final List<String> reasons;
   // Immutable model geometry is retained for viewing historical scan images.
   final DetectionBox? box;
+  final TopCandidate? prediction;
   final List<TopCandidate> top3;
   Map<String, Object?> toJson() => {
     'status': status,
     'reason_codes': reasons,
     if (box != null) 'bbox': box!.toJson(),
+    if (prediction != null) 'prediction': prediction!.toJson(),
     'top3': top3.map((candidate) => candidate.toJson()).toList(),
   };
 }
@@ -47,6 +50,11 @@ class TopCandidate {
     'class_id': classId,
     'class_name': className,
   };
+}
+
+TopCandidate? readPrediction(dynamic value) {
+  if (value == null) return null; // Older Lite journals omitted predictions.
+  return readTop3([value]).single;
 }
 
 List<TopCandidate> readTop3(dynamic value) {
@@ -155,10 +163,16 @@ class ScanResult {
       if (item is! Map || !objectStates.contains(item['status'])) {
         throw const FormatException('Invalid object status');
       }
+      if (item['status'] == 'APPROVED' && item['prediction'] == null) {
+        throw const FormatException('Missing approved prediction');
+      }
       return ObjectResult(
         item['status'] as String,
         readReasons(item['reason_codes']),
         box: DetectionBox.fromJson(item['bbox']),
+        prediction: item['status'] == 'APPROVED'
+            ? readPrediction(item['prediction'])
+            : null,
         top3: readTop3(item['top3']),
       );
     });

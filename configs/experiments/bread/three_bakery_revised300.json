@@ -1,0 +1,160 @@
+{
+  "schema_version": "1.0",
+  "dataset_root": "datasets/three_bakery",
+  "product_version": "0.1.16",
+  "expected_counts": {
+    "single": 200,
+    "multi": 100,
+    "background": 2
+  },
+  "class_count": 20,
+  "shots_per_class": 10,
+  "source_group": "three_bakery:shared_physical_item_collection",
+  "seeds": [
+    20260908,
+    20260909,
+    20260910
+  ],
+  "annotation": {
+    "model": "facebook/sam-vit-base",
+    "proposal_size": 1024,
+    "minimum_component_area": 400,
+    "saturation_minimum": 45,
+    "red_blue_ratio": 1.13,
+    "red_green_ratio": 0.92,
+    "prompt_margin": 0.05
+  },
+  "synthetic": {
+    "basic": {
+      "image_count": 1200,
+      "dense": false
+    },
+    "dense": {
+      "image_count": 6000,
+      "dense": true
+    },
+    "diagnostic": {
+      "image_count": 400,
+      "dense": true,
+      "seed": 20261908
+    },
+    "image_size": 640,
+    "maximum_objects": 8,
+    "empty_probability": 0.2,
+    "minimum_visible_fraction": 0.65
+  },
+  "training": {
+    "ssdlite": {
+      "epochs": 20,
+      "learning_rate": 0.0003,
+      "batch_size": 32,
+      "image_size": 320
+    },
+    "dfine": {
+      "epochs": 12,
+      "learning_rate": 0.0001,
+      "backbone_learning_rate": 1e-05,
+      "batch_size": 16,
+      "image_size": 640
+    },
+    "classifier": {
+      "epochs": 8,
+      "head_learning_rate": 0.001,
+      "backbone_learning_rate": 3e-06,
+      "batch_size": 32,
+      "views": 10,
+      "consistency_weight": 0.2,
+      "margin_weight": 4.0,
+      "margin_target": 0.9
+    },
+    "real_repeat": 4,
+    "workers": 2,
+    "checkpoint_selection": "fixed_last_epoch_without_evaluation"
+  },
+  "runtime_policy": {
+    "approval_margin": 0.8,
+    "ambiguity_maximum_approval_score": 0.85,
+    "primary_size": 192,
+    "detail_size": 224,
+    "verifier_size": 160,
+    "jpeg_draft_size": 1500,
+    "detector_score_threshold": 0.5,
+    "detector_nms_threshold": 0.3,
+    "verify_all": false,
+    "per_store_or_sku_rules": false
+  },
+  "evaluation": {
+    "dataset_root": "datasets/bread_dataset",
+    "image_directory": "multi_object_scenes",
+    "annotations": "annotations/multi_object_instances.json",
+    "expected_images": 300,
+    "expected_objects": 1410,
+    "minimum_complete_images": 297,
+    "maximum_wrong_approved": 0,
+    "match_iou": 0.5,
+    "warmup": 10,
+    "repetitions": 3,
+    "maximum_cpu_p95_ms": 300.0
+  },
+  "source_revision": {
+    "expected_images": 302,
+    "expected_objects": 649,
+    "expected_cutouts": 176,
+    "authorization": "User explicitly requested implementing the corrected 300-image retraining plan; approved training use, not a claim of user inspection of every new SAM mask.",
+    "snapshots": [
+      {
+        "path": "artifacts/retraining/three-bakery-reviewed/reviews/20260908-multi50-user-confirmed/annotations.jsonl",
+        "sha256": "32259b6c335416dbdbb8c0585a307bed5e347221e4e862a6368820c40efab78c",
+        "mask_root": "artifacts/retraining/three-bakery-reviewed/sources"
+      },
+      {
+        "path": "artifacts/retraining/three-bakery-added-20260908/annotations.draft.jsonl",
+        "sha256": "072ef5f8e726c608b534660785fcefe312037e0ae4d17ece6bc9f3efb6d749a9"
+      }
+    ]
+  },
+  "cpu_optimization": {
+    "profiles": [
+      [
+        4,
+        4
+      ],
+      [
+        8,
+        4
+      ],
+      [
+        4,
+        8
+      ],
+      [
+        8,
+        8
+      ],
+      [
+        12,
+        8
+      ],
+      [
+        8,
+        12
+      ]
+    ],
+    "baseline": [
+      4,
+      4
+    ],
+    "maximum_p95_ms": 300.0,
+    "minimum_real_multi_complete": 99,
+    "warmup": 10,
+    "repetitions": 3,
+    "cpu_model": "Intel(R) Core(TM) Ultra 9 285K"
+  },
+  "input_isolation": {
+    "forbidden_roots": [
+      "datasets/bread_dataset",
+      "artifacts/retraining/three-bakery-reviewed/final"
+    ],
+    "scope": "before explicit final evaluation; images, GT and historical per-image predictions"
+  }
+}

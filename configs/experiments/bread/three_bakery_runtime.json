@@ -1,0 +1,258 @@
+{
+  "schema_version": "2.0",
+  "worker_version": "0.1.16",
+  "dataset_version": "three_bakery",
+  "detector_policy_version": "0.1.16",
+  "detector_class_mode": "class_agnostic",
+  "detector_class_count": 1,
+  "detector": {
+    "filename": "detector.onnx",
+    "version": "0.1.16",
+    "input_name": "pixel_values",
+    "logits_output": "logits",
+    "boxes_output": "pred_boxes",
+    "input_size": [
+      320,
+      320
+    ],
+    "color_order": "RGB",
+    "mean": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "std": [
+      0.5,
+      0.5,
+      0.5
+    ],
+    "score_threshold": 0.5,
+    "uncertainty_score_threshold": 0.45,
+    "uncertainty_min_area_ratio": 0.001,
+    "uncertainty_match_iou_threshold": 0.5,
+    "nms_iou_threshold": 0.3,
+    "nms_containment_threshold": 0.9,
+    "nms_class_aware_containment": false,
+    "max_object_aspect_ratio": 8.0,
+    "max_queries": 3234,
+    "box_format": "normalized_cxcywh"
+  },
+  "detector_ambiguity": {
+    "mode": "all",
+    "high_aspect_ratio_minimum": 2.0,
+    "dense_selected_count_minimum": 6,
+    "dense_selected_count_maximum": 6,
+    "dense_agreement_count_minimum": 4,
+    "dense_aspect_ratio_minimum": 1.5
+  },
+  "embedder": {
+    "filename": "embedder-primary-192.onnx",
+    "embedder_id": "dinov3-convnext-tiny-trained-cosine-head",
+    "version": "0.1.16",
+    "input_name": "pixel_values",
+    "output_name": "embeddings",
+    "input_size": [
+      192,
+      192
+    ],
+    "mean": [
+      0.485,
+      0.456,
+      0.406
+    ],
+    "std": [
+      0.229,
+      0.224,
+      0.225
+    ],
+    "crop_margin_ratio": 0.0,
+    "crop_mode": "box_resize",
+    "embedding_dimension": 20,
+    "l2_normalized": true,
+    "resize_reducing_gap": 3.0,
+    "warmup_batch_sizes": [
+      1,
+      3,
+      5,
+      8
+    ],
+    "horizontal_flip_tta": false,
+    "rotation_180_tta": false,
+    "neighbor_mask": true,
+    "neighbor_distance_bias": -0.1,
+    "neighbor_shared_scale": false
+  },
+  "metric_projection": {
+    "input_dimension": 20,
+    "output_dimension": 20,
+    "residual_weight": 1.0,
+    "projection_weight": 0.0
+  },
+  "classifier_policy": {
+    "version": "0.1.16",
+    "prototype_weight": 0.5,
+    "support_top_k": 3,
+    "approval_minimum_similarity": 0.2,
+    "approval_minimum_margin": 0.8,
+    "ood_maximum_similarity": -0.2,
+    "top3_minimum_similarity": -0.5,
+    "catalog_conflict_similarity": 0.9999,
+    "ridge_approval_metric": "l2_normalized_logit_margin",
+    "ridge_approval_minimum_margin": 0.8,
+    "ridge_disagreement_minimum_margin": 0.8,
+    "ridge_pair_temperature": 1.0,
+    "ridge_top3_minimum_inverse_entropy": -10.0,
+    "ridge_require_retrieval_agreement": false,
+    "ridge_retrieval_minimum_similarity": -0.2,
+    "ridge_alpha": 0.01,
+    "support_augmentation": {
+      "views_per_source": 0,
+      "seed": 20260819,
+      "output_size": 192,
+      "canvas_scale_min": 0.72,
+      "canvas_scale_max": 0.98,
+      "rotation_degrees": 180.0,
+      "perspective_fraction": 0.04,
+      "brightness_min": 0.8,
+      "brightness_max": 1.2,
+      "contrast_min": 0.85,
+      "contrast_max": 1.15,
+      "saturation_min": 0.85,
+      "saturation_max": 1.15,
+      "blur_probability": 0.15,
+      "blur_radius_max": 0.7,
+      "jpeg_quality_min": 82,
+      "jpeg_quality_max": 96,
+      "crop_mode": "border_connected_composite",
+      "procedural_gradient": true,
+      "procedural_shadow": true,
+      "compiler_batch_size": 64
+    }
+  },
+  "classifier_verification": {
+    "ambiguity_maximum_approval_score": 0.85,
+    "verify_all_approved_candidates": false,
+    "unknown_recapture_on_dual_verifier_rejection": false,
+    "unknown_recapture_on_any_verifier_rejection": false,
+    "rotation_degrees": 180,
+    "independent_embedder": {
+      "filename": "classifier-verifier-160.onnx",
+      "embedder_id": "dinov3-vitb16-frozen",
+      "version": "0.1.16",
+      "input_name": "pixel_values",
+      "output_name": "embeddings",
+      "input_size": [
+        160,
+        160
+      ],
+      "mean": [
+        0.485,
+        0.456,
+        0.406
+      ],
+      "std": [
+        0.229,
+        0.224,
+        0.225
+      ],
+      "crop_margin_ratio": 0.0,
+      "crop_mode": "box_resize",
+      "embedding_dimension": 768,
+      "l2_normalized": true,
+      "resize_reducing_gap": 3.0,
+      "warmup_batch_sizes": [
+        1
+      ],
+      "fixed_batch_size": 1,
+      "horizontal_flip_tta": false,
+      "rotation_180_tta": false,
+      "neighbor_mask": true,
+      "neighbor_distance_bias": -0.1,
+      "neighbor_shared_scale": false
+    },
+    "independent_metric_projection": {
+      "input_dimension": 768,
+      "output_dimension": 768,
+      "residual_weight": 1.0,
+      "projection_weight": 0.0
+    }
+  },
+  "classifier_resolution_fallback": {
+    "embedder": {
+      "filename": "embedder-detail-224.onnx",
+      "embedder_id": "dinov3-convnext-tiny-trained-cosine-head",
+      "version": "0.1.16",
+      "input_name": "pixel_values",
+      "output_name": "embeddings",
+      "input_size": [
+        224,
+        224
+      ],
+      "mean": [
+        0.485,
+        0.456,
+        0.406
+      ],
+      "std": [
+        0.229,
+        0.224,
+        0.225
+      ],
+      "crop_margin_ratio": 0.0,
+      "crop_mode": "box_resize",
+      "embedding_dimension": 20,
+      "l2_normalized": true,
+      "resize_reducing_gap": 3.0,
+      "warmup_batch_sizes": [
+        1,
+        3,
+        5,
+        8
+      ],
+      "horizontal_flip_tta": false,
+      "rotation_180_tta": false,
+      "neighbor_mask": true,
+      "neighbor_distance_bias": -0.1,
+      "neighbor_shared_scale": false
+    },
+    "fallback_on_unknown": true,
+    "fallback_on_unsafe": true,
+    "selective_roi_only": true,
+    "fuse_unapproved_top3": true,
+    "minimum_fallback_approval_score": 0.8,
+    "minimum_detector_support": 3,
+    "approval_disagreement_rules": [
+      {
+        "minimum_detection_count": 7,
+        "maximum_approval_score": 0.85,
+        "require_detector_disagreement": false
+      },
+      {
+        "minimum_detection_count": 1,
+        "maximum_approval_score": 0.85,
+        "require_detector_disagreement": false,
+        "minimum_box_aspect_ratio": 2.5
+      }
+    ]
+  },
+  "input": {
+    "jpeg_draft_size": 1500
+  },
+  "quality": {
+    "min_object_area_ratio": 0.001,
+    "border_margin_ratio": 0.002,
+    "border_policy": "classifier_confidence",
+    "duplicate_review_containment_threshold": 0.9
+  },
+  "checksums": {},
+  "licenses": {
+    "detector": "torchvision BSD-3-Clause",
+    "classifier": "DINOv3 License"
+  },
+  "license_files": [
+    "licenses/TORCHVISION-LICENSE.txt",
+    "licenses/DINOV3-LICENSE.md",
+    "licenses/THIRD_PARTY_MODELS.md",
+    "licenses/APACHE-2.0.txt"
+  ]
+}

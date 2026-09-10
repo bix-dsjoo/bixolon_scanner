@@ -41,6 +41,7 @@ class ClassificationResult:
     segment_recapture_reasons: tuple[str | None, ...] | None = None
     unknown_reasons: tuple[str | None, ...] | None = None
     approval_blocked: np.ndarray | None = None
+    multi_object_probabilities: np.ndarray | None = None
 
 
 class Detector(Protocol):

@@ -27,6 +27,7 @@ class ClassifierBatch:
     segment_recapture_reasons: tuple[str | None, ...] | None
     unknown_reasons: tuple[str | None, ...] | None
     uses_explicit_ranking_scores: bool
+    multi_object_probabilities: np.ndarray | None = None
 
 
 def merge_selected_classifier_batch(
@@ -81,6 +82,16 @@ def merge_selected_classifier_batch(
                 -ranking_probabilities[base_row],
                 kind="stable",
             )
+    multiplicity = base.multi_object_probabilities
+    if selected.multi_object_probabilities is not None:
+        multiplicity = (
+            np.zeros(len(base.approved), dtype=np.float32)
+            if multiplicity is None
+            else multiplicity.copy()
+        )
+        multiplicity[selected_indices] = np.maximum(
+            multiplicity[selected_indices], selected.multi_object_probabilities
+        )
     return ClassifierBatch(
         probabilities=merge_array(base.probabilities, selected.probabilities),
         ranking_probabilities=ranking_probabilities,
@@ -94,6 +105,7 @@ def merge_selected_classifier_batch(
         ),
         unknown_reasons=merge_tuple(base.unknown_reasons, selected.unknown_reasons),
         uses_explicit_ranking_scores=base.uses_explicit_ranking_scores,
+        multi_object_probabilities=multiplicity,
     )
 
 
@@ -114,6 +126,7 @@ def normalize_classification(
         segment_recapture_reasons = classification.segment_recapture_reasons
         unknown_reasons = classification.unknown_reasons
         approval_blocked = classification.approval_blocked
+        multiplicity = classification.multi_object_probabilities
     else:
         logits = classification
         ranking_logits = classification
@@ -123,6 +136,16 @@ def normalize_classification(
         segment_recapture_reasons = None
         unknown_reasons = None
         approval_blocked = None
+        multiplicity = None
+
+    if multiplicity is not None:
+        multiplicity = np.asarray(multiplicity, dtype=np.float32)
+        if (
+            multiplicity.shape != (detection_count,)
+            or not np.isfinite(multiplicity).all()
+            or np.any((multiplicity < 0.0) | (multiplicity > 1.0))
+        ):
+            raise ModelExecutionError
 
     expected_shape = (detection_count, len(metadata.labels))
     for values in (
@@ -235,6 +258,7 @@ def normalize_classification(
         segment_recapture_reasons=segment_recapture_reasons,
         unknown_reasons=unknown_reasons,
         uses_explicit_ranking_scores=ranking_scores is not None,
+        multi_object_probabilities=multiplicity,
     )
 
 

@@ -27,6 +27,7 @@ class EmbedderMetadata(BaseModel):
     version: str
     input_name: str = "pixel_values"
     output_name: str = "embeddings"
+    multi_object_output_name: str | None = Field(default=None, min_length=1)
     input_size: tuple[int, int] = (224, 224)
     mean: tuple[float, float, float] = (0.485, 0.456, 0.406)
     std: tuple[float, float, float] = (0.229, 0.224, 0.225)
@@ -467,6 +468,18 @@ class RuntimePackageV2Metadata(BaseModel):
             raise ValueError(
                 "class-agnostic detector fallback rules cannot require class disagreement"
             )
+        return self
+
+    @model_validator(mode="after")
+    def validate_roi_integrity(self) -> "RuntimePackageV2Metadata":
+        output = self.embedder.multi_object_output_name
+        threshold = self.quality.multi_object_recapture_threshold
+        if (output is None) != (threshold is None):
+            raise ValueError(
+                "ROI integrity output and recapture threshold must be configured together"
+            )
+        if output == self.embedder.output_name:
+            raise ValueError("ROI integrity output must differ from the embedding output")
         return self
 
     @model_validator(mode="after")
