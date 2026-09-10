@@ -1,7 +1,7 @@
 param(
     [Alias("Version")]
-    [string]$ModelVersion = "0.1.17",
-    [string]$SdkVersion = "1.1.1",
+    [string]$ModelVersion = "0.2.0",
+    [string]$SdkVersion = "1.2.0",
     [string]$SdkOutputRoot = "artifacts/external-sdk",
     [string]$StoreModelOutputRoot = "artifacts/store-models",
     [ValidateSet("All", "Sdk", "StoreModel")]

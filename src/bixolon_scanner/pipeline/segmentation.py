@@ -30,6 +30,7 @@ def build_scan_items(
     *,
     border_indices: set[int],
     duplicate_review_indices: set[int],
+    detector_recapture_threshold: float | None = None,
 ) -> list[ScanItem]:
     """Apply the per-segmentation decision priority without changing batch order."""
 
@@ -70,6 +71,11 @@ def build_scan_items(
                 top3=_top3_candidates(metadata, candidate_indices, candidate_scores),
                 confidence=float(batch.approval_scores[index]),
             )
+        elif (
+            detector_recapture_threshold is not None
+            and detection.score < detector_recapture_threshold
+        ):
+            item = _recapture_item(ordinal, bbox, 0.0)
         elif batch.approved[index]:
             item = ScanItem(
                 segmentation_id=f"segmentation_{ordinal:03d}",

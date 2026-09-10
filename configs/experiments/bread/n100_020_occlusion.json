@@ -1,0 +1,9 @@
+{
+  "image_size": 640,
+  "empty_probability": 0.2,
+  "minimum_objects": 4,
+  "maximum_objects": 12,
+  "minimum_visible_fraction": 0.2,
+  "object_scale_range": [0.16, 0.4],
+  "dense": {"dense": true, "image_count": 1200}
+}

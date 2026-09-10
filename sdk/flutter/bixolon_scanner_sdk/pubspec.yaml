@@ -1,6 +1,6 @@
 name: bixolon_scanner_sdk
 description: BIXOLON Scanner Worker client and Windows lifecycle integration.
-version: 1.1.2
+version: 1.2.0
 publish_to: none
 
 environment:

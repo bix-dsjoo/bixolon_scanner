@@ -67,7 +67,7 @@ def create_app(
             decode_ms = (time.perf_counter() - decode_started) * 1000.0
             if time.perf_counter() >= deadline:
                 raise ModelExecutionError
-            return app.state.pipeline.scan(decoded, request_id), decode_ms
+            return app.state.runtime.scan(decoded, request_id), decode_ms
         finally:
             decoded.close()
 
@@ -81,6 +81,7 @@ def create_app(
         runtime: WorkerRuntime | None = None
         try:
             runtime = build_worker_runtime(worker_settings, injected_pipeline)
+            app.state.runtime = runtime
             app.state.pipeline = runtime.pipeline
             app.state.provider = runtime.provider
             app.state.jpeg_draft_size = runtime.jpeg_draft_size
@@ -168,21 +169,27 @@ def create_app(
             app.state.inference_deadline is not None
             and time.perf_counter() >= app.state.inference_deadline
         )
-        if not app.state.ready or overdue:
+        runtime = getattr(app.state, "runtime", None)
+        if (
+            not app.state.ready
+            or overdue
+            or (runtime is not None and (runtime.recovering or runtime.failed))
+        ):
             return JSONResponse(status_code=503, content={"status": "not_ready"})
-        versions = app.state.pipeline.versions
+        active_pipeline = runtime.pipeline
+        versions = active_pipeline.versions
         payload = {
             "status": "ready",
-            "provider": app.state.provider,
+            "provider": runtime.provider,
             "worker_version": app.state.worker_version,
             "detector_version": versions.detector,
             "classifier_version": versions.classifier,
         }
         optional_versions = {
-            "embedder_version": app.state.pipeline.embedder_version,
-            "detector_policy_version": app.state.pipeline.detector_policy_version,
-            "classifier_policy_version": app.state.pipeline.classifier_policy_version,
-            "catalog_version": app.state.pipeline.catalog_version,
+            "embedder_version": active_pipeline.embedder_version,
+            "detector_policy_version": active_pipeline.detector_policy_version,
+            "classifier_policy_version": active_pipeline.classifier_policy_version,
+            "catalog_version": active_pipeline.catalog_version,
         }
         payload.update(
             {key: value for key, value in optional_versions.items() if value is not None}

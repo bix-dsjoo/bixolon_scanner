@@ -5,7 +5,7 @@ PyTorch 학습·평가 도구와 Flutter 작업자 앱을 한 저장소에서 �
 
 ## Scanner Lite
 
-별도 제품 **BIXOLON Bakery AI Scanner Lite**는 `0.1.17` CPU Worker를 그대로 사용하며
+별도 제품 **BIXOLON Bakery AI Scanner Lite**는 `0.2.0` CPU Worker를 그대로 사용하며
 카메라/파일 입력, 읽기 전용 결과, 자동 메타데이터 로그·내보내기만 제공한다.
 기존 앱의 화면이나 복잡한 기능을 숨겨 재사용하지 않는다. 디자인 token/theme·로고·폰트만 공유한다.
 Lite는 읽기 전용 검출 박스를 표시하고 카메라 상단 20%를 제거한 중앙 정사각형을 2048×2048로 변환하고 좌우 반전한다.
@@ -33,23 +33,34 @@ Scanner·Worker 번들과 별도의 로컬 촬영 유틸리티입니다.
 
 ## 현재 버전
 
-현재 배포 가능한 실행 조합은 `0.1.17`입니다. Python·Worker·Detector·Embedder·판정 정책·Catalog·Windows ProductVersion은 `0.1.17`, 두 Flutter 앱은 `0.1.17+20`입니다.
-기준은 [configs/versions/0.1.17.json](configs/versions/0.1.17.json)입니다.
+현재 배포 가능한 실행 조합은 `0.2.0`입니다. Python·Worker·Detector·Embedder·판정 정책·Catalog·Windows ProductVersion은 `0.2.0`, 두 Flutter 앱은 `0.2.0+23`입니다.
+기준은 [configs/versions/0.2.0.json](configs/versions/0.2.0.json)입니다.
 
-사용자가 지정한 현재 1등 `ssdlite-margin-dense-20260908`을 배포합니다. 정정본 단일 200장·다중 100장·배경 2장과 649개 객체를 사용하며, 겹친 객체를 하나로 검출한 ROI의 승인을 막는 head를 추가했습니다.
-같은 실물 개발 진단은 올바른 승인 645/649(99.38%), 오승인 0건, 실제 다중 이미지 CPU HTTP full-path p95 최악 159.32ms입니다. 최종 300장 성적으로 표현하지 않습니다.
+0.2.0은 D-FINE HGNetV2-S 640 class-agnostic detector와 기존 ConvNeXt-Tiny 192/224,
+선택적 Frozen ViT-B/16 160·회전 합의를 사용합니다. 낮은 점수의 후보 위치를 보존하면서
+해당 ROI를 SEGMENT_RECAPTURE로 제한해 미검출과 부분 객체 오승인을 함께 줄입니다.
+승인 임계값 0.8, detail/verifier 경계 0.85와 포함 중복 UNKNOWN 정책은 유지합니다.
 
-최종 배포 EXE의 300장 평가는 CPU·CUDA 각각 3회 모두 **1,352/1,410(95.89%)·오승인 4건**입니다. CPU HTTP p95는 **318.42 / 304.29 / 316.19ms**로 세 목표에 미달했습니다. 평가 후 모델·임계값은 변경하지 않았습니다.
+로그132장·1,096개 객체는 모델 학습에 사용하지 않았지만 이번 후보·검출 임계값·지역 재촬영
+정책 선택에 사용했습니다. 독립 validation/test 성적으로 표현하지 않습니다.
+배포 Worker CPU/CUDA 3회는 각각 정답 APPROVED 1,078개(98.36%)·오승인0·미검출0이었습니다.
+추가 박스37개가 있으며 전체 상태는 APPROVED1,078·UNKNOWN17·SEGMENT_RECAPTURE38,
+완전 성공 이미지는99/132장입니다. 추가 재촬영 박스를 숨기지 않습니다.
 
-[0.1.16 대비 변경과 실행 장치 지원](docs/architecture/scanner-0.1.17.md)에 학습 원본·모델·CPU 설정·성능 범위를 정리했습니다.
-배포본은 CPU 설치본·Lite·SDK와 CUDA portable 앱으로 구성하며 같은 ONNX·Catalog·정책을 사용합니다.
+CPU 배포본 HTTP p95는281.42/278.22/275.29ms로200ms 목표에 미달합니다. 현재 장비는 Core Ultra9 285K와
+RTX5080이며 N100 실측은 수행하지 않았습니다. N100 내장 Intel UHD용 별도 번들은 CPU검출 →
+GPU primary/detail → CPU Frozen ViT·후처리와 명시적 CPU fallback을 구성합니다.
+N100에서200ms를 달성했다고 주장하지 않습니다.
+
+[0.2.0 변경과 한계](docs/architecture/scanner-0.2.0.md),
+[학습·정책 비교 기록](docs/experiments/n100-0.2.0.md)에 근거를 기록합니다.
+배포 파일은 `artifacts/distributions/0.2.0/README-KO.md`, 최종 측정은 같은 폴더의 `RESULTS-KO.md`에 정리합니다.
 
 ## 판정 계약
 
-정정본 학습·비교 과정은 [three_bakery 실행 기록](docs/experiments/three-bakery-training.md)을 참조합니다.
-정확도 목표는 전체 GT 객체 기준 99% 이상, 오승인 0건, CPU HTTP p95 300ms 이하입니다.
-최종 300장·1,410개 GT에서는 1,396개 이상 올바른 APPROVED를 요구합니다. 누락·UNKNOWN·재촬영·ERROR도 분모에 남습니다.
-현재 1등 후보는 사용자 요청에 따라 0.1.17로 복사했으며, 추가 seed 실험은 별도로 보존합니다.
+이번 목표는 로그132장 전체 GT 객체 중 정답 승인95% 이상(1,042/1,096), 오승인0건·미검출0건,
+HTTP 왕복 p95 200ms 이하입니다. 누락·UNKNOWN·재촬영·ERROR도 분모에 남습니다.
+과거 정정본 학습·비교 과정은 [three_bakery 실행 기록](docs/experiments/three-bakery-training.md)에 보존합니다.
 
 Worker는 이미지마다 다음 중 정확히 하나를 반환합니다.
 
@@ -59,7 +70,7 @@ Worker는 이미지마다 다음 중 정확히 하나를 반환합니다.
 - `ERROR`: 입력, 구성, 모델 또는 시스템 오류
 
 `ERROR`를 재촬영으로 변환하지 않습니다. Detector 조기 종료로 classifier를 실행하지 않은 경우
-classifier·Catalog 계열 버전은 `null`입니다. 나머지 공개 non-null 버전은 모두 `0.1.17`입니다.
+classifier·Catalog 계열 버전은 `null`입니다. 나머지 공개 non-null 버전은 모두 `0.2.0`입니다.
 공개 필드와 판정 순서는 [API 계약](docs/contracts/api.md)을 따릅니다.
 
 소스 Worker는 Detector/Classifier의 NaN·Inf 출력을 `MODEL_EXECUTION_FAILED` 5xx `ERROR`로
@@ -76,11 +87,11 @@ count-constrained Catalog 경로의 gate 이전 spatial+Top-3 exact 상한은 99
 그러나 held-fold label을 사용하지 않은 nested gate는 6장 중 1건, segment verifier를 추가한 gate는
 11장 중 4건의 오류가 발생해 둘 다 기각했습니다. 목표였던 오류 0건과 accepted coverage 10% 이상을
 동시에 충족한 후보는 없습니다. 중단된 center-heatmap 실험도 최종 OOF artifact가 없으므로 결과로
-간주하지 않습니다. 이 adaptive cascade는 활성 `0.1.17`에 반영하지 않았습니다. 설계, 완료·폐기·중단
+간주하지 않습니다. 이 adaptive cascade는 활성 `0.2.0`에 반영하지 않았습니다. 설계, 완료·폐기·중단
 결과와 재현 경로는 [DINOv3 adaptive cascade 실험](docs/experiments/adaptive-cascade-dinov3.md)에
 기록돼 있습니다.
 
-Runtime은 전수 verifier 호환 필드를 읽을 수 있지만 활성 0.1.17은
+Runtime은 전수 verifier 호환 필드를 읽을 수 있지만 활성 0.2.0은
 `verify_all_approved_candidates=false`, `unknown_recapture_on_any_verifier_rejection=false`를
 고정합니다. 단일 verifier 품질 실패를 재촬영으로 확대하지 않으며 최종 상태는 항상
 `DecisionPipeline`의 단일 정책에서 결정합니다.
@@ -90,22 +101,22 @@ Runtime은 전수 verifier 호환 필드를 읽을 수 있지만 활성 0.1.17�
 Python 3.11, Flutter stable, Visual Studio Windows C++ build tools와 Inno Setup 6을 사용합니다.
 
 ```powershell
-.\scripts\build_app.ps1 -Version 0.1.17 -PythonExecutable <CUDA-lock Python>
-.\scripts\build_worker.ps1 -PythonExecutable <CPU-lock Python> -OutputDirectory artifacts/versions/0.1.17/cpu-worker-build
-.\scripts\build_windows_installer.ps1 -Version 0.1.17 -VcRedistPath <vc_redist.x64.exe>
-.\scripts\build_external_sdk.ps1 -ModelVersion 0.1.17 -SdkVersion 1.1.1 -Package All
+.\scripts\build_app.ps1 -Version 0.2.0 -PythonExecutable <CUDA-lock Python>
+.\scripts\build_worker.ps1 -PythonExecutable <CPU-lock Python> -OutputDirectory artifacts/versions/0.2.0/cpu-worker-build
+.\scripts\build_windows_installer.ps1 -Version 0.2.0 -VcRedistPath <vc_redist.x64.exe>
+.\scripts\build_external_sdk.ps1 -ModelVersion 0.2.0 -SdkVersion 1.2.0 -Package All
 # CPU packaged smoke 후 실행
-.\scripts\build_lite.ps1 -Version 0.1.17
-bixolon bundle verify --config configs/versions/0.1.17.json
+.\scripts\build_lite.ps1 -Version 0.2.0
+bixolon bundle verify --config configs/versions/0.2.0.json
 ```
 
-최종 전달 폴더는 `artifacts/distributions/0.1.17`입니다. 전체 앱·Lite의 설치본과 portable ZIP,
-CPU Worker ZIP, CUDA portable ZIP, SDK Core 1.1.1·Store Model 0.1.17 ZIP 및 SHA-256을 모읍니다.
+최종 전달 폴더는 `artifacts/distributions/0.2.0`입니다. 전체 앱·Lite의 설치본과 portable ZIP,
+CPU Worker ZIP, CUDA portable ZIP, SDK Core 1.2.0·Store Model 0.2.0 ZIP 및 SHA-256을 모읍니다.
 개별 원본 산출물은 `artifacts/installers`, `artifacts/lite`, `artifacts/versions`, `artifacts/external-sdk`, `artifacts/store-models`에 보존합니다.
 
 CPU 설치본·Lite에는 Python, Flutter, CUDA, OpenVINO 별도 설치가 필요하지 않습니다.
-CUDA portable은 NVIDIA CUDA 실행용입니다. 기존 CPU+GPU 혼합 분류와 CPU fallback 코드는
-남아 있지만 이번 기본 배포에서는 활성화하지 않았습니다.
+CUDA portable은 NVIDIA CUDA 실행용입니다. N100 별도 번들은 OpenVINO GPU와 CPU fallback을
+활성화하며 Intel UHD 실측은 별도로 수행해야 합니다.
 
 Setup EXE는 Authenticode 서명이 없습니다. SHA-256은 손상·변경을 탐지하지만 발행자 진위를
 인증하지 않습니다. [Windows 설치 안내](installer/windows/INSTALL-KO.txt)를 함께 제공합니다.

@@ -13,7 +13,11 @@ from PIL import Image
 
 from bixolon_scanner.api import create_app
 from bixolon_scanner.config import WorkerSettings
-from bixolon_scanner.contracts.errors import ProviderInitializationError
+from bixolon_scanner.contracts.errors import (
+    ModelExecutionError,
+    ProviderExecutionError,
+    ProviderInitializationError,
+)
 from bixolon_scanner.inference import Detection, DetectionResult
 from bixolon_scanner.pipeline import DecisionPipeline
 from bixolon_scanner.worker import runtime_factory as worker_runtime
@@ -54,6 +58,47 @@ def test_scan_contract(classifier_metadata, quality_metadata):
     assert "items" not in body
     assert "model_versions" not in body
     assert "prediction" not in body
+
+
+@pytest.mark.parametrize("recovery_fails", [False, True])
+def test_http_gpu_recovery_preserves_error_and_reports_current_readiness(
+    monkeypatch, classifier_metadata, quality_metadata, recovery_fails
+):
+    from bixolon_scanner.worker import api
+
+    class FailedGpu(Detector):
+        def detect(self, image):
+            raise ProviderExecutionError
+
+    gpu = DecisionPipeline(FailedGpu(), Classifier(), classifier_metadata, quality_metadata)
+    cpu = DecisionPipeline(Detector(), Classifier(), classifier_metadata, quality_metadata)
+    runtime = worker_runtime.WorkerRuntime(
+        gpu,
+        "cpu+openvino_gpu",
+        1200,
+        settings=WorkerSettings(provider_execution_cpu_fallback=True),
+    )
+    monkeypatch.setattr(api, "build_worker_runtime", lambda *args: runtime)
+
+    def recover(settings):
+        if recovery_fails:
+            raise ModelExecutionError
+        return worker_runtime.WorkerRuntime(cpu, "cpu", 1200, settings=settings)
+
+    monkeypatch.setattr(worker_runtime, "_build_v2_runtime", recover)
+    with TestClient(create_app(settings=WorkerSettings())) as client:
+        first = client.post("/v1/scan", files={"image": ("a.jpg", _jpeg(), "image/jpeg")})
+        assert first.status_code == 500
+        assert first.json()["status"] == "ERROR"
+        assert first.json()["reason_codes"] == ["MODEL_EXECUTION_FAILED"]
+        assert first.json()["segmentations"] == []
+        ready = client.get("/health/ready")
+        assert ready.status_code == (503 if recovery_fails else 200)
+        if not recovery_fails:
+            assert ready.json()["provider"] == "cpu"
+        second = client.post("/v1/scan", files={"image": ("b.jpg", _jpeg(), "image/jpeg")})
+        assert second.status_code == (500 if recovery_fails else 200)
+        assert second.json()["status"] == ("ERROR" if recovery_fails else "SEGMENTATION")
 
 
 def test_ready_contract_includes_independent_versions(classifier_metadata, quality_metadata):
@@ -203,12 +248,14 @@ def test_v2_runtime_warms_models_before_readiness(
 
 
 @pytest.mark.parametrize("fallback_provider_fails", [False, True])
+@pytest.mark.parametrize("selection_fails", [False, True])
 def test_v2_runtime_falls_back_to_detector_provider_when_gpu_embedder_fails(
     tmp_path,
     monkeypatch,
     classifier_metadata,
     quality_metadata,
     fallback_provider_fails,
+    selection_fails,
 ):
     package_dir = tmp_path / "runtime"
     package_dir.mkdir()
@@ -279,7 +326,13 @@ def test_v2_runtime_falls_back_to_detector_provider_when_gpu_embedder_fails(
     monkeypatch.setattr(
         worker_runtime, "load_store_catalog_package", lambda *args, **kwargs: catalog
     )
-    monkeypatch.setattr(worker_runtime, "select_provider", lambda value, *_: value)
+
+    def select(value, *_):
+        if selection_fails and value == "openvino_gpu":
+            raise ProviderInitializationError
+        return value
+
+    monkeypatch.setattr(worker_runtime, "select_provider", select)
     monkeypatch.setattr(worker_runtime, "build_detector_v2", build_detector)
     monkeypatch.setattr(worker_runtime, "build_catalog_classifier", build_classifier)
 
@@ -300,8 +353,9 @@ def test_v2_runtime_falls_back_to_detector_provider_when_gpu_embedder_fails(
             response = client.get("/health/ready")
         assert response.status_code == 200
         assert response.json()["provider"] == "openvino"
-    assert attempted_providers == ["openvino_gpu", "openvino"]
-    assert closed_providers == ["openvino_gpu", "openvino"]
+    expected = ["openvino"] if selection_fails else ["openvino_gpu", "openvino"]
+    assert attempted_providers == expected
+    assert closed_providers == expected
     assert detector_count_providers == [(None, False)]
 
 

@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_windows_installer_uses_portable_cpu_worker_payload() -> None:
     build_script = (ROOT / "scripts" / "build_windows_installer.ps1").read_text(encoding="utf-8")
-    version_config = (ROOT / "configs" / "versions" / "0.1.17.json").read_text(encoding="utf-8")
+    version_config = (ROOT / "configs" / "versions" / "0.2.0.json").read_text(encoding="utf-8")
     inno_script = (ROOT / "installer" / "windows" / "BixolonBakeryAIScanner.iss").read_text(
         encoding="utf-8"
     )

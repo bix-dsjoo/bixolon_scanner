@@ -1396,6 +1396,7 @@ def build_catalog_classifier(
     *,
     cpu_intra_op_threads: int = 0,
     openvino_cache_dir: Path | None = None,
+    verifier_provider: ExecutionProvider | None = None,
 ) -> tuple[
     OnnxCatalogClassifier | ConsensusCatalogClassifier | ResolutionFallbackCatalogClassifier,
     OnnxEmbedder,
@@ -1458,7 +1459,7 @@ def build_catalog_classifier(
     independent_runtime = verification_runtime_package(runtime)
     independent_embedder = OnnxEmbedder(
         independent_runtime,
-        provider,
+        provider if verifier_provider is None else verifier_provider,
         cuda_dll_dir,
         cpu_intra_op_threads=cpu_intra_op_threads,
         openvino_cache_dir=openvino_cache_dir,

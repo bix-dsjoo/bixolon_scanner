@@ -1,0 +1,19 @@
+{
+  "study_config": "configs/experiments/bread/log_improvement_018.json",
+  "output": "artifacts/retraining/n100-0.2.0/training/ssdlite-occlusion",
+  "base_model": "artifacts/retraining/three-bakery-revised300/models/ssdlite-dense-20260908",
+  "original_manifest": "artifacts/retraining/three-bakery-revised300/prepared/original_detection.jsonl",
+  "synthetic_manifest": "artifacts/retraining/n100-0.2.0/prepared/dense-20260920/manifest.jsonl",
+  "epochs": 8,
+  "learning_rate": 0.00003,
+  "weight_decay": 0.0001,
+  "batch_size": 32,
+  "workers": 2,
+  "seed": 20260920,
+  "original_repeat": 8,
+  "synthetic_positive_count": 960,
+  "synthetic_empty_count": 240,
+  "image_size": 320,
+  "checkpoint_selection": "fixed_last_epoch",
+  "hypothesis": "Train from the authorized 302-source checkpoint with stronger source-only occlusion, retaining all actual whole-instance annotations and background negatives. No log pixels, log annotations or final300 enter training."
+}

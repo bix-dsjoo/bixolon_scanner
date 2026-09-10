@@ -18,6 +18,8 @@ class WorkerSettings(BaseSettings):
     provider: Literal["auto", "cuda", "cpu", "openvino", "openvino_gpu"] = "auto"
     embedder_provider: Literal["same", "directml", "openvino_gpu"] = "same"
     embedder_fallback_provider: Literal["none", "same"] = "none"
+    verifier_provider: Literal["same", "cpu"] = "same"
+    provider_execution_cpu_fallback: bool = False
     cuda_dll_dir: Path | None = None
     openvino_cache_dir: Path | None = None
     cpu_detector_workers: int = Field(default=1, ge=1, le=4)

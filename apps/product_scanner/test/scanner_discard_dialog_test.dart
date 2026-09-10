@@ -54,7 +54,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       tester.widget<MaterialApp>(find.byType(MaterialApp)).title,
-      'BIXOLON Bakery AI Scanner v0.1.18',
+      'BIXOLON Bakery AI Scanner v0.2.0',
     );
 
     await tester.tap(find.widgetWithText(OutlinedButton, '다른 이미지 선택'));

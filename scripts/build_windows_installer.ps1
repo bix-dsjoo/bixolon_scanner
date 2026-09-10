@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.17",
+    [string]$Version = "0.2.0",
     [string]$PythonExecutable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$InnoCompiler = "",
     [string]$VcRedistPath = "",

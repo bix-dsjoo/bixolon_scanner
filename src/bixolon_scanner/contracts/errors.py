@@ -41,3 +41,7 @@ class ProviderInitializationError(ScannerError):
 
 class ModelExecutionError(ScannerError):
     reason_code = "MODEL_EXECUTION_FAILED"
+
+
+class ProviderExecutionError(ModelExecutionError):
+    """Accelerator execution failed; the public error contract stays unchanged."""

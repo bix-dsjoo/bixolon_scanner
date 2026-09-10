@@ -75,6 +75,7 @@ class BundledScanner implements ScannerService {
   @override
   Future<void> start() => _starting ??= _start();
   Future<void> _start() async {
+    const n100 = String.fromEnvironment('BIXOLON_EXECUTION_PROFILE') == 'n100';
     final root = File(Platform.resolvedExecutable).parent.path;
     final worker = '$root/worker';
     final socket = await ServerSocket.bind(InternetAddress.loopbackIPv4, 0);
@@ -92,11 +93,13 @@ class BundledScanner implements ScannerService {
         'BIXOLON_HOST': '127.0.0.1',
         'BIXOLON_PORT': '$port',
         'BIXOLON_PROVIDER': 'cpu',
-        'BIXOLON_EMBEDDER_PROVIDER': 'same',
-        'BIXOLON_EMBEDDER_FALLBACK_PROVIDER': 'none',
+        'BIXOLON_EMBEDDER_PROVIDER': n100 ? 'openvino_gpu' : 'same',
+        'BIXOLON_EMBEDDER_FALLBACK_PROVIDER': n100 ? 'same' : 'none',
+        'BIXOLON_PROVIDER_EXECUTION_CPU_FALLBACK': '$n100',
+        'BIXOLON_VERIFIER_PROVIDER': n100 ? 'cpu' : 'same',
         'BIXOLON_CPU_DETECTOR_WORKERS': '1',
-        'BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS': '8',
-        'BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS': '12',
+        'BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS': n100 ? '2' : '8',
+        'BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS': n100 ? '4' : '12',
         'BIXOLON_REQUEST_TIMEOUT_SECONDS': '60',
       },
       runInShell: false,

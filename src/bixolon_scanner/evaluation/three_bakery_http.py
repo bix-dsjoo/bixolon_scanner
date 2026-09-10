@@ -89,6 +89,11 @@ def worker_server(
     cuda_dll_dir: Path | None = None,
     cpu_profile: tuple[int, int] = (4, 4),
     worker_executable: Path | None = None,
+    *,
+    embedder_provider: str = "same",
+    embedder_fallback_provider: str = "none",
+    execution_cpu_fallback: bool = False,
+    verifier_provider: str = "same",
 ):
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
@@ -100,6 +105,10 @@ def worker_server(
             "BIXOLON_CATALOG_DIR": str((candidate / "catalog").resolve()),
             "BIXOLON_CATALOG_STORE_ID": "three_bakery",
             "BIXOLON_PROVIDER": provider,
+            "BIXOLON_EMBEDDER_PROVIDER": embedder_provider,
+            "BIXOLON_EMBEDDER_FALLBACK_PROVIDER": embedder_fallback_provider,
+            "BIXOLON_PROVIDER_EXECUTION_CPU_FALLBACK": str(execution_cpu_fallback).lower(),
+            "BIXOLON_VERIFIER_PROVIDER": verifier_provider,
             "BIXOLON_HOST": "127.0.0.1",
             "BIXOLON_PORT": str(port),
             "BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS": str(cpu_profile[0]),
@@ -143,7 +152,15 @@ def worker_server(
                     except httpx.TransportError:
                         pass
                     time.sleep(0.25)
-                if ready is None or ready["provider"] != provider:
+                expected = (
+                    provider
+                    if embedder_provider == "same" or embedder_provider == provider
+                    else f"{provider}+{embedder_provider}"
+                )
+                allowed = {expected}
+                if embedder_fallback_provider == "same":
+                    allowed.add(provider)
+                if ready is None or ready["provider"] not in allowed:
                     raise RuntimeError("Worker did not become ready with the requested provider")
                 yield client, ready
         finally:
@@ -187,6 +204,10 @@ def measure(
     cpu_profile: tuple[int, int] = (4, 4),
     maximum_p95_ms: float | None = None,
     worker_executable: Path | None = None,
+    embedder_provider: str = "same",
+    embedder_fallback_provider: str = "none",
+    execution_cpu_fallback: bool = False,
+    verifier_provider: str = "same",
 ) -> dict:
     if not records or repetitions < 1 or warmup < 0:
         raise ValueError("invalid measurement budget")
@@ -195,6 +216,10 @@ def measure(
         "catalog_checksums_sha256": sha256_file(candidate / "catalog/checksums.json"),
         "input_identity": input_identity,
         "provider": provider,
+        "embedder_provider": embedder_provider,
+        "embedder_fallback_provider": embedder_fallback_provider,
+        "execution_cpu_fallback": execution_cpu_fallback,
+        "verifier_provider": verifier_provider,
         "cpu_profile": list(cpu_profile),
         "maximum_p95_ms": maximum_p95_ms,
         "concurrent_requests": 1,
@@ -237,7 +262,17 @@ def measure(
     environment = measurement_environment() if provider == "cpu" else None
     rows = []
     with worker_server(
-        candidate, python, provider, output, cuda_dll_dir, cpu_profile, worker_executable
+        candidate,
+        python,
+        provider,
+        output,
+        cuda_dll_dir,
+        cpu_profile,
+        worker_executable,
+        embedder_provider=embedder_provider,
+        embedder_fallback_provider=embedder_fallback_provider,
+        execution_cpu_fallback=execution_cpu_fallback,
+        verifier_provider=verifier_provider,
     ) as (
         client,
         ready,
@@ -300,6 +335,7 @@ def measure(
                             f"{provider} {output.name} repeat {repetition + 1}: {index + 1}/{len(records)}",
                             flush=True,
                         )
+        ready_end = client.get("/health/ready").json()
     per_repeat = [
         summarize(
             [r for r in rows if r["repetition"] == i],
@@ -319,6 +355,7 @@ def measure(
     result = {
         "contract": contract,
         "ready": ready,
+        "ready_end": ready_end,
         "environment": environment,
         "summary": per_repeat[0],
         "repetitions": per_repeat,

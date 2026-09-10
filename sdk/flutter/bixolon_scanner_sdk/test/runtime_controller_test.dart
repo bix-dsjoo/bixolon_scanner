@@ -38,6 +38,14 @@ void main() {
       expect(configuration.environment['BIXOLON_PORT'], '18080');
       expect(configuration.terminateWithApp, isFalse);
 
+      final n100 = BixolonWorkerLaunchConfiguration.n100(layout: layout);
+      expect(n100.environment['BIXOLON_PROVIDER'], 'cpu');
+      expect(n100.environment['BIXOLON_EMBEDDER_PROVIDER'], 'openvino_gpu');
+      expect(n100.environment['BIXOLON_EMBEDDER_FALLBACK_PROVIDER'], 'same');
+      expect(n100.environment['BIXOLON_PROVIDER_EXECUTION_CPU_FALLBACK'], 'true');
+      expect(n100.environment['BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS'], '2');
+      expect(n100.environment['BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS'], '4');
+
       final profile = File(
         '${metadata.parent.parent.path}/worker-profile.json',
       );

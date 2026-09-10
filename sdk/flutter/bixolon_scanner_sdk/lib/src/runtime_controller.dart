@@ -87,6 +87,28 @@ class BixolonWorkerLaunchConfiguration {
     this.terminateWithApp = true,
   });
 
+  /// N100: CPU detector, Intel UHD embedder and explicit CPU recovery.
+  factory BixolonWorkerLaunchConfiguration.n100({
+    required BixolonRuntimeLayout layout,
+    String host = '127.0.0.1',
+    int port = 8000,
+    bool terminateWithApp = true,
+  }) => BixolonWorkerLaunchConfiguration.cpu(
+    layout: layout,
+    host: host,
+    port: port,
+    terminateWithApp: terminateWithApp,
+    extraEnvironment: const {
+      'BIXOLON_EMBEDDER_PROVIDER': 'openvino_gpu',
+      'BIXOLON_EMBEDDER_FALLBACK_PROVIDER': 'same',
+      'BIXOLON_PROVIDER_EXECUTION_CPU_FALLBACK': 'true',
+      'BIXOLON_VERIFIER_PROVIDER': 'cpu',
+      'BIXOLON_CPU_DETECTOR_WORKERS': '1',
+      'BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS': '2',
+      'BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS': '4',
+    },
+  );
+
   factory BixolonWorkerLaunchConfiguration.cpu({
     required BixolonRuntimeLayout layout,
     String host = '127.0.0.1',

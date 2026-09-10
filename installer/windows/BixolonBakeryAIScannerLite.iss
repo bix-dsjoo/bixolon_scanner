@@ -23,7 +23,11 @@ DefaultDirName={autopf}\BIXOLON Bakery AI Scanner Lite
 DefaultGroupName=BIXOLON Bakery AI Scanner Lite
 DisableProgramGroupPage=yes
 OutputDir={#OutputDir}
+#ifdef N100Profile
+OutputBaseFilename=BixolonBakeryAIScannerLite-{#AppVersion}-N100-Setup
+#else
 OutputBaseFilename=BixolonBakeryAIScannerLite-{#AppVersion}-Setup
+#endif
 SetupIconFile={#SetupIconPath}
 UninstallDisplayIcon={app}\bakery_scanner_lite.exe
 Compression=lzma2/ultra64

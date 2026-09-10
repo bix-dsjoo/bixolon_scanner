@@ -13,7 +13,7 @@ from ..contracts.artifact import directory_content_manifest
 from ..contracts.catalog import sha256_file
 
 
-def collect(root: Path, version: str, sdk_version: str) -> Path:
+def collect(root: Path, version: str, sdk_version: str, *, include_n100: bool = False) -> Path:
     config = load_json_config(root / f"configs/versions/{version}.json")
     if config["version"] != version:
         raise ValueError("distribution version identity mismatch")
@@ -34,6 +34,14 @@ def collect(root: Path, version: str, sdk_version: str) -> Path:
             / f"artifacts/store-models/{store}/{version}/BIXOLON-Store-Model-{store}-{version}.zip",
         ],
     }
+    if include_n100:
+        from .lite_bundle import verify
+
+        for name in ("worker-payload", "lite-payload"):
+            verify(root / f"artifacts/n100/{version}/{name}")
+        sources["installers"].append(
+            root / f"artifacts/n100/{version}/BixolonBakeryAIScannerLite-{version}-N100-Setup.exe"
+        )
     for folder, paths in sources.items():
         destination = output / folder
         destination.mkdir(parents=True, exist_ok=True)
@@ -53,6 +61,15 @@ def collect(root: Path, version: str, sdk_version: str) -> Path:
         f"BixolonBakeryAIScannerLite-{version}-CPU-Portable": root
         / f"artifacts/lite/{version}/payload",
     }
+    if include_n100:
+        archive_sources.update(
+            {
+                f"BixolonBakeryAIScanner-{version}-N100-Worker": root
+                / f"artifacts/n100/{version}/worker-payload",
+                f"BixolonBakeryAIScannerLite-{version}-N100-Portable": root
+                / f"artifacts/n100/{version}/lite-payload",
+            }
+        )
     for name, source in archive_sources.items():
         source_manifest = directory_content_manifest(source)
         archive = portable / f"{name}.zip"
@@ -97,8 +114,16 @@ def main() -> None:
     parser.add_argument("--repository-root", required=True, type=Path)
     parser.add_argument("--version", required=True)
     parser.add_argument("--sdk-version", required=True)
+    parser.add_argument("--include-n100", action="store_true")
     args = parser.parse_args()
-    print(collect(args.repository_root.resolve(), args.version, args.sdk_version))
+    print(
+        collect(
+            args.repository_root.resolve(),
+            args.version,
+            args.sdk_version,
+            include_n100=args.include_n100,
+        )
+    )
 
 
 if __name__ == "__main__":

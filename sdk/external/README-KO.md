@@ -27,16 +27,16 @@ metadata/checksum/Catalog가 불일치하므로 반드시 전체 Store Model Bun
 외부 앱에 Scanner 제품 version을 상수로 넣지 말고 `/health/ready`에서 읽으십시오. 배포 version을
 고정해야 한다면 앱 재빌드 없이 바꿀 수 있는 외부 설정으로 주입합니다.
 
-SDK와 Store Model의 version은 독립적입니다. SDK `1.1.2`은 `worker_runtime_schema=2.0`과
-`catalog_schema=2.0`을 만족하는 Store Model `0.1.16`, `0.1.18` 등을 선택해서 실행할 수 있습니다.
+SDK와 Store Model의 version은 독립적입니다. SDK `1.2.0`은 `worker_runtime_schema=2.0`과
+`catalog_schema=2.0`을 만족하는 Store Model `0.1.16`, `0.2.0` 등을 선택해서 실행할 수 있습니다.
 재학습·Catalog 변경은 Store Model version만 올리고, Flutter SDK·Worker 또는 API 호환성이 바뀔
 때만 SDK version을 올립니다. 숫자가 같은지를 호환 조건으로 사용하지 마십시오.
 
 기본 출력 경로는 다음처럼 분리됩니다.
 
 ```text
-artifacts/external-sdk/1.1.2/BIXOLON-Scanner-SDK-Windows-x64-1.1.2.zip
-artifacts/store-models/three_bakery/0.1.18/BIXOLON-Store-Model-three_bakery-0.1.18.zip
+artifacts/external-sdk/1.2.0/BIXOLON-Scanner-SDK-Windows-x64-1.2.0.zip
+artifacts/store-models/three_bakery/0.2.0/BIXOLON-Store-Model-three_bakery-0.2.0.zip
 ```
 
 ## 권장 설치 레이아웃
@@ -53,7 +53,7 @@ artifacts/store-models/three_bakery/0.1.18/BIXOLON-Store-Model-three_bakery-0.1.
   active-bundle.json
   bundles/
     three_bakery/
-      0.1.18/
+      0.2.0/
         model-package/...
         store-catalog/...
         store-bundle.json
@@ -70,7 +70,7 @@ artifacts/store-models/three_bakery/0.1.18/BIXOLON-Store-Model-three_bakery-0.1.
 ```dart
 final layout = BixolonRuntimeLayout.discover(
   storeBundleRoot:
-      r'C:\ProgramData\BIXOLON\Scanner\bundles\three_bakery\0.1.18',
+      r'C:\ProgramData\BIXOLON\Scanner\bundles\three_bakery\0.2.0',
 );
 final session = await BixolonScannerSession.startLocal(layout: layout);
 ```
@@ -111,4 +111,4 @@ Runtime과 Store Model Bundle의 manifest/checksum은 전송 손상이나 파일
 합니다. Worker는 시작할 때 Runtime/Catalog 내부 checksum을 다시 검증하며 불일치 시 시작하지
 않습니다.
 
-Store Model 0.1.18의 `worker-profile.json`에는 CPU Detector 8 / Embedder 12 threads를 기록합니다. SDK Core 1.1.2은 CPU 시작 시 이를 읽으며, 명시한 `extraEnvironment`가 우선합니다. 이전 번들에 파일이 없으면 기존 Worker 기본값을 유지합니다.
+Store Model 0.2.0의 `worker-profile.json`에는 CPU Detector 8 / Embedder 12 threads를 기록합니다. SDK Core 1.2.0은 CPU 시작 시 이를 읽으며, 명시한 `extraEnvironment`가 우선합니다. 이전 번들에 파일이 없으면 기존 Worker 기본값을 유지합니다.

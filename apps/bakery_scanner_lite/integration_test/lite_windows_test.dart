@@ -21,10 +21,10 @@ import '../test/fakes.dart';
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets(
-    'Windows 0.1.17 inference, read-only results and durable logs',
+    'Windows 0.2.0 inference, read-only results and durable logs',
     (tester) async {
       final root = Platform.environment['LITE_E2E_ROOT']!;
-      final output = Directory('$root/artifacts/lite/0.1.17/windows-e2e');
+      final output = Directory('$root/artifacts/lite/0.2.0/windows-e2e');
       await output.create(recursive: true);
       final report = <String, Object?>{};
       Future<void> checkpoint(String stage) async {

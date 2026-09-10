@@ -67,6 +67,11 @@ class DecisionPipeline:
         self.catalog_version = catalog_version
         self.assisted_policy = assisted_policy
         self.detector_primary_classifier_routing = detector_primary_classifier_routing
+        if quality_metadata.skip_low_score_classification:
+            if assisted_policy is not None or detector_primary_classifier_routing is not None:
+                raise ValueError("local recapture skip requires the class-agnostic pipeline")
+            if not callable(getattr(classifier, "classify_selected", None)):
+                raise ValueError("local recapture skip requires selected ROI classification")
         if detector_primary_classifier_routing is not None:
             if not callable(getattr(classifier, "classify_selected", None)):
                 raise ValueError("detector-primary routing requires selected ROI classification")
@@ -119,6 +124,8 @@ class DecisionPipeline:
         ordered: list[Detection],
         detector_classes: list[int | None],
     ) -> ClassifierBatch:
+        if self.quality_metadata.skip_low_score_classification:
+            return self._classify_locally_certain(image, ordered)
         routing = self.detector_primary_classifier_routing
         if routing is None:
             return normalize_classification(
@@ -177,6 +184,52 @@ class DecisionPipeline:
             uses_explicit_ranking_scores=selected.uses_explicit_ranking_scores,
         )
         return merge_selected_classifier_batch(base, selected, classifier_indices)
+
+    def _classify_locally_certain(self, image, ordered) -> ClassifierBatch:
+        threshold = self.quality_metadata.detector_segment_recapture_score_threshold
+        # Keep both sides of containment review: class agreement must still be measured.
+        protected = {
+            index
+            for pair in contained_detection_pairs(
+                ordered, self.quality_metadata.duplicate_review_containment_threshold
+            )
+            for index in pair
+        }
+        indices = np.asarray(
+            [
+                i
+                for i, detection in enumerate(ordered)
+                if detection.score >= threshold or i in protected
+            ],
+            dtype=np.int64,
+        )
+        selected = (
+            None
+            if not len(indices)
+            else normalize_classification(
+                self.classifier.classify_selected(image, ordered, indices),
+                detection_count=len(indices),
+                metadata=self.classifier_metadata,
+            )
+        )
+        values = np.zeros((len(ordered), len(self.classifier_metadata.labels)), dtype=np.float32)
+        base = ClassifierBatch(
+            probabilities=values.copy(),
+            ranking_probabilities=values.copy(),
+            decision_indices=np.argsort(-values, axis=1, kind="stable"),
+            approval_scores=np.zeros(len(ordered), dtype=np.float32),
+            approved=np.zeros(len(ordered), dtype=bool),
+            top3_unsafe=np.ones(len(ordered), dtype=bool),
+            segment_recapture_reasons=("DETECTOR_LOCAL_UNCERTAINTY",) * len(ordered),
+            unknown_reasons=(None,) * len(ordered),
+            uses_explicit_ranking_scores=True
+            if selected is None
+            else selected.uses_explicit_ranking_scores,
+            multi_object_probabilities=np.zeros(len(ordered), dtype=np.float32),
+        )
+        return (
+            base if selected is None else merge_selected_classifier_batch(base, selected, indices)
+        )
 
     def _refine_wide_pair(
         self,
@@ -450,6 +503,9 @@ class DecisionPipeline:
         integrity_threshold = self.quality_metadata.multi_object_recapture_threshold
         if integrity_threshold is not None:
             fallback_indices &= batch.multi_object_probabilities < integrity_threshold
+        fallback_indices &= np.asarray(
+            [reason != "DETECTOR_LOCAL_UNCERTAINTY" for reason in recapture_reasons], dtype=bool
+        )
         selected_indices = np.flatnonzero(fallback_indices)
         if not len(selected_indices):
             return batch, False
@@ -784,6 +840,7 @@ class DecisionPipeline:
             self.classifier_metadata,
             border_indices=border_indices,
             duplicate_review_indices=duplicate_review_indices,
+            detector_recapture_threshold=self.quality_metadata.detector_segment_recapture_score_threshold,
         )
         response = ScanResponse(
             request_id=request_id,

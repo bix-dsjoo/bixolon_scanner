@@ -4,14 +4,20 @@ from __future__ import annotations
 
 import ctypes
 import hashlib
+import importlib.util
 import json
 import os
+import sys
 from pathlib import Path
 from typing import Literal, TypeAlias
 
 import numpy as np
 
-from ..contracts.errors import ModelExecutionError, ProviderInitializationError
+from ..contracts.errors import (
+    ModelExecutionError,
+    ProviderExecutionError,
+    ProviderInitializationError,
+)
 
 ExecutionProvider: TypeAlias = Literal[
     "cuda",
@@ -58,7 +64,25 @@ class OrtRunner:
             import onnxruntime as ort
 
             self._dll_directory = None
+            self._openvino_dll_directory = None
+            self._openvino_dlls: list[object] = []
             self._cuda_dlls: list[object] = []
+            if provider in {"openvino", "openvino_gpu"} and hasattr(os, "add_dll_directory"):
+                bundled = getattr(sys, "_MEIPASS", None)
+                spec = None if bundled else importlib.util.find_spec("openvino")
+                libraries = (
+                    Path(bundled)
+                    if bundled
+                    else Path(spec.origin).parent / "libs"
+                    if spec is not None and spec.origin
+                    else None
+                )
+                if libraries is not None and libraries.is_dir():
+                    self._openvino_dll_directory = os.add_dll_directory(str(libraries.resolve()))
+                    if os.name == "nt" and (libraries / "openvino.dll").is_file():
+                        # ORT's provider loader does not consistently use AddDllDirectory.
+                        # Keep the absolute-path dependency loaded for this session lifetime.
+                        self._openvino_dlls.append(ctypes.WinDLL(str(libraries / "openvino.dll")))
             if provider == "cuda" and cuda_dll_dir is not None:
                 cuda_dll_dir = cuda_dll_dir.resolve()
                 if not cuda_dll_dir.is_dir():
@@ -112,6 +136,11 @@ class OrtRunner:
             )
             options.execution_mode = ort.ExecutionMode.ORT_SEQUENTIAL
             options.inter_op_num_threads = 1
+            if provider == "cpu":
+                # The detector, primary, detail and verifier own separate pools.
+                # Let idle pools sleep while another stage uses the CPU.
+                options.add_session_config_entry("session.intra_op.allow_spinning", "0")
+                options.add_session_config_entry("session.inter_op.allow_spinning", "0")
             if provider == "cpu" and cpu_intra_op_threads > 0:
                 options.intra_op_num_threads = cpu_intra_op_threads
             if provider == "directml":
@@ -135,6 +164,14 @@ class OrtRunner:
                 device = "GPU" if provider == "openvino_gpu" else "CPU"
                 provider_options["device_type"] = device
                 device_config: dict[str, str] = {}
+                if provider == "openvino_gpu":
+                    device_config.update(
+                        {
+                            "PERFORMANCE_HINT": "LATENCY",
+                            "NUM_STREAMS": "1",
+                            "INFERENCE_PRECISION_HINT": "f32",
+                        }
+                    )
                 if provider == "openvino":
                     device_config.update(
                         {
@@ -169,6 +206,7 @@ class OrtRunner:
             if self.session.get_providers()[0] != provider_name:
                 raise ProviderInitializationError
             self.cuda = provider == "cuda"
+            self.provider = provider
             self.accelerated = provider in {
                 "cuda",
                 "directml",
@@ -182,9 +220,19 @@ class OrtRunner:
             self._graph_output_values: list[object] = []
             self._graph_signature: tuple[tuple[str, tuple[int, ...]], ...] | None = None
         except ProviderInitializationError:
+            self._close_initialization_handles()
             raise
         except Exception as exc:
+            self._close_initialization_handles()
             raise ProviderInitializationError from exc
+
+    def _close_initialization_handles(self) -> None:
+        getattr(self, "_openvino_dlls", []).clear()
+        for name in ("_dll_directory", "_openvino_dll_directory"):
+            handle = getattr(self, name, None)
+            if handle is not None:
+                handle.close()
+                setattr(self, name, None)
 
     def run(self, output_names: list[str], input_name: str, tensor: np.ndarray) -> list[np.ndarray]:
         return self.run_inputs(output_names, {input_name: tensor})
@@ -205,6 +253,8 @@ class OrtRunner:
             self.session.run_with_iobinding(binding)
             return binding.copy_outputs_to_cpu()
         except Exception as exc:
+            if getattr(self, "provider", "cpu") in {"cuda", "openvino_gpu", "directml"}:
+                raise ProviderExecutionError from exc
             raise ModelExecutionError from exc
 
     def close(self) -> None:
@@ -215,9 +265,7 @@ class OrtRunner:
         self._graph_output_values.clear()
         self.session = None
         self._cuda_dlls.clear()
-        if self._dll_directory is not None:
-            self._dll_directory.close()
-            self._dll_directory = None
+        self._close_initialization_handles()
 
     def _run_cuda_graph(
         self, output_names: list[str], inputs: dict[str, np.ndarray]

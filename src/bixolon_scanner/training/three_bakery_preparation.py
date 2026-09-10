@@ -193,10 +193,12 @@ def prepare_originals(source: Path, output: Path) -> None:
     )
 
 
-def generate_scenes(source: Path, output: Path, *, recipe: str, seed: int) -> None:
+def generate_scenes(
+    source: Path, output: Path, *, recipe: str, seed: int, settings_path: Path | None = None
+) -> None:
     report, rows = verify_annotations(source)
     config = load_json_config(Path(report["config_path"]))
-    settings = config["synthetic"]
+    settings = config["synthetic"] if settings_path is None else load_json_config(settings_path)
     variant = settings[recipe]
     rng = random.Random(seed)
     size = settings["image_size"]
@@ -207,6 +209,7 @@ def generate_scenes(source: Path, output: Path, *, recipe: str, seed: int) -> No
         "recipe": recipe,
         "seed": seed,
         "generator_sha256": sha256_file(Path(__file__)),
+        "settings_sha256": None if settings_path is None else sha256_file(settings_path),
     }
     if (out / "report.json").exists():
         previous = load_json_config(out / "report.json")
@@ -253,14 +256,21 @@ def generate_scenes(source: Path, output: Path, *, recipe: str, seed: int) -> No
             gradient = np.linspace(rng.uniform(0.7, 1), rng.uniform(1, 1.15), size)
             values = np.clip(color[None, None, :] * gradient[:, None, None], 0, 255)
             canvas = Image.fromarray(np.repeat(values.astype(np.uint8), size, axis=1))
-        count = 0 if index in empty_indices else rng.randint(1, settings["maximum_objects"])
+        count = (
+            0
+            if index in empty_indices
+            else rng.randint(settings.get("minimum_objects", 1), settings["maximum_objects"])
+        )
         masks, placed = [], []
         for _ in range(count):
             cutout, category, digest = rng.choice(cutouts)
             rotated = cutout.rotate(
                 rng.uniform(-180, 180), expand=True, resample=Image.Resampling.BICUBIC
             )
-            scale = rng.uniform(0.11, 0.31 if variant["dense"] else 0.24) * size / max(rotated.size)
+            minimum_scale, maximum_scale = settings.get(
+                "object_scale_range", [0.11, 0.31 if variant["dense"] else 0.24]
+            )
+            scale = rng.uniform(minimum_scale, maximum_scale) * size / max(rotated.size)
             rgba = rotated.resize(
                 tuple(max(1, round(v * scale)) for v in rotated.size), Image.Resampling.LANCZOS
             )
@@ -345,13 +355,20 @@ def main() -> None:
     parser.add_argument("--review", type=Path)
     parser.add_argument("--recipe", choices=["basic", "dense", "diagnostic"])
     parser.add_argument("--seed", type=int)
+    parser.add_argument("--settings", type=Path)
     args = parser.parse_args()
     if args.command == "review":
         accept_review(args.source, args.review)
     elif args.command == "originals":
         prepare_originals(args.source, args.output)
     else:
-        generate_scenes(args.source, args.output, recipe=args.recipe, seed=args.seed)
+        generate_scenes(
+            args.source,
+            args.output,
+            recipe=args.recipe,
+            seed=args.seed,
+            settings_path=args.settings,
+        )
 
 
 if __name__ == "__main__":

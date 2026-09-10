@@ -272,10 +272,11 @@ def check(work: Path) -> dict:
                 response = runtime.pipeline.scan(
                     image, request_id=f"ort-parity-{record['image_id']}"
                 )
-                expected[record["image_id"]] = response_signature(response.model_dump(mode="json"))
+                expected[record["image_id"]] = response.model_dump(mode="json")
     finally:
         runtime.close()
     mismatches = []
+    mismatch_details = []
     with (
         patch("bixolon_scanner.runtime.onnx.OrtRunner", TorchDiagnosticRunner),
         patch("bixolon_scanner.runtime.catalog.OrtRunner", TorchDiagnosticRunner),
@@ -293,11 +294,17 @@ def check(work: Path) -> dict:
                     response = runtime.pipeline.scan(
                         image, request_id=f"torch-parity-{record['image_id']}"
                     )
-                    if (
-                        response_signature(response.model_dump(mode="json"))
-                        != expected[record["image_id"]]
+                    if response_signature(response.model_dump(mode="json")) != response_signature(
+                        expected[record["image_id"]]
                     ):
                         mismatches.append(record["image_id"])
+                        mismatch_details.append(
+                            {
+                                "image_id": record["image_id"],
+                                "onnx_response": expected[record["image_id"]],
+                                "pytorch_response": response.model_dump(mode="json"),
+                            }
+                        )
                 if (index + 1) % 50 == 0:
                     print(
                         f"PyTorch/ORT source pipeline parity {index + 1}/{len(records)}", flush=True
@@ -341,6 +348,7 @@ def check(work: Path) -> dict:
         "freeze_sha256": sha256_file(work / "final-candidate.json"),
         "image_count": len(records),
         "status_rank_mismatch_image_ids": mismatches,
+        "status_rank_mismatch_details": mismatch_details,
         "status_rank_parity": not mismatches,
         "tensor_tolerance": {"atol": 1e-4, "rtol": 1e-3},
         "tensor_checks": dict(tensor_checks),

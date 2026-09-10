@@ -51,6 +51,30 @@ class FakeClassifier:
         return self.logits
 
 
+@pytest.mark.parametrize(
+    "score,status", [(0.249, ItemStatus.SEGMENT_RECAPTURE), (0.25, ItemStatus.APPROVED)]
+)
+def test_uncertain_local_proposal_never_inherits_classifier_approval(
+    classifier_metadata, quality_metadata, score, status
+):
+    classifier = FakeClassifier([[8, 0, -1], [8, 0, -1]])
+    pipeline = DecisionPipeline(
+        FakeDetector(
+            DetectionResult([Detection(10, 10, 40, 40, score), Detection(55, 55, 90, 90, 0.99)])
+        ),
+        classifier,
+        classifier_metadata,
+        quality_metadata.model_copy(update={"detector_segment_recapture_score_threshold": 0.25}),
+    )
+    response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "local-uncertainty")
+    assert response.status is Status.SEGMENTATION
+    assert response.segmentations[0].status is status
+    assert response.segmentations[1].status is ItemStatus.APPROVED
+    if status is ItemStatus.SEGMENT_RECAPTURE:
+        assert response.segmentations[0].prediction is None
+        assert response.segmentations[0].top3 == []
+
+
 class SelectiveFakeClassifier(FakeClassifier):
     def __init__(self, selected_logits):
         super().__init__(selected_logits)
@@ -64,6 +88,35 @@ class SelectiveFakeClassifier(FakeClassifier):
         indices = np.asarray(detection_indices, dtype=np.int64)
         self.selected_calls.append(indices)
         return self.logits[: len(indices)]
+
+
+@pytest.mark.parametrize("all_low", [False, True])
+def test_local_recapture_skips_only_uncertain_roi(classifier_metadata, quality_metadata, all_low):
+    classifier = SelectiveFakeClassifier([[8, 0, -1]])
+    pipeline = DecisionPipeline(
+        FakeDetector(
+            DetectionResult(
+                [Detection(10, 10, 40, 40, 0.1), Detection(55, 55, 90, 90, 0.1 if all_low else 0.9)]
+            )
+        ),
+        classifier,
+        classifier_metadata,
+        quality_metadata.model_copy(
+            update={
+                "detector_segment_recapture_score_threshold": 0.25,
+                "skip_low_score_classification": True,
+            }
+        ),
+    )
+    response = pipeline.scan(np.full((100, 100, 3), 128, dtype=np.uint8), "local-skip")
+    assert len(response.segmentations) == 2
+    assert response.segmentations[0].status is ItemStatus.SEGMENT_RECAPTURE
+    if all_low:
+        assert not classifier.selected_calls
+        assert response.segmentations[1].status is ItemStatus.SEGMENT_RECAPTURE
+    else:
+        assert classifier.selected_calls[0].tolist() == [1]
+        assert response.segmentations[1].status is ItemStatus.APPROVED
 
 
 class SequencedClassifier(FakeClassifier):
