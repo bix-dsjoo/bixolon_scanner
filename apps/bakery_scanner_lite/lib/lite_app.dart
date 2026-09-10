@@ -87,7 +87,7 @@ class _LiteWorkspaceState extends State<LiteWorkspace> {
                     ),
                     const SizedBox(width: 10),
                     const Text(
-                      '0.1.18',
+                      '0.1.19',
                       style: TextStyle(fontSize: 12, color: AppColors.muted),
                     ),
                   ],
@@ -626,6 +626,19 @@ class ResultDetails extends StatelessWidget {
                         result.objects[i].status,
                         scanStatusColor(result.objects[i].status),
                       ),
+                      if (result.objects[i].status == 'APPROVED')
+                        Padding(
+                          padding: const EdgeInsets.only(top: 6),
+                          child: Text(
+                            result.objects[i].prediction == null
+                                ? '승인 상품명 기록 없음'
+                                : '승인 상품: ${result.objects[i].prediction!.className}',
+                            style: const TextStyle(
+                              fontSize: 15,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
                       if (result.objects[i].top3.isNotEmpty)
                         Padding(
                           padding: const EdgeInsets.only(top: 6),

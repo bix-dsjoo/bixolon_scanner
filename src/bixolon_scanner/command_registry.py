@@ -35,10 +35,6 @@ COMPATIBILITY_COMMANDS: dict[CommandPath, CommandTarget] = {
 }
 
 DIAGNOSTIC_COMMANDS: dict[CommandPath, CommandTarget] = {
-    ("experiment", "log-improvement"): (
-        "bixolon_scanner.experiments.bread.log_improvement",
-        "main",
-    ),
     ("experiment", "three-bakery"): (
         "bixolon_scanner.experiments.bread.three_bakery",
         "main",

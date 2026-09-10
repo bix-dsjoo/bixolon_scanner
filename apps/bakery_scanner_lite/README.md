@@ -1,8 +1,8 @@
 # BIXOLON Bakery AI Scanner Lite
 
-Worker 0.1.18 기반의 별도 Windows 앱이다. 기존 Scanner의 화면·기능·SDK 결과 모델을 재사용하지
+Worker 0.1.19 기반의 별도 Windows 앱이다. 기존 Scanner의 화면·기능·SDK 결과 모델을 재사용하지
 않는다. `core/design_system`의 token/theme과 BIXOLON 로고·Pretendard만 디자인 자산으로 복사했다.
-앱과 설치본은 0.1.18, 내부 build는 20다. 기존 Scanner와 설치 ID·폴더·로그 저장소가 다르다.
+앱과 설치본은 0.1.19, 내부 build는 22다. 기존 Scanner와 설치 ID·폴더·로그 저장소가 다르다.
 
 ## 사용
 
@@ -68,8 +68,8 @@ IMAGE_RECAPTURE와 SEGMENT_RECAPTURE의 상태와 박스는 빨간색이다. UNK
 
 ## 실행과 구성
 
-설치본에는 0.1.18 CPU Worker·Runtime·Catalog와 VC++ 재배포 패키지가 포함된다. Python, Flutter,
-CUDA 설치는 필요 없다. 실행 시 숨김 Worker를 전용 loopback 포트에서 시작하고 0.1.18 readiness를
+설치본에는 0.1.19 CPU Worker·Runtime·Catalog와 VC++ 재배포 패키지가 포함된다. Python, Flutter,
+CUDA 설치는 필요 없다. 실행 시 숨김 Worker를 전용 loopback 포트에서 시작하고 0.1.19 readiness를
 확인한다. Detector는 8, Embedder는 12 threads다. 앱 종료 시 소유 Worker를 종료하며 Windows job으로
 비정상 앱 종료 시 자식 프로세스 잔류도 방지한다. 설치 파일에는 Authenticode 서명이 없다.
 
@@ -77,17 +77,21 @@ CUDA 설치는 필요 없다. 실행 시 숨김 Worker를 전용 loopback 포트
 
 ## 빌드와 검증
 
-저장소 루트에서 `scripts/build_lite.ps1`을 실행한다. 검증된 0.1.18 CPU 배포물이 필요하다.
+저장소 루트에서 `scripts/build_lite.ps1`을 실행한다. 검증된 0.1.19 CPU 배포물이 필요하다.
 Lite Flutter release와 Worker copy의 전체 파일 해시를 확인한 뒤 별도 Inno Setup을 생성한다.
 `version.json`, `provenance.json`, `bundle-manifest.json`, 원본 Worker 검증 기록과
 DINOv3·Apache·Pretendard 라이선스를 포함한다. SHA-256은 손상 검사용이며 발행자 인증은 아니다.
-다시 만들 때는 `-Force`를 사용하며 기존 Scanner 0.1.18 배포물은 변경하지 않는다.
+다시 만들 때는 `-Force`를 사용하며 기존 Scanner 0.1.19 배포물은 변경하지 않는다.
 
 Lite 디렉터리에서 `flutter analyze`, `flutter test`를 실행한다. 실제 Windows 통합 검사는
-`integration_test`와 `artifacts/lite/0.1.18`의 검증 기록을 참조한다.
+`integration_test`와 `artifacts/lite/0.1.19`의 검증 기록을 참조한다.
 
 통합 검사는 `LITE_E2E_ROOT`를 저장소 절대 경로로 설정하고 검증된 payload의 `worker`를
 `build/windows/x64/runner/Debug/worker`에 복사한 뒤
 `flutter test integration_test/lite_windows_test.dart -d windows`로 실행한다.
 파일 선택 경계만 테스트 입력으로 대체하며 앱·Worker·추론·로그는 실제 실행한다.
 연결된 실카메라가 있으면 미리보기·촬영도 검사하며 촬영 원본을 검증 파일로 저장하지 않는다.
+
+## 0.1.19 승인 상품명 수정
+
+APPROVED의 prediction.class_name을 승인 상품으로 표시하고 class ID·이름을 로그와 내보내기에 보존한다. 기존 미기록 로그에는 승인 상품명 기록 없음을 표시한다. confidence는 저장하지 않는다. 0.1.17 모델 graph·가중치·정책은 동일하며 실행 버전 metadata만 0.1.19로 정렬한다.

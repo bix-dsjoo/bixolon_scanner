@@ -6,8 +6,8 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_external_sdk_and_store_model_versions_are_packaged_independently() -> None:
     script = (ROOT / "scripts" / "build_external_sdk.ps1").read_text(encoding="utf-8")
 
-    assert '[string]$ModelVersion = "0.1.18"' in script
-    assert '[string]$SdkVersion = "1.1.2"' in script
+    assert '[string]$ModelVersion = "0.1.17"' in script
+    assert '[string]$SdkVersion = "1.1.1"' in script
     assert '[ValidateSet("All", "Sdk", "StoreModel")]' in script
     assert '"BIXOLON-Scanner-SDK-Windows-x64-$SdkVersion"' in script
     assert '"BIXOLON-Store-Model-$storeId-$ModelVersion"' in script

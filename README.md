@@ -5,7 +5,7 @@ PyTorch 학습·평가 도구와 Flutter 작업자 앱을 한 저장소에서 �
 
 ## Scanner Lite
 
-별도 제품 **BIXOLON Bakery AI Scanner Lite**는 `0.1.18` CPU Worker를 그대로 사용하며
+별도 제품 **BIXOLON Bakery AI Scanner Lite**는 `0.1.17` CPU Worker를 그대로 사용하며
 카메라/파일 입력, 읽기 전용 결과, 자동 메타데이터 로그·내보내기만 제공한다.
 기존 앱의 화면이나 복잡한 기능을 숨겨 재사용하지 않는다. 디자인 token/theme·로고·폰트만 공유한다.
 Lite는 읽기 전용 검출 박스를 표시하고 카메라 상단 20%를 제거한 중앙 정사각형을 2048×2048로 변환하고 좌우 반전한다.
@@ -33,23 +33,15 @@ Scanner·Worker 번들과 별도의 로컬 촬영 유틸리티입니다.
 
 ## 현재 버전
 
-현재 배포 가능한 실행 조합은 `0.1.18`입니다. Python·Worker·Detector·Embedder·판정 정책·Catalog·Windows ProductVersion은 `0.1.18`, 두 Flutter 앱은 `0.1.18+21`입니다.
-기준은 [configs/versions/0.1.18.json](configs/versions/0.1.18.json)입니다.
+현재 배포 가능한 실행 조합은 `0.1.17`입니다. Python·Worker·Detector·Embedder·판정 정책·Catalog·Windows ProductVersion은 `0.1.17`, 두 Flutter 앱은 `0.1.17+20`입니다.
+기준은 [configs/versions/0.1.17.json](configs/versions/0.1.17.json)입니다.
 
-0.1.17의 `ssdlite-margin-dense-20260908` 모델·Catalog·승인 정책을 유지합니다. 학습에 넣지 않은
-확정 로그132장·1,096개 객체를 분석해 D-FINE 검출기2종과 실제 원본 비중을 높인 SSDLite 재학습을
-비교했지만, 정답 승인 감소나 기존 원본의 새 오승인이 생겨 세 모델 변경을 모두 제외했습니다.
+사용자가 지정한 현재 1등 `ssdlite-margin-dense-20260908`을 배포합니다. 정정본 단일 200장·다중 100장·배경 2장과 649개 객체를 사용하며, 겹친 객체를 하나로 검출한 ROI의 승인을 막는 head를 추가했습니다.
+같은 실물 개발 진단은 올바른 승인 645/649(99.38%), 오승인 0건, 실제 다중 이미지 CPU HTTP full-path p95 최악 159.32ms입니다. 최종 300장 성적으로 표현하지 않습니다.
 
-0.1.18은 CPU에서 사용하지 않는 모델의 대기 스레드가 자원을 점유하지 않도록 합니다.
-로그132장 교차 HTTP 측정3회에서 상태·품목 순위가 모두 같고 p95가약59~64% 줄었습니다.
-로그 정답 승인은1,082/1,096(98.72%)·오승인4건, 기존 원본은645/649(99.38%)·오승인0건으로 같습니다.
-같은 실물을 다른 장면에서 촬영한 데이터이며 독립 실물 일반화 성적으로 표현하지 않습니다.
+최종 배포 EXE의 300장 평가는 CPU·CUDA 각각 3회 모두 **1,352/1,410(95.89%)·오승인 4건**입니다. CPU HTTP p95는 **318.42 / 304.29 / 316.19ms**로 세 목표에 미달했습니다. 평가 후 모델·임계값은 변경하지 않았습니다.
 
-[0.1.17 대비 변경과 검증](docs/architecture/scanner-0.1.18.md)에 비교 기준·회귀·미달 사항을 기록합니다.
-최종 배포 EXE의 고정300장 CPU·CUDA 각3회도 정답1,352/1,410(95.89%)·오승인4건으로 같습니다.
-CPU p95는 기존302.53/331.87/307.88ms에서170.49/172.30/169.96ms로 감소했습니다.
-정확도99%·오승인0의 동시 목표는 미달입니다. 배포 파일과 상세 결과는
-`artifacts/distributions/0.1.18/README.md`에 정리합니다.
+[0.1.16 대비 변경과 실행 장치 지원](docs/architecture/scanner-0.1.17.md)에 학습 원본·모델·CPU 설정·성능 범위를 정리했습니다.
 배포본은 CPU 설치본·Lite·SDK와 CUDA portable 앱으로 구성하며 같은 ONNX·Catalog·정책을 사용합니다.
 
 ## 판정 계약
@@ -57,7 +49,7 @@ CPU p95는 기존302.53/331.87/307.88ms에서170.49/172.30/169.96ms로 감소했
 정정본 학습·비교 과정은 [three_bakery 실행 기록](docs/experiments/three-bakery-training.md)을 참조합니다.
 정확도 목표는 전체 GT 객체 기준 99% 이상, 오승인 0건, CPU HTTP p95 300ms 이하입니다.
 최종 300장·1,410개 GT에서는 1,396개 이상 올바른 APPROVED를 요구합니다. 누락·UNKNOWN·재촬영·ERROR도 분모에 남습니다.
-0.1.18은 이전 모델을 유지하며, 로그 미사용 학습·개선 비교는 [개선 기록](docs/experiments/log-improvement-0.1.18.md)에 보존합니다.
+현재 1등 후보는 사용자 요청에 따라 0.1.17로 복사했으며, 추가 seed 실험은 별도로 보존합니다.
 
 Worker는 이미지마다 다음 중 정확히 하나를 반환합니다.
 
@@ -67,7 +59,7 @@ Worker는 이미지마다 다음 중 정확히 하나를 반환합니다.
 - `ERROR`: 입력, 구성, 모델 또는 시스템 오류
 
 `ERROR`를 재촬영으로 변환하지 않습니다. Detector 조기 종료로 classifier를 실행하지 않은 경우
-classifier·Catalog 계열 버전은 `null`입니다. 나머지 공개 non-null 버전은 모두 `0.1.18`입니다.
+classifier·Catalog 계열 버전은 `null`입니다. 나머지 공개 non-null 버전은 모두 `0.1.17`입니다.
 공개 필드와 판정 순서는 [API 계약](docs/contracts/api.md)을 따릅니다.
 
 소스 Worker는 Detector/Classifier의 NaN·Inf 출력을 `MODEL_EXECUTION_FAILED` 5xx `ERROR`로
@@ -84,11 +76,11 @@ count-constrained Catalog 경로의 gate 이전 spatial+Top-3 exact 상한은 99
 그러나 held-fold label을 사용하지 않은 nested gate는 6장 중 1건, segment verifier를 추가한 gate는
 11장 중 4건의 오류가 발생해 둘 다 기각했습니다. 목표였던 오류 0건과 accepted coverage 10% 이상을
 동시에 충족한 후보는 없습니다. 중단된 center-heatmap 실험도 최종 OOF artifact가 없으므로 결과로
-간주하지 않습니다. 이 adaptive cascade는 활성 `0.1.18`에 반영하지 않았습니다. 설계, 완료·폐기·중단
+간주하지 않습니다. 이 adaptive cascade는 활성 `0.1.17`에 반영하지 않았습니다. 설계, 완료·폐기·중단
 결과와 재현 경로는 [DINOv3 adaptive cascade 실험](docs/experiments/adaptive-cascade-dinov3.md)에
 기록돼 있습니다.
 
-Runtime은 전수 verifier 호환 필드를 읽을 수 있지만 활성 0.1.18은
+Runtime은 전수 verifier 호환 필드를 읽을 수 있지만 활성 0.1.17은
 `verify_all_approved_candidates=false`, `unknown_recapture_on_any_verifier_rejection=false`를
 고정합니다. 단일 verifier 품질 실패를 재촬영으로 확대하지 않으며 최종 상태는 항상
 `DecisionPipeline`의 단일 정책에서 결정합니다.
@@ -98,17 +90,17 @@ Runtime은 전수 verifier 호환 필드를 읽을 수 있지만 활성 0.1.18�
 Python 3.11, Flutter stable, Visual Studio Windows C++ build tools와 Inno Setup 6을 사용합니다.
 
 ```powershell
-.\scripts\build_app.ps1 -Version 0.1.18 -PythonExecutable <CUDA-lock Python>
-.\scripts\build_worker.ps1 -PythonExecutable <CPU-lock Python> -OutputDirectory artifacts/versions/0.1.18/cpu-worker-build
-.\scripts\build_windows_installer.ps1 -Version 0.1.18 -VcRedistPath <vc_redist.x64.exe>
-.\scripts\build_external_sdk.ps1 -ModelVersion 0.1.18 -SdkVersion 1.1.2 -Package All
+.\scripts\build_app.ps1 -Version 0.1.17 -PythonExecutable <CUDA-lock Python>
+.\scripts\build_worker.ps1 -PythonExecutable <CPU-lock Python> -OutputDirectory artifacts/versions/0.1.17/cpu-worker-build
+.\scripts\build_windows_installer.ps1 -Version 0.1.17 -VcRedistPath <vc_redist.x64.exe>
+.\scripts\build_external_sdk.ps1 -ModelVersion 0.1.17 -SdkVersion 1.1.1 -Package All
 # CPU packaged smoke 후 실행
-.\scripts\build_lite.ps1 -Version 0.1.18
-bixolon bundle verify --config configs/versions/0.1.18.json
+.\scripts\build_lite.ps1 -Version 0.1.17
+bixolon bundle verify --config configs/versions/0.1.17.json
 ```
 
-최종 전달 폴더는 `artifacts/distributions/0.1.18`입니다. 전체 앱·Lite의 설치본과 portable ZIP,
-CPU Worker ZIP, CUDA portable ZIP, SDK Core 1.1.2·Store Model 0.1.18 ZIP 및 SHA-256을 모읍니다.
+최종 전달 폴더는 `artifacts/distributions/0.1.17`입니다. 전체 앱·Lite의 설치본과 portable ZIP,
+CPU Worker ZIP, CUDA portable ZIP, SDK Core 1.1.1·Store Model 0.1.17 ZIP 및 SHA-256을 모읍니다.
 개별 원본 산출물은 `artifacts/installers`, `artifacts/lite`, `artifacts/versions`, `artifacts/external-sdk`, `artifacts/store-models`에 보존합니다.
 
 CPU 설치본·Lite에는 Python, Flutter, CUDA, OpenVINO 별도 설치가 필요하지 않습니다.

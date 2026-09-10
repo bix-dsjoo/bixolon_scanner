@@ -1,0 +1,77 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.19",
+  "app_build": 22,
+  "source_date_epoch": 1788825600,
+  "source_candidate": "three-bakery-revised300-roi-integrity/ssdlite-margin-dense-20260908",
+  "runtime": {
+    "path": "artifacts/versions/0.1.17/source/runtime",
+    "manifest_sha256": "d55ab9e67080e0c368a91676288b5a939f72916da17bdcab0e24a58ee6cc1787"
+  },
+  "catalog": {
+    "path": "artifacts/versions/0.1.17/source/catalog",
+    "manifest_sha256": "d502a0d95193cc3b4bec4e23c3f251195736782d26d89fe70dc63f96d7d4d18a",
+    "store_id": "three_bakery"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/runtime/cuda-13.0-cudnn-9.13.1-win-x64",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/versions/0.1.17/source/evidence/base-comparison.json",
+      "sha256": "8aa6e7b858324118f5674b24df95ea950560962ad5596e11577c4bff22f7286b"
+    },
+    {
+      "path": "artifacts/versions/0.1.17/source/evidence/catalog-support.jsonl",
+      "sha256": "79b1924e549e7bf70d4669a7a94147030ee6b64f17113b75d26600a51163b5b4"
+    },
+    {
+      "path": "artifacts/versions/0.1.17/source/evidence/comparison-objects.json",
+      "sha256": "035815196d3780b0008ea04c5e864fed60757de7ae85f02e7d8b5e2050833c11"
+    },
+    {
+      "path": "artifacts/versions/0.1.17/source/evidence/cpu-profile.json",
+      "sha256": "d1ed8e786ca9596087fea74c5439ca5ed2d6fea6ffaab23cf95922bd0956b99d"
+    },
+    {
+      "path": "artifacts/versions/0.1.17/source/evidence/objective-revision.json",
+      "sha256": "02dc3830b29fb7595d5e6a8638bc9724bb9569336968a56f22a710c28e9058fc"
+    },
+    {
+      "path": "artifacts/versions/0.1.17/source/evidence/policy-revision.json",
+      "sha256": "16f8a356d8caaa175c094dff629b0815a191815cae0fbcc80ebc05be487c18d6"
+    },
+    {
+      "path": "artifacts/versions/0.1.17/source/evidence/selection.json",
+      "sha256": "19b0b6cc83f4bf74d5bb5ff3c8953dc240aca118f06277868deed1955c095f9c"
+    },
+    {
+      "path": "artifacts/versions/0.1.17/source/evidence/source-report.json",
+      "sha256": "a5de5fc9be5fe1f8cab0e0c9c7e38b2a3cfd875035d7e08ffbfa48692c8900bc"
+    },
+    {
+      "path": "artifacts/versions/0.1.17/source/evidence/worker-cpu.json",
+      "sha256": "48d34cd02f2cf7c28707d30d3e806a0abef6e55e45233050773756be65b09aca"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}

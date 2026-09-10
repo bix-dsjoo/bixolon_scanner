@@ -1,4 +1,4 @@
-BIXOLON Bakery AI Scanner 0.1.18 - Windows CPU Worker ZIP
+BIXOLON Bakery AI Scanner 0.1.17 - Windows CPU Worker ZIP
 ===============================================
 
 실행 방법

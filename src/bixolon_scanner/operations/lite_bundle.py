@@ -14,7 +14,7 @@ from bixolon_scanner.contracts.runtime_package_v2 import load_runtime_package_v2
 from bixolon_scanner.operations.version_bundle import load_version_config
 
 
-def prepare(root: Path, version: str = "0.1.18") -> dict:
+def prepare(root: Path, version: str = "0.1.17") -> dict:
     root = root.resolve()
     config = load_version_config(root / f"configs/versions/{version}.json")
     if config.version != version:
@@ -103,6 +103,6 @@ def verify(payload: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository-root", type=Path, required=True)
-    parser.add_argument("--version", default="0.1.18")
+    parser.add_argument("--version", default="0.1.17")
     args = parser.parse_args()
     print(json.dumps(prepare(args.repository_root, args.version)))
