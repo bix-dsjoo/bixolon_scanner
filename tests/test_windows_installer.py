@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -7,7 +8,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_windows_installer_uses_portable_cpu_worker_payload() -> None:
     build_script = (ROOT / "scripts" / "build_windows_installer.ps1").read_text(encoding="utf-8")
-    version_config = (ROOT / "configs" / "versions" / "0.2.0.json").read_text(encoding="utf-8")
+    version_config = (ROOT / "configs" / "versions" / "0.2.1.json").read_text(encoding="utf-8")
     inno_script = (ROOT / "installer" / "windows" / "BixolonBakeryAIScanner.iss").read_text(
         encoding="utf-8"
     )
@@ -39,7 +40,13 @@ def test_windows_installer_uses_portable_cpu_worker_payload() -> None:
     assert "$workerZipHashPath" in build_script
     assert "$renderedLauncher" in build_script
     assert "Get-FileHash -Algorithm SHA256" in build_script
-    assert "n100" not in version_config.lower()
+    # Hardware measurements may be provenance; they must not create a second
+    # product version or force the portable CPU installer onto a GPU provider.
+    config = json.loads(version_config)
+    assert config["version"] == "0.2.1"
+    assert "provider" not in config
+    assert "execution_profile" not in config
+    assert set(config["runtime"]) == {"path", "manifest_sha256"}
 
     for source in (launcher, worker_launcher):
         assert 'BIXOLON_PROVIDER = "cpu"' in source

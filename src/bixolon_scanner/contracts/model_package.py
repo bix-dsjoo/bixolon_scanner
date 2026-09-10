@@ -666,6 +666,7 @@ class QualityMetadata(BaseModel):
     duplicate_review_containment_threshold: float | None = Field(default=None, gt=0.0, le=1.0)
     multi_object_recapture_threshold: float | None = Field(default=None, gt=0.0, le=1.0)
     detector_segment_recapture_score_threshold: float | None = Field(default=None, gt=0.0, le=1.0)
+    detector_output_score_threshold: float | None = Field(default=None, gt=0.0, le=1.0)
     skip_low_score_classification: bool = False
     min_sharpness: float | None = Field(default=None, ge=0.0)
     min_mean_luminance: float | None = Field(default=None, ge=0.0, le=255.0)
@@ -674,6 +675,15 @@ class QualityMetadata(BaseModel):
 
     @model_validator(mode="after")
     def validate_luminance(self) -> "QualityMetadata":
+        if self.detector_output_score_threshold is not None and (
+            self.detector_segment_recapture_score_threshold is None
+            or self.detector_output_score_threshold
+            > self.detector_segment_recapture_score_threshold
+            or self.skip_low_score_classification
+        ):
+            raise ValueError(
+                "output filtering requires the local recapture threshold and cannot combine with local classification skip"
+            )
         if (
             self.skip_low_score_classification
             and self.detector_segment_recapture_score_threshold is None

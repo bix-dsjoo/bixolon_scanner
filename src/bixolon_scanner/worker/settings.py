@@ -18,10 +18,14 @@ class WorkerSettings(BaseSettings):
     provider: Literal["auto", "cuda", "cpu", "openvino", "openvino_gpu"] = "auto"
     embedder_provider: Literal["same", "directml", "openvino_gpu"] = "same"
     embedder_fallback_provider: Literal["none", "same"] = "none"
-    verifier_provider: Literal["same", "cpu"] = "same"
+    verifier_provider: Literal["same", "cpu", "openvino"] = "same"
+    reuse_verifier_embeddings: bool = True
+    parallel_verification: bool = False
     provider_execution_cpu_fallback: bool = False
     cuda_dll_dir: Path | None = None
     openvino_cache_dir: Path | None = None
+    openvino_gpu_precision: Literal["f32", "f16"] = "f32"
+    log_model_timings: bool = False
     cpu_detector_workers: int = Field(default=1, ge=1, le=4)
     cpu_detector_intra_op_threads: int = Field(default=0, ge=0)
     cpu_embedder_intra_op_threads: int = Field(default=0, ge=0)

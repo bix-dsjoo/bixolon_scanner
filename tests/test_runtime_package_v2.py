@@ -61,6 +61,26 @@ def test_classifier_verification_unknown_recapture_defaults_off_and_can_be_enabl
         )
 
 
+def test_batch_variants_require_checksum_and_reject_corruption(tmp_path):
+    payload = _metadata(tmp_path)
+    payload["embedder"].update(
+        fixed_batch_size=2,
+        batch_variants=[{"filename": "batch1.onnx", "batch_size": 1}],
+    )
+    variant = tmp_path / "batch1.onnx"
+    variant.write_bytes(b"variant")
+    metadata_path = tmp_path / "metadata.json"
+    metadata_path.write_text(json.dumps(payload))
+    with pytest.raises(PackageValidationError):
+        load_runtime_package_v2(tmp_path)
+    payload["checksums"]["batch1.onnx"] = sha256_file(variant)
+    metadata_path.write_text(json.dumps(payload))
+    assert load_runtime_package_v2(tmp_path).metadata.embedder.batch_variants[0].batch_size == 1
+    variant.write_bytes(b"corrupt")
+    with pytest.raises(PackageValidationError):
+        load_runtime_package_v2(tmp_path)
+
+
 def _metadata(root: Path) -> dict:
     (root / "detector.onnx").write_bytes(b"detector")
     (root / "embedder.onnx").write_bytes(b"embedder")
@@ -319,6 +339,43 @@ def test_classifier_resolution_fallback_requires_higher_resolution(tmp_path: Pat
         "fallback_on_unknown": True,
     }
 
+    with pytest.raises(ValidationError):
+        RuntimePackageV2Metadata.model_validate(payload)
+
+
+def test_cross_architecture_detail_requires_explicit_checksummed_catalog(tmp_path):
+    payload = _metadata(tmp_path)
+    payload["embedder"]["input_size"] = [192, 192]
+    fallback = {
+        **payload["embedder"],
+        "filename": "detail.onnx",
+        "input_size": [224, 224],
+        "embedder_id": "different-detail-space",
+    }
+    payload["classifier_resolution_fallback"] = {"embedder": fallback}
+    with pytest.raises(ValidationError, match="architecture"):
+        RuntimePackageV2Metadata.model_validate(payload)
+    payload["classifier_resolution_fallback"].update(
+        catalog_directory="detail-catalog", catalog_checksums_sha256="a" * 64
+    )
+    accepted = RuntimePackageV2Metadata.model_validate(payload)
+    assert accepted.classifier_resolution_fallback.embedder.embedder_id == "different-detail-space"
+
+
+@pytest.mark.parametrize(
+    "directory,digest",
+    [("../outside", "a" * 64), ("detail", None), (None, "a" * 64), ("detail", "bad")],
+)
+def test_separate_detail_catalog_rejects_incomplete_or_unsafe_reference(
+    tmp_path, directory, digest
+):
+    payload = _metadata(tmp_path)
+    payload["embedder"]["input_size"] = [192, 192]
+    payload["classifier_resolution_fallback"] = {
+        "embedder": {**payload["embedder"], "filename": "detail.onnx", "input_size": [224, 224]},
+        "catalog_directory": directory,
+        "catalog_checksums_sha256": digest,
+    }
     with pytest.raises(ValidationError):
         RuntimePackageV2Metadata.model_validate(payload)
 

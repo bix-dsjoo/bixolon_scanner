@@ -3,9 +3,21 @@
 여러 상품이 있는 JPEG/PNG 한 장을 판정하는 Windows 시스템입니다. ONNX Runtime Worker,
 PyTorch 학습·평가 도구와 Flutter 작업자 앱을 한 저장소에서 관리합니다.
 
+모델 구조를 비교하는 R4 실험은 [구조 실험 절차](docs/operations/n100-structural-experiments.md)에 기록합니다.
+새 primary와 기존 detail의 특징 공간이 다르면 `classifier_resolution_fallback.catalog_directory`와
+`catalog_checksums_sha256`로 별도 detail Catalog를 명시합니다. 모델·label·버전·checksum 불일치는
+시작 오류이며, 지정하지 않은 기존 구성은 같은 Catalog를 계속 사용합니다.
+
+N100 0.2.1 실험의 실측과 별도 Worker R3는
+[실험 문서](docs/operations/n100-matrix-optimization.md)에 기록합니다.
+R2 batch2는 로그 132장의 HTTP p95 920.7ms, 최대 1203.3ms로 전 요청 1초에는 미달했습니다.
+R3의 선택적 `batch_variants` metadata는 ROI 수에 맞는 정적 graph를 실행하며
+실제 객체·판정 정책·CPU fallback을 보존합니다. 정식 설치본과 실험 패키지는 별개입니다.
+
 ## Scanner Lite
 
-별도 제품 **BIXOLON Bakery AI Scanner Lite**는 `0.2.0` CPU Worker를 그대로 사용하며
+별도 제품 **BIXOLON Bakery AI Scanner Lite**는 `0.2.1` Worker를 포함하며 최종 N100 배포물은 GPU 분류와 CPU fallback을 사용합니다.
+
 카메라/파일 입력, 읽기 전용 결과, 자동 메타데이터 로그·내보내기만 제공한다.
 기존 앱의 화면이나 복잡한 기능을 숨겨 재사용하지 않는다. 디자인 token/theme·로고·폰트만 공유한다.
 Lite는 읽기 전용 검출 박스를 표시하고 카메라 상단 20%를 제거한 중앙 정사각형을 2048×2048로 변환하고 좌우 반전한다.
@@ -33,33 +45,33 @@ Scanner·Worker 번들과 별도의 로컬 촬영 유틸리티입니다.
 
 ## 현재 버전
 
-현재 배포 가능한 실행 조합은 `0.2.0`입니다. Python·Worker·Detector·Embedder·판정 정책·Catalog·Windows ProductVersion은 `0.2.0`, 두 Flutter 앱은 `0.2.0+23`입니다.
-기준은 [configs/versions/0.2.0.json](configs/versions/0.2.0.json)입니다.
+현재 배포 가능한 실행 조합은 `0.2.1`입니다. Python·Worker·Detector·Embedder·판정 정책·Catalog·Windows ProductVersion은 `0.2.1`, 두 Flutter 앱은 `0.2.1+24`입니다.
+기준은 [configs/versions/0.2.1.json](configs/versions/0.2.1.json)입니다.
 
-0.2.0은 D-FINE HGNetV2-S 640 class-agnostic detector와 기존 ConvNeXt-Tiny 192/224,
-선택적 Frozen ViT-B/16 160·회전 합의를 사용합니다. 낮은 점수의 후보 위치를 보존하면서
-해당 ROI를 SEGMENT_RECAPTURE로 제한해 미검출과 부분 객체 오승인을 함께 줄입니다.
-승인 임계값 0.8, detail/verifier 경계 0.85와 포함 중복 UNKNOWN 정책은 유지합니다.
+0.2.1 최종 구성은 D-FINE-S 640 CPU detector → **RepViT-M0.9 192 primary** →
+필요한 ROI만 DINOv3 ConvNeXt-Tiny 224 detail 및 독립 ViT-B/16 160 검증입니다.
+primary Catalog는 RepViT 특징으로 재생성했고 detail은 별도 DINO Catalog를 사용합니다.
+N100은 CPU 4스레드 검출 → Intel UHD GPU FP16 primary/detail → CPU 독립 검증과
+명시적 CPU fallback을 사용합니다. primary는 static batch 2/1로 실행합니다.
+검출 후보 context 0.025·출력 0.04, 승인·재촬영 정책과 공개 API는 유지합니다.
 
-로그132장·1,096개 객체는 모델 학습에 사용하지 않았지만 이번 후보·검출 임계값·지역 재촬영
-정책 선택에 사용했습니다. 독립 validation/test 성적으로 표현하지 않습니다.
-배포 Worker CPU/CUDA 3회는 각각 정답 APPROVED 1,078개(98.36%)·오승인0·미검출0이었습니다.
-추가 박스37개가 있으며 전체 상태는 APPROVED1,078·UNKNOWN17·SEGMENT_RECAPTURE38,
-완전 성공 이미지는99/132장입니다. 추가 재촬영 박스를 숨기지 않습니다.
+N100 실측 로그132 × 3회에서 GPU HTTP **p50 493.3 / p95 732.4 / p99 799.1 / 최대 949.8ms**,
+396/396건이 1초 이내였습니다. 모든 반복에서 정답 승인 **1,085/1,096**, 오승인0·미검출0,
+UNKNOWN9·SEGMENT_RECAPTURE18·추가 검출16입니다. CPU 전용은396건 중4건이1초를 넘었습니다.
+기존 승인9개 개선·2개 손실, 별도 final300 기존 오승인4개와 독립 validation 부재를 남은 한계로 기록합니다.
+워밍업 후 고정 데이터셋의 실측이며 카메라·UI 전체 시간이나 다른 장면의 1초 보장이 아닙니다.
 
-CPU 배포본 HTTP p95는281.42/278.22/275.29ms로200ms 목표에 미달합니다. 현재 장비는 Core Ultra9 285K와
-RTX5080이며 N100 실측은 수행하지 않았습니다. N100 내장 Intel UHD용 별도 번들은 CPU검출 →
-GPU primary/detail → CPU Frozen ViT·후처리와 명시적 CPU fallback을 구성합니다.
-N100에서200ms를 달성했다고 주장하지 않습니다.
-
-[0.2.0 변경과 한계](docs/architecture/scanner-0.2.0.md),
-[학습·정책 비교 기록](docs/experiments/n100-0.2.0.md)에 근거를 기록합니다.
-배포 파일은 `artifacts/distributions/0.2.0/README-KO.md`, 최종 측정은 같은 폴더의 `RESULTS-KO.md`에 정리합니다.
+[최종 구성과 변경점](docs/architecture/scanner-0.2.1.md),
+[N100 최종 실측·한계](docs/experiments/n100-0.2.1.md),
+[현재 상태](docs/status/current.md)를 참조하십시오.
+최종 N100 설치본·Worker ZIP과 SHA-256은 `artifacts/distributions/0.2.1-final-n100`에 모읍니다.
+과거 실험 패키지와 이전 설치본은 최종 배포물과 구분하여 보존합니다.
 
 ## 판정 계약
 
-이번 목표는 로그132장 전체 GT 객체 중 정답 승인95% 이상(1,042/1,096), 오승인0건·미검출0건,
-HTTP 왕복 p95 200ms 이하입니다. 누락·UNKNOWN·재촬영·ERROR도 분모에 남습니다.
+이번 목표는 로그132장 전체 GT 객체 중 정답 승인1,078/1,096개 이상, 오승인0건·미검출0건,
+재촬영 최소화와 N100 GPU HTTP 전 요청 1초 이내입니다. 0.2.0 비교는 요청에서 제외했습니다.
+누락·UNKNOWN·재촬영·ERROR도 분모에 남습니다.
 과거 정정본 학습·비교 과정은 [three_bakery 실행 기록](docs/experiments/three-bakery-training.md)에 보존합니다.
 
 Worker는 이미지마다 다음 중 정확히 하나를 반환합니다.
@@ -70,7 +82,7 @@ Worker는 이미지마다 다음 중 정확히 하나를 반환합니다.
 - `ERROR`: 입력, 구성, 모델 또는 시스템 오류
 
 `ERROR`를 재촬영으로 변환하지 않습니다. Detector 조기 종료로 classifier를 실행하지 않은 경우
-classifier·Catalog 계열 버전은 `null`입니다. 나머지 공개 non-null 버전은 모두 `0.2.0`입니다.
+classifier·Catalog 계열 버전은 `null`입니다. 나머지 공개 non-null 버전은 모두 `0.2.1`입니다.
 공개 필드와 판정 순서는 [API 계약](docs/contracts/api.md)을 따릅니다.
 
 소스 Worker는 Detector/Classifier의 NaN·Inf 출력을 `MODEL_EXECUTION_FAILED` 5xx `ERROR`로
@@ -87,11 +99,11 @@ count-constrained Catalog 경로의 gate 이전 spatial+Top-3 exact 상한은 99
 그러나 held-fold label을 사용하지 않은 nested gate는 6장 중 1건, segment verifier를 추가한 gate는
 11장 중 4건의 오류가 발생해 둘 다 기각했습니다. 목표였던 오류 0건과 accepted coverage 10% 이상을
 동시에 충족한 후보는 없습니다. 중단된 center-heatmap 실험도 최종 OOF artifact가 없으므로 결과로
-간주하지 않습니다. 이 adaptive cascade는 활성 `0.2.0`에 반영하지 않았습니다. 설계, 완료·폐기·중단
+간주하지 않습니다. 이 adaptive cascade는 활성 `0.2.1`에 반영하지 않았습니다. 설계, 완료·폐기·중단
 결과와 재현 경로는 [DINOv3 adaptive cascade 실험](docs/experiments/adaptive-cascade-dinov3.md)에
 기록돼 있습니다.
 
-Runtime은 전수 verifier 호환 필드를 읽을 수 있지만 활성 0.2.0은
+Runtime은 전수 verifier 호환 필드를 읽을 수 있지만 활성 0.2.1은
 `verify_all_approved_candidates=false`, `unknown_recapture_on_any_verifier_rejection=false`를
 고정합니다. 단일 verifier 품질 실패를 재촬영으로 확대하지 않으며 최종 상태는 항상
 `DecisionPipeline`의 단일 정책에서 결정합니다.
@@ -101,17 +113,17 @@ Runtime은 전수 verifier 호환 필드를 읽을 수 있지만 활성 0.2.0은
 Python 3.11, Flutter stable, Visual Studio Windows C++ build tools와 Inno Setup 6을 사용합니다.
 
 ```powershell
-.\scripts\build_app.ps1 -Version 0.2.0 -PythonExecutable <CUDA-lock Python>
-.\scripts\build_worker.ps1 -PythonExecutable <CPU-lock Python> -OutputDirectory artifacts/versions/0.2.0/cpu-worker-build
-.\scripts\build_windows_installer.ps1 -Version 0.2.0 -VcRedistPath <vc_redist.x64.exe>
-.\scripts\build_external_sdk.ps1 -ModelVersion 0.2.0 -SdkVersion 1.2.0 -Package All
+.\scripts\build_app.ps1 -Version 0.2.1 -PythonExecutable <CUDA-lock Python>
+.\scripts\build_worker.ps1 -PythonExecutable <CPU-lock Python> -OutputDirectory artifacts/versions/0.2.1/cpu-worker-build
+.\scripts\build_windows_installer.ps1 -Version 0.2.1 -VcRedistPath <vc_redist.x64.exe>
+.\scripts\build_external_sdk.ps1 -ModelVersion 0.2.1 -SdkVersion 1.2.1 -Package All
 # CPU packaged smoke 후 실행
-.\scripts\build_lite.ps1 -Version 0.2.0
-bixolon bundle verify --config configs/versions/0.2.0.json
+.\scripts\build_lite.ps1 -Version 0.2.1
+bixolon bundle verify --config configs/versions/0.2.1.json
 ```
 
-최종 전달 폴더는 `artifacts/distributions/0.2.0`입니다. 전체 앱·Lite의 설치본과 portable ZIP,
-CPU Worker ZIP, CUDA portable ZIP, SDK Core 1.2.0·Store Model 0.2.0 ZIP 및 SHA-256을 모읍니다.
+최종 전달 폴더는 `artifacts/distributions/0.2.1`입니다. 전체 앱·Lite의 설치본과 portable ZIP,
+CPU Worker ZIP, CUDA portable ZIP, SDK Core 1.2.1·Store Model 0.2.1 ZIP 및 SHA-256을 모읍니다.
 개별 원본 산출물은 `artifacts/installers`, `artifacts/lite`, `artifacts/versions`, `artifacts/external-sdk`, `artifacts/store-models`에 보존합니다.
 
 CPU 설치본·Lite에는 Python, Flutter, CUDA, OpenVINO 별도 설치가 필요하지 않습니다.
@@ -237,3 +249,24 @@ detail 또는 회전·ViT 합의로 이 재촬영을 다시 승인하지 않는�
 현재 재학습의 사용자 목표는 전체 GT 객체 기준 정답 승인율 99% 이상·오승인 0건·CPU HTTP
 p95 300ms 이하다. 이미지 전체 성공률은 참고 진단이며, 누락·UNKNOWN·재촬영 객체도 GT 분모에
 남긴다. 목표 설정은 `configs/experiments/bread/three_bakery_objective.json`에 기록한다.
+
+
+### N100 1초 목표 최적화 실험
+
+N100 실측 결과를 바탕으로 고정 배치와 GPU FP16을 평가하는 절차는
+[최적화 실험 안내](docs/operations/n100-latency-optimization.md)를 참고하십시오.
+`BIXOLON_OPENVINO_GPU_PRECISION=f16`은 GPU에만 적용하는 명시적 옵션이며 기본값은 `f32`입니다.
+CPU 검출·CPU verifier·CPU fallback의 정밀도는 유지합니다.
+정적 배치 후보에서도 모든 선택 ROI의 논리적 batch와 이웃 마스크 문맥을 유지하며,
+ONNX 호출만 고정 크기로 나누고 마지막 padding은 결과에서 제거합니다.
+`BIXOLON_LOG_MODEL_TIMINGS=true`는 요청 ID별 모델 호출 시간·배치 크기 진단을 활성화합니다.
+이미지나 모델 출력은 기록하지 않습니다. 제품 기본 설정은 진단을 끈 상태입니다.
+
+후속 [N100 전체 파이프라인 실험 R2](docs/operations/n100-matrix-optimization.md)는
+요청 내 독립 verifier 임베딩 재사용, CPU/GPU 검증 동시 실행, INT8 검증 모델,
+CPU/GPU 배치와 CPU Runtime 버전을 비교합니다. `BIXOLON_REUSE_VERIFIER_EMBEDDINGS`는
+같은 요청의 완전히 같은 입력만 재사용하며 기본값은 true입니다.
+`BIXOLON_PARALLEL_VERIFICATION=true`는 독립 CPU와 GPU 검증을 동시에 계산하되
+모든 증거를 기다린 후 기존 판정 정책을 적용합니다. 기본값은 false입니다.
+`BIXOLON_VERIFIER_PROVIDER=openvino`는 CPU FP32 검증용 선택지입니다.
+실험은 별도 Worker로 실행하며 정식 설치본 교체나 N100 1초 달성을 의미하지 않습니다.

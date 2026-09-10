@@ -6,17 +6,19 @@ from pathlib import Path
 import numpy as np
 from PIL import Image
 
-from ..contracts.catalog import StoreCatalogPackage, load_store_catalog_package
-from ..contracts.errors import ModelExecutionError
+from ..contracts.catalog import StoreCatalogPackage, load_store_catalog_package, sha256_file
+from ..contracts.errors import ModelExecutionError, PackageValidationError
 from ..contracts.model_package import (
     ClassifierMetadata,
     ClassLabel,
     NeighborMaskClassifierMetadata,
     NeighborMaskClassifierView,
 )
+from ..contracts.package_files import resolve_package_file
 from ..contracts.runtime_package_v2 import RuntimePackageV2, RuntimePackageV2Metadata
 from ..pipeline.ports import ClassificationResult, Detection
 from .imaging import image_original_size
+from .inference_cache import exact_embedding
 from .onnx import (
     OrtRunner,
     apply_classifier_background_masks,
@@ -25,6 +27,7 @@ from .onnx import (
     prepare_rgb,
 )
 from .onnx_session import ExecutionProvider
+from .parallel_inference import verification_pair
 
 
 def l2_normalize(values: np.ndarray) -> np.ndarray:
@@ -97,7 +100,10 @@ class OnnxEmbedder:
         *,
         cpu_intra_op_threads: int = 0,
         openvino_cache_dir: Path | None = None,
+        openvino_gpu_precision: str = "f32",
+        reuse_within_request: bool = False,
     ):
+        self.reuse_within_request = reuse_within_request
         self.metadata = package.metadata.embedder
         self.runner = OrtRunner(
             package.embedder_path,
@@ -105,8 +111,23 @@ class OnnxEmbedder:
             cuda_dll_dir,
             cpu_intra_op_threads=cpu_intra_op_threads,
             openvino_cache_dir=openvino_cache_dir,
+            openvino_gpu_precision=openvino_gpu_precision,
         )
-        self.transform = load_metric_transform(package)
+        self.batch_runners = {}
+        try:
+            for variant in getattr(self.metadata, "batch_variants", []):
+                self.batch_runners[variant.batch_size] = OrtRunner(
+                    resolve_package_file(package.root, variant.filename),
+                    provider,
+                    cuda_dll_dir,
+                    cpu_intra_op_threads=cpu_intra_op_threads,
+                    openvino_cache_dir=openvino_cache_dir,
+                    openvino_gpu_precision=openvino_gpu_precision,
+                )
+            self.transform = load_metric_transform(package)
+        except Exception:
+            self.close()
+            raise
         self.version = self.metadata.version
 
     def warmup(self) -> None:
@@ -119,13 +140,16 @@ class OnnxEmbedder:
             if self.runner.accelerated
             else [1]
         )
-        for batch_size in batch_sizes:
-            inference_batch_size = batch_size * self._view_count
+        warmups = [(size, self.runner) for size in batch_sizes]
+        warmups.extend(sorted(getattr(self, "batch_runners", {}).items()))
+        for batch_size, runner in warmups:
+            # A static graph's declared batch is the number of forward rows, not ROIs.
+            inference_batch_size = batch_size if fixed_batch_size else batch_size * self._view_count
             output_names = [self.metadata.output_name]
             integrity_output = getattr(self.metadata, "multi_object_output_name", None)
             if integrity_output is not None:
                 output_names.append(integrity_output)
-            outputs = self.runner.run(
+            outputs = runner.run(
                 output_names,
                 self.metadata.input_name,
                 np.zeros((inference_batch_size, 3, height, width), dtype=np.float32),
@@ -135,6 +159,29 @@ class OnnxEmbedder:
 
     def close(self) -> None:
         self.runner.close()
+        for runner in getattr(self, "batch_runners", {}).values():
+            runner.close()
+
+    def _inference_chunks(self, values: np.ndarray):
+        """Keep all rows in order; select static graphs using only remaining batch size."""
+        fixed = getattr(self.metadata, "fixed_batch_size", None)
+        if fixed is None:
+            yield self.runner, np.ascontiguousarray(values), len(values)
+            return
+        runners = {fixed: self.runner, **getattr(self, "batch_runners", {})}
+        sizes = sorted(runners, reverse=True)
+        start = 0
+        while start < len(values):
+            remaining = len(values) - start
+            size = next((size for size in sizes if size <= remaining), sizes[-1])
+            chunk = values[start : start + size]
+            valid = len(chunk)
+            if valid < size:
+                chunk = np.concatenate(
+                    [chunk, np.zeros((size - valid, *values.shape[1:]), dtype=np.float32)]
+                )
+            yield runners[size], np.ascontiguousarray(chunk), valid
+            start += valid
 
     @property
     def _horizontal_flip_tta(self) -> bool:
@@ -212,17 +259,10 @@ class OnnxEmbedder:
         if self._rotation_180_tta:
             views.append(values[:, :, ::-1, ::-1])
         combined = np.ascontiguousarray(np.concatenate(views))
-        chunk_size = self.metadata.fixed_batch_size or len(combined)
         embeddings, probabilities = [], []
-        for start in range(0, len(combined), chunk_size):
-            chunk = combined[start : start + chunk_size]
-            valid = len(chunk)
-            if valid < chunk_size:
-                chunk = np.concatenate(
-                    [chunk, np.zeros((chunk_size - valid, *values.shape[1:]), dtype=np.float32)]
-                )
+        for runner, chunk, valid in self._inference_chunks(combined):
             raw, scores = self._validate_integrity_outputs(
-                self.runner.run(
+                runner.run(
                     [self.metadata.output_name, output_name],
                     self.metadata.input_name,
                     np.ascontiguousarray(chunk),
@@ -237,33 +277,26 @@ class OnnxEmbedder:
         return np.asarray(raw, dtype=np.float32), np.asarray(scores, dtype=np.float32)
 
     def _run_raw_tensors(self, batch: np.ndarray) -> np.ndarray:
+        if getattr(self, "reuse_within_request", False):
+            return exact_embedding(self, batch, self._compute_raw_tensors)
+        return self._compute_raw_tensors(batch)
+
+    def _compute_raw_tensors(self, batch: np.ndarray) -> np.ndarray:
         values = batch.astype(np.float32, copy=False)
-        fixed_batch_size = getattr(self.metadata, "fixed_batch_size", None)
-        if fixed_batch_size is None:
-            (raw,) = self.runner.run(
+        if not len(values):
+            return np.empty((0, self.metadata.embedding_dimension), dtype=np.float32)
+        chunks: list[np.ndarray] = []
+        for runner, chunk, valid in self._inference_chunks(values):
+            (raw,) = runner.run(
                 [self.metadata.output_name],
                 self.metadata.input_name,
-                values,
+                chunk,
             )
             raw = np.asarray(raw, dtype=np.float32)
-        else:
-            chunks: list[np.ndarray] = []
-            for start in range(0, len(values), fixed_batch_size):
-                chunk = values[start : start + fixed_batch_size]
-                valid_count = len(chunk)
-                if valid_count < fixed_batch_size:
-                    padding = np.zeros(
-                        (fixed_batch_size - valid_count, *values.shape[1:]),
-                        dtype=np.float32,
-                    )
-                    chunk = np.concatenate((chunk, padding), axis=0)
-                (chunk_raw,) = self.runner.run(
-                    [self.metadata.output_name],
-                    self.metadata.input_name,
-                    np.ascontiguousarray(chunk),
-                )
-                chunks.append(np.asarray(chunk_raw, dtype=np.float32)[:valid_count])
-            raw = np.concatenate(chunks, axis=0)
+            if raw.shape != (len(chunk), self.metadata.embedding_dimension):
+                raise ValueError("embedder output shape does not match runtime metadata")
+            chunks.append(raw[:valid])
+        raw = np.concatenate(chunks, axis=0)
         if raw.shape != (len(batch), self.metadata.embedding_dimension):
             raise ValueError("embedder output shape does not match runtime metadata")
         if not np.isfinite(raw).all():
@@ -846,6 +879,7 @@ class ConsensusCatalogClassifier:
         verify_all_approved_candidates: bool = False,
         unknown_recapture_on_dual_verifier_rejection: bool = False,
         unknown_recapture_on_any_verifier_rejection: bool = False,
+        parallel_verification: bool = False,
     ):
         if not 0.0 <= ambiguity_maximum_approval_score <= 1.0:
             raise ValueError("classifier verification ambiguity score must be in [0, 1]")
@@ -866,6 +900,7 @@ class ConsensusCatalogClassifier:
         if len(append_only_counts) != 1:
             raise ValueError("consensus Catalogs differ in append-only base class count")
         self.primary = primary
+        self.parallel_verification = parallel_verification
         self.rotation = rotation
         self.independent = independent
         self.ambiguity_maximum_approval_score = ambiguity_maximum_approval_score
@@ -1124,12 +1159,6 @@ class ConsensusCatalogClassifier:
             return result
 
         rotated = np.ascontiguousarray(prepared[candidate_indices, :, ::-1, ::-1], dtype=np.float32)
-        rotated_raw = self.primary.embedder.embed_prepared_tensors_raw(rotated)
-        rotation_raw = np.asarray(
-            (primary_raw[candidate_indices] + rotated_raw) * np.float32(0.5),
-            dtype=np.float32,
-        )
-        rotation_result = self.rotation.classify_embeddings(rotation_raw, class_limit=class_limit)
         selected_detections = [detections[int(index)] for index in candidate_indices]
         if context_detections is None:
             verification_detections = detections
@@ -1144,7 +1173,16 @@ class ConsensusCatalogClassifier:
             verification_detections,
             verification_indices,
         )
-        independent_raw = self.independent.embedder.embed_prepared_tensors_raw(independent_prepared)
+        rotated_raw, independent_raw = verification_pair(
+            lambda: self.primary.embedder.embed_prepared_tensors_raw(rotated),
+            lambda: self.independent.embedder.embed_prepared_tensors_raw(independent_prepared),
+            parallel=self.parallel_verification,
+        )
+        rotation_raw = np.asarray(
+            (primary_raw[candidate_indices] + rotated_raw) * np.float32(0.5),
+            dtype=np.float32,
+        )
+        rotation_result = self.rotation.classify_embeddings(rotation_raw, class_limit=class_limit)
         independent_result = self.independent.classify_embeddings(
             independent_raw,
             selected_detections,
@@ -1396,25 +1434,30 @@ def build_catalog_classifier(
     *,
     cpu_intra_op_threads: int = 0,
     openvino_cache_dir: Path | None = None,
+    openvino_gpu_precision: str = "f32",
     verifier_provider: ExecutionProvider | None = None,
+    reuse_verifier_embeddings: bool = True,
+    parallel_verification: bool = False,
 ) -> tuple[
     OnnxCatalogClassifier | ConsensusCatalogClassifier | ResolutionFallbackCatalogClassifier,
     OnnxEmbedder,
 ]:
     """Build the primary Catalog classifier and its optional selective verifier."""
+    fallback_policy = runtime.metadata.classifier_resolution_fallback
+    fallback_catalog = load_resolution_fallback_catalog(runtime, catalog)
     primary_embedder = OnnxEmbedder(
         runtime,
         provider,
         cuda_dll_dir,
         cpu_intra_op_threads=cpu_intra_op_threads,
         openvino_cache_dir=openvino_cache_dir,
+        openvino_gpu_precision=openvino_gpu_precision,
     )
     primary = OnnxCatalogClassifier(runtime, catalog, primary_embedder)
     verification = runtime.metadata.classifier_verification
     catalog_has_verification = catalog.metadata.verification is not None
     if (verification is None) != (not catalog_has_verification):
         raise ValueError("Runtime and Catalog classifier verification contracts differ")
-    fallback_policy = runtime.metadata.classifier_resolution_fallback
     fallback_runtime = (
         None if fallback_policy is None else classifier_fallback_runtime_package(runtime)
     )
@@ -1427,12 +1470,13 @@ def build_catalog_classifier(
             cuda_dll_dir,
             cpu_intra_op_threads=cpu_intra_op_threads,
             openvino_cache_dir=openvino_cache_dir,
+            openvino_gpu_precision=openvino_gpu_precision,
         )
     )
     fallback_primary = (
         None
         if fallback_runtime is None or fallback_embedder is None
-        else OnnxCatalogClassifier(fallback_runtime, catalog, fallback_embedder)
+        else OnnxCatalogClassifier(fallback_runtime, fallback_catalog, fallback_embedder)
     )
     if verification is None:
         if fallback_primary is None or fallback_embedder is None or fallback_policy is None:
@@ -1456,6 +1500,12 @@ def build_catalog_classifier(
         catalog.independent_catalog_root,
         expected_store_id=catalog.metadata.store_id,
     )
+    fallback_rotation_catalog = rotation_catalog
+    if fallback_catalog is not catalog:
+        fallback_rotation_catalog = load_store_catalog_package(
+            fallback_catalog.rotation_catalog_root,
+            expected_store_id=catalog.metadata.store_id,
+        )
     independent_runtime = verification_runtime_package(runtime)
     independent_embedder = OnnxEmbedder(
         independent_runtime,
@@ -1463,6 +1513,8 @@ def build_catalog_classifier(
         cuda_dll_dir,
         cpu_intra_op_threads=cpu_intra_op_threads,
         openvino_cache_dir=openvino_cache_dir,
+        openvino_gpu_precision=openvino_gpu_precision,
+        reuse_within_request=reuse_verifier_embeddings,
     )
     independent_classifier = OnnxCatalogClassifier(
         independent_runtime,
@@ -1473,6 +1525,11 @@ def build_catalog_classifier(
         primary,
         OnnxCatalogClassifier(runtime, rotation_catalog, primary_embedder),
         independent_classifier,
+        parallel_verification=(
+            parallel_verification
+            and provider in {"openvino_gpu", "cuda", "directml"}
+            and verifier_provider in {"cpu", "openvino"}
+        ),
         ambiguity_maximum_approval_score=verification.ambiguity_maximum_approval_score,
         verify_all_approved_candidates=verification.verify_all_approved_candidates,
         unknown_recapture_on_dual_verifier_rejection=(
@@ -1493,10 +1550,11 @@ def build_catalog_classifier(
             fallback_primary,
             OnnxCatalogClassifier(
                 fallback_runtime,
-                rotation_catalog,
+                fallback_rotation_catalog,
                 fallback_embedder,
             ),
             independent_classifier,
+            parallel_verification=classifier.parallel_verification,
             ambiguity_maximum_approval_score=verification.ambiguity_maximum_approval_score,
             verify_all_approved_candidates=verification.verify_all_approved_candidates,
             unknown_recapture_on_dual_verifier_rejection=(
@@ -1517,3 +1575,70 @@ def build_catalog_classifier(
             resolution_fallback_metadata=fallback_policy,
         )
     return classifier, primary_embedder
+
+
+def load_resolution_fallback_catalog(
+    runtime: RuntimePackageV2, catalog: StoreCatalogPackage
+) -> StoreCatalogPackage:
+    """Validate a distinct detail feature space before allocating any model session."""
+    policy = runtime.metadata.classifier_resolution_fallback
+    if policy is None or policy.catalog_directory is None:
+        return catalog
+    root = (catalog.root / policy.catalog_directory).resolve()
+    try:
+        root.relative_to(catalog.root.resolve())
+        if root == catalog.root.resolve():
+            raise ValueError("fallback Catalog cannot refer to its parent")
+        if sha256_file(root / "checksums.json") != policy.catalog_checksums_sha256:
+            raise ValueError("fallback Catalog checksum mismatch")
+        fallback = load_store_catalog_package(root, expected_store_id=catalog.metadata.store_id)
+        if (
+            fallback.metadata.embedder_id != policy.embedder.embedder_id
+            or fallback.metadata.embedder_version != policy.embedder.version
+            or fallback.metadata.embedding_dimension != policy.embedder.embedding_dimension
+            or fallback.metadata.catalog_version != catalog.metadata.catalog_version
+            or fallback.metadata.classifier_policy_version
+            != catalog.metadata.classifier_policy_version
+            or [label.class_id for label in fallback.metadata.labels]
+            != [label.class_id for label in catalog.metadata.labels]
+            or (fallback.metadata.verification is None) != (catalog.metadata.verification is None)
+        ):
+            raise ValueError("fallback Catalog feature space, labels or version mismatch")
+        if catalog.metadata.verification is not None:
+            primary_verifier = load_store_catalog_package(
+                catalog.independent_catalog_root, expected_store_id=catalog.metadata.store_id
+            )
+            detail_verifier = load_store_catalog_package(
+                fallback.independent_catalog_root, expected_store_id=catalog.metadata.store_id
+            )
+            payload_paths = (
+                "supports_path",
+                "prototypes_path",
+                "statistics_path",
+                "source_manifest_path",
+                "adapter_path",
+            )
+            if (
+                primary_verifier.metadata != detail_verifier.metadata
+                or any(
+                    (getattr(primary_verifier, field) is None)
+                    != (getattr(detail_verifier, field) is None)
+                    or (
+                        getattr(primary_verifier, field) is not None
+                        and sha256_file(getattr(primary_verifier, field))
+                        != sha256_file(getattr(detail_verifier, field))
+                    )
+                    for field in payload_paths
+                )
+                or primary_verifier.activation != detail_verifier.activation
+            ):
+                raise ValueError("detail path must retain the same independent verifier")
+            load_store_catalog_package(
+                fallback.rotation_catalog_root, expected_store_id=catalog.metadata.store_id
+            )
+            load_store_catalog_package(
+                fallback.independent_catalog_root, expected_store_id=catalog.metadata.store_id
+            )
+        return fallback
+    except (OSError, ValueError) as exc:
+        raise PackageValidationError from exc

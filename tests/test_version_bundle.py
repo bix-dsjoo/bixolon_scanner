@@ -16,6 +16,7 @@ from bixolon_scanner.contracts.catalog import (
 from bixolon_scanner.operations.version_bundle import (
     VersionBundleConfig,
     _rewrite_catalog,
+    _rewrite_detail_catalog,
     _rewrite_runtime,
     prepare_version_bundle,
     verify_prepared_version,
@@ -201,6 +202,43 @@ def test_rewrite_runtime_relabels_resolution_fallback_embedder(tmp_path: Path) -
 
     rewritten = json.loads((target / "metadata.json").read_text(encoding="utf-8"))
     assert rewritten["classifier_resolution_fallback"]["embedder"]["version"] == "0.1.11"
+
+
+def test_detail_catalog_relabels_and_binds_checksum_without_changing_weights(tmp_path):
+    runtime = tmp_path / "runtime"
+    catalog = tmp_path / "catalog"
+    _write_runtime(runtime)
+    _write_catalog(catalog / "detail")
+    path = runtime / "metadata.json"
+    metadata = json.loads(path.read_text())
+    metadata["classifier_resolution_fallback"] = {
+        "catalog_directory": "detail",
+        "catalog_checksums_sha256": sha256_file(catalog / "detail/checksums.json"),
+    }
+    path.write_text(json.dumps(metadata))
+    original = (catalog / "detail/supports.bin").read_bytes()
+    _rewrite_detail_catalog(runtime, catalog, "0.2.1")
+    rewritten = json.loads(path.read_text())
+    detail = json.loads((catalog / "detail/catalog.json").read_text())
+    assert detail["catalog_version"] == "0.2.1"
+    assert detail["embedder_version"] == "0.2.1"
+    assert rewritten["classifier_resolution_fallback"]["catalog_checksums_sha256"] == sha256_file(
+        catalog / "detail/checksums.json"
+    )
+    assert (catalog / "detail/supports.bin").read_bytes() == original
+    assert not (catalog / "detail/signature.json").exists()
+
+
+@pytest.mark.parametrize("directory", ["../outside", "."])
+def test_detail_catalog_rewrite_rejects_escape_or_parent(tmp_path, directory):
+    runtime = tmp_path / "runtime"
+    _write_runtime(runtime)
+    path = runtime / "metadata.json"
+    metadata = json.loads(path.read_text())
+    metadata["classifier_resolution_fallback"] = {"catalog_directory": directory}
+    path.write_text(json.dumps(metadata))
+    with pytest.raises(ValueError):
+        _rewrite_detail_catalog(runtime, tmp_path / "catalog", "0.2.1")
 
 
 def test_version_bundle_rewrites_nested_detector_filename_references(tmp_path: Path) -> None:

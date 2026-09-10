@@ -1,5 +1,5 @@
 param(
-    [string]$Version = '0.2.0',
+    [string]$Version = '0.2.1',
     [string]$FlutterExecutable = 'C:/Users/OMEN/development/flutter/bin/flutter.bat',
     [string]$PythonExecutable = 'C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe'
 )
@@ -26,3 +26,10 @@ if ((Get-FileHash -LiteralPath $redist -Algorithm SHA256).Hash.ToLowerInvariant(
 $inno = Join-Path $env:LOCALAPPDATA 'Programs/Inno Setup 6/ISCC.exe'
 & $inno "/DAppVersion=$Version" "/DPayloadDir=$output/lite-payload" "/DOutputDir=$output" "/DVcRedistPath=$redist" "/DSetupIconPath=$root/apps/bakery_scanner_lite/windows/runner/resources/app_icon.ico" '/DN100Profile=1' (Join-Path $root 'installer/windows/BixolonBakeryAIScannerLite.iss')
 if ($LASTEXITCODE -ne 0) { throw 'N100 Setup build failed.' }
+$setup = Join-Path $output "BixolonBakeryAIScannerLite-$Version-N100-Setup.exe"
+$info = [System.Diagnostics.FileVersionInfo]::GetVersionInfo($setup)
+if ($info.ProductVersion.Trim() -ne $Version) { throw 'N100 Setup version mismatch.' }
+$hash = (Get-FileHash -LiteralPath $setup -Algorithm SHA256).Hash.ToLowerInvariant()
+[System.IO.File]::WriteAllText("$setup.sha256", "$hash  $([System.IO.Path]::GetFileName($setup))`n", [System.Text.UTF8Encoding]::new($false))
+Write-Host "N100 Setup: $setup"
+Write-Host "SHA-256: $hash"

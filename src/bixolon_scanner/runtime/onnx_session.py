@@ -8,6 +8,7 @@ import importlib.util
 import json
 import os
 import sys
+import time
 from pathlib import Path
 from typing import Literal, TypeAlias
 
@@ -18,6 +19,7 @@ from ..contracts.errors import (
     ProviderExecutionError,
     ProviderInitializationError,
 )
+from .inference_timing import active_inference_timings
 
 ExecutionProvider: TypeAlias = Literal[
     "cuda",
@@ -57,7 +59,11 @@ class OrtRunner:
         cuda_graph_output_shapes: dict[str, tuple[int, ...]] | None = None,
         cpu_intra_op_threads: int = 0,
         openvino_cache_dir: Path | None = None,
+        openvino_gpu_precision: Literal["f32", "f16"] = "f32",
     ):
+        self.model_name = model_path.name
+        if openvino_gpu_precision not in {"f32", "f16"}:
+            raise ValueError("Unsupported OpenVINO GPU inference precision")
         if cpu_intra_op_threads < 0:
             raise ValueError("CPU intra-op thread count must be non-negative")
         try:
@@ -169,7 +175,7 @@ class OrtRunner:
                         {
                             "PERFORMANCE_HINT": "LATENCY",
                             "NUM_STREAMS": "1",
-                            "INFERENCE_PRECISION_HINT": "f32",
+                            "INFERENCE_PRECISION_HINT": openvino_gpu_precision,
                         }
                     )
                 if provider == "openvino":
@@ -238,6 +244,29 @@ class OrtRunner:
         return self.run_inputs(output_names, {input_name: tensor})
 
     def run_inputs(
+        self, output_names: list[str], inputs: dict[str, np.ndarray]
+    ) -> list[np.ndarray]:
+        calls = active_inference_timings()
+        if calls is None:
+            return self._run_inputs(output_names, inputs)
+        started = time.perf_counter()
+        succeeded = False
+        try:
+            result = self._run_inputs(output_names, inputs)
+            succeeded = True
+            return result
+        finally:
+            calls.append(
+                {
+                    "model": self.model_name,
+                    "provider": self.provider,
+                    "batch_size": int(next(iter(inputs.values())).shape[0]),
+                    "elapsed_ms": round((time.perf_counter() - started) * 1000, 3),
+                    "succeeded": succeeded,
+                }
+            )
+
+    def _run_inputs(
         self, output_names: list[str], inputs: dict[str, np.ndarray]
     ) -> list[np.ndarray]:
         try:

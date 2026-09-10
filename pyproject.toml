@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "bixolon-scanner"
-version = "0.2.0"
+version = "0.2.1"
 description = "Multi-item bread image decision worker"
 readme = "README.md"
 requires-python = ">=3.11,<3.14"
@@ -28,6 +28,7 @@ training = [
   "onnx>=1.17,<2",
   "torch>=2.6,<3",
   "torchvision>=0.21,<1",
+  "timm>=1.0.28,<2",
   "transformers>=4.49,<6",
 ]
 test = ["httpx>=0.28,<1", "pytest>=8.3,<10"]

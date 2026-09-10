@@ -1,0 +1,16 @@
+# BIXOLON Bakery AI Scanner 현재 상태
+
+활성 제품은 `0.2.1`, Flutter 앱은 `0.2.1+24`, SDK는1.2.1입니다.
+선택 모델은 `dfine-margin-dense-20260908-context-preserved-output040`입니다.
+0.2.0의 D-FINE 검출기와 이전 `ssdlite-margin-dense-20260908`의 분류기·Catalog 가중치를 유지합니다.
+0.025 이상 검출 후보를 이웃 마스크 context로 보존하고 0.04 이상 출력 ROI만 분류합니다.
+승인·재촬영 상태 정책을 변경하지 않으며 남은 ROI의 판정이 바뀌지 않아야 합니다.
+
+로그132장의 모델 학습 미사용 개발 진단에서 정답1,078/1,096(98.36%), 오승인0, 미검출0입니다.
+추가 박스16개와 UNKNOWN15·SEGMENT_RECAPTURE19가 있으며 이미지 완전 성공은108/132입니다.
+CPU·CUDA 각각 3회 교차 측정에서 모든 쌍의 p95가 0.2.0보다 개선됐습니다.
+N100 CPU→Intel UHD GPU→CPU 처리와 명시적 CPU fallback을 유지하며 실측은 개발 완료 이후 수행합니다.
+로그는 이번 정책 선택에 사용했으므로 독립 일반화 검증이 아닙니다.
+
+[버전 설정](../../configs/versions/0.2.1.json), [변경과 한계](../architecture/scanner-0.2.1.md),
+[실험 기록](../experiments/recapture-0.2.1.md)을 참조하십시오.

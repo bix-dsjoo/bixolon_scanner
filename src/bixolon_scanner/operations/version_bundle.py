@@ -243,6 +243,23 @@ def _rewrite_catalog(source: Path, target: Path, version: str) -> None:
     _rewrite_catalog_directory(target, version)
 
 
+def _rewrite_detail_catalog(runtime_path: Path, catalog_path: Path, version: str) -> None:
+    metadata_path = runtime_path / "metadata.json"
+    metadata = _read_json(metadata_path)
+    fallback = metadata.get("classifier_resolution_fallback")
+    if not fallback or not fallback.get("catalog_directory"):
+        return
+    detail = (catalog_path / fallback["catalog_directory"]).resolve()
+    detail.relative_to(catalog_path.resolve())
+    if detail == catalog_path.resolve():
+        raise ValueError("detail Catalog cannot refer to its parent")
+    if sha256_file(detail / "checksums.json") != fallback["catalog_checksums_sha256"]:
+        raise ValueError("source detail Catalog checksum mismatch")
+    _rewrite_catalog_directory(detail, version)
+    fallback["catalog_checksums_sha256"] = sha256_file(detail / "checksums.json")
+    _write_json(metadata_path, metadata)
+
+
 def _immutable_payload_hashes(root: Path, excluded: set[str]) -> list[str]:
     return sorted(
         sha256_file(path)
@@ -283,6 +300,9 @@ def _validate_composition(
         catalog_path,
         expected_store_id=config.catalog.store_id,
     )
+    from ..runtime.catalog import load_resolution_fallback_catalog
+
+    detail_catalog = load_resolution_fallback_catalog(runtime, catalog)
     versions = [
         runtime.metadata.worker_version,
         runtime.metadata.detector.version,
@@ -298,6 +318,12 @@ def _validate_composition(
     if runtime.metadata.classifier_resolution_fallback is not None:
         versions.append(runtime.metadata.classifier_resolution_fallback.embedder.version)
     auxiliary_catalogs = []
+    if detail_catalog.root != catalog.root:
+        auxiliary_catalogs.append(detail_catalog.root)
+        if detail_catalog.rotation_catalog_root is not None:
+            auxiliary_catalogs.append(detail_catalog.rotation_catalog_root)
+        if detail_catalog.independent_catalog_root is not None:
+            auxiliary_catalogs.append(detail_catalog.independent_catalog_root)
     if catalog.rotation_catalog_root is not None:
         auxiliary_catalogs.append(catalog.rotation_catalog_root)
     if catalog.independent_catalog_root is not None:
@@ -357,6 +383,7 @@ def prepare_version_bundle(
         cuda_target = temporary / "cuda-runtime"
         _rewrite_runtime(runtime_source, runtime_target, config.version)
         _rewrite_catalog(catalog_source, catalog_target, config.version)
+        _rewrite_detail_catalog(runtime_target, catalog_target, config.version)
         shutil.copytree(cuda_source, cuda_target)
         _assert_immutable_payloads(
             runtime_source,

@@ -116,6 +116,15 @@ def test_slow_decode_does_not_block_health_or_decode_waiting_requests(
             assert response.status_code == 500
             assert response.json()["status"] == "ERROR"
             assert client.get("/health/live").status_code == 200
+            # Windows Python 3.11's asyncio clock (GetTickCount64) can fire a
+            # timeout up to one 15.625ms tick before the perf_counter deadline
+            # used by readiness. Assert the overdue state after that deadline,
+            # while the deliberately blocked decode still owns the semaphore.
+            assert app.state.semaphore.locked()
+            assert app.state.inference_deadline is not None
+            remaining = app.state.inference_deadline - time.perf_counter()
+            if remaining > 0:
+                time.sleep(remaining + time.get_clock_info("monotonic").resolution)
             assert client.get("/health/ready").status_code == 503
             second = client.post("/v1/scan", files={"image": ("image.png", stream.getvalue())})
             assert second.status_code == 500

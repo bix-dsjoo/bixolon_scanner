@@ -19,6 +19,15 @@ from .model_package import (
 from .package_files import resolve_package_file, validate_package_filename
 
 
+class EmbedderBatchVariant(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    filename: str
+    batch_size: int = Field(ge=1)
+
+    _validate_filename = field_validator("filename")(validate_package_filename)
+
+
 class EmbedderMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -38,6 +47,7 @@ class EmbedderMetadata(BaseModel):
     resize_reducing_gap: float | None = Field(default=3.0, ge=1.0)
     warmup_batch_sizes: list[int] = Field(default_factory=lambda: [1, 3, 5, 8])
     fixed_batch_size: int | None = Field(default=None, ge=1)
+    batch_variants: list[EmbedderBatchVariant] = Field(default_factory=list)
     horizontal_flip_tta: bool = False
     rotation_180_tta: bool = False
     neighbor_mask: bool = True
@@ -45,6 +55,22 @@ class EmbedderMetadata(BaseModel):
     neighbor_shared_scale: bool = False
 
     _validate_filename = field_validator("filename")(validate_package_filename)
+
+    @model_validator(mode="after")
+    def validate_batch_variants(self) -> "EmbedderMetadata":
+        if not self.batch_variants:
+            return self
+        if self.fixed_batch_size is None:
+            raise ValueError("batch variants require a fixed primary batch")
+        sizes = [variant.batch_size for variant in self.batch_variants]
+        names = [self.filename, *(variant.filename for variant in self.batch_variants)]
+        if len(set(sizes)) != len(sizes) or any(size >= self.fixed_batch_size for size in sizes):
+            raise ValueError("batch variants must have unique sizes below the primary batch")
+        if len(set(names)) != len(names):
+            raise ValueError("batch variants must have distinct filenames")
+        if 1 not in sizes:
+            raise ValueError("batch variants require batch one to avoid padding")
+        return self
 
     @field_validator("version")
     @classmethod
@@ -360,6 +386,8 @@ class ClassifierResolutionFallbackMetadata(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     embedder: EmbedderMetadata
+    catalog_directory: str | None = None
+    catalog_checksums_sha256: str | None = None
     fallback_on_unknown: bool = True
     fallback_on_unsafe: bool = False
     selective_roi_only: bool = False
@@ -370,6 +398,12 @@ class ClassifierResolutionFallbackMetadata(BaseModel):
 
     @model_validator(mode="after")
     def validate_trigger(self) -> "ClassifierResolutionFallbackMetadata":
+        if (self.catalog_directory is None) != (self.catalog_checksums_sha256 is None):
+            raise ValueError("separate fallback Catalog requires both directory and checksum")
+        if self.catalog_directory is not None:
+            validate_package_filename(self.catalog_directory)
+            if not SHA256.fullmatch(self.catalog_checksums_sha256 or ""):
+                raise ValueError("fallback Catalog checksum must be lowercase SHA-256")
         if (
             not self.fallback_on_unknown
             and not self.fallback_on_unsafe
@@ -472,6 +506,14 @@ class RuntimePackageV2Metadata(BaseModel):
 
     @model_validator(mode="after")
     def validate_roi_integrity(self) -> "RuntimePackageV2Metadata":
+        output_score = self.quality.detector_output_score_threshold
+        if output_score is not None and (
+            output_score < self.detector.score_threshold
+            or self.detector_class_mode != "class_agnostic"
+        ):
+            raise ValueError(
+                "output score filtering requires class-agnostic context at a lower score threshold"
+            )
         output = self.embedder.multi_object_output_name
         threshold = self.quality.multi_object_recapture_threshold
         if (output is None) != (threshold is None):
@@ -530,7 +572,10 @@ class RuntimePackageV2Metadata(BaseModel):
                 )
             if fallback_embedder.version != self.embedder.version:
                 raise ValueError("classifier fallback embedder version must match the primary")
-            if fallback_embedder.embedder_id != self.embedder.embedder_id:
+            if (
+                fallback_embedder.embedder_id != self.embedder.embedder_id
+                and fallback.catalog_directory is None
+            ):
                 raise ValueError("classifier fallback must use the primary embedder architecture")
             if fallback_embedder.embedding_dimension != self.embedder.embedding_dimension:
                 raise ValueError("classifier fallback embedding dimension must match the primary")
@@ -590,6 +635,7 @@ def load_runtime_package_v2(root: Path) -> RuntimePackageV2:
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as exc:
         raise PackageValidationError from exc
     required = {metadata.detector.filename, metadata.embedder.filename}
+    embedders = [metadata.embedder]
     if metadata.detector.ensemble is not None:
         required.update(member.filename for member in metadata.detector.ensemble.members)
     if metadata.detector_refinement is not None:
@@ -599,12 +645,15 @@ def load_runtime_package_v2(root: Path) -> RuntimePackageV2:
     if metadata.metric_projection.filename is not None:
         required.add(metadata.metric_projection.filename)
     if metadata.classifier_verification is not None:
+        embedders.append(metadata.classifier_verification.independent_embedder)
         required.add(metadata.classifier_verification.independent_embedder.filename)
         verification_projection = metadata.classifier_verification.independent_metric_projection
         if verification_projection.filename is not None:
             required.add(verification_projection.filename)
     if metadata.classifier_resolution_fallback is not None:
+        embedders.append(metadata.classifier_resolution_fallback.embedder)
         required.add(metadata.classifier_resolution_fallback.embedder.filename)
+    required.update(variant.filename for entry in embedders for variant in entry.batch_variants)
     required.update(metadata.license_files)
     if set(metadata.checksums) != required:
         raise PackageValidationError

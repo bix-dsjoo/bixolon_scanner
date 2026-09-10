@@ -1,0 +1,19 @@
+# N100 0.2.1 실행·측정
+
+제품 0.2.1은 0.2.0의 CPU detector → Intel UHD GPU primary/detail → 선택적 CPU verifier와
+CPU fallback을 유지한다. ONNX Runtime OpenVINO 1.24.1, OpenVINO 2025.4.1을 사용한다.
+GPU 실행 오류가 발생한 요청은 ERROR이며 CPU 복구 이후 다음 요청부터 CPU로 실행한다.
+
+실제 N100 성능은 개발 완료 후 같은 장비·드라이버·provider에서 0.2.0과 비교한다.
+개발 PC 수치를 N100 결과로 사용하지 않는다. 두 Worker를 동시에 실행하지 않고,
+각각 준비 완료 후 로그132장을 warmup10·3회 반복한다. 제공된 `measure-n100.ps1`에
+이미지 디렉터리를 전달한다. 실제 readiness provider와 전환 기록도 함께 보존한다.
+fallback CPU 결과와 GPU 실행 결과를 같은 provider 결과로 합치지 않는다.
+
+동일 원본 SHA-256과 GT 1,096개를 사용해 응답을 평가한다. 목표는 정답 승인 1,078개 이상,
+오승인·미검출 0건, p95가 같은 장비·provider의 0.2.0보다 느려지지 않는 것이다.
+표본 수와 p50/p95/p99, 상태별 개수·오류를 모두 기록한다.
+현재 대상 N100 장비가 연결되지 않아 이 문서는 측정 절차이며 실측 성적이 아니다.
+
+검출 정책 변경과 잔여 실패는 `recapture-0.2.1.md`와 배포 검증 보고서를 참조한다.
+Checksum은 손상·변경 탐지이며 발행자 진위 인증은 제공하지 않는다.

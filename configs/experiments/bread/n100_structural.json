@@ -1,0 +1,43 @@
+{
+  "schema_version": "1.0",
+  "output": "artifacts/n100/structural-r4",
+  "source_work": "artifacts/retraining/three-bakery-revised300",
+  "source_recipe": "basic",
+  "source_seed": 20260908,
+  "runtime": "artifacts/versions/0.2.1/staging/runtime",
+  "catalog": "artifacts/versions/0.2.1/staging/catalog",
+  "integrity_samples": "artifacts/retraining/three-bakery-revised300-roi-integrity/roi-integrity/margin-basic-20260908/samples.jsonl",
+  "seed": 20260909,
+  "checkpoint_selection": "fixed_last_epoch_without_validation_selection",
+  "independent_validation_available": false,
+  "students": ["repvit_m0_9.dist_450e_in1k", "fastvit_t8.apple_in1k"],
+  "objectives": ["supervised", "distilled", "relational"],
+  "classifier": {
+    "epochs": 20,
+    "batch_size": 64,
+    "backbone_lr": 0.0001,
+    "head_lr": 0.001,
+    "weight_decay": 0.0001,
+    "class_count": 20,
+    "cosine_scale": 16.0,
+    "margin_weight": 4.0,
+    "margin_target": 0.9,
+    "distillation_scale": 8.0,
+    "distillation_weight": 1.0,
+    "relation_weight": 1.0,
+    "integrity_weight": 1.0
+  },
+  "detector": {
+    "repository": "artifacts/third_party/D-FINE",
+    "weights": "artifacts/third_party/D-FINE/pretrained/dfine_n_coco.pth",
+    "architecture": "dfine_hgnetv2_n_coco",
+    "epochs": 12,
+    "batch_size": 16,
+    "learning_rate": 0.0001,
+    "backbone_learning_rate": 0.00001,
+    "teacher_weight": 0.5,
+    "teacher_match_iou": 0.5
+  },
+  "shared_roi": {"pool_size": 3, "hidden_dimension": 256, "epochs": 100, "batch_size": 256, "learning_rate": 0.001},
+  "benchmark": {"batches": [1, 4, 8, 12], "warmup": 5, "repetitions": 30, "cpu_threads": 4}
+}

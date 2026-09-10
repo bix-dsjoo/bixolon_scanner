@@ -1,4 +1,4 @@
-BIXOLON Bakery AI Scanner 0.2.0 - Windows CPU 설치 안내
+BIXOLON Bakery AI Scanner 0.2.1 - Windows CPU 설치 안내
 =================================================
 
 지원 환경
@@ -30,5 +30,5 @@ Windows 기본 실행 구성
 - 제거해도 작업자가 저장한 스캔 기록과 원본 이미지는 자동 삭제하지 않습니다.
 
 버전
-- 제품, 앱 표시, Worker, Runtime, Catalog: 0.2.0
-- Flutter 내부 build: 0.2.0+23
+- 제품, 앱 표시, Worker, Runtime, Catalog: 0.2.1
+- Flutter 내부 build: 0.2.1+24

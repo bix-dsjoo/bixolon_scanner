@@ -1,7 +1,15 @@
 # Worker API 계약
 
-제품 `0.2.0` 외부 개발자용 빵 목록과 요청·응답 예시는
-[Worker 연동 명세](worker-integration-0.2.0.md)를 참조하십시오.
+제품 `0.2.1` 외부 개발자용 빵 목록과 요청·응답 예시는
+[Worker 연동 명세](worker-integration-0.2.1.md)를 참조하십시오.
+
+0.2.1은 검출 context와 출력 ROI를 구분한다. `detector.score_threshold` 0.025 이상의
+후보는 이웃 마스크·밀집도 판단에 보존하고, `quality.detector_output_score_threshold` 0.04
+이상만 분류 batch와 최종 segmentation 출력에 포함한다. 출력에서 빠지는 후보 때문에
+남은 ROI의 전처리·판정이 변하지 않아야 한다. 출력 후보가 하나도 없으면 classifier 실행 전
+IMAGE_RECAPTURE이며 미실행 classifier 계열 버전은 null이다. 기존 metadata에서 새 필드가
+없으면 이전 동작을 유지한다. 이 필드는 class-agnostic 단일 파이프라인 전용이며
+지역 재촬영 점수 이하로만 허용한다. 공개 응답 필드·enum·reason code는 바뀌지 않는다.
 
 ## Endpoint
 
@@ -11,7 +19,7 @@
 
 ## 응답
 
-0.2.0 N100 프로필은 CPU 검출, Intel GPU primary/detail와 CPU Frozen ViT 검증을 조립한다.
+0.2.1 N100 프로필은 CPU 검출, Intel GPU primary/detail와 CPU Frozen ViT 검증을 조립한다.
 GPU 초기화 또는 warmup 실패는 설정된 CPU fallback을 사용하고 실제 provider를 readiness에
 표시한다. 실행 중 GPU 장애가 난 요청은 5xx ERROR로 유지하며 CPU 재구성 이후 요청부터
 CPU를 사용한다. 재구성 중 또는 실패 후 readiness는 503이다. checksum·일반 모델 오류에는
@@ -21,7 +29,7 @@ CPU를 사용한다. 재구성 중 또는 실패 후 readiness는 503이다. che
 `detector_segment_recapture_score_threshold` 미만인 ROI를 승인하지 않고
 `SEGMENT_RECAPTURE_REQUIRED`로 반환한다. hard 촬영 품질의 IMAGE_RECAPTURE 조기 종료와
 기존 포함 중복 UNKNOWN 정책은 유지한다. 세부 설정과 개발 진단의 범위는
-[N100 실험 기록](../experiments/n100-0.2.0.md)에 기록한다.
+[N100 실험 기록](../experiments/n100-0.2.1.md)에 기록한다.
 
 최상위 응답은 `request_id`, `status`, `reason_codes`, `segmentations`, `processing_time_ms`, `worker_version`, `detector_version`, `classifier_version`을 포함합니다. 2.0의 additive nullable 필드는 `embedder_version`, `detector_policy_version`, `classifier_policy_version`, `catalog_version`입니다.
 
@@ -39,9 +47,9 @@ CPU를 사용한다. 재구성 중 또는 실패 후 readiness는 503이다. che
 
 1. 입력을 검증하고 decode합니다.
 2. Detector가 모든 segmentation 위치와 프레임 품질을 판단합니다.
-3. detector hard gate가 실패하면 classifier를 호출하지 않고 `IMAGE_RECAPTURE`와 공개 공통 reason `IMAGE_RECAPTURE_REQUIRED`를 반환합니다. `0.2.0`는 프레임 품질과 raw query의 근접·중복, 보강 증거가 있는 큰 제안을 이 단계에서 검사합니다. 큰 제안의 크기만으로는 재촬영하지 않습니다. 구체적인 detector 진단은 구조화 로그에만 남깁니다.
-4. 활성 `0.2.0`의 class-agnostic Detector는 SKU를 직접 승인하지 않습니다. 정상 ROI와
-   `classifier_confidence` 경계 ROI 전체를 DINOv3 ConvNeXt-Tiny 192에 한 batch로 전달합니다.
+3. detector hard gate가 실패하면 classifier를 호출하지 않고 `IMAGE_RECAPTURE`와 공개 공통 reason `IMAGE_RECAPTURE_REQUIRED`를 반환합니다. `0.2.1`는 프레임 품질과 raw query의 근접·중복, 보강 증거가 있는 큰 제안을 이 단계에서 검사합니다. 큰 제안의 크기만으로는 재촬영하지 않습니다. 구체적인 detector 진단은 구조화 로그에만 남깁니다.
+4. 활성 `0.2.1`의 class-agnostic Detector는 SKU를 직접 승인하지 않습니다. 정상 ROI와
+   `classifier_confidence` 경계 ROI 전체를 RepViT-M0.9 192의 정적 batch 2/1로 전달합니다.
 5. Runtime이
    `classifier_resolution_fallback`을 활성화하면 안전 경계 밖 ROI만 고해상도로 다시 분류하며,
    `selective_roi_only=true`이면 나머지 ROI의 결과를 보존합니다. 선택 crop도 전체 detection 문맥을
@@ -53,7 +61,7 @@ CPU를 사용한다. 재구성 중 또는 실패 후 readiness는 503이다. che
    경계는 provider와 관계없이 `BELOW_APPROVAL_THRESHOLD`로 정규화합니다.
 6. 전역 ambiguity 범위에 든 경계 승인 후보만 Frozen DINOv3 ViT-B/16 160 verifier로 검증합니다.
    활성 Runtime은 승인 후보 전수 검증과 단일 verifier 품질 거부 재촬영을 사용하지 않습니다.
-7. 실험 metadata에서 adaptive `UNKNOWN` detector refinement를 활성화한 경우에만, 큰 이미지의 초기 분류가 승인되지 않았고 품질 재촬영도 아닌 ROI를 전체 detector ensemble로 한 번 재검출한 뒤 다시 한 batch로 분류합니다. 이 단계는 detector hard gate를 우회하거나 `ERROR`를 판정 상태로 바꾸지 않습니다. 활성 `0.2.0` Runtime은 이 옵션을 사용하지 않습니다.
+7. 실험 metadata에서 adaptive `UNKNOWN` detector refinement를 활성화한 경우에만, 큰 이미지의 초기 분류가 승인되지 않았고 품질 재촬영도 아닌 ROI를 전체 detector ensemble로 한 번 재검출한 뒤 다시 한 batch로 분류합니다. 이 단계는 detector hard gate를 우회하거나 `ERROR`를 판정 상태로 바꾸지 않습니다. 활성 `0.2.1` Runtime은 이 옵션을 사용하지 않습니다.
 8. classifier 품질 클래스는 해당 ROI를 `SEGMENT_RECAPTURE`로 만들고 공개 공통
    reason `SEGMENT_RECAPTURE_REQUIRED`를 사용합니다.
 9. 경계 ROI의 Top-1 신뢰도가 승인 임계값 미만이면 해당 ROI를 `SEGMENT_RECAPTURE`로 만들고 같은 공통 reason을 사용합니다.
@@ -78,7 +86,7 @@ Catalog/Classifier 확장으로 처리하고, 새 SKU도 기존 `bread/object` �
 
 `classifier_verification.verify_all_approved_candidates`는 기본값이 `false`입니다. `true`이면 승인
 후보 전체를 verifier 대상으로 만듭니다. 과거 415장 진단에서 정답 승인율과 지연이 악화됐으며,
-활성 `0.2.0`도 선택 검증을 유지합니다. 이 옵션은 공개 schema나 상태 종류를 바꾸지 않습니다.
+활성 `0.2.1`도 선택 검증을 유지합니다. 이 옵션은 공개 schema나 상태 종류를 바꾸지 않습니다.
 
 `classifier_verification.unknown_recapture_on_dual_verifier_rejection`은 기본값이 `false`인 Runtime
 metadata 옵션입니다. 활성화된 후보에서만 primary 승인 차단 ROI의 회전·독립 verifier가 모두
@@ -89,7 +97,7 @@ metadata 옵션입니다. 활성화된 후보에서만 primary 승인 차단 ROI
 활성화하면 primary가 `UNKNOWN`이거나 verifier 불일치로 승인이 차단된 ROI에서 회전·독립
 verifier 중 하나만 품질 실패를 반환해도 `CLASSIFIER_TOP3_UNSAFE`
 `SEGMENT_RECAPTURE`로 반환합니다. dual 옵션과 any 옵션을 동시에 활성화하지 않으며,
-두 옵션 모두 활성 `0.2.0`의 판정 결과를 바꾸지 않습니다. 공개 reason code와 응답 schema는
+두 옵션 모두 활성 `0.2.1`의 판정 결과를 바꾸지 않습니다. 공개 reason code와 응답 schema는
 변경되지 않습니다.
 
 ## 오류와 보안

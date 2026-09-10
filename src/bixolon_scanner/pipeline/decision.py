@@ -67,6 +67,19 @@ class DecisionPipeline:
         self.catalog_version = catalog_version
         self.assisted_policy = assisted_policy
         self.detector_primary_classifier_routing = detector_primary_classifier_routing
+        if quality_metadata.detector_output_score_threshold is not None:
+            if (
+                assisted_policy is not None
+                or detector_primary_classifier_routing is not None
+                or count_verifier_metadata is not None
+            ):
+                raise ValueError(
+                    "context-preserving output filtering requires the class-agnostic pipeline without count assistance"
+                )
+            if not callable(getattr(classifier, "classify_selected", None)):
+                raise ValueError(
+                    "context-preserving output filtering requires selected ROI classification"
+                )
         if quality_metadata.skip_low_score_classification:
             if assisted_policy is not None or detector_primary_classifier_routing is not None:
                 raise ValueError("local recapture skip requires the class-agnostic pipeline")
@@ -124,6 +137,13 @@ class DecisionPipeline:
         ordered: list[Detection],
         detector_classes: list[int | None],
     ) -> ClassifierBatch:
+        if self.quality_metadata.detector_output_score_threshold is not None:
+            return self._classify_locally_certain(
+                image,
+                ordered,
+                threshold=self.quality_metadata.detector_output_score_threshold,
+                protect_containment=False,
+            )
         if self.quality_metadata.skip_low_score_classification:
             return self._classify_locally_certain(image, ordered)
         routing = self.detector_primary_classifier_routing
@@ -185,16 +205,28 @@ class DecisionPipeline:
         )
         return merge_selected_classifier_batch(base, selected, classifier_indices)
 
-    def _classify_locally_certain(self, image, ordered) -> ClassifierBatch:
-        threshold = self.quality_metadata.detector_segment_recapture_score_threshold
+    def _classify_locally_certain(
+        self,
+        image,
+        ordered,
+        *,
+        threshold=None,
+        protect_containment=True,
+    ) -> ClassifierBatch:
+        if threshold is None:
+            threshold = self.quality_metadata.detector_segment_recapture_score_threshold
         # Keep both sides of containment review: class agreement must still be measured.
-        protected = {
-            index
-            for pair in contained_detection_pairs(
-                ordered, self.quality_metadata.duplicate_review_containment_threshold
-            )
-            for index in pair
-        }
+        protected = (
+            {
+                index
+                for pair in contained_detection_pairs(
+                    ordered, self.quality_metadata.duplicate_review_containment_threshold
+                )
+                for index in pair
+            }
+            if protect_containment
+            else set()
+        )
         indices = np.asarray(
             [
                 i
@@ -615,6 +647,11 @@ class DecisionPipeline:
         detection_result = self.detector.detect(image)
         detector_ms = (time.perf_counter() - detector_started) * 1000.0
         reasons = quality_reasons(image, detection_result, self.quality_metadata)
+        output_score = self.quality_metadata.detector_output_score_threshold
+        if output_score is not None and not any(
+            detection.score >= output_score for detection in detection_result.detections
+        ):
+            reasons.append("DETECTOR_NO_OBJECT")
         if detection_result.uncertain_candidate_count:
             reasons.append("DETECTOR_UNCERTAIN_OBJECT")
         if self.count_verifier_metadata is not None:
@@ -841,6 +878,7 @@ class DecisionPipeline:
             border_indices=border_indices,
             duplicate_review_indices=duplicate_review_indices,
             detector_recapture_threshold=self.quality_metadata.detector_segment_recapture_score_threshold,
+            output_score_threshold=output_score,
         )
         response = ScanResponse(
             request_id=request_id,

@@ -31,6 +31,7 @@ def build_scan_items(
     border_indices: set[int],
     duplicate_review_indices: set[int],
     detector_recapture_threshold: float | None = None,
+    output_score_threshold: float | None = None,
 ) -> list[ScanItem]:
     """Apply the per-segmentation decision priority without changing batch order."""
 
@@ -45,7 +46,10 @@ def build_scan_items(
             batch.ranking_probabilities,
         )
     ):
-        ordinal = index + 1
+        # Keep all proposals in classification context; only omit weak output proposals.
+        if output_score_threshold is not None and detection.score < output_score_threshold:
+            continue
+        ordinal = len(items) + 1
         top1_index = int(indices[0])
         top1_score = float(scores[top1_index])
         label = metadata.labels[top1_index]

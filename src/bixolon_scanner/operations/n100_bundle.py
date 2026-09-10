@@ -9,6 +9,7 @@ from pathlib import Path
 from ..contracts.artifact import directory_content_manifest
 from ..contracts.catalog import load_store_catalog_package, sha256_file
 from ..contracts.runtime_package_v2 import load_runtime_package_v2
+from ..runtime.catalog import load_resolution_fallback_catalog
 from ..training.three_bakery_data import read_jsonl, write_json
 from .lite_bundle import verify as verify_manifest
 from .version_bundle import load_version_config
@@ -24,6 +25,7 @@ def prepare(root: Path, version: str) -> Path:
     )
     if runtime.metadata.worker_version != version or catalog.metadata.catalog_version != version:
         raise ValueError("N100 payload version mismatch")
+    load_resolution_fallback_catalog(runtime, catalog)
     for filename in (
         "openvino.dll",
         "openvino_intel_gpu_plugin.dll",
@@ -55,9 +57,8 @@ def prepare(root: Path, version: str) -> Path:
         / "openvino-2025.4.1.dist-info/licenses/LICENSE"
     )
     shutil.copy2(openvino_license, output / "licenses/OPENVINO-LICENSE.txt")
-    shutil.copy2(root / "docs/experiments/n100-0.2.0.md", output / "N100-KO.md")
+    shutil.copy2(root / f"docs/experiments/n100-{version}.md", output / "N100-KO.md")
     shutil.copy2(root / "installer/windows/start-n100-worker.ps1", output / "start-n100-worker.ps1")
-    shutil.copy2(root / "installer/windows/measure-n100.ps1", output / "measure-n100.ps1")
     write_json(
         output / "log132-image-sha256.json",
         {
@@ -70,7 +71,27 @@ def prepare(root: Path, version: str) -> Path:
         },
     )
     (output / "RUN-N100-WORKER.cmd").write_text(
-        '@echo off\r\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File "%~dp0start-n100-worker.ps1" %*\r\n',
+        "@echo off\nsetlocal\n"
+        'set "BIXOLON_PACKAGE_DIR=%~dp0worker\\model-package"\n'
+        'set "BIXOLON_CATALOG_DIR=%~dp0worker\\store-catalog"\n'
+        'set "BIXOLON_PROVIDER=cpu"\n'
+        'set "BIXOLON_EMBEDDER_PROVIDER=openvino_gpu"\n'
+        'set "BIXOLON_EMBEDDER_FALLBACK_PROVIDER=same"\n'
+        'set "BIXOLON_PROVIDER_EXECUTION_CPU_FALLBACK=true"\n'
+        'set "BIXOLON_VERIFIER_PROVIDER=cpu"\n'
+        'set "BIXOLON_CPU_DETECTOR_WORKERS=1"\n'
+        'set "BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS=4"\n'
+        'set "BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS=4"\n'
+        'set "BIXOLON_OPENVINO_GPU_PRECISION=f16"\n'
+        'set "BIXOLON_REUSE_VERIFIER_EMBEDDINGS=true"\n'
+        'set "BIXOLON_PARALLEL_VERIFICATION=true"\n'
+        'set "BIXOLON_LOG_MODEL_TIMINGS=true"\n'
+        'set "BIXOLON_LOG_TO_STDERR=1"\n'
+        'set "BIXOLON_HOST=127.0.0.1"\n'
+        'set "BIXOLON_PORT=8000"\n'
+        'if not "%~1"=="" set "BIXOLON_PORT=%~1"\n'
+        'set "BIXOLON_REQUEST_TIMEOUT_SECONDS=60"\n'
+        '"%~dp0worker\\bixolon-worker.exe"\nexit /b %ERRORLEVEL%\n',
         encoding="ascii",
     )
     profile = {
@@ -79,8 +100,12 @@ def prepare(root: Path, version: str) -> Path:
         "embedder_fallback_provider": "same",
         "provider_execution_cpu_fallback": True,
         "verifier_provider": "cpu",
-        "cpu_detector_intra_op_threads": 2,
+        "cpu_detector_intra_op_threads": 4,
         "cpu_embedder_intra_op_threads": 4,
+        "openvino_gpu_precision": "f16",
+        "reuse_verifier_embeddings": True,
+        "parallel_verification": True,
+        "log_model_timings": True,
     }
     write_json(output / "version.json", {"product_version": version, "app_build": config.app_build})
     write_json(
@@ -97,7 +122,7 @@ def prepare(root: Path, version: str) -> Path:
             ),
             "runtime_and_catalog_payload_changed": False,
             "publisher_authentication": "UNSIGNED",
-            "n100_hardware_measurement": "not_performed_on_build_host",
+            "evaluation_evidence": [row.model_dump() for row in config.evaluation_evidence],
         },
     )
     write_json(output / "bundle-manifest.json", directory_content_manifest(output))

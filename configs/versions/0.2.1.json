@@ -1,0 +1,133 @@
+{
+  "schema_version": "1.0",
+  "version": "0.2.1",
+  "app_build": 24,
+  "source_date_epoch": 1788912000,
+  "source_candidate": "repvit-m0.9-supervised-r4-n100-20260910",
+  "runtime": {
+    "path": "artifacts/versions/0.2.1/final-source/runtime",
+    "manifest_sha256": "bc224b1b16b57f716e7bcc465a754677e3a6289db63cdaff3b995bf22852dd1c"
+  },
+  "catalog": {
+    "path": "artifacts/versions/0.2.1/final-source/catalog",
+    "manifest_sha256": "c274fce94959dfea433753ed08c8c00a5f00e7346b56e941f77b145f6b835814",
+    "store_id": "three_bakery"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/runtime/cuda-13.0-cudnn-9.13.1-win-x64",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/all-regression-evidence.json",
+      "sha256": "4652bf08afb5ebb00344f9064b3a147f6864c356039228f26c2f34154614aea1"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/development-report.md",
+      "sha256": "e50a2d7fac7d922e91bff8a855a12f0e7069ab193d0b1a774c27157cadba2c64"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/development-verification.json",
+      "sha256": "387b55614414885a36c23be174f707663236277e55c275547fdab6ce3b9fc0fc"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-analysis.json",
+      "sha256": "acda5f7f238ebfda9200c288c18539abb806dce56777dd129bf76f1924ee62d4"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-diagnostics.json",
+      "sha256": "6dd803baad61c0f06aa1d3c4ffa8754d781b0426da6064edb231d010e3622faf"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/A0_reference/environment.json",
+      "sha256": "ba2a0c83d41da0496437a5899786f5e0c5d7c6654883ac4c7679b4a0a1602458"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/A0_reference/responses.jsonl",
+      "sha256": "097b961e8c76999d3ae1f8ed2a394e86497252200a594a8d12a770c8f90fee0e"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/A0_reference/summary.json",
+      "sha256": "98538a5ffaef37b689bbd0861241b0248002779bd8761f79dc040712dfef9c87"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/A0_reference/worker.log",
+      "sha256": "770ee24b07dab02642957c404f50876b1a1ff63179fa959a0f7d076edae7a3de"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/A9_reference_repeat/environment.json",
+      "sha256": "1203b75ad67abfb460f77c821ef0346fabd2570da0dab53b0f88f0ad9c5dd91e"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/A9_reference_repeat/responses.jsonl",
+      "sha256": "167cfb6726147a46a925bdb12a98816dac1c987a2e06980058c9874a9d1b1f2c"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/A9_reference_repeat/summary.json",
+      "sha256": "0873dc948d97afbc5a966aac9bb8637954e701c3c279244fb755f0271bad61fc"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/A9_reference_repeat/worker.log",
+      "sha256": "dc33e1fbb5d4d732920fc202ae16b5139dcf9728b494b7d7b904b32437d61346"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/B_repvit/environment.json",
+      "sha256": "ba9b0716cdac9556cbb5718acc2778ac81ce387eea2db774433b7d9e7b75887d"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/B_repvit/responses.jsonl",
+      "sha256": "61abe6d3a8701b52eb58da8aba2d69a43757dd7fd869239e1de7042fe21fc351"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/B_repvit/summary.json",
+      "sha256": "f6cc1a36c71c351d3c3f840301f43f55802b402ef6084afdad3023e222c2a445"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/B_repvit/worker.log",
+      "sha256": "34165749090ff2a22e25ab0d074435917336f7d209508cf14e95e4ddcf19ad51"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/D_repvit_cpu/environment.json",
+      "sha256": "e95217ba88676eae83beb47a32242e2b3011a2f5fae6695e951e66a40151c2c4"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/D_repvit_cpu/responses.jsonl",
+      "sha256": "f602867bfc8d4609f9e8c2ad8721e67d621294dcec3f203bb56e9cdac63e6358"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/D_repvit_cpu/summary.json",
+      "sha256": "f512ed20af5d6e8708a3fa6c27479b12be16573f75fa601af02c553da9c5eaf9"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-raw/D_repvit_cpu/worker.log",
+      "sha256": "ef21ead38f6123f579d816ec3f734613e48572275b205f1a530ebb0046a03f42"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/n100-report.md",
+      "sha256": "5d8f457d9fe673d306fd703d7b7123888802622bb55cb9874d29dbb624e6d71b"
+    },
+    {
+      "path": "artifacts/versions/0.2.1/final-source/evidence/repvit-cpu-gpu-parity.json",
+      "sha256": "2a32151867930ea322ad1bd75b96869d357ff1cf32a86355b03176b9467339f7"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}

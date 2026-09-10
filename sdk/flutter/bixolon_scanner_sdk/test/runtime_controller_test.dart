@@ -42,8 +42,15 @@ void main() {
       expect(n100.environment['BIXOLON_PROVIDER'], 'cpu');
       expect(n100.environment['BIXOLON_EMBEDDER_PROVIDER'], 'openvino_gpu');
       expect(n100.environment['BIXOLON_EMBEDDER_FALLBACK_PROVIDER'], 'same');
-      expect(n100.environment['BIXOLON_PROVIDER_EXECUTION_CPU_FALLBACK'], 'true');
-      expect(n100.environment['BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS'], '2');
+      expect(
+        n100.environment['BIXOLON_PROVIDER_EXECUTION_CPU_FALLBACK'],
+        'true',
+      );
+      expect(n100.environment['BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS'], '4');
+      expect(n100.environment['BIXOLON_OPENVINO_GPU_PRECISION'], 'f16');
+      expect(n100.environment['BIXOLON_REUSE_VERIFIER_EMBEDDINGS'], 'true');
+      expect(n100.environment['BIXOLON_PARALLEL_VERIFICATION'], 'true');
+      expect(n100.environment['BIXOLON_VERIFIER_PROVIDER'], 'cpu');
       expect(n100.environment['BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS'], '4');
 
       final profile = File(

@@ -15,6 +15,8 @@ from ..pipeline import DecisionPipeline
 from ..runtime.assisted_detector import attach_classifier_assisted_detector
 from ..runtime.catalog import build_catalog_classifier
 from ..runtime.detector_v2 import build_detector_v2, replace_count_verifier_v2
+from ..runtime.inference_cache import reuse_verifier_embeddings
+from ..runtime.inference_timing import collect_inference_timings
 from ..runtime.onnx import build_onnx_adapters, select_provider
 from .settings import WorkerSettings
 
@@ -32,6 +34,25 @@ class WorkerRuntime:
     failed: bool = False
 
     def scan(self, image, request_id):
+        with reuse_verifier_embeddings():
+            return self._scan_with_timings(image, request_id)
+
+    def _scan_with_timings(self, image, request_id):
+        if self.settings is None or not self.settings.log_model_timings:
+            return self._scan(image, request_id)
+        with collect_inference_timings() as calls:
+            try:
+                return self._scan(image, request_id)
+            finally:
+                LOGGER.info(
+                    "model_inference_timings",
+                    extra={
+                        "request_id": request_id,
+                        "model_calls": calls,
+                    },
+                )
+
+    def _scan(self, image, request_id):
         if self.failed:
             raise ModelExecutionError
         try:
@@ -57,6 +78,7 @@ class WorkerRuntime:
                         self.settings.model_copy(
                             update={
                                 "provider": "cpu",
+                                "verifier_provider": "cpu",
                                 "embedder_provider": "same",
                                 "embedder_fallback_provider": "none",
                                 "provider_execution_cpu_fallback": False,
@@ -96,6 +118,9 @@ def _close_resource(resource: object | None) -> None:
 
 
 def _build_and_warm_classifier(runtime_package, catalog, selected_provider, settings):
+    verifier_provider = None if settings.verifier_provider == "same" else settings.verifier_provider
+    if selected_provider == "cpu" and settings.embedder_provider != "same":
+        verifier_provider = "cpu"
     classifier, embedder = build_catalog_classifier(
         runtime_package,
         catalog,
@@ -103,7 +128,10 @@ def _build_and_warm_classifier(runtime_package, catalog, selected_provider, sett
         settings.cuda_dll_dir,
         cpu_intra_op_threads=settings.cpu_embedder_intra_op_threads,
         openvino_cache_dir=settings.openvino_cache_dir,
-        verifier_provider="cpu" if settings.verifier_provider == "cpu" else None,
+        openvino_gpu_precision=settings.openvino_gpu_precision,
+        verifier_provider=verifier_provider,
+        reuse_verifier_embeddings=settings.reuse_verifier_embeddings,
+        parallel_verification=settings.parallel_verification,
     )
     try:
         embedder.warmup()

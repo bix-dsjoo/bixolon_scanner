@@ -823,3 +823,16 @@ def test_detector_cascade_runs_secondary_only_for_triggered_count(
 
     assert primary.calls == 1
     assert secondary.calls == expected_secondary_calls
+
+
+def test_gpu_fp16_is_explicit_and_cpu_precision_stays_fp32(monkeypatch, tmp_path):
+    fake_ort, captured = _fake_ort()
+    monkeypatch.setitem(sys.modules, "onnxruntime", fake_ort)
+    onnx_session.OrtRunner(tmp_path / "model.onnx", "openvino_gpu", openvino_gpu_precision="f16")
+    config = json.loads(captured["session"].providers[0][1]["load_config"])
+    assert config["GPU"]["INFERENCE_PRECISION_HINT"] == "f16"
+    onnx_session.OrtRunner(tmp_path / "model.onnx", "openvino", openvino_gpu_precision="f16")
+    config = json.loads(captured["session"].providers[0][1]["load_config"])
+    assert config["CPU"]["INFERENCE_PRECISION_HINT"] == "f32"
+    with pytest.raises(ValidationError):
+        WorkerSettings(openvino_gpu_precision="int8")

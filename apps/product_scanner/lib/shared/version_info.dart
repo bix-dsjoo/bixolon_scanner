@@ -2,6 +2,6 @@
 abstract final class VersionInfo {
   static const current = String.fromEnvironment(
     'BIXOLON_VERSION',
-    defaultValue: '0.2.0',
+    defaultValue: '0.2.1',
   );
 }

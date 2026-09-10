@@ -1,0 +1,11 @@
+{
+  "base_config": "configs/experiments/bread/n100_structural.json",
+  "source_student": "artifacts/n100/structural-r4/students/repvit_m0_9-supervised",
+  "output": "artifacts/n100/structural-r4/quantization/repvit-qat",
+  "seed": 20260910,
+  "epochs": 5,
+  "batch_size": 64,
+  "learning_rate": 0.00001,
+  "observer_epochs": 1,
+  "checkpoint_selection": "fixed final epoch; source-only; no regression tuning"
+}
