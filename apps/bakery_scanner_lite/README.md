@@ -1,8 +1,8 @@
 # BIXOLON Bakery AI Scanner Lite
 
-Worker 0.1.16 기반의 별도 Windows 앱이다. 기존 Scanner의 화면·기능·SDK 결과 모델을 재사용하지
+Worker 0.1.17 기반의 별도 Windows 앱이다. 기존 Scanner의 화면·기능·SDK 결과 모델을 재사용하지
 않는다. `core/design_system`의 token/theme과 BIXOLON 로고·Pretendard만 디자인 자산으로 복사했다.
-앱과 설치본은 0.1.16, 내부 build는 19다. 기존 Scanner와 설치 ID·폴더·로그 저장소가 다르다.
+앱과 설치본은 0.1.17, 내부 build는 20다. 기존 Scanner와 설치 ID·폴더·로그 저장소가 다르다.
 
 ## 사용
 
@@ -16,12 +16,6 @@ Worker 0.1.16 기반의 별도 Windows 앱이다. 기존 Scanner의 화면·기�
 
 결과에는 편집·승인·후보 선택 동작이 없다. 검출 박스와 객체 번호를 읽기 전용으로 표시한다.
 모델이 제공한 Top-3 후보 이름을 순위대로 표시하고 박스 좌표와 함께 로그에도 저장한다.
-`APPROVED`는 `prediction.class_name`을 **승인 상품**으로 표시하며 class ID와 이름을
-로그·내보내기에도 보존한다. 이름이 누락된 응답은 class ID를 표시한다. 과거 로그에서 승인
-상품을 기록하지 않은 경우에는 **승인 상품명 기록 없음**을 표시하며 후보로 추정하지 않는다.
-이 수정의 배포본은 기존 0.1.17 모델을 유지한 0.1.19이며, 별도 소스 snapshot
-`C:/workspace/bixolon_scanner_release_0_1_19`에서 빌드했다. 설치 파일과 검증 보고서는
-`artifacts/distributions/0.1.19`에 보존한다.
 후보 선택과 결과 수정은 없으며 confidence는 결과 모델·로그·UI에 포함하지 않는다. 기존 Worker의 응답은 수신 즉시 명시적인 허용 필드로
 투영하고 원문 응답을 저장하지 않는다. Lite가 제공하는 별도 API 서버나 모델 관리 API는 없다.
 IMAGE_RECAPTURE는 이미지 전체 재촬영이며 ERROR는 입력·연결·시스템 오류로 별도로 표시한다.
@@ -74,23 +68,23 @@ IMAGE_RECAPTURE와 SEGMENT_RECAPTURE의 상태와 박스는 빨간색이다. UNK
 
 ## 실행과 구성
 
-설치본에는 0.1.16 CPU Worker·Runtime·Catalog와 VC++ 재배포 패키지가 포함된다. Python, Flutter,
-CUDA 설치는 필요 없다. 실행 시 숨김 Worker를 전용 loopback 포트에서 시작하고 0.1.16 readiness를
-확인한다. Detector/Embedder는 각각 4 threads다. 앱 종료 시 소유 Worker를 종료하며 Windows job으로
+설치본에는 0.1.17 CPU Worker·Runtime·Catalog와 VC++ 재배포 패키지가 포함된다. Python, Flutter,
+CUDA 설치는 필요 없다. 실행 시 숨김 Worker를 전용 loopback 포트에서 시작하고 0.1.17 readiness를
+확인한다. Detector는 8, Embedder는 12 threads다. 앱 종료 시 소유 Worker를 종료하며 Windows job으로
 비정상 앱 종료 시 자식 프로세스 잔류도 방지한다. 설치 파일에는 Authenticode 서명이 없다.
 
 기존 Scanner의 ROI 편집·라벨링·피드백·학습·모델 교체·고급 설정·계정·통계·호환 모드는 없다.
 
 ## 빌드와 검증
 
-저장소 루트에서 `scripts/build_lite.ps1`을 실행한다. 검증된 0.1.16 CPU 배포물이 필요하다.
+저장소 루트에서 `scripts/build_lite.ps1`을 실행한다. 검증된 0.1.17 CPU 배포물이 필요하다.
 Lite Flutter release와 Worker copy의 전체 파일 해시를 확인한 뒤 별도 Inno Setup을 생성한다.
 `version.json`, `provenance.json`, `bundle-manifest.json`, 원본 Worker 검증 기록과
 DINOv3·Apache·Pretendard 라이선스를 포함한다. SHA-256은 손상 검사용이며 발행자 인증은 아니다.
-다시 만들 때는 `-Force`를 사용하며 기존 Scanner 0.1.16 배포물은 변경하지 않는다.
+다시 만들 때는 `-Force`를 사용하며 기존 Scanner 0.1.17 배포물은 변경하지 않는다.
 
 Lite 디렉터리에서 `flutter analyze`, `flutter test`를 실행한다. 실제 Windows 통합 검사는
-`integration_test`와 `artifacts/lite/0.1.16`의 검증 기록을 참조한다.
+`integration_test`와 `artifacts/lite/0.1.17`의 검증 기록을 참조한다.
 
 통합 검사는 `LITE_E2E_ROOT`를 저장소 절대 경로로 설정하고 검증된 payload의 `worker`를
 `build/windows/x64/runner/Debug/worker`에 복사한 뒤

@@ -37,6 +37,30 @@ void main() {
       );
       expect(configuration.environment['BIXOLON_PORT'], '18080');
       expect(configuration.terminateWithApp, isFalse);
+
+      final profile = File(
+        '${metadata.parent.parent.path}/worker-profile.json',
+      );
+      profile.writeAsStringSync('''{"schema_version":"1.0","detector_workers":1,
+        "detector_intra_op_threads":8,"embedder_intra_op_threads":12}''');
+      final tuned = BixolonWorkerLaunchConfiguration.cpu(layout: layout);
+      expect(tuned.environment['BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS'], '8');
+      expect(tuned.environment['BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS'], '12');
+      final overridden = BixolonWorkerLaunchConfiguration.cpu(
+        layout: layout,
+        extraEnvironment: {'BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS': '4'},
+      );
+      expect(
+        overridden.environment['BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS'],
+        '4',
+      );
+      profile.writeAsStringSync(
+        '{"schema_version":"1.0","detector_workers":0}',
+      );
+      expect(
+        () => BixolonWorkerLaunchConfiguration.cpu(layout: layout),
+        throwsFormatException,
+      );
     } finally {
       temporaryRoot.deleteSync(recursive: true);
     }

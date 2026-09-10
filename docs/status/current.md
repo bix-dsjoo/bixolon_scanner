@@ -1,28 +1,14 @@
-# 현재 버전
+# BIXOLON Bakery AI Scanner 현재 상태
 
-기준일: 2026-09-07. 현재 제품은 **BIXOLON Bakery AI Scanner `0.1.16`**이며 Flutter 내부 빌드는
-`0.1.16+19`다. Python·Worker·Detector·Embedder·판정 정책·Catalog의 공개 버전은 모두 같다.
+활성 제품 버전은 `0.1.17`, 두 Flutter 앱은 `0.1.17+20`입니다.
+사용자 지정 현재 1등은 `ssdlite-margin-dense-20260908`입니다.
+기준은 [버전 설정](../../configs/versions/0.1.17.json), 상세는
+[0.1.16 대비 변경](../architecture/scanner-0.1.17.md)을 참조합니다.
 
-- source candidate: `limited220-surfaces`
-- 원본: 단일 200장 + 고정 멀티 20장. 같은 실물을 반복 촬영한 자료.
-- Detector: class-agnostic SSDLite320. 절차적 배경 합성으로 고정 4 epoch 추가 학습.
-- Classifier: DINOv3 ConvNeXt-Tiny 192 primary / 224 detail, Frozen ViT-B/16 160 선택 검증.
-- 승인 margin: 0.80 유지. 매장·SKU별 우회 없음.
-- 모델·Catalog bundle: `CHECKSUM-SHA256`. 발행자 진위 인증을 제공하지 않음.
-- CUDA 앱 bundle과 범용 CPU 설치본은 같은 모델·metadata·판정 정책을 사용.
+정정된 원본 302장·649개 객체를 사용했습니다. 같은 실물 개발 진단은 올바른 승인
+645/649(99.38%), 오승인 0건, CPU HTTP full-path p95 최악 159.32ms입니다.
+최종 300장 성적은 별도로 고정한 평가 보고서에 기록하며 개발 성적으로 대신하지 않습니다.
+배포 파일과 검증 기록은 `artifacts/distributions/0.1.17`에 정리합니다.
+이전 0.1.16 소스·배포물·평가 기록은 보존합니다.
 
-원본 멀티 20장에서는 정답 승인 135/136, 오승인·검출 누락·Top-3 누락 0이다. 운영 115장에서는
-정답 승인 465/504, 오승인·검출 누락·배경 추가 검출 0이다. 실제 UNKNOWN 38개는 모두 Top-3에
-정답을 포함하며 하단 경계 저신뢰 객체 1개는 재촬영이다. 빈 이미지 4장은 전체 재촬영이다.
-
-provider별 3회 반복 full-path p95 중앙값은 CPU 341.67ms, CUDA 71.26ms다. CPU/CUDA 상태·class
-rank parity를 통과했다. 독립 일반화 성능·인증·SLA를 의미하지 않는다.
-
-실제 EXE의 운영 115장 HTTP p95는 CUDA 83.86ms, CPU 384.31ms다. CPU 설치본은 Detector와
-Embedder를 각각 4 threads로 제한해 자동 스레드 설정의 p95 2,104.89ms를 개선했다. CPU HTTP
-p95 300ms 목표는 아직 미달이다. 전체 재촬영 4장은 full-path 지연 통계에서 제외했다.
-
-[개선·비교와 제한](../experiments/next-worker-0.1.16.md),
-[배포 검증 기록](../diagnostics/scanner-0.1.16-final-verification.json),
-[API 계약](../contracts/api.md)을 참조한다. 과거 0.1.15의 결과는
-[보존 문서](../archive/status/0.1.15.md)에 있다.
+최종 배포 EXE: CPU·CUDA 각 3회 모두 정답 승인 **1,352/1,410(95.89%)**, 오승인 **4건**. CPU HTTP p95 **318.42 / 304.29 / 316.19ms**로 목표 미달이다. 모델·정책을 바꾸지 않았으며 해당 고정 벤치마크와 장비에서 관측된 결과로 보고한다.

@@ -1,3 +1,6 @@
+#ifndef AppVersion
+  #error AppVersion is required
+#endif
 #ifndef PayloadDir
   #error PayloadDir is required
 #endif
@@ -14,13 +17,13 @@
 [Setup]
 AppId={{95361E60-673F-4999-B5FD-89B6130447D5}
 AppName=BIXOLON Bakery AI Scanner Lite
-AppVersion=0.1.16
+AppVersion={#AppVersion}
 AppPublisher=BIXOLON
 DefaultDirName={autopf}\BIXOLON Bakery AI Scanner Lite
 DefaultGroupName=BIXOLON Bakery AI Scanner Lite
 DisableProgramGroupPage=yes
 OutputDir={#OutputDir}
-OutputBaseFilename=BixolonBakeryAIScannerLite-0.1.16-Setup
+OutputBaseFilename=BixolonBakeryAIScannerLite-{#AppVersion}-Setup
 SetupIconFile={#SetupIconPath}
 UninstallDisplayIcon={app}\bakery_scanner_lite.exe
 Compression=lzma2/ultra64
@@ -33,13 +36,13 @@ PrivilegesRequired=admin
 CloseApplications=yes
 RestartApplications=no
 WizardStyle=modern
-VersionInfoVersion=0.1.16
+VersionInfoVersion={#AppVersion}
 VersionInfoCompany=BIXOLON
 VersionInfoDescription=BIXOLON Bakery AI Scanner Lite Installer
 VersionInfoProductName=BIXOLON Bakery AI Scanner Lite
-VersionInfoProductVersion=0.1.16
-VersionInfoProductTextVersion=0.1.16
-VersionInfoTextVersion=0.1.16
+VersionInfoProductVersion={#AppVersion}
+VersionInfoProductTextVersion={#AppVersion}
+VersionInfoTextVersion={#AppVersion}
 
 [Languages]
 Name: "korean"; MessagesFile: "compiler:Languages\Korean.isl"

@@ -10,6 +10,7 @@ from typing import Any
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from ..configuration import load_json_config
 from ..contracts.artifact import directory_content_manifest
 from ..contracts.catalog import SEMVER, SHA256, load_store_catalog_package, sha256_file
 from ..contracts.runtime_package_v2 import load_runtime_package_v2
@@ -146,7 +147,7 @@ def _repository_path(root: Path, value: str) -> Path:
 
 
 def load_version_config(path: Path) -> VersionBundleConfig:
-    return VersionBundleConfig.model_validate(_read_json(path))
+    return VersionBundleConfig.model_validate(load_json_config(path))
 
 
 def _verify_directory_lock(root: Path, lock: ArtifactLock) -> tuple[Path, dict[str, Any]]:

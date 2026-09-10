@@ -1,0 +1,97 @@
+{
+  "schema_version": "1.0",
+  "version": "0.1.16",
+  "app_build": 19,
+  "source_date_epoch": 1788739200,
+  "source_candidate": "limited220-surfaces",
+  "runtime": {
+    "path": "artifacts/retraining/limited220-surfaces/candidate/runtime",
+    "manifest_sha256": "d1c39aa4b827b7239f71331d7c744af1735bb51761dd75ef6d24cdeffe338526"
+  },
+  "catalog": {
+    "path": "artifacts/retraining/limited220-surfaces/candidate/catalog",
+    "manifest_sha256": "b0d4657e10b8ba321057772eed0c01b1d0f6fc406116b03f2479bab52e1cf3c0",
+    "store_id": "limited220"
+  },
+  "cuda_runtime": {
+    "path": "artifacts/runtime/cuda-13.0-cudnn-9.13.1-win-x64",
+    "manifest_sha256": "5e50ec41d94f6963b62249bfd8f0e38762e629dd5914db61424a43faed7cd1a5",
+    "files": [
+      "cublas64_13.dll",
+      "cublasLt64_13.dll",
+      "cudart64_13.dll",
+      "cudnn64_9.dll",
+      "cudnn_adv64_9.dll",
+      "cudnn_cnn64_9.dll",
+      "cudnn_engines_precompiled64_9.dll",
+      "cudnn_engines_runtime_compiled64_9.dll",
+      "cudnn_graph64_9.dll",
+      "cudnn_heuristic64_9.dll",
+      "cudnn_ops64_9.dll",
+      "cufft64_12.dll",
+      "nvJitLink_130_0.dll",
+      "nvrtc-builtins64_130.dll",
+      "nvrtc64_130_0.dll",
+      "zlibwapi.dll"
+    ]
+  },
+  "evaluation_evidence": [
+    {
+      "path": "artifacts/retraining/limited220-surfaces/experiment.json",
+      "sha256": "ac6a9ae9b391d607f67a89cf6c149cadc6400ad98e9d695e6a283ba358e11bc3"
+    },
+    {
+      "path": "artifacts/retraining/limited220-surfaces/commands.json",
+      "sha256": "54f6d625240bc0858738a79e693ff3bbee88d775a963f797bb2e0d7eb0ed15da"
+    },
+    {
+      "path": "artifacts/retraining/limited220-surfaces/detector/report.json",
+      "sha256": "2a9550e7c247ed78c1df0bcee82be913dcce7d0dff5dbc510d5909575d352006"
+    },
+    {
+      "path": "artifacts/retraining/limited220-surfaces/sources/source-report.json",
+      "sha256": "f4c22dee2fd00424ce16ac09de13304517223e08dcd6fbb4c4d997111e3fa42c"
+    },
+    {
+      "path": "artifacts/retraining/limited220-surfaces/derived/derivative-report.json",
+      "sha256": "e55cda8b5fcc2bb9beb8f55a8c4d0dea89cb12a049f959d9e8106412ad453896"
+    },
+    {
+      "path": "artifacts/retraining/limited220-surfaces/stress-comparison.json",
+      "sha256": "4deca888f608e998ce351e8a28d461d4dbe32018b3f53d436f6d5a0faa8a6163"
+    },
+    {
+      "path": "artifacts/retraining/limited220-surfaces/operational-20260818/ground-truth-comparison.json",
+      "sha256": "e02043a3aa9f3502b055fea11081ab016775208d975e0382171f442213589361"
+    },
+    {
+      "path": "artifacts/retraining/limited220-surfaces/diagnostics-cpu4/cpu-01.json",
+      "sha256": "8504ef76b497551c63e0d71fc5ca47d46126083c08d2927dc89892a48c32d53f"
+    },
+    {
+      "path": "artifacts/retraining/limited220-surfaces/diagnostics-cpu4/cpu-02.json",
+      "sha256": "1d52e59e842ddb707f1970a37ec295c2a370888246e91e23e11801eee99a1c5c"
+    },
+    {
+      "path": "artifacts/retraining/limited220-surfaces/diagnostics-cpu4/cpu-03.json",
+      "sha256": "d588599101f2ff4a62f37e9c7b9610ecabcf94b12fc6aaa17e19b73be3821cc4"
+    },
+    {
+      "path": "artifacts/retraining/limited220-surfaces/diagnostics-cpu4/cuda-01.json",
+      "sha256": "3bc240474076f909334cf739fdb82dfbadebd93dbe1c53387a3964d8ec082f19"
+    },
+    {
+      "path": "artifacts/retraining/limited220-surfaces/diagnostics-cpu4/cuda-02.json",
+      "sha256": "7b493d13d431e5a110cbc6773e8fa1b47a9447f1c48e003a233ddc8a94023ec0"
+    },
+    {
+      "path": "artifacts/retraining/limited220-surfaces/diagnostics-cpu4/cuda-03.json",
+      "sha256": "0a2117a97d43f0ef9dc74e730967b24ba7e9c22c13e1f71ae8f57fd0c64c4944"
+    },
+    {
+      "path": "artifacts/retraining/limited220-surfaces/diagnostics-cpu4/summary.json",
+      "sha256": "0e971a65840c8002cdc44765a54301f93fc15c18aeb0cfffc2750003e8ea72eb"
+    }
+  ],
+  "output_root": "artifacts/versions"
+}

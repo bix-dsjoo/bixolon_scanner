@@ -7,7 +7,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def test_windows_installer_uses_portable_cpu_worker_payload() -> None:
     build_script = (ROOT / "scripts" / "build_windows_installer.ps1").read_text(encoding="utf-8")
-    version_config = (ROOT / "configs" / "versions" / "0.1.16.json").read_text(encoding="utf-8")
+    version_config = (ROOT / "configs" / "versions" / "0.1.17.json").read_text(encoding="utf-8")
     inno_script = (ROOT / "installer" / "windows" / "BixolonBakeryAIScanner.iss").read_text(
         encoding="utf-8"
     )
@@ -31,8 +31,8 @@ def test_windows_installer_uses_portable_cpu_worker_payload() -> None:
     assert "installer-payload-manifest.json" in build_script
     assert "deployment-provenance.json" in build_script
     assert "$recommendedDetectorWorkers = 1" in build_script
-    assert "$recommendedDetectorThreads = 4" in build_script
-    assert "$recommendedEmbedderThreads = 4" in build_script
+    assert "$recommendedDetectorThreads = 8" in build_script
+    assert "$recommendedEmbedderThreads = 12" in build_script
     assert 'processor_profile = "ONNX Runtime CPU"' in build_script
     assert 'target = "windows-x64-cpu"' in build_script
     assert "worker-manifest.json" in build_script
@@ -47,8 +47,8 @@ def test_windows_installer_uses_portable_cpu_worker_payload() -> None:
         assert 'BIXOLON_EMBEDDER_FALLBACK_PROVIDER = "none"' in source
         assert "BIXOLON_OPENVINO_CACHE_DIR" not in source
     assert 'BIXOLON_CPU_DETECTOR_WORKERS = "1"' in launcher
-    assert 'BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS = "4"' in launcher
-    assert 'BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS = "4"' in launcher
+    assert 'BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS = "8"' in launcher
+    assert 'BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS = "12"' in launcher
     assert "start-bixolon-scanner.ps1" in inno_script
     assert "ArchitecturesAllowed=x64compatible" in inno_script
     assert "MinVersion=10.0.17763" in inno_script
@@ -63,7 +63,7 @@ def test_windows_installer_documents_target_requirements_and_limits() -> None:
     assert "Windows 10 1809" in guide
     assert "Python, Flutter, CUDA, OpenVINO 별도 설치 불필요" in guide
     assert "ONNX Runtime CPU" in guide
-    assert "CPU, 1 worker x 4 threads" in guide
+    assert "CPU, 1 worker x 8 threads" in guide
     assert "SLA가 아닙니다" in guide
     assert "Authenticode 서명은 없습니다" in guide
 

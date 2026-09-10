@@ -1,4 +1,4 @@
-"""Copy only the new Lite app and the unchanged, verified 0.1.16 CPU Worker."""
+"""Copy the Lite app and the byte-identical verified Worker of the requested version."""
 
 from __future__ import annotations
 
@@ -11,12 +11,18 @@ from bixolon_scanner.configuration import load_json_config
 from bixolon_scanner.contracts.artifact import canonical_sha256, directory_content_manifest
 from bixolon_scanner.contracts.catalog import sha256_file
 from bixolon_scanner.contracts.runtime_package_v2 import load_runtime_package_v2
+from bixolon_scanner.operations.version_bundle import load_version_config
 
 
-def prepare(root: Path) -> dict:
+def prepare(root: Path, version: str = "0.1.17") -> dict:
     root = root.resolve()
-    worker = root / "artifacts/installers/0.1.16/windows-payload/worker"
-    evidence = load_json_config(root / "artifacts/versions/0.1.16/packaged-cpu-smoke.json")
+    config = load_version_config(root / f"configs/versions/{version}.json")
+    if config.version != version:
+        raise ValueError("Lite version config identity mismatch")
+    worker = root / f"artifacts/installers/{version}/windows-payload/worker"
+    evidence_path = root / f"artifacts/versions/{version}/packaged-cpu-smoke.json"
+    evidence = load_json_config(evidence_path)
+    deployment = load_json_config(worker.parent / "deployment-provenance.json")
     source = directory_content_manifest(worker)
     if (
         not evidence["passes"]
@@ -24,12 +30,12 @@ def prepare(root: Path) -> dict:
     ):
         raise ValueError("the source Worker differs from its successful packaged smoke")
     runtime = load_runtime_package_v2(worker / "model-package")
-    if runtime.metadata.worker_version != "0.1.16":
-        raise ValueError("Lite requires the unchanged 0.1.16 model")
+    if runtime.metadata.worker_version != version:
+        raise ValueError(f"Lite requires the unchanged {version} model")
     app = root / "apps/bakery_scanner_lite/build/windows/x64/runner/Release"
     if not (app / "bakery_scanner_lite.exe").is_file():
         raise FileNotFoundError("Lite Windows executable is missing")
-    output = root / "artifacts/lite/0.1.16"
+    output = root / f"artifacts/lite/{version}"
     output.mkdir(parents=True, exist_ok=True)
     payload = (output / "payload").resolve()
     payload.relative_to(output.resolve())
@@ -43,10 +49,10 @@ def prepare(root: Path) -> dict:
     shutil.copytree(root / "licenses", payload / "licenses")
     evidence_target = payload / "evidence/worker-source-smoke.json"
     evidence_target.parent.mkdir()
-    shutil.copy2(root / "artifacts/versions/0.1.16/packaged-cpu-smoke.json", evidence_target)
-    version = {
-        "product_version": "0.1.16",
-        "app_build": 19,
+    shutil.copy2(evidence_path, evidence_target)
+    version_metadata = {
+        "product_version": version,
+        "app_build": config.app_build,
         "worker": {"path": "worker", "manifest_sha256": source["manifest_sha256"]},
         "evaluation_evidence": {
             "path": "evidence/worker-source-smoke.json",
@@ -54,19 +60,19 @@ def prepare(root: Path) -> dict:
         },
     }
     (payload / "version.json").write_text(
-        json.dumps(version, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+        json.dumps(version_metadata, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
     )
     provenance = {
         "product_name": "BIXOLON Bakery AI Scanner Lite",
-        "version": "0.1.16",
-        "app_build": 19,
+        "version": version,
+        "app_build": config.app_build,
         "worker_source_manifest_sha256": source["manifest_sha256"],
         "worker_executable_sha256": sha256_file(worker / "bixolon-worker.exe"),
         "worker_modified": False,
         "model_modified": False,
         "provider": "cpu",
-        "detector_threads": 4,
-        "embedder_threads": 4,
+        "detector_threads": deployment["default_profile"]["detector_intra_op_threads"],
+        "embedder_threads": deployment["default_profile"]["embedder_intra_op_threads"],
         "image_retention": "30_days_cleanup_on_start_or_log_access",
         "lite_application_source": directory_content_manifest(
             root / "apps/bakery_scanner_lite/lib"
@@ -97,4 +103,6 @@ def verify(payload: Path) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--repository-root", type=Path, required=True)
-    print(json.dumps(prepare(parser.parse_args().repository_root)))
+    parser.add_argument("--version", default="0.1.17")
+    args = parser.parse_args()
+    print(json.dumps(prepare(args.repository_root, args.version)))

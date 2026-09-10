@@ -17,6 +17,7 @@ import httpx
 
 from ..configuration import load_json_config
 from ..contracts import ScanResponse
+from ..contracts.artifact import directory_content_manifest
 from ..contracts.catalog import sha256_file
 from ..training.three_bakery_data import read_jsonl, source_path, write_json, write_jsonl
 from .three_bakery import score_response, summarize
@@ -46,6 +47,7 @@ def measurement_environment() -> dict:
     own = psutil.Process()
     excluded = {own.pid, *(p.pid for p in own.parents())}
     conflicting = []
+    suspended = []
     for process in psutil.process_iter(["pid", "name", "cmdline"]):
         if process.pid in excluded or "python" not in (process.info["name"] or "").lower():
             continue
@@ -57,7 +59,10 @@ def measurement_environment() -> dict:
             and any(stage in arguments for stage in ("train", "compare", "evaluate", "export"))
         )
         if training or benchmark:
-            conflicting.append(process.pid)
+            if process.status() == psutil.STATUS_STOPPED:
+                suspended.append(process.pid)
+            else:
+                conflicting.append(process.pid)
     if conflicting:
         raise RuntimeError(
             f"CPU measurement cannot overlap other training/benchmarks: {conflicting}"
@@ -69,6 +74,7 @@ def measurement_environment() -> dict:
         "physical_cpus": psutil.cpu_count(logical=False),
         "onnxruntime": onnxruntime.__version__,
         "overlapping_experiment_processes": conflicting,
+        "suspended_experiment_processes": suspended,
         "overlap_check_scope": "visible Python experiment command lines plus serial orchestration",
         "recorded_at_unix": time.time(),
     }
@@ -82,6 +88,7 @@ def worker_server(
     output: Path,
     cuda_dll_dir: Path | None = None,
     cpu_profile: tuple[int, int] = (4, 4),
+    worker_executable: Path | None = None,
 ):
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
@@ -109,7 +116,9 @@ def worker_server(
     output.mkdir(parents=True, exist_ok=True)
     with (output / "worker.log").open("w", encoding="utf-8") as log:
         process = subprocess.Popen(
-            [str(python), "-c", "from bixolon_scanner.worker.cli import serve; serve()"],
+            [str(worker_executable.resolve())]
+            if worker_executable is not None
+            else [str(python), "-c", "from bixolon_scanner.worker.cli import serve; serve()"],
             env=environment,
             stdout=log,
             stderr=subprocess.STDOUT,
@@ -177,6 +186,7 @@ def measure(
     input_identity: dict | None = None,
     cpu_profile: tuple[int, int] = (4, 4),
     maximum_p95_ms: float | None = None,
+    worker_executable: Path | None = None,
 ) -> dict:
     if not records or repetitions < 1 or warmup < 0:
         raise ValueError("invalid measurement budget")
@@ -206,6 +216,14 @@ def measure(
             for path in sorted((Path(__file__).resolve().parents[1] / directory).glob("*.py"))
         },
     }
+    if worker_executable is not None:
+        contract["packaged_worker"] = {
+            "executable": str(worker_executable.resolve()),
+            "executable_sha256": sha256_file(worker_executable),
+            "directory_manifest_sha256": directory_content_manifest(worker_executable.parent)[
+                "manifest_sha256"
+            ],
+        }
     if (output / "report.json").exists():
         existing = load_json_config(output / "report.json")
         if (
@@ -218,7 +236,9 @@ def measure(
     write_json(output / "contract.json", contract)
     environment = measurement_environment() if provider == "cpu" else None
     rows = []
-    with worker_server(candidate, python, provider, output, cuda_dll_dir, cpu_profile) as (
+    with worker_server(
+        candidate, python, provider, output, cuda_dll_dir, cpu_profile, worker_executable
+    ) as (
         client,
         ready,
     ):

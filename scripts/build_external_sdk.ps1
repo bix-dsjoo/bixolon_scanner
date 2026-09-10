@@ -1,7 +1,7 @@
 param(
     [Alias("Version")]
-    [string]$ModelVersion = "0.1.16",
-    [string]$SdkVersion = "1.1.0",
+    [string]$ModelVersion = "0.1.17",
+    [string]$SdkVersion = "1.1.1",
     [string]$SdkOutputRoot = "artifacts/external-sdk",
     [string]$StoreModelOutputRoot = "artifacts/store-models",
     [ValidateSet("All", "Sdk", "StoreModel")]
@@ -286,6 +286,26 @@ if ($buildStoreModel) {
     Copy-DirectoryExact -Source $catalogSource -Destination (Join-Path $storeRoot "store-catalog")
     Assert-DirectoryCopyMatches -Source $runtimeSource -Destination (Join-Path $storeRoot "model-package")
     Assert-DirectoryCopyMatches -Source $catalogSource -Destination (Join-Path $storeRoot "store-catalog")
+
+    $profileEvidence = @($config.evaluation_evidence | Where-Object {
+        [System.IO.Path]::GetFileName([string]$_.path) -eq "cpu-profile.json"
+    })
+    if ($profileEvidence.Count -eq 1) {
+        $profilePath = Join-Path $repositoryRoot ([string]$profileEvidence[0].path)
+        if ((Get-FileHash -LiteralPath $profilePath -Algorithm SHA256).Hash.ToLowerInvariant() -ne [string]$profileEvidence[0].sha256) {
+            throw "CPU profile evidence checksum mismatch."
+        }
+        $cpuProfile = (Get-Content -LiteralPath $profilePath -Raw | ConvertFrom-Json).selected_profile
+        if ($cpuProfile.Count -ne 2 -or [int]$cpuProfile[0] -lt 1 -or [int]$cpuProfile[1] -lt 1) {
+            throw "Invalid selected CPU profile."
+        }
+        Write-JsonFile -Path (Join-Path $storeRoot "worker-profile.json") -Value ([ordered]@{
+            schema_version = "1.0"
+            detector_workers = 1
+            detector_intra_op_threads = [int]$cpuProfile[0]
+            embedder_intra_op_threads = [int]$cpuProfile[1]
+        })
+    }
 
     $storeLicenses = Join-Path $storeRoot "licenses"
     [System.IO.Directory]::CreateDirectory($storeLicenses) | Out-Null

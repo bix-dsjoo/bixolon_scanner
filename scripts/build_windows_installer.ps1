@@ -1,5 +1,5 @@
 param(
-    [string]$Version = "0.1.16",
+    [string]$Version = "0.1.17",
     [string]$PythonExecutable = "C:/Users/OMEN/AppData/Local/Programs/Python/Python311/python.exe",
     [string]$InnoCompiler = "",
     [string]$VcRedistPath = "",
@@ -173,8 +173,8 @@ if ([string]$config.version -ne $Version) {
     throw "Version config identity mismatch: $configPath"
 }
 $recommendedDetectorWorkers = 1
-$recommendedDetectorThreads = 4
-$recommendedEmbedderThreads = 4
+$recommendedDetectorThreads = 8
+$recommendedEmbedderThreads = 12
 $launcherSource = Get-Content -Raw -LiteralPath $installerLauncher
 if (
     $launcherSource -notmatch 'BIXOLON_PROVIDER = "cpu"' -or
@@ -188,10 +188,10 @@ if (
 }
 if (
     $recommendedDetectorWorkers -ne 1 -or
-    $recommendedDetectorThreads -ne 4 -or
-    $recommendedEmbedderThreads -ne 4
+    $recommendedDetectorThreads -ne 8 -or
+    $recommendedEmbedderThreads -ne 12
 ) {
-    throw "CPU profile must use Detector 1x4 and Embedder thread auto-selection."
+    throw "CPU profile must use Detector 1x8 and Embedder 12 threads."
 }
 $appBuild = [int]$config.app_build
 $versionRoot = [System.IO.Path]::GetFullPath(

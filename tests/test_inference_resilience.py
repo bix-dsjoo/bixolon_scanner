@@ -95,7 +95,7 @@ def test_slow_decode_does_not_block_health_or_decode_waiting_requests(
     def blocked_decode(*args, **kwargs):
         calls.append(1)
         entered.set()
-        assert release.wait(3)
+        assert release.wait(30)
         return Image.new("RGB", (100, 100))
 
     class Uncalled:

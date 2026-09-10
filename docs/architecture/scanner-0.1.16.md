@@ -47,5 +47,5 @@ binary payload를 바꾸지 않은 채 공개 실행 구성요소 version만 `0.
 `version.json`, `provenance.json`, `bundle-manifest.json`과 Runtime metadata가 선언한 license 파일을
 포함합니다.
 
-API와 null 규칙은 [Worker 연동 명세](../contracts/worker-integration-0.1.16.md), 후보 비교와 평가
+API와 null 규칙은 [Worker 연동 명세](../archive/contracts/worker-integration-0.1.16.md), 후보 비교와 평가
 한계는 [0.1.16 데이터 재학습·안전 승인 최적화](../experiments/next-worker-0.1.16.md)를 따릅니다.

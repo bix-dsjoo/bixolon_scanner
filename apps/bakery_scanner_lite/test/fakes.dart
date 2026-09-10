@@ -22,9 +22,9 @@ Map<String, dynamic> response({
       ? ['IMAGE_RECAPTURE_REQUIRED']
       : [],
   'processing_time_ms': 42.5,
-  'worker_version': '0.1.16',
-  'detector_version': '0.1.16',
-  'classifier_version': status == 'IMAGE_RECAPTURE' ? null : '0.1.16',
+  'worker_version': '0.1.17',
+  'detector_version': '0.1.17',
+  'classifier_version': status == 'IMAGE_RECAPTURE' ? null : '0.1.17',
   'segmentations': status == 'SEGMENTATION'
       ? [
           {
@@ -34,28 +34,24 @@ Map<String, dynamic> response({
                 : [],
             'bbox': {'x': 1, 'y': 2, 'width': 3, 'height': 4},
             'confidence': .91,
-            'prediction': object == 'APPROVED'
-                ? {'class_id': 'bread_01', 'class_name': 'Almond Scone'}
-                : null,
-            'top3': object != 'UNKNOWN'
-                ? []
-                : [
-                    {
-                      'class_id': 'bread_01',
-                      'class_name': 'Almond Scone',
-                      'confidence': .93,
-                    },
-                    {
-                      'class_id': 'bread_02',
-                      'class_name': 'Cream Bun',
-                      'confidence': .06,
-                    },
-                    {
-                      'class_id': 'bread_03',
-                      'class_name': 'Baguette',
-                      'confidence': .01,
-                    },
-                  ],
+            'prediction': {'class_id': 'secret-label'},
+            'top3': [
+              {
+                'class_id': 'bread_01',
+                'class_name': 'Almond Scone',
+                'confidence': .93,
+              },
+              {
+                'class_id': 'bread_02',
+                'class_name': 'Cream Bun',
+                'confidence': .06,
+              },
+              {
+                'class_id': 'bread_03',
+                'class_name': 'Baguette',
+                'confidence': .01,
+              },
+            ],
           },
         ]
       : [],

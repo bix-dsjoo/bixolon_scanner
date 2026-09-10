@@ -12,9 +12,9 @@ from ..configuration import load_json_config
 from ..contracts import ItemStatus, ScanResponse
 from ..contracts.catalog import sha256_file
 from ..contracts.runtime_package_v2 import EmbedderMetadata
-from ..experiments.input_isolation import protect_development
 from ..pipeline.ports import Detection
 from ..pipeline.segmentation import summarize_reason_codes
+from ..training.input_isolation import protect_development
 from ..training.models import build_dino_classifier
 from ..training.roi_integrity import build_head, prepare_roi
 from ..training.three_bakery_data import read_jsonl, write_json, write_jsonl

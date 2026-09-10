@@ -109,6 +109,7 @@ class BixolonWorkerLaunchConfiguration {
         'BIXOLON_PORT': '$port',
         'BIXOLON_REQUEST_TIMEOUT_SECONDS': '60',
         'BIXOLON_LOG_TO_STDERR': '0',
+        ..._cpuThreadEnvironment(layout),
         ...extraEnvironment,
       },
     );
@@ -151,6 +152,35 @@ class BixolonWorkerLaunchConfiguration {
   final String workingDirectory;
   final Map<String, String> environment;
   final bool terminateWithApp;
+
+  static Map<String, String> _cpuThreadEnvironment(
+    BixolonRuntimeLayout layout,
+  ) {
+    final profile = File(
+      '${Directory(layout.modelPackageDirectory).parent.path}/worker-profile.json',
+    );
+    if (!profile.existsSync()) return const {};
+    final value = jsonDecode(profile.readAsStringSync());
+    if (value is! Map<String, dynamic> || value['schema_version'] != '1.0') {
+      throw const FormatException('Invalid Store Model CPU profile');
+    }
+    const fields = {
+      'detector_workers': 'BIXOLON_CPU_DETECTOR_WORKERS',
+      'detector_intra_op_threads': 'BIXOLON_CPU_DETECTOR_INTRA_OP_THREADS',
+      'embedder_intra_op_threads': 'BIXOLON_CPU_EMBEDDER_INTRA_OP_THREADS',
+    };
+    final result = <String, String>{};
+    for (final entry in fields.entries) {
+      final count = value[entry.key];
+      if (count is! int ||
+          count < 1 ||
+          (entry.key == 'detector_workers' && count > 4)) {
+        throw const FormatException('Invalid Store Model CPU thread count');
+      }
+      result[entry.value] = '$count';
+    }
+    return result;
+  }
 }
 
 class BixolonWorkerController {

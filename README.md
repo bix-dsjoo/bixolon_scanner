@@ -5,12 +5,11 @@ PyTorch 학습·평가 도구와 Flutter 작업자 앱을 한 저장소에서 �
 
 ## Scanner Lite
 
-별도 제품 **BIXOLON Bakery AI Scanner Lite**는 `0.1.16` CPU Worker를 그대로 사용하며
+별도 제품 **BIXOLON Bakery AI Scanner Lite**는 `0.1.17` CPU Worker를 그대로 사용하며
 카메라/파일 입력, 읽기 전용 결과, 자동 메타데이터 로그·내보내기만 제공한다.
 기존 앱의 화면이나 복잡한 기능을 숨겨 재사용하지 않는다. 디자인 token/theme·로고·폰트만 공유한다.
 Lite는 읽기 전용 검출 박스를 표시하고 카메라 상단 20%를 제거한 중앙 정사각형을 2048×2048로 변환하고 좌우 반전한다.
 사용자 요청에 따라 Top-3 이름을 읽기 전용으로 표시하고, 실행 로그에서도 이미지와 박스를 복원한다.
-`APPROVED`는 Worker의 `prediction`에서 승인 상품명을 표시하고 로그·내보내기에도 보존한다.
 입력 이미지는 별도 파일로 30일 보관하며 메타데이터·박스·후보 이름과 함께 ZIP으로 내보낸다.
 confidence는 표시하거나 기록하지 않으며 재촬영 상태는 빨간색으로 표시한다.
 `apps/bakery_scanner_lite`가 독립 구현의 canonical 경로이며 기존 앱과 설치 ID·폴더가 다르다.
@@ -34,38 +33,23 @@ Scanner·Worker 번들과 별도의 로컬 촬영 유틸리티입니다.
 
 ## 현재 버전
 
-현재 배포 가능한 실행 조합은 `0.1.16` 하나입니다.
+현재 배포 가능한 실행 조합은 `0.1.17`입니다. Python·Worker·Detector·Embedder·판정 정책·Catalog·Windows ProductVersion은 `0.1.17`, 두 Flutter 앱은 `0.1.17+20`입니다.
+기준은 [configs/versions/0.1.17.json](configs/versions/0.1.17.json)입니다.
 
-| 구성 | 버전 |
-|---|---|
-| Python 패키지·Worker | `0.1.16` |
-| Detector·Embedder·판정 정책 | `0.1.16` |
-| Store Catalog | `0.1.16` |
-| Flutter 앱 | `0.1.16+19` |
-| 사용자 표시·Windows ProductVersion | `0.1.16` |
+사용자가 지정한 현재 1등 `ssdlite-margin-dense-20260908`을 배포합니다. 정정본 단일 200장·다중 100장·배경 2장과 649개 객체를 사용하며, 겹친 객체를 하나로 검출한 ROI의 승인을 막는 head를 추가했습니다.
+같은 실물 개발 진단은 올바른 승인 645/649(99.38%), 오승인 0건, 실제 다중 이미지 CPU HTTP full-path p95 최악 159.32ms입니다. 최종 300장 성적으로 표현하지 않습니다.
 
-기준 설정은 [`configs/versions/0.1.16.json`](configs/versions/0.1.16.json)입니다. 모델 graph·weight와
-Catalog payload는 고정하고 Runtime·Catalog metadata의 공개 실행 버전만 하나의 제품 버전으로
-맞춥니다. 과거 운영 `0.1.12`·`0.1.13` 계약은 `configs/archive`와 `docs/archive`에 보존합니다.
+최종 배포 EXE의 300장 평가는 CPU·CUDA 각각 3회 모두 **1,352/1,410(95.89%)·오승인 4건**입니다. CPU HTTP p95는 **318.42 / 304.29 / 316.19ms**로 세 목표에 미달했습니다. 평가 후 모델·임계값은 변경하지 않았습니다.
 
-`0.1.16`은 단일 200장·멀티 20장만으로 학습한 모델을 배포합니다. 공개 판정 계약과
-파이프라인 순서는 유지했습니다. class-agnostic SSDLite320으로 객체 위치만 검출하고 정상 ROI 전체를 DINOv3
-ConvNeXt-Tiny 192로 분류합니다. 전역 위험 조건이 고른 ROI만 224 detail path와 Frozen ViT-B/16
-160 검증을 거칩니다. 앱 bundle은 ONNX Runtime CUDA, KIOSK/POS SDK·설치본은 범용 ONNX Runtime
-CPU를 사용하며 같은 ONNX·metadata·Catalog·상태 정책을 공유합니다.
+[0.1.16 대비 변경과 실행 장치 지원](docs/architecture/scanner-0.1.17.md)에 학습 원본·모델·CPU 설정·성능 범위를 정리했습니다.
+배포본은 CPU 설치본·Lite·SDK와 CUDA portable 앱으로 구성하며 같은 ONNX·Catalog·정책을 사용합니다.
 
 ## 판정 계약
 
-`three_bakery` 정정본 단일 200장·다중 100장·배경 2장을 사용하는 별도 학습·비교 실험은
-[three_bakery 실행 기록](docs/experiments/three-bakery-training.md)을 참조합니다.
-정정본 설정은 `configs/experiments/bread/three_bakery_revised300.json`이며, 기존 252장 실행은 보존합니다.
-최종 목표는 완전 정답 승인 이미지 297/300 이상·오승인 0건·CPU HTTP p95 300ms 이하이고,
-최종 데이터셋은 후보·CPU 설정 선택에 사용하지 않습니다. Frozen ViT-B/16의 선택적 검증은 유지합니다.
-`python -m bixolon_scanner.experiments.bread.three_bakery`의 `prepare`, `train`, `compare`,
-`export`, `evaluate` 단계로 실행합니다. ConvNeXt-Tiny 192 → 선택적 224 detail →
-선택적 Frozen ViT-B/16 160 검증을 유지하며 모든 학습 head·Catalog를 이번 원본으로 새로 만듭니다.
-최종 300장은 후보·정책 확정 후 Worker HTTP로 평가하고, 완전 정답 승인 이미지 297장 이상과
-전체 오승인 0건을 별도로 판정합니다. 이 실험은 배포 버전 `0.1.16`과 기존 EXE를 바꾸지 않습니다.
+정정본 학습·비교 과정은 [three_bakery 실행 기록](docs/experiments/three-bakery-training.md)을 참조합니다.
+정확도 목표는 전체 GT 객체 기준 99% 이상, 오승인 0건, CPU HTTP p95 300ms 이하입니다.
+최종 300장·1,410개 GT에서는 1,396개 이상 올바른 APPROVED를 요구합니다. 누락·UNKNOWN·재촬영·ERROR도 분모에 남습니다.
+현재 1등 후보는 사용자 요청에 따라 0.1.17로 복사했으며, 추가 seed 실험은 별도로 보존합니다.
 
 Worker는 이미지마다 다음 중 정확히 하나를 반환합니다.
 
@@ -75,7 +59,7 @@ Worker는 이미지마다 다음 중 정확히 하나를 반환합니다.
 - `ERROR`: 입력, 구성, 모델 또는 시스템 오류
 
 `ERROR`를 재촬영으로 변환하지 않습니다. Detector 조기 종료로 classifier를 실행하지 않은 경우
-classifier·Catalog 계열 버전은 `null`입니다. 나머지 공개 non-null 버전은 모두 `0.1.16`입니다.
+classifier·Catalog 계열 버전은 `null`입니다. 나머지 공개 non-null 버전은 모두 `0.1.17`입니다.
 공개 필드와 판정 순서는 [API 계약](docs/contracts/api.md)을 따릅니다.
 
 소스 Worker는 Detector/Classifier의 NaN·Inf 출력을 `MODEL_EXECUTION_FAILED` 5xx `ERROR`로
@@ -83,16 +67,8 @@ classifier·Catalog 계열 버전은 `null`입니다. 나머지 공개 non-null 
 디코딩하지 않습니다. 실행 deadline을 넘긴 작업이 남아 있으면 readiness는 503이며, 작업 종료 후
 복구합니다. 응답 시간이 초과돼도 실행 중인 ONNX 작업의 슬롯을 임의로 해제하지 않습니다.
 
-`single_objects_2` 200장과 annotation으로 고정 선정한 멀티 20장만 사용하는 새 실험은
-[220장 학습·진단·반복 개선 설계](docs/experiments/limited220-training.md)를 따릅니다.
-원본·파생 이미지·실행 단계의 SHA-256을 기록하고, 같은 실물의 개발 진단과 독립 validation을
-구분합니다. 학습 산출물은 보존하며, 선택한 모델의 복사본을 0.1.16 번들로 구성합니다.
-
-현재 Runtime의 Detector는 객체 위치만 검출하며 SKU 승인은 분류기가 담당합니다. 220장 학습의
-같은 실물 진단과 운영 115장 정답 대조 결과, 배경 개선 실험 및 배포 검증은
-[0.1.16 배포 기록](docs/experiments/next-worker-0.1.16.md)에 기록합니다.
-승인 margin 0.80을 유지하며 운영 평가 이미지로 추가 학습하거나 threshold를 조정하지 않습니다.
-평가 결과는 독립 일반화 성능이나 SLA 인증이 아닙니다.
+이전 0.1.16의 220장 학습·운영 진단은 [이전 배포 기록](docs/experiments/next-worker-0.1.16.md)에 보존합니다.
+이번 데이터와 이전 데이터의 성능은 동일 조건 비교가 아닙니다.
 
 기존 detector, YOLO 계열과 RF-DETR을 사용하지 않는 DINOv3 recall-first challenger도 별도 실험으로
 구현돼 있습니다. group-aware 300장 OOF proposal recall은 98.01%였고, class-relative ranker와
@@ -100,72 +76,39 @@ count-constrained Catalog 경로의 gate 이전 spatial+Top-3 exact 상한은 99
 그러나 held-fold label을 사용하지 않은 nested gate는 6장 중 1건, segment verifier를 추가한 gate는
 11장 중 4건의 오류가 발생해 둘 다 기각했습니다. 목표였던 오류 0건과 accepted coverage 10% 이상을
 동시에 충족한 후보는 없습니다. 중단된 center-heatmap 실험도 최종 OOF artifact가 없으므로 결과로
-간주하지 않습니다. 이 adaptive cascade는 활성 `0.1.16`에 반영하지 않았습니다. 설계, 완료·폐기·중단
+간주하지 않습니다. 이 adaptive cascade는 활성 `0.1.17`에 반영하지 않았습니다. 설계, 완료·폐기·중단
 결과와 재현 경로는 [DINOv3 adaptive cascade 실험](docs/experiments/adaptive-cascade-dinov3.md)에
 기록돼 있습니다.
 
-Runtime은 전수 verifier 호환 필드를 읽을 수 있지만 활성 0.1.16는
+Runtime은 전수 verifier 호환 필드를 읽을 수 있지만 활성 0.1.17은
 `verify_all_approved_candidates=false`, `unknown_recapture_on_any_verifier_rejection=false`를
 고정합니다. 단일 verifier 품질 실패를 재촬영으로 확대하지 않으며 최종 상태는 항상
 `DecisionPipeline`의 단일 정책에서 결정합니다.
 
 ## Windows 배포물 만들기
 
-Python 3.11, Flutter stable, Visual Studio Windows C++ build tools와 Inno Setup 6이 필요합니다.
+Python 3.11, Flutter stable, Visual Studio Windows C++ build tools와 Inno Setup 6을 사용합니다.
 
 ```powershell
-.\scripts\build_app.ps1 -Version 0.1.16 -PythonExecutable <CUDA-lock Python>
-.\scripts\build_worker.ps1 -PythonExecutable <CPU-lock Python> `
-  -OutputDirectory artifacts/versions/0.1.16/cpu-worker-build
-.\scripts\build_external_sdk.ps1 -ModelVersion 0.1.16 -SdkVersion 1.1.0 -Package All -Force
-.\scripts\build_windows_installer.ps1 -Version 0.1.16 -VcRedistPath <vc_redist.x64.exe> -Force
+.\scripts\build_app.ps1 -Version 0.1.17 -PythonExecutable <CUDA-lock Python>
+.\scripts\build_worker.ps1 -PythonExecutable <CPU-lock Python> -OutputDirectory artifacts/versions/0.1.17/cpu-worker-build
+.\scripts\build_windows_installer.ps1 -Version 0.1.17 -VcRedistPath <vc_redist.x64.exe>
+.\scripts\build_external_sdk.ps1 -ModelVersion 0.1.17 -SdkVersion 1.1.1 -Package All
+# CPU packaged smoke 후 실행
+.\scripts\build_lite.ps1 -Version 0.1.17
+bixolon bundle verify --config configs/versions/0.1.17.json
 ```
 
-첫 명령은 source manifest와 평가 증빙의 고정 해시를 검증하고 CUDA 포함 Flutter 앱 번들을
-`artifacts/versions/0.1.16/bixolon-bakery-ai-scanner-0.1.16`에 만듭니다. 두 번째 명령은
-`requirements-windows-cpu.lock` 환경에서 범용 CPU Worker를 만듭니다. 나머지 명령은 Flutter SDK
-`1.1.0`, Store Model `0.1.16` ZIP과 Windows Setup/Worker ZIP을 생성합니다. 재학습 후 Store
-Model만 갱신할 때는 `-Package StoreModel`을 사용하며 SDK version을 올리지 않습니다.
+최종 전달 폴더는 `artifacts/distributions/0.1.17`입니다. 전체 앱·Lite의 설치본과 portable ZIP,
+CPU Worker ZIP, CUDA portable ZIP, SDK Core 1.1.1·Store Model 0.1.17 ZIP 및 SHA-256을 모읍니다.
+개별 원본 산출물은 `artifacts/installers`, `artifacts/lite`, `artifacts/versions`, `artifacts/external-sdk`, `artifacts/store-models`에 보존합니다.
 
-- `artifacts/external-sdk/1.1.0/BIXOLON-Scanner-SDK-Windows-x64-1.1.0.zip`
-- `artifacts/store-models/limited220/0.1.16/BIXOLON-Store-Model-limited220-0.1.16.zip`
+CPU 설치본·Lite에는 Python, Flutter, CUDA, OpenVINO 별도 설치가 필요하지 않습니다.
+CUDA portable은 NVIDIA CUDA 실행용입니다. 기존 CPU+GPU 혼합 분류와 CPU fallback 코드는
+남아 있지만 이번 기본 배포에서는 활성화하지 않았습니다.
 
-- `artifacts/installers/0.1.16/BixolonBakeryAIScanner-0.1.16-Setup.exe`
-- `artifacts/installers/0.1.16/BixolonBakeryAIScanner-0.1.16-Worker.zip`
-- 각 배포물의 `.sha256`과 `installer-manifest.json`
-
-KIOSK/POS 설치 PC에는 Python, Flutter, CUDA 또는 OpenVINO가 필요하지 않습니다.
-`/health/ready`의 `provider`는 CPU 설치본에서 `cpu`, CUDA 앱 bundle에서 `cuda`입니다.
-
-제품명, 설치 표시명과 배포 파일명은 `BIXOLON Bakery AI Scanner`를 사용합니다. `N100`은 성능
-측정의 장비명에만 사용하며 프로그램명, 배포 target 또는 필수 provenance로 사용하지 않습니다.
-
-OpenVINO는 새 ConvNeXt ONNX의 동적 RoPE reshape를 컴파일하지 못해 0.1.16 배포 provider에서
-제외했습니다. GPU가 필요한 현장에는 검증된 CUDA bundle을, 범용 KIOSK/POS에는 CPU SDK·설치본을
-사용합니다.
-
-Setup EXE는 Authenticode 서명이 없습니다. `.sha256`은 전송 중 손상을 확인하지만 발행자 진위를
-인증하지 않습니다. 설치·제거와 데이터 보존 범위는
-[Windows 설치 안내](installer/windows/INSTALL-KO.txt)에 정리돼 있습니다.
-
-### CPU Worker 전달 패키지
-
-CPU 전용 Flutter 개발자 전달 패키지는 다음 명령으로 별도 생성할 수 있습니다.
-
-```powershell
-.\scripts\build_worker_handoff.ps1 -Version 0.1.16
-```
-
-권장 외부 전달물은 `scripts/build_external_sdk.ps1`가 독립 version으로 생성하는 CPU Windows
-SDK와 Store Model ZIP입니다. SDK 사용자는 설치된 Store Model 중 하나를 `storeBundleRoot` 또는
-`active-bundle.json`으로 선택합니다. 과거 OpenVINO handoff는 호환성 진단 경로이며 활성
-배포물이 아닙니다.
-
-준비된 metadata와 번들을 다시 검증하려면 다음 명령을 사용합니다.
-
-```powershell
-bixolon bundle verify --config configs/versions/0.1.16.json
-```
+Setup EXE는 Authenticode 서명이 없습니다. SHA-256은 손상·변경을 탐지하지만 발행자 진위를
+인증하지 않습니다. [Windows 설치 안내](installer/windows/INSTALL-KO.txt)를 함께 제공합니다.
 
 ## 빵 원본 촬영 관리
 

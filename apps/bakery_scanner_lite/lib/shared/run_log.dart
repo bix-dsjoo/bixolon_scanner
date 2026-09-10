@@ -73,9 +73,6 @@ class RunRecord {
         return ObjectResult(
           item['status'] as String,
           readReasons(item['reason_codes']),
-          prediction: item['status'] == 'APPROVED'
-              ? readPrediction(item['prediction'])
-              : null,
           top3: readTop3(item['top3']),
           box: item['bbox'] == null
               ? null

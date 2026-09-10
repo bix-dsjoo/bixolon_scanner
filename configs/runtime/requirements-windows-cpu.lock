@@ -8,7 +8,7 @@ flatbuffers==25.12.19
 h11==0.16.0
 idna==3.18
 numpy==2.4.4
-onnxruntime==1.28.0
+onnxruntime==1.29.0
 packaging==26.2
 pefile==2023.2.7
 pillow==12.3.0

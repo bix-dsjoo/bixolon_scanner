@@ -155,7 +155,7 @@ def train(
 ) -> dict:
     import torch
 
-    from ..experiments.input_isolation import protect_development
+    from ..training.input_isolation import protect_development
     from .three_bakery_detector import seed_everything
 
     settings = load_json_config(config_path)
