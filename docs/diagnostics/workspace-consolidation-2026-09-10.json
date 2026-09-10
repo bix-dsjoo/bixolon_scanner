@@ -81,5 +81,55 @@
     "No new N100 GPU hardware measurement",
     "Existing final installer and Worker ZIP retained unchanged",
     "Source snapshots and binary artifacts stay outside Git"
-  ]
+  ],
+  "cleanup": {
+    "completed": true,
+    "source_pushed_before_removal": "46c7395",
+    "removed_release_directories": [
+      {
+        "version": "0.1.17",
+        "path": "C:/workspace/bixolon_scanner_release_0_1_17",
+        "removed_regular_files": 3011,
+        "removed_logical_bytes": 3401335060,
+        "detached_links": 10
+      },
+      {
+        "version": "0.1.18",
+        "path": "C:/workspace/bixolon_scanner_release_0_1_18",
+        "removed_regular_files": 3049,
+        "removed_logical_bytes": 3401373539,
+        "detached_links": 10
+      },
+      {
+        "version": "0.1.19",
+        "path": "C:/workspace/bixolon_scanner_release_0_1_19",
+        "removed_regular_files": 2008,
+        "removed_logical_bytes": 3587053137,
+        "detached_links": 4
+      },
+      {
+        "version": "0.2.0",
+        "path": "C:/workspace/bixolon_scanner_release_0_2_0",
+        "removed_regular_files": 3121,
+        "removed_logical_bytes": 3471410934,
+        "detached_links": 10
+      },
+      {
+        "version": "0.2.1",
+        "path": "C:/workspace/bixolon_scanner_release_0_2_1",
+        "removed_regular_files": 3279,
+        "removed_logical_bytes": 3448880630,
+        "detached_links": 11
+      }
+    ],
+    "removed_local_branches": [
+      "codex/release-0.1.17",
+      "codex/release-0.1.18",
+      "codex/release-0.2.0",
+      "codex/release-0.2.1"
+    ],
+    "preserved_artifact_files_reverified": 616,
+    "final_distribution_files_reverified": 99,
+    "shared_datasets_and_artifacts_preserved": true
+  }
 }
